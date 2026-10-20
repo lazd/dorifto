@@ -163,18 +163,23 @@ async function start() {
   resetTransform.setOrigin(vector);
 
   const maxMarks = 6000;
-  const markPositions = new Float32Array(maxMarks * 6);
+  const markPositions = new Float32Array(maxMarks * 18);
   const markGeometry = new THREE.BufferGeometry();
   const markAttribute = new THREE.BufferAttribute(markPositions, 3).setUsage(THREE.DynamicDrawUsage);
   markGeometry.setAttribute('position', markAttribute);
   markGeometry.setDrawRange(0, 0);
-  const marks = new THREE.LineSegments(markGeometry, new THREE.LineBasicMaterial({
-    color: 0x11181b, transparent: true, opacity: 0.55, depthWrite: false,
+  const marks = new THREE.Mesh(markGeometry, new THREE.MeshBasicMaterial({
+    color: 0x11181b, transparent: true, opacity: 0.55, depthWrite: false, side: THREE.DoubleSide,
   }));
   marks.frustumCulled = false;
   scene.add(marks);
   const previousTires = [new THREE.Vector3(), new THREE.Vector3()];
-  let marking = false;
+  const previousLeft = [new THREE.Vector3(), new THREE.Vector3()];
+  const previousRight = [new THREE.Vector3(), new THREE.Vector3()];
+  const tireAcross = new THREE.Vector3();
+  const tireLeft = new THREE.Vector3();
+  const tireRight = new THREE.Vector3();
+  const marking = [false, false];
   let markCount = 0;
 
   const smokeCount = 160;
@@ -253,7 +258,7 @@ async function start() {
     camera.position.copy(car.chassis.position).add(new THREE.Vector3(0, cameraHeight, -9));
     lookTarget.copy(car.chassis.position).add(new THREE.Vector3(0, 0.65, 0));
     camera.lookAt(lookTarget);
-    marking = false;
+    marking.fill(false);
   }
 
   window.addEventListener('keydown', (event) => {
@@ -359,20 +364,33 @@ async function start() {
     if (leavingMarks) {
       car.wheels.slice(2).forEach((wheel, i) => {
         const contact = wheelContacts[i + 2];
-        if (marking && contact && wheel.position.distanceToSquared(previousTires[i]) < 4) {
-          const offset = (markCount % maxMarks) * 6;
+        tireAcross.set(1, 0, 0).applyQuaternion(wheel.quaternion);
+        tireAcross.y = 0;
+        tireAcross.normalize().multiplyScalar(car.widths[i + 2] / 2);
+        tireLeft.copy(wheel.position).sub(tireAcross).setY(0.025);
+        tireRight.copy(wheel.position).add(tireAcross).setY(0.025);
+        if (marking[i] && contact && wheel.position.distanceToSquared(previousTires[i]) < 4) {
+          const offset = (markCount % maxMarks) * 18;
           markPositions.set([
-            previousTires[i].x, 0.025, previousTires[i].z,
-            wheel.position.x, 0.025, wheel.position.z,
+            previousLeft[i].x, 0.025, previousLeft[i].z,
+            previousRight[i].x, 0.025, previousRight[i].z,
+            tireLeft.x, 0.025, tireLeft.z,
+            previousRight[i].x, 0.025, previousRight[i].z,
+            tireRight.x, 0.025, tireRight.z,
+            tireLeft.x, 0.025, tireLeft.z,
           ], offset);
           markCount++;
         }
         previousTires[i].copy(wheel.position);
+        previousLeft[i].copy(tireLeft);
+        previousRight[i].copy(tireRight);
+        marking[i] = contact;
       });
       markAttribute.needsUpdate = true;
-      markGeometry.setDrawRange(0, Math.min(markCount, maxMarks) * 2);
+      markGeometry.setDrawRange(0, Math.min(markCount, maxMarks) * 6);
+    } else {
+      marking.fill(false);
     }
-    marking = leavingMarks;
     smokeEmission += leavingMarks ? dt * 80 : 0;
     while (smokeEmission >= 1) {
       smokeEmission--;

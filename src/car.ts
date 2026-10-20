@@ -180,8 +180,9 @@ export async function loadCar() {
     return box.getCenter(new THREE.Vector3());
   });
   const radii = tireBounds.map((box) => box.getSize(new THREE.Vector3()).y / 2);
+  const widths = tireBounds.map((box) => box.getSize(new THREE.Vector3()).x);
   wheels.forEach((wheel, i) => {
     for (const object of wheel.children) object.position.copy(centers[i]).negate();
   });
-  return { chassis, wheels, centers, radii };
+  return { chassis, wheels, centers, radii, widths };
 }

@@ -32,6 +32,7 @@ so you can see the car's angle during slides. Losing focus releases all controls
 The red Z32 has black wheels and a low chase camera. Hold X from a stop for a
 rear-wheel burnout, with wheelspin, tire smoke, and skid marks; rear grip builds
 back up as speed increases. The tuned engine has a 240 km/h speed limiter.
+Burnout and drift marks are flat strips matching each rear tire's model width.
 Silver headlight interiors contain warm-white projectors with real, shadow-casting
 spotlights illuminating the surface ahead. Side-view mirror glass uses live planar
 reflections. The cones are lightweight dynamic physics objects: hit them to send
