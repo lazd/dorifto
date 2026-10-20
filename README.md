@@ -29,6 +29,9 @@ keyboard. Click the game if keyboard focus is in another window.
 Build speed, turn, then tap the handbrake and counter-steer. The camera follows
 the direction of travel smoothly rather than locking to the car's rotation,
 so you can see the car's angle during slides. Losing focus releases all controls.
+The red Z32 has black wheels and a low chase camera. Hold X from a stop for a
+rear-wheel burnout, with wheelspin, tire smoke, and skid marks; rear grip builds
+back up as speed increases. The tuned engine has a 240 km/h speed limiter.
 
 ## Build
 
@@ -54,4 +57,4 @@ by [Lexyc16](https://sketchfab.com/Lexyc16), licensed under
 **The supplied model is non-commercial.** See
 [the original model license](models/nissan_fairlady_300zx_z32_1989/license.txt).
 The demo rescales/recenters the model and separates its existing wheel geometry
-for animation.
+for animation, with red paint and black rim materials.

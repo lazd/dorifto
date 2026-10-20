@@ -133,6 +133,9 @@ async function start() {
   let steering = 0;
   let accumulator = 0;
   let lastTime = 0;
+  let burnout = 0;
+  let wheelspin = 0;
+  const cameraHeight = 2.3;
   const fixedStep = 1 / 120;
   const velocity = new THREE.Vector3();
   const forward = new THREE.Vector3(0, 0, 1);
@@ -163,6 +166,30 @@ async function start() {
   let marking = false;
   let markCount = 0;
 
+  const smokeCount = 160;
+  const smokePositions = new Float32Array(smokeCount * 3);
+  const smokeLife = new Float32Array(smokeCount);
+  const smokeGeometry = new THREE.BufferGeometry();
+  const smokeAttribute = new THREE.BufferAttribute(smokePositions, 3).setUsage(THREE.DynamicDrawUsage);
+  smokeGeometry.setAttribute('position', smokeAttribute);
+  const smokeCanvas = document.createElement('canvas');
+  smokeCanvas.width = smokeCanvas.height = 64;
+  const smokeContext = smokeCanvas.getContext('2d');
+  if (!smokeContext) throw new Error('Unable to create tire smoke texture.');
+  const gradient = smokeContext.createRadialGradient(32, 32, 0, 32, 32, 32);
+  gradient.addColorStop(0, 'rgba(220,225,230,0.6)');
+  gradient.addColorStop(1, 'rgba(220,225,230,0)');
+  smokeContext.fillStyle = gradient;
+  smokeContext.fillRect(0, 0, 64, 64);
+  const smoke = new THREE.Points(smokeGeometry, new THREE.PointsMaterial({
+    map: new THREE.CanvasTexture(smokeCanvas), size: 1.5, transparent: true,
+    opacity: 0.32, depthWrite: false,
+  }));
+  smoke.frustumCulled = false;
+  scene.add(smoke);
+  let smokeIndex = 0;
+  let smokeEmission = 0;
+
   function syncVisuals() {
     const transform = body.getWorldTransform();
     const position = transform.getOrigin();
@@ -177,6 +204,7 @@ async function start() {
       wheel.position.set(position.x(), position.y(), position.z());
       wheel.quaternion.set(rotation.x(), rotation.y(), rotation.z(), rotation.w());
       wheel.quaternion.multiply(wheelBasis);
+      if (i >= 2) wheel.rotateX(wheelspin);
     });
   }
 
@@ -184,6 +212,11 @@ async function start() {
     keys.clear();
     steering = 0;
     accumulator = 0;
+    burnout = 0;
+    wheelspin = 0;
+    smokeLife.fill(0);
+    smokePositions.fill(0);
+    smokeAttribute.needsUpdate = true;
     body.setCenterOfMassTransform(resetTransform);
     body.getMotionState().setWorldTransform(resetTransform);
     vector.setValue(0, 0, 0);
@@ -199,8 +232,8 @@ async function start() {
     world.updateSingleAabb(body);
     syncVisuals();
     cameraDirection.set(0, 0, 1);
-    camera.position.copy(car.chassis.position).add(new THREE.Vector3(0, 4.2, -9));
-    lookTarget.copy(car.chassis.position);
+    camera.position.copy(car.chassis.position).add(new THREE.Vector3(0, cameraHeight, -9));
+    lookTarget.copy(car.chassis.position).add(new THREE.Vector3(0, 0.65, 0));
     camera.lookAt(lookTarget);
     marking = false;
   }
@@ -251,7 +284,8 @@ async function start() {
     const braking = keys.has('KeyZ');
     const handbrake = keys.has('Space');
     const throttle = keys.has('KeyX') && !braking;
-    const engine = throttle && speed < 165 ? 3300 * (1 - Math.min(speed / 220, 0.8)) : 0;
+    burnout = throttle && !handbrake ? 1 - THREE.MathUtils.smoothstep(speed, 12, 40) : 0;
+    const engine = throttle && speed < 240 ? 7000 * (1 - Math.min(speed / 320, 0.8)) : 0;
     for (let i = 0; i < 4; i++) {
       const rear = i >= 2;
       vehicle.setSteeringValue(rear ? 0 : steering, i);
@@ -259,7 +293,7 @@ async function start() {
       vehicle.setBrake(rear && handbrake ? 2200 : braking ? 110 : throttle ? 0 : 3, i);
       // Unlocking the handbrake restores rear grip progressively, not instantly.
       const wheel = vehicle.getWheelInfo(i);
-      const grip = rear ? handbrake ? 0.65 : throttle ? 1.65 : 2.2 : 2.6;
+      const grip = rear ? handbrake ? 0.65 : throttle ? THREE.MathUtils.lerp(1.9, 0.85, burnout) : 2.2 : 2.6;
       wheel.set_m_frictionSlip(THREE.MathUtils.damp(wheel.get_m_frictionSlip(), grip, 7, fixedStep));
     }
     const linear = body.getLinearVelocity();
@@ -270,6 +304,7 @@ async function start() {
     for (let i = 0; i < 4; i++) {
       wheelContacts[i] = vehicle.getWheelInfo(i).get_m_raycastInfo().get_m_isInContact();
     }
+    if (wheelContacts[2] || wheelContacts[3]) wheelspin = (wheelspin + burnout * 65 * fixedStep) % (Math.PI * 2);
   }
 
   function frame(time: number) {
@@ -291,7 +326,7 @@ async function start() {
     if (speed > 2) travel.lerp(velocity.clone().normalize(), 0.85).normalize();
     cameraDirection.lerp(travel, 1 - Math.exp(-1.8 * dt)).normalize();
     desiredCamera.copy(car.chassis.position).addScaledVector(cameraDirection, -9 - Math.min(speed * 0.04, 2));
-    desiredCamera.y = car.chassis.position.y + 4.2;
+    desiredCamera.y = car.chassis.position.y + cameraHeight;
     camera.position.lerp(desiredCamera, 1 - Math.exp(-5 * dt));
     lookTarget.copy(car.chassis.position).addScaledVector(velocity, 0.18);
     lookTarget.y += 0.65;
@@ -301,7 +336,9 @@ async function start() {
 
     const slip = speed > 3 ? 1 - Math.abs(forward.dot(velocity) / speed) : 0;
     const sliding = speed > 3 && (keys.has('Space') || slip > 0.045);
-    if (sliding) {
+    const burningOut = burnout > 0.1 && (wheelContacts[2] || wheelContacts[3]);
+    const leavingMarks = sliding || burningOut;
+    if (leavingMarks) {
       car.wheels.slice(2).forEach((wheel, i) => {
         const contact = wheelContacts[i + 2];
         if (marking && contact && wheel.position.distanceToSquared(previousTires[i]) < 4) {
@@ -317,9 +354,30 @@ async function start() {
       markAttribute.needsUpdate = true;
       markGeometry.setDrawRange(0, Math.min(markCount, maxMarks) * 2);
     }
-    marking = sliding;
+    marking = leavingMarks;
+    smokeEmission += leavingMarks ? dt * 80 : 0;
+    while (smokeEmission >= 1) {
+      smokeEmission--;
+      const wheel = 2 + smokeIndex % 2;
+      if (wheelContacts[wheel]) {
+        const i = smokeIndex % smokeCount;
+        smokePositions.set([
+          car.wheels[wheel].position.x + (Math.random() - 0.5) * 0.3,
+          0.25,
+          car.wheels[wheel].position.z + (Math.random() - 0.5) * 0.3,
+        ], i * 3);
+        smokeLife[i] = 1;
+      }
+      smokeIndex++;
+    }
+    for (let i = 0; i < smokeCount; i++) {
+      smokeLife[i] = Math.max(0, smokeLife[i] - dt / 1.5);
+      smokePositions[i * 3 + 1] = smokeLife[i] > 0 ? smokePositions[i * 3 + 1] + dt * 0.65 : -100;
+      smokePositions[i * 3] += dt * 0.25;
+    }
+    smokeAttribute.needsUpdate = true;
     speedDisplay.textContent = String(Math.round(speed * 3.6));
-    stateDisplay.textContent = keys.has('Space') ? 'HANDBRAKE' : keys.has('KeyZ') ? 'BRAKING' : sliding ? 'SLIDING' : 'REAR-WHEEL DRIVE';
+    stateDisplay.textContent = keys.has('Space') ? 'HANDBRAKE' : keys.has('KeyZ') ? 'BRAKING' : burningOut ? 'BURNOUT' : sliding ? 'SLIDING' : 'REAR-WHEEL DRIVE';
     if (Math.abs(car.chassis.position.x) > 1800 || Math.abs(car.chassis.position.z) > 1800 || car.chassis.position.y < -5) reset();
     renderer.render(scene, camera);
   }

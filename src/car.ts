@@ -23,6 +23,19 @@ export async function loadCar() {
     if (!(object instanceof THREE.Mesh)) return;
     object.castShadow = true;
     object.receiveShadow = true;
+    const materials = Array.isArray(object.material) ? object.material : [object.material];
+    for (const material of materials) {
+      if (!(material instanceof THREE.MeshStandardMaterial)) continue;
+      if (material.name === 'Material.001' || material.name === 'Material.005') {
+        material.color.set(0xb90816);
+        material.metalness = 0.65;
+        material.roughness = 0.28;
+      } else if (material.name === 'Material.004') {
+        material.color.set(0x111216);
+        material.metalness = 0.35;
+        material.roughness = 0.6;
+      }
+    }
     if (!Array.isArray(object.material) && WHEEL_MATERIALS.has(object.material.name)) {
       wheelMeshes.push(object);
     }
