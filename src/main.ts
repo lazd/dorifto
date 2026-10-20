@@ -471,6 +471,7 @@ async function start() {
   }
 
   function frame(time: number) {
+    const tune = driveModes[driveMode];
     controls.poll();
     const dt = lastTime ? Math.min((time - lastTime) / 1000, 0.05) : fixedStep;
     lastTime = time;
@@ -492,14 +493,14 @@ async function start() {
     forward.normalize();
     travel.copy(forward);
     travelVelocity.copy(velocity).normalize();
-    travel.lerp(travelVelocity, 0.85 * THREE.MathUtils.smoothstep(speed, 0.5, 3)).normalize();
-    cameraDirection.lerp(travel, 1 - Math.exp(-1.8 * dt)).normalize();
+    travel.lerp(travelVelocity, tune.cameraTravelBlend * THREE.MathUtils.smoothstep(speed, 0.5, 3)).normalize();
+    cameraDirection.lerp(travel, 1 - Math.exp(-tune.cameraDirectionResponse * dt)).normalize();
     cameraYaw = THREE.MathUtils.damp(cameraYaw, controls.lookBehind ? Math.PI : -controls.cameraX * 0.45, 9, dt);
     cameraPitch = THREE.MathUtils.damp(cameraPitch, -controls.cameraY * 0.8, 9, dt);
     cameraOrbit.copy(cameraDirection).applyAxisAngle(up, cameraYaw);
     desiredCamera.copy(car.chassis.position).addScaledVector(cameraOrbit, -9 - Math.min(speed * 0.04, 2));
     desiredCamera.y = car.chassis.position.y + cameraHeight + cameraPitch;
-    camera.position.lerp(desiredCamera, 1 - Math.exp(-5 * dt));
+    camera.position.lerp(desiredCamera, 1 - Math.exp(-tune.cameraPositionResponse * dt));
     desiredLookTarget.copy(car.chassis.position).addScaledVector(velocity, 0.18);
     desiredLookTarget.y += 0.65;
     lookTarget.lerp(desiredLookTarget, 1 - Math.exp(-10 * dt));

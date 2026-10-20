@@ -103,6 +103,9 @@ approximation, not a retroreflective optical simulation).
 
 The Drive mode selector switches handling live without resetting the course.
 Drift is the default and retains the existing tune, wheelspin, and steering lock.
+Its loose chase camera follows travel direction to show slides. Grip's camera
+stays more closely aligned with the car's heading and responds faster through
+turns, while retaining smooth interpolation and the controller camera controls.
 Grip uses 26-to-11-degree steering lock, 1350 Nm / 80 kW per driven wheel,
 higher tire friction and rear cornering stiffness, and slip-based traction
 control to preserve cornering grip under throttle. Traction control reduces
