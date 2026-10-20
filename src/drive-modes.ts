@@ -1,0 +1,28 @@
+export const driveModes = {
+  drift: {
+    steeringLow: 0.65,
+    steeringHigh: 0.5,
+    friction: 1.25,
+    rearStiffness: 42000,
+    frontStiffness: 38000,
+    wheelTorque: 2200,
+    wheelPower: 110000,
+    tractionControl: false,
+  },
+  grip: {
+    steeringLow: 0.45,
+    steeringHigh: 0.2,
+    friction: 1.5,
+    rearStiffness: 52000,
+    frontStiffness: 42000,
+    wheelTorque: 1350,
+    wheelPower: 80000,
+    tractionControl: true,
+  },
+} as const;
+
+export type DriveMode = keyof typeof driveModes;
+
+export function isDriveMode(value: string): value is DriveMode {
+  return value === 'grip' || value === 'drift';
+}

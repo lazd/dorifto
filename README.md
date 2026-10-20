@@ -25,7 +25,7 @@ keyboard or standard-mapped gamepad. Click the game if focus is in another windo
 | Z | Brake all four wheels |
 | X + Z | Brakestand (front brakes hold, rear tires spin) |
 | Space | Lock the rear wheels / initiate a slide |
-| R or Reset car | Return to the starting position |
+| R or Reset | Reset the car, cones, smoke, and tire marks |
 
 ### Gamepad
 
@@ -91,7 +91,40 @@ excluded from side-mirror reflection passes, whose camera depth differs.
 Silver headlight interiors contain warm-white projectors with real, shadow-casting
 spotlights illuminating the surface ahead. Side-view mirror glass uses live planar
 reflections. The cones are lightweight dynamic physics objects: hit them to send
-them sliding and tumbling. Reset only resets the car; reload to restore the cones.
+them sliding and tumbling. Reset restores the car and all cones to their starting
+positions and clears smoke and tire marks.
+The autocross loop starts straight ahead through a checkered line, then follows
+an opening slalom, sweeping bend, hairpin, and return section. Paired cones mark
+a twelve-meter-wide corridor, with painted arrows indicating direction. Cones
+have glossy white reflective-style bands that catch the headlights (a visual
+approximation, not a retroreflective optical simulation).
+
+## Drive modes
+
+The Drive mode selector switches handling live without resetting the course.
+Drift is the default and retains the existing tune, wheelspin, and steering lock.
+Grip uses 26-to-11-degree steering lock, 1350 Nm / 80 kW per driven wheel,
+higher tire friction and rear cornering stiffness, and slip-based traction
+control to preserve cornering grip under throttle. Traction control reduces
+engine torque, not steering or yaw; it is bypassed for intentional brakestands
+and handbrake use. Both modes support keyboard, analog gamepad, and reverse.
+The selected mode is carried in `?mode=grip` or `?mode=drift` and preserved when
+switching courses. Tune values are defined in `src/drive-modes.ts`.
+
+## Courses
+
+Use the Course selector to load Autocross Playground (12 m wide) or Sweeper
+Circuit (14 m wide). Switching courses restarts the demo for a clean physics world,
+cones, and tire marks. The selection is encoded in `?course=autocross` or
+`?course=sweeper`, so links can open a particular course.
+
+Course data lives in `src/courses.ts`: add a `CourseDefinition` with a unique ID,
+name, corridor width, cone spacing, ordered `[x, z]` centerline points, and spawn
+position/heading (radians, zero faces +Z). Layouts are closed loops. The shared
+renderer in `src/course.ts` samples the centerline to place cones and continuous
+16 cm white boundary strips underneath them, plus start tiles and arrows. Keep
+enough space between bends for the chosen corridor width. The physics and reset
+logic use the returned cones and selected spawn, without course-specific code.
 
 ## Build
 

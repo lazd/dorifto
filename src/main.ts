@@ -4,6 +4,9 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { loadCar } from './car';
 import { TireSmoke } from './smoke';
 import { DrivingControls } from './controls';
+import { createCourse } from './course';
+import { courses } from './courses';
+import { driveModes, isDriveMode } from './drive-modes';
 import './style.css';
 
 function element<T extends HTMLElement>(selector: string): T {
@@ -17,6 +20,36 @@ const speedDisplay = element('#speed');
 const stateDisplay = element('#state');
 
 async function start() {
+  const modeSelect = element<HTMLSelectElement>('#drive-mode');
+  const requestedMode = new URL(location.href).searchParams.get('mode') ?? 'drift';
+  if (!isDriveMode(requestedMode)) throw new Error(`Unknown drive mode: ${requestedMode}`);
+  let driveMode = requestedMode;
+  modeSelect.value = driveMode;
+  modeSelect.addEventListener('change', () => {
+    const value = modeSelect.value;
+    if (!isDriveMode(value)) {
+      showError(new Error(`Unknown drive mode: ${value}`));
+      return;
+    }
+    driveMode = value;
+    const url = new URL(location.href);
+    url.searchParams.set('mode', driveMode);
+    history.replaceState(null, '', url);
+    modeSelect.blur();
+  });
+  const requestedCourse = new URL(location.href).searchParams.get('course');
+  const definition = requestedCourse ? courses.find((course) => course.id === requestedCourse) : courses[0];
+  if (!definition) throw new Error(`Unknown course: ${requestedCourse}`);
+  const spawn = definition.spawn;
+  const courseSelect = document.querySelector<HTMLSelectElement>('#course');
+  if (!courseSelect) throw new Error('Missing course selector');
+  for (const course of courses) courseSelect.add(new Option(course.name, course.id));
+  courseSelect.value = definition.id;
+  courseSelect.addEventListener('change', () => {
+    const url = new URL(location.href);
+    url.searchParams.set('course', courseSelect.value);
+    location.assign(url.href);
+  });
   const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
   renderer.setSize(innerWidth, innerHeight);
@@ -59,24 +92,7 @@ async function start() {
   grid.position.y = 0.012;
   scene.add(grid);
 
-  const paint = new THREE.MeshBasicMaterial({ color: 0xb0b7a8, side: THREE.DoubleSide });
-  for (const radius of [22, 24, 48, 50]) {
-    const ring = new THREE.Mesh(new THREE.RingGeometry(radius, radius + 0.13, 192), paint);
-    ring.rotation.x = -Math.PI / 2;
-    ring.position.y = 0.018;
-    scene.add(ring);
-  }
-  const coneGeometry = new THREE.ConeGeometry(0.23, 0.7, 16);
-  const coneMaterial = new THREE.MeshStandardMaterial({ color: 0xef8753, roughness: 0.8 });
-  const cones: THREE.Mesh[] = [];
-  for (let i = 0; i < 40; i++) {
-    const angle = i / 40 * Math.PI * 2;
-    const cone = new THREE.Mesh(coneGeometry, coneMaterial);
-    cone.position.set(Math.cos(angle) * 56, 0.35, Math.sin(angle) * 56);
-    cone.castShadow = true;
-    scene.add(cone);
-    cones.push(cone);
-  }
+  const cones = createCourse(scene, definition);
 
   // The upstream Emscripten factory writes to `this`; ESM calls have no receiver.
   const [Ammo, car] = await Promise.all([AmmoFactory.call({}), loadCar()]);
@@ -107,6 +123,8 @@ async function start() {
 
   vector.setValue(0, 1, 0);
   rigidBody(0, new Ammo.btStaticPlaneShape(vector, 0), new THREE.Vector3());
+  const coneStarts = cones.map((cone) => cone.position.clone());
+  const coneResetTransform = new Ammo.btTransform();
   const coneBodies = cones.map((mesh) => {
     const body = rigidBody(3, new Ammo.btConeShape(0.23, 0.7), mesh.position);
     body.setFriction(0.7);
@@ -187,8 +205,11 @@ async function start() {
   const forceOffset = new Ammo.btVector3(0, 0, 0);
   const resetTransform = new Ammo.btTransform();
   resetTransform.setIdentity();
-  vector.setValue(0, 0.8, 0);
+  vector.setValue(spawn.position[0], 0.8, spawn.position[1]);
   resetTransform.setOrigin(vector);
+  const spawnRotation = new Ammo.btQuaternion(0, Math.sin(spawn.heading / 2), 0, Math.cos(spawn.heading / 2));
+  resetTransform.setRotation(spawnRotation);
+  Ammo.destroy(spawnRotation);
 
   const maxMarks = 6000;
   const markPositions = new Float32Array(maxMarks * 18);
@@ -269,6 +290,22 @@ async function start() {
     tireAngles.fill(0);
     wheelContacts.fill(false);
     smoke.reset();
+    markCount = 0;
+    markGeometry.setDrawRange(0, 0);
+    coneBodies.forEach((cone, i) => {
+      coneResetTransform.setIdentity();
+      const start = coneStarts[i];
+      vector.setValue(start.x, start.y, start.z);
+      coneResetTransform.setOrigin(vector);
+      cone.setCenterOfMassTransform(coneResetTransform);
+      cone.getMotionState().setWorldTransform(coneResetTransform);
+      vector.setValue(0, 0, 0);
+      cone.setLinearVelocity(vector);
+      cone.setAngularVelocity(vector);
+      cone.clearForces();
+      cone.activate(true);
+      world.updateSingleAabb(cone);
+    });
     body.setCenterOfMassTransform(resetTransform);
     body.getMotionState().setWorldTransform(resetTransform);
     vector.setValue(0, 0, 0);
@@ -284,14 +321,16 @@ async function start() {
     world.updateSingleAabb(body);
     captureVisuals(true);
     velocity.set(0, 0, 0);
-    cameraDirection.set(0, 0, 1);
-    camera.position.copy(car.chassis.position).add(new THREE.Vector3(0, cameraHeight, -9));
+    cameraDirection.set(Math.sin(spawn.heading), 0, Math.cos(spawn.heading));
+    camera.position.copy(car.chassis.position).addScaledVector(cameraDirection, -9);
+    camera.position.y += cameraHeight;
     lookTarget.copy(car.chassis.position).add(new THREE.Vector3(0, 0.65, 0));
     camera.lookAt(lookTarget);
     marking.fill(false);
   }
 
   window.addEventListener('keydown', (event) => {
+    if (event.target instanceof HTMLSelectElement) return;
     if (!controlKeys.has(event.code)) return;
     if (event.target instanceof HTMLButtonElement && event.code === 'Space') return;
     event.preventDefault();
@@ -300,6 +339,7 @@ async function start() {
     } else keys.add(event.code);
   });
   window.addEventListener('keyup', (event) => {
+    if (event.target instanceof HTMLSelectElement) return;
     if (controlKeys.has(event.code)) {
       event.preventDefault();
       keys.delete(event.code);
@@ -331,6 +371,7 @@ async function start() {
   });
 
   function step() {
+    const tune = driveModes[driveMode];
     const linear = body.getLinearVelocity();
     const angular = body.getAngularVelocity();
     const speed = Math.hypot(linear.x(), linear.z()) * 3.6;
@@ -341,7 +382,7 @@ async function start() {
     if (controls.throttle > 0 || controls.reverse === 0) reversing = false;
     else if (Math.abs(forwardSpeed) < 0.5 && Math.abs(angular.y()) < 0.5 && speed < 4) reversing = true;
     const input = controls.steer;
-    const steeringLimit = THREE.MathUtils.lerp(0.65, 0.5, Math.min(speed / 140, 1));
+    const steeringLimit = THREE.MathUtils.lerp(tune.steeringLow, tune.steeringHigh, Math.min(speed / 140, 1));
     const counterSteering = input !== 0 && Math.sign(input) !== Math.sign(steering);
     steering = THREE.MathUtils.damp(steering, input * steeringLimit, counterSteering ? 16 : 10, fixedStep);
     const brakeAmount = reversing ? Number(keys.has('KeyZ')) : controls.brake;
@@ -373,8 +414,8 @@ async function start() {
       const slipAngle = Math.atan2(across, Math.max(Math.abs(along), 2));
       const load = wheelContacts[i] ? Math.max(0, wheel.get_m_wheelsSuspensionForce()) : 0;
       const staticGrip = braking && !rear ? 0.15 * brakeAmount * (1 - THREE.MathUtils.smoothstep(Math.abs(along), 0.2, 0.5)) : 0;
-      const capacity = load * (1.25 + staticGrip);
-      const lateralDemand = -(rear ? 42000 : 38000) * slipAngle;
+      const capacity = load * (tune.friction + staticGrip);
+      const lateralDemand = -(rear ? tune.rearStiffness : tune.frontStiffness) * slipAngle;
       const brakeTorque = rear && handbrake ? 4500
         : brakeAmount * (rear ? brakestand ? 650 : 1300 : 1900);
       let longitudinalForce = 0;
@@ -382,10 +423,13 @@ async function start() {
       // Substep wheel inertia so tire slip remains stable at low road speeds.
       const tireStep = fixedStep / 12;
       for (let j = 0; j < 12; j++) {
-        // Limit both launch torque and power (220 kW total at the rear wheels).
-        // Excess wheelspin raises wheel speed and reduces available torque.
+        const driveDirection = reversing ? -1 : 1;
+        const driveSlip = (tireSpeeds[i] * car.radii[i] - along) * driveDirection / Math.max(Math.abs(along), 4);
+        const traction = tune.tractionControl && !brakestand && !handbrake
+          ? 1 - THREE.MathUtils.smoothstep(driveSlip, 0.06, 0.16) : 1;
         const engineTorque = rear && speed < (reversing ? 35 : 240)
-          ? throttle * (reversing ? -1 : 1) * Math.min(2200, 110000 / Math.max(Math.abs(tireSpeeds[i]), 1)) : 0;
+          ? throttle * driveDirection * traction
+            * Math.min(tune.wheelTorque, tune.wheelPower / Math.max(Math.abs(tireSpeeds[i]), 1)) : 0;
         const slipRatio = (tireSpeeds[i] * car.radii[i] - along) / Math.max(Math.abs(along), braking ? 0.5 : 4);
         // Saturate the combined demand, not each axis independently: a tire
         // spinning far above road speed must lose lateral authority.

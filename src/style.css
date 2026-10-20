@@ -27,6 +27,7 @@ footer { left: 0; right: 0; bottom: 0; padding: 20px 32px 12px; background: line
 .controls > span { white-space: nowrap; }
 kbd { display: inline-block; padding: 5px 7px; margin-right: 4px; border: 1px solid #adc3bd55; border-radius: 4px; background: #10191f99; font: inherit; color: #fff; }
 button { color: inherit; font: inherit; background: transparent; border: 0; padding: 0; cursor: pointer; }
+select { margin-left: 6px; padding: 5px 8px; color: #eef6f5; background: #18272e; border: 1px solid #adc3bd55; border-radius: 4px; font: inherit; }
 button:hover kbd, button:focus-visible kbd { background: #397d70; }
 .credit { font-size: 10px; line-height: 1.5; color: #aebfbd; margin: 14px 0 0; }
 a { color: inherit; text-underline-offset: 2px; }
