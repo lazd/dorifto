@@ -65,12 +65,14 @@ async function start() {
   }
   const coneGeometry = new THREE.ConeGeometry(0.23, 0.7, 16);
   const coneMaterial = new THREE.MeshStandardMaterial({ color: 0xef8753, roughness: 0.8 });
+  const cones: THREE.Mesh[] = [];
   for (let i = 0; i < 40; i++) {
     const angle = i / 40 * Math.PI * 2;
     const cone = new THREE.Mesh(coneGeometry, coneMaterial);
     cone.position.set(Math.cos(angle) * 56, 0.35, Math.sin(angle) * 56);
     cone.castShadow = true;
     scene.add(cone);
+    cones.push(cone);
   }
 
   // The upstream Emscripten factory writes to `this`; ESM calls have no receiver.
@@ -102,6 +104,15 @@ async function start() {
 
   vector.setValue(0, 1, 0);
   rigidBody(0, new Ammo.btStaticPlaneShape(vector, 0), new THREE.Vector3());
+  const coneBodies = cones.map((mesh) => {
+    const body = rigidBody(3, new Ammo.btConeShape(0.23, 0.7), mesh.position);
+    body.setFriction(0.7);
+    body.setRestitution(0.15);
+    body.setDamping(0.08, 0.12);
+    body.setCcdMotionThreshold(0.1);
+    body.setCcdSweptSphereRadius(0.12);
+    return body;
+  });
   vector.setValue(0.86, 0.23, 2.02);
   const body = rigidBody(1450, new Ammo.btBoxShape(vector), new THREE.Vector3(0, 0.8, 0));
   body.setActivationState(4);
@@ -191,6 +202,13 @@ async function start() {
   let smokeEmission = 0;
 
   function syncVisuals() {
+    cones.forEach((cone, i) => {
+      const transform = coneBodies[i].getWorldTransform();
+      const position = transform.getOrigin();
+      const rotation = transform.getRotation();
+      cone.position.set(position.x(), position.y(), position.z());
+      cone.quaternion.set(rotation.x(), rotation.y(), rotation.z(), rotation.w());
+    });
     const transform = body.getWorldTransform();
     const position = transform.getOrigin();
     const rotation = transform.getRotation();
