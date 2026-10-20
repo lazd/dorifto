@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 
-const count = 240;
-const lifetime = 2.4;
+const count = 600;
+const lifetime = 3.6;
 
 export class TireSmoke {
   private readonly particles = Array.from({ length: count }, () => ({
@@ -41,8 +41,8 @@ export class TireSmoke {
       varying float viewDepth;
       varying float variation;
       void main() {
-        float life = clamp(age / 2.4, 0.0, 1.0);
-        float radius = mix(0.22, 1.35, life) * mix(0.8, 1.2, seed);
+        float life = clamp(age / ${lifetime.toFixed(1)}, 0.0, 1.0);
+        float radius = mix(0.3, 1.9, life) * mix(0.8, 1.2, seed);
         vec4 viewPosition = modelViewMatrix * vec4(center, 1.0);
         float angle = seed * 6.283 + life * 0.5;
         mat2 rotation = mat2(cos(angle), -sin(angle), sin(angle), cos(angle));
@@ -51,7 +51,7 @@ export class TireSmoke {
         viewDepth = -viewPosition.z;
         puffUv = uv;
         variation = seed;
-        opacity = smoothstep(0.0, 0.08, life) * pow(1.0 - life, 1.5) * 0.24;
+        opacity = smoothstep(0.0, 0.05, life) * pow(1.0 - life, 1.2) * 0.32;
       }
     `,
     fragmentShader: `
@@ -116,7 +116,7 @@ export class TireSmoke {
       particle.velocity.multiplyScalar(Math.exp(-dt * 1.4));
       particle.velocity.y += dt * 0.45;
     }
-    this.emission += emitting ? dt * 75 : 0;
+    this.emission += emitting ? dt * 120 : 0;
     while (this.emission >= 1) {
       this.emission--;
       const wheel = 2 + this.next % 2;
