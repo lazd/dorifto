@@ -348,7 +348,7 @@ async function start() {
       const capacity = load * 1.25;
       const lateralDemand = -(rear ? 42000 : 38000) * slipAngle;
       const engineTorque = rear && throttle && speed < 240
-        ? 1900 * (1 - Math.min(Math.abs(tireSpeeds[i]) * car.radii[i] / 130, 0.75)) : 0;
+        ? 2200 * (1 - Math.min(Math.abs(tireSpeeds[i]) * car.radii[i] / 130, 0.75)) : 0;
       const brakeTorque = rear && handbrake ? 4500 : braking ? rear ? 1300 : 1900 : 0;
       let longitudinalForce = 0;
       let lateralForce = 0;
@@ -356,10 +356,12 @@ async function start() {
       const tireStep = fixedStep / 12;
       for (let j = 0; j < 12; j++) {
         const slipRatio = (tireSpeeds[i] * car.radii[i] - along) / Math.max(Math.abs(along), 4);
-        const driveDemand = capacity * Math.tanh(slipRatio * 8);
-        const lateral = capacity * Math.tanh(lateralDemand / Math.max(capacity, 1));
+        // Saturate the combined demand, not each axis independently: a tire
+        // spinning far above road speed must lose lateral authority.
+        const driveDemand = capacity * slipRatio * 8;
+        const lateral = lateralDemand;
         const combined = Math.hypot(driveDemand, lateral);
-        const scale = combined > capacity ? capacity / combined : 1;
+        const scale = combined > 0 ? capacity * Math.tanh(combined / Math.max(capacity, 1)) / combined : 1;
         const fx = driveDemand * scale;
         const fy = lateral * scale;
         const differential = rear ? THREE.MathUtils.clamp((tireSpeeds[i === 2 ? 3 : 2] - tireSpeeds[i]) * 8, -250, 250) : 0;

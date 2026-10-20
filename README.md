@@ -36,8 +36,11 @@ inertia, rear drive torque, a limited-slip differential, and brake torque determ
 traction continuously. There is no drift latch, target angle, yaw assist, or extra
 forward force. Counter-steer and modulate X to balance a slide; lift off to let
 wheelspin settle and regain lateral grip. Steering can transfer the slide either way.
-Power tuning uses up to 1900 Nm of drive torque per rear wheel, with a gradual
+Power tuning uses up to 2200 Nm of drive torque per rear wheel, with a gradual
 speed-based taper and a 1.25 tire friction coefficient.
+Longitudinal and lateral slip demands saturate together, so spinning the rear
+tires reduces their cornering grip. Hold X and either steering arrow from a stop
+for donuts; release throttle and unwind/counter-steer to recover traction.
 The red Z32 has black wheels and a low chase camera. Hold X from a stop for a
 rear-wheel burnout, with wheelspin, tire smoke, and skid marks. Grip returns as
 wheel speed matches road speed. The engine has a 240 km/h speed limiter.
