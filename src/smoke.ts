@@ -10,10 +10,12 @@ export class TireSmoke {
     age: lifetime,
     seed: Math.random(),
     depth: 0,
+    dust: false,
   }));
   private readonly centers = new Float32Array(count * 3);
   private readonly ages = new Float32Array(count);
   private readonly seeds = new Float32Array(count);
+  private readonly dust = new Float32Array(count);
   private readonly geometry = new THREE.InstancedBufferGeometry();
   private readonly depthTarget = new THREE.WebGLRenderTarget(1, 1, {
     depthTexture: new THREE.DepthTexture(1, 1),
@@ -22,7 +24,7 @@ export class TireSmoke {
   private readonly size = new THREE.Vector2();
   private readonly viewPosition = new THREE.Vector3();
   private next = 0;
-  private emission = 0;
+  private readonly emission = [0, 0];
   private readonly material = new THREE.ShaderMaterial({
     transparent: true,
     depthWrite: false,
@@ -36,6 +38,8 @@ export class TireSmoke {
       attribute vec3 center;
       attribute float age;
       attribute float seed;
+      attribute float dust;
+      varying float dustAmount;
       varying vec2 puffUv;
       varying float opacity;
       varying float viewDepth;
@@ -51,7 +55,8 @@ export class TireSmoke {
         viewDepth = -viewPosition.z;
         puffUv = uv;
         variation = seed;
-        opacity = smoothstep(0.0, 0.05, life) * pow(1.0 - life, 1.2) * 0.32;
+        dustAmount = dust;
+        opacity = smoothstep(0.0, 0.05, life) * pow(1.0 - life, 1.2) * mix(0.32, 0.28, dust);
       }
     `,
     fragmentShader: `
@@ -64,6 +69,7 @@ export class TireSmoke {
       varying float opacity;
       varying float viewDepth;
       varying float variation;
+      varying float dustAmount;
       void main() {
         vec2 p = puffUv * 2.0 - 1.0;
         float edge = length(p);
@@ -76,7 +82,9 @@ export class TireSmoke {
         float cameraFade = smoothstep(0.3, 1.2, viewDepth);
         float alpha = density * opacity * intersectionFade * cameraFade;
         if (alpha < 0.001) discard;
-        gl_FragColor = vec4(mix(vec3(0.58, 0.62, 0.65), vec3(0.82), puffUv.y), alpha);
+        vec3 smokeColor = mix(vec3(0.58, 0.62, 0.65), vec3(0.82), puffUv.y);
+        vec3 dustColor = mix(vec3(0.48, 0.32, 0.17), vec3(0.72, 0.57, 0.36), puffUv.y);
+        gl_FragColor = vec4(mix(smokeColor, dustColor, dustAmount), alpha);
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
       }
@@ -91,6 +99,7 @@ export class TireSmoke {
     this.geometry.setAttribute('center', new THREE.InstancedBufferAttribute(this.centers, 3).setUsage(THREE.DynamicDrawUsage));
     this.geometry.setAttribute('age', new THREE.InstancedBufferAttribute(this.ages, 1).setUsage(THREE.DynamicDrawUsage));
     this.geometry.setAttribute('seed', new THREE.InstancedBufferAttribute(this.seeds, 1).setUsage(THREE.DynamicDrawUsage));
+    this.geometry.setAttribute('dust', new THREE.InstancedBufferAttribute(this.dust, 1).setUsage(THREE.DynamicDrawUsage));
     this.geometry.instanceCount = 0;
     this.mesh = new THREE.Mesh(this.geometry, this.material);
     this.mesh.frustumCulled = false;
@@ -101,35 +110,41 @@ export class TireSmoke {
 
   reset() {
     for (const particle of this.particles) particle.age = lifetime;
-    this.emission = 0;
+    this.emission.fill(0);
     this.geometry.instanceCount = 0;
   }
 
   update(
     dt: number, wheels: THREE.Group[], contacts: boolean[], emitting: boolean,
-    velocity: THREE.Vector3, camera: THREE.Camera,
+    velocity: THREE.Vector3, camera: THREE.Camera, asphalt: readonly boolean[],
   ) {
     for (const particle of this.particles) {
       if (particle.age >= lifetime) continue;
       particle.age += dt;
       particle.position.addScaledVector(particle.velocity, dt);
       particle.velocity.multiplyScalar(Math.exp(-dt * 1.4));
-      particle.velocity.y += dt * 0.45;
+      particle.velocity.y += dt * (particle.dust ? 0.2 : 0.45);
     }
-    this.emission += emitting ? dt * 120 : 0;
-    while (this.emission >= 1) {
-      this.emission--;
-      const wheel = 2 + this.next % 2;
-      const particle = this.particles[this.next++ % count];
-      if (!contacts[wheel]) continue;
-      particle.position.copy(wheels[wheel].position);
-      particle.position.y = 0.16;
-      particle.velocity.set(
-        velocity.x * 0.12 + (Math.random() - 0.5) * 0.6,
-        0.3 + Math.random() * 0.3,
-        velocity.z * 0.12 + (Math.random() - 0.5) * 0.6,
-      );
-      particle.age = 0;
+    for (let i = 0; i < 2; i++) {
+      const wheel = i + 2;
+      if (!emitting || !contacts[wheel]) {
+        this.emission[i] = 0;
+        continue;
+      }
+      this.emission[i] += dt * (asphalt[wheel] ? 60 : 30);
+      while (this.emission[i] >= 1) {
+        this.emission[i]--;
+        const particle = this.particles[this.next++ % count];
+        particle.dust = !asphalt[wheel];
+        particle.position.copy(wheels[wheel].position);
+        particle.position.y = 0.16;
+        particle.velocity.set(
+          velocity.x * 0.12 + (Math.random() - 0.5) * 0.6,
+          (particle.dust ? 0.15 : 0.3) + Math.random() * 0.3,
+          velocity.z * 0.12 + (Math.random() - 0.5) * 0.6,
+        );
+        particle.age = 0;
+      }
     }
     camera.updateMatrixWorld();
     for (const particle of this.particles) {
@@ -141,9 +156,10 @@ export class TireSmoke {
       particle.position.toArray(this.centers, i * 3);
       this.ages[i] = particle.age;
       this.seeds[i] = particle.seed;
+      this.dust[i] = Number(particle.dust);
     });
     this.geometry.instanceCount = active.length;
-    for (const name of ['center', 'age', 'seed']) this.geometry.getAttribute(name).needsUpdate = true;
+    for (const name of ['center', 'age', 'seed', 'dust']) this.geometry.getAttribute(name).needsUpdate = true;
   }
 
   captureDepth(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.PerspectiveCamera) {

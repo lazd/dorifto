@@ -67,12 +67,13 @@ export function createCourse(scene: THREE.Scene, definition: CourseDefinition) {
     const mesh = new THREE.Mesh(geometry, material);
     mesh.receiveShadow = true;
     scene.add(mesh);
+    return mesh;
   }
   const asphalt = surfaceMaterial('asphalt');
   asphalt.polygonOffset = true;
   asphalt.polygonOffsetFactor = 1;
   asphalt.polygonOffsetUnits = 1;
-  ribbon(0, definition.width + 1.6, 0.008, asphalt);
+  const pavement = ribbon(0, definition.width + 1.6, 0.008, asphalt);
   for (const side of [-1, 1]) ribbon(side * definition.width / 2, 0.16, 0.016, white);
   const columns = Math.ceil(definition.width / 0.5);
   const tileWidth = definition.width / columns;
@@ -109,5 +110,17 @@ export function createCourse(scene: THREE.Scene, definition: CourseDefinition) {
     arrow.position.copy(position).setY(0.02);
     scene.add(arrow);
   }
-  return cones;
+  const surfaceRay = new THREE.Raycaster();
+  surfaceRay.ray.direction.set(0, -1, 0);
+  const hits: THREE.Intersection[] = [];
+  pavement.updateMatrixWorld();
+  return {
+    cones,
+    isAsphalt(position: THREE.Vector3) {
+      surfaceRay.ray.origin.set(position.x, 1, position.z);
+      hits.length = 0;
+      surfaceRay.intersectObject(pavement, false, hits);
+      return hits.length > 0;
+    },
+  };
 }

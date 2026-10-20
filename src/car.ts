@@ -29,9 +29,10 @@ export async function loadCar() {
     for (const material of materials) {
       if (!(material instanceof THREE.MeshStandardMaterial)) continue;
       if (material.name === 'Material.001' || material.name === 'Material.005') {
-        material.color.set(0xb90816);
-        material.metalness = 0.65;
-        material.roughness = 0.28;
+        material.color.set(0xe51b23);
+        material.metalness = 0.25;
+        material.roughness = 0.16;
+        material.envMapIntensity = 0.3;
       } else if (material.name === 'Material.004') {
         material.color.set(0x111216);
         material.metalness = 0.35;

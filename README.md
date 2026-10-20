@@ -124,9 +124,19 @@ cones, and tire marks. The selection is encoded in `?course=autocross` or
 `?course=sweeper`, so links can open a particular course.
 
 The driving corridor is textured asphalt with an 80 cm paved shoulder; everything
-outside it is textured dirt/gravel. Both receive shadows and headlights. Surfaces
-are visual only for now: off-track tire physics remain unchanged.
-The gravel sits below the pavement, with depth bias to prevent distant flicker.
+outside it is textured dirt/gravel. Both receive shadows and headlights.
+Each wheel checks its physics contact against the pavement mesh: dirt/gravel has
+65% of the selected mode's asphalt friction and cornering stiffness, reducing
+acceleration, braking, and cornering traction. The paved shoulder retains full
+grip, and returning to asphalt restores it immediately.
+Rear tires detect the actual pavement mesh, including the shoulder. Off pavement,
+sliding/spinning tires emit tan dust at half the smoke rate with slightly lower
+opacity and less upward drift, and leave muted brown dirt tracks rather than
+dark rubber stripes. Asphalt skid marks are softened charcoal gray.
+Each tire is classified separately;
+existing puffs and tracks keep their original appearance across surface changes.
+The gravel meets the physics ground plane; the pavement sits only 8 mm above it,
+with depth bias to prevent distant flicker without a visible tire-to-ground gap.
 Cone bases sit 22 cm outside the outer edge of each white boundary line.
 Bent left/right warning arrows appear about 12 m before hard-turn entry,
 not periodically along the course; nearby warnings are merged.

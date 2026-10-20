@@ -80,22 +80,23 @@ async function start() {
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFShadowMap;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.15;
+  renderer.toneMappingExposure = 0.95;
   element('#app').append(renderer.domElement);
   renderer.domElement.setAttribute('aria-label', '3D driving playground');
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0xb5c7cd);
-  scene.fog = new THREE.Fog(0xb5c7cd, 100, 340);
+  scene.background = new THREE.Color(0x78b5ec);
+  scene.fog = new THREE.Fog(0x78b5ec, 100, 340);
   const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 1500);
   camera.layers.enable(1);
   const pmrem = new THREE.PMREMGenerator(renderer);
   const environment = new RoomEnvironment();
   scene.environment = pmrem.fromScene(environment, 0.04).texture;
+  scene.environmentIntensity = 0.65;
   environment.dispose();
   pmrem.dispose();
-  scene.add(new THREE.HemisphereLight(0xd9edff, 0x656052, 2));
-  const sun = new THREE.DirectionalLight(0xffefd4, 3);
+  scene.add(new THREE.HemisphereLight(0xd9edff, 0x656052, 0.65));
+  const sun = new THREE.DirectionalLight(0xffefd4, 2.4);
   sun.position.set(-20, 35, -12);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
@@ -110,13 +111,12 @@ async function start() {
     surfaceMaterial('gravel', 4000 / 6),
   );
   ground.rotation.x = -Math.PI / 2;
-  ground.position.y = -0.05;
   ground.material.polygonOffset = true;
   ground.material.polygonOffsetFactor = 2;
   ground.material.polygonOffsetUnits = 2;
   ground.receiveShadow = true;
   scene.add(ground);
-  const cones = createCourse(scene, definition);
+  const { cones, isAsphalt } = createCourse(scene, definition);
 
   // The upstream Emscripten factory writes to `this`; ESM calls have no receiver.
   const [Ammo, car] = await Promise.all([AmmoFactory.call({}), loadCar()]);
@@ -224,6 +224,7 @@ async function start() {
   const wheelContacts = [false, false, false, false];
   const physicsRotation = new THREE.Quaternion();
   const tireOffset = new THREE.Vector3();
+  const contactPosition = new THREE.Vector3();
   const tireForward = new THREE.Vector3();
   const tireLateral = new THREE.Vector3();
   const forceOffset = new Ammo.btVector3(0, 0, 0);
@@ -237,12 +238,15 @@ async function start() {
 
   const maxMarks = 6000;
   const markPositions = new Float32Array(maxMarks * 18);
+  const markColors = new Float32Array(maxMarks * 18);
   const markGeometry = new THREE.BufferGeometry();
   const markAttribute = new THREE.BufferAttribute(markPositions, 3).setUsage(THREE.DynamicDrawUsage);
   markGeometry.setAttribute('position', markAttribute);
+  const markColorAttribute = new THREE.BufferAttribute(markColors, 3).setUsage(THREE.DynamicDrawUsage);
+  markGeometry.setAttribute('color', markColorAttribute);
   markGeometry.setDrawRange(0, 0);
   const marks = new THREE.Mesh(markGeometry, new THREE.MeshBasicMaterial({
-    color: 0x293237, side: THREE.DoubleSide,
+    vertexColors: true, side: THREE.DoubleSide,
   }));
   marks.frustumCulled = false;
   scene.add(marks);
@@ -253,6 +257,10 @@ async function start() {
   const tireLeft = new THREE.Vector3();
   const tireRight = new THREE.Vector3();
   const marking = [false, false];
+  const wheelAsphalt = [true, true, true, true];
+  const previousAsphalt = [true, true];
+  const asphaltMark = new THREE.Color(0x484f53);
+  const dirtMark = new THREE.Color(0x8d7659);
   let markCount = 0;
 
   const smoke = new TireSmoke();
@@ -420,11 +428,14 @@ async function start() {
       vehicle.setSteeringValue(rear ? 0 : steering, i);
       const wheel = vehicle.getWheelInfo(i);
       const contact = wheel.get_m_raycastInfo();
+      let paved = true;
       tireOffset.copy(car.centers[i]).applyQuaternion(physicsRotation);
       if (wheelContacts[i]) {
         const point = contact.get_m_contactPointWS();
         const origin = body.getWorldTransform().getOrigin();
         tireOffset.set(point.x() - origin.x(), point.y() - origin.y(), point.z() - origin.z());
+        contactPosition.set(point.x(), 0, point.z());
+        paved = isAsphalt(contactPosition);
       }
       tireForward.set(Math.sin(rear ? 0 : steering), 0, Math.cos(rear ? 0 : steering))
         .applyQuaternion(physicsRotation);
@@ -438,8 +449,9 @@ async function start() {
       const slipAngle = Math.atan2(across, Math.max(Math.abs(along), 2));
       const load = wheelContacts[i] ? Math.max(0, wheel.get_m_wheelsSuspensionForce()) : 0;
       const staticGrip = braking && !rear ? 0.15 * brakeAmount * (1 - THREE.MathUtils.smoothstep(Math.abs(along), 0.2, 0.5)) : 0;
-      const capacity = load * (tune.friction + staticGrip);
-      const lateralDemand = -(rear ? tune.rearStiffness : tune.frontStiffness) * slipAngle;
+      const surfaceGrip = paved ? 1 : 0.65;
+      const capacity = load * (tune.friction + staticGrip) * surfaceGrip;
+      const lateralDemand = -(rear ? tune.rearStiffness : tune.frontStiffness) * slipAngle * surfaceGrip;
       const brakeTorque = rear && handbrake ? 4500
         : brakeAmount * (rear ? brakestand ? 650 : 1300 : 1900);
       let longitudinalForce = 0;
@@ -536,37 +548,44 @@ async function start() {
     const sliding = speed > 3 && (controls.handbrake || slip > 0.045);
     const burningOut = burnout > 0.1 && (wheelContacts[2] || wheelContacts[3]);
     const leavingMarks = sliding || burningOut;
+    for (let i = 2; i < 4; i++) wheelAsphalt[i] = isAsphalt(car.wheels[i].position);
     if (leavingMarks) {
       car.wheels.slice(2).forEach((wheel, i) => {
         const contact = wheelContacts[i + 2];
         tireAcross.set(1, 0, 0).applyQuaternion(wheel.quaternion);
         tireAcross.y = 0;
         tireAcross.normalize().multiplyScalar(car.widths[i + 2] / 2);
-        tireLeft.copy(wheel.position).sub(tireAcross).setY(0.025);
-        tireRight.copy(wheel.position).add(tireAcross).setY(0.025);
-        if (marking[i] && contact && wheel.position.distanceToSquared(previousTires[i]) < 4) {
+        const paved = wheelAsphalt[i + 2];
+        const height = paved ? 0.025 : 0.015;
+        tireLeft.copy(wheel.position).sub(tireAcross).setY(height);
+        tireRight.copy(wheel.position).add(tireAcross).setY(height);
+        if (marking[i] && contact && paved === previousAsphalt[i] && wheel.position.distanceToSquared(previousTires[i]) < 4) {
           const offset = (markCount % maxMarks) * 18;
           markPositions.set([
-            previousLeft[i].x, 0.025, previousLeft[i].z,
-            previousRight[i].x, 0.025, previousRight[i].z,
-            tireLeft.x, 0.025, tireLeft.z,
-            previousRight[i].x, 0.025, previousRight[i].z,
-            tireRight.x, 0.025, tireRight.z,
-            tireLeft.x, 0.025, tireLeft.z,
+            ...previousLeft[i].toArray(),
+            ...previousRight[i].toArray(),
+            ...tireLeft.toArray(),
+            ...previousRight[i].toArray(),
+            ...tireRight.toArray(),
+            ...tireLeft.toArray(),
           ], offset);
+          const color = paved ? asphaltMark : dirtMark;
+          for (let vertex = 0; vertex < 6; vertex++) color.toArray(markColors, offset + vertex * 3);
           markCount++;
         }
         previousTires[i].copy(wheel.position);
         previousLeft[i].copy(tireLeft);
         previousRight[i].copy(tireRight);
         marking[i] = contact;
+        previousAsphalt[i] = paved;
       });
       markAttribute.needsUpdate = true;
+      markColorAttribute.needsUpdate = true;
       markGeometry.setDrawRange(0, Math.min(markCount, maxMarks) * 6);
     } else {
       marking.fill(false);
     }
-    smoke.update(dt, car.wheels, wheelContacts, leavingMarks, velocity, camera);
+    smoke.update(dt, car.wheels, wheelContacts, leavingMarks, velocity, camera, wheelAsphalt);
     speedDisplay.textContent = String(Math.round(speed * 3.6));
     stateDisplay.textContent = controls.handbrake ? 'HANDBRAKE'
       : controls.brake > 0 && controls.throttle > 0 ? 'BRAKESTAND'
