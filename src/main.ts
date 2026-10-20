@@ -316,9 +316,9 @@ async function start() {
     const rotation = body.getWorldTransform().getRotation();
     physicsRotation.set(rotation.x(), rotation.y(), rotation.z(), rotation.w());
     const input = Number(keys.has('ArrowLeft')) - Number(keys.has('ArrowRight'));
-    const steeringLimit = THREE.MathUtils.lerp(0.5, 0.3, Math.min(speed / 140, 1));
+    const steeringLimit = THREE.MathUtils.lerp(0.65, 0.5, Math.min(speed / 140, 1));
     const counterSteering = input !== 0 && Math.sign(input) !== Math.sign(steering);
-    steering = THREE.MathUtils.damp(steering, input * steeringLimit, counterSteering ? 12 : 8, fixedStep);
+    steering = THREE.MathUtils.damp(steering, input * steeringLimit, counterSteering ? 16 : 10, fixedStep);
     const braking = keys.has('KeyZ');
     const handbrake = keys.has('Space');
     const throttle = keys.has('KeyX') && !braking;

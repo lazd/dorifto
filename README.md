@@ -36,6 +36,10 @@ inertia, rear drive torque, a limited-slip differential, and brake torque determ
 traction continuously. There is no drift latch, target angle, yaw assist, or extra
 forward force. Counter-steer and modulate X to balance a slide; lift off to let
 wheelspin settle and regain lateral grip. Steering can transfer the slide either way.
+Front steering lock ranges from 37 degrees at low speed to 29 degrees at high
+speed, retaining enough range to counter-steer into a slide. Direction changes
+respond faster than initial turn-in. Unwind the steering as rotation stops to
+avoid snapping into an opposite slide.
 Power tuning uses up to 2200 Nm of drive torque per rear wheel, limited to
 110 kW per wheel (220 kW total), with a 1.25 tire friction coefficient. Torque
 falls as wheel speed rises so launch wheelspin settles as the car accelerates.
