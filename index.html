@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#10191f" />
+    <title>Dorifto — Z32 Playground</title>
+  </head>
+  <body>
+    <div id="app"></div>
+    <header class="title">
+      <span class="eyebrow">DORIFTO / FREE DRIVE</span>
+      <h1>Z32 Playground<span>1989 Nissan Fairlady 300ZX</span></h1>
+    </header>
+    <div id="status" role="status">Starting physics & loading the Z32…</div>
+    <aside class="telemetry" aria-label="Driving information">
+      <div><strong id="speed">0</strong><span>KM/H</span></div>
+      <span id="state">READY</span>
+    </aside>
+    <footer>
+      <div class="controls">
+        <span><kbd>←</kbd><kbd>→</kbd> Steer</span>
+        <span><kbd>X</kbd> Accelerate</span>
+        <span><kbd>Z</kbd> Brake</span>
+        <span><kbd>Space</kbd> Handbrake</span>
+        <button id="reset" type="button"><kbd>R</kbd> Reset car</button>
+      </div>
+      <p class="credit">
+        “<a href="https://sketchfab.com/3d-models/nissan-fairlady-300zx-z32-1989-8c04336a4ed84f6f836760db8256f9f0" target="_blank" rel="noreferrer">Nissan Fairlady 300ZX (Z32) 1989</a>”
+        by <a href="https://sketchfab.com/Lexyc16" target="_blank" rel="noreferrer">Lexyc16</a>
+        · <a href="https://creativecommons.org/licenses/by-nc/4.0/" target="_blank" rel="noreferrer">CC BY-NC 4.0</a> · Non-commercial demo
+      </p>
+    </footer>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

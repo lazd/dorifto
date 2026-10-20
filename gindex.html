@@ -1,0 +1,372 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>JS 3D GLTF Drift Game (Ammo.js / Bullet Physics)</title>
+    <style>
+      body {
+        margin: 0;
+        overflow: hidden;
+        background: #111;
+        font-family: sans-serif;
+      }
+      #ui {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        color: white;
+        pointer-events: none;
+        z-index: 10;
+      }
+      #speedometer {
+        font-size: 24px;
+        font-weight: bold;
+        margin-top: 5px;
+        color: #00ffcc;
+      }
+      #loading {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        color: white;
+        font-size: 20px;
+        font-weight: bold;
+      }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128/examples/js/controls/OrbitControls.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128/examples/js/loaders/GLTFLoader.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/ammo-node@1.0.0/ammo.min.js"></script>
+  </head>
+  <body>
+    <div id="loading">Loading Ammo.js & Assets...</div>
+
+    <div id="ui">
+      <h2>Drift Prototype</h2>
+      <p>Controls: WASD / Arrow Keys</p>
+      <div id="speedometer">0 km/h</div>
+    </div>
+
+    <script>
+      // --- Configuration Constants ---
+      // REPLACE THIS URL with your own GLTF/GLB car model file if needed
+      const CAR_MODEL_URL = "./models/nissan_fairlady_300zx_z32_1989/scene.gltf";
+
+      // Vehicle Chassis Constraints
+      const CHASSIS_WIDTH = 1.8;
+      const CHASSIS_HEIGHT = 0.6;
+      const CHASSIS_LENGTH = 4.0;
+      const CAR_MASS = 1300;
+
+      // Drift Tuning Parameters
+      const MAX_ENGINE_FORCE = 1800;
+      const MAX_BRAKING_FORCE = 150;
+      const STEERING_INCREMENT = 0.04;
+      const STEERING_CLAMP = 0.45;
+      const FRONT_FRICTION = 2.6;
+      const REAR_FRICTION = 0.55; // Low rear friction initiates the loose tail drift behavior
+
+      // --- Global Engine Elements ---
+      let scene, camera, renderer, clock;
+      let physicsWorld, vehicle, tuning;
+      let actions = { accel: false, brake: false, left: false, right: false };
+      let wheelVisuals = [];
+      let chassisGroup;
+
+      let engineForce = 0;
+      let vehicleSteering = 0;
+      let breakingForce = 0;
+
+      // 1. Initialize Bullet Physics (Ammo) First
+      Ammo().then(function (AmmoLib) {
+        Ammo = AmmoLib;
+        document.getElementById("loading").innerText = "Loading 3D Models...";
+        initGraphics();
+        initPhysics();
+        createGround();
+        loadAndBuildVehicle();
+      });
+
+      function initGraphics() {
+        scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x1a1a24);
+        scene.fog = new THREE.Fog(0x1a1a24, 40, 250);
+
+        camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+
+        renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        document.body.appendChild(renderer.domElement);
+
+        clock = new THREE.Clock();
+
+        // Setup Scenery Lighting
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+        scene.add(ambientLight);
+
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        dirLight.position.set(50, 100, 50);
+        dirLight.castShadow = true;
+        dirLight.shadow.mapSize.width = 2048;
+        dirLight.shadow.mapSize.height = 2048;
+        scene.add(dirLight);
+
+        window.addEventListener("resize", onWindowResize, false);
+      }
+
+      function initPhysics() {
+        const collisionConfiguration = new Ammo.btDefaultCollisionConfiguration();
+        const dispatcher = new Ammo.btCollisionDispatcher(collisionConfiguration);
+        const overlappingPairCache = new Ammo.btDbvtBroadphase();
+        const solver = new Ammo.btSequentialImpulseConstraintSolver();
+
+        physicsWorld = new Ammo.btDiscreteDynamicsWorld(
+          dispatcher,
+          overlappingPairCache,
+          solver,
+          collisionConfiguration,
+        );
+        physicsWorld.setGravity(new Ammo.btVector3(0, -9.82, 0));
+      }
+
+      function createGround() {
+        const size = 500;
+
+        // Visual Asphalt Track Ground
+        const geometry = new THREE.PlaneGeometry(size, size);
+        const material = new THREE.MeshStandardMaterial({ color: 0x222225, roughness: 0.9 });
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.rotation.x = -Math.PI / 2;
+        mesh.receiveShadow = true;
+        scene.add(mesh);
+
+        // Driving Grid lines for perspective speed anchoring
+        const grid = new THREE.GridHelper(size, 100, 0x00ffcc, 0x444444);
+        grid.position.y = 0.01;
+        scene.add(grid);
+
+        // Bullet Ground Body
+        const transform = new Ammo.btTransform();
+        transform.setIdentity();
+        transform.setOrigin(new Ammo.btVector3(0, 0, 0));
+        const motionState = new Ammo.btDefaultMotionState(transform);
+
+        const shape = new Ammo.btStaticPlaneShape(new Ammo.btVector3(0, 1, 0), 0);
+        const rbInfo = new Ammo.btRigidBodyConstructionInfo(
+          0,
+          motionState,
+          shape,
+          new Ammo.btVector3(0, 0, 0),
+        );
+        const body = new Ammo.btRigidBody(rbInfo);
+
+        physicsWorld.addRigidBody(body);
+      }
+
+      function loadAndBuildVehicle() {
+        const loader = new THREE.GLTFLoader();
+
+        loader.load(
+          CAR_MODEL_URL,
+          function (gltf) {
+            chassisGroup = new THREE.Group();
+            scene.add(chassisGroup);
+
+            const model = gltf.scene;
+            model.scale.set(1.0, 1.0, 1.0);
+
+            model.traverse(function (child) {
+              if (child.isMesh) {
+                child.castShadow = true;
+                child.receiveShadow = true;
+              }
+            });
+
+            chassisGroup.add(model);
+
+            buildVehiclePhysics();
+            setupControls();
+
+            document.getElementById("loading").style.display = "none";
+            tick();
+          },
+          undefined,
+          function (error) {
+            console.error("GLTF asset failed to load. Falling back to debug box.", error);
+
+            chassisGroup = new THREE.Mesh(
+              new THREE.BoxGeometry(CHASSIS_WIDTH, CHASSIS_HEIGHT, CHASSIS_LENGTH),
+              new THREE.MeshStandardMaterial({ color: 0xff0000 }),
+            );
+            scene.add(chassisGroup);
+
+            buildVehiclePhysics();
+            setupControls();
+            document.getElementById("loading").style.display = "none";
+            tick();
+          },
+        );
+      }
+
+      function buildVehiclePhysics() {
+        const transform = new Ammo.btTransform();
+        transform.setIdentity();
+        transform.setOrigin(new Ammo.btVector3(0, 2, 0));
+        const motionState = new Ammo.btDefaultMotionState(transform);
+
+        const shape = new Ammo.btBoxShape(
+          new Ammo.btVector3(CHASSIS_WIDTH / 2, CHASSIS_HEIGHT / 2, CHASSIS_LENGTH / 2),
+        );
+        const localInertia = new Ammo.btVector3(0, 0, 0);
+        shape.calculateLocalInertia(CAR_MASS, localInertia);
+
+        const rbInfo = new Ammo.btRigidBodyConstructionInfo(
+          CAR_MASS,
+          motionState,
+          shape,
+          localInertia,
+        );
+        const compoundBody = new Ammo.btRigidBody(rbInfo);
+        compoundBody.setActivationState(4);
+        physicsWorld.addRigidBody(compoundBody);
+
+        tuning = new Ammo.btVehicleTuning();
+        const raycaster = new Ammo.btDefaultVehicleRaycaster(physicsWorld);
+        vehicle = new Ammo.btRaycastVehicle(tuning, compoundBody, raycaster);
+        vehicle.setCoordinateSystem(0, 1, 2);
+        physicsWorld.addAction(vehicle);
+
+        const wheelRadius = 0.36;
+        const wheelWidth = 0.3;
+        const suspensionRestLength = 0.5;
+
+        const addWheel = (isFront, pos) => {
+          const wheelDirectionCS0 = new Ammo.btVector3(0, -1, 0);
+          const wheelAxleCS = new Ammo.btVector3(-1, 0, 0);
+
+          const wheelInfo = vehicle.addWheel(
+            pos,
+            wheelDirectionCS0,
+            wheelAxleCS,
+            suspensionRestLength,
+            wheelRadius,
+            tuning,
+            isFront,
+          );
+
+          wheelInfo.set_m_suspensionStiffness(35.0);
+          wheelInfo.set_m_wheelsDampingRelaxation(2.5);
+          wheelInfo.set_m_wheelsDampingCompression(4.5);
+          wheelInfo.set_m_rollInfluence(0.05);
+          wheelInfo.set_m_frictionSlip(isFront ? FRONT_FRICTION : REAR_FRICTION);
+
+          const wheelGeo = new THREE.CylinderGeometry(wheelRadius, wheelRadius, wheelWidth, 24);
+          wheelGeo.rotateZ(Math.PI / 2);
+          const wheelMat = new THREE.MeshStandardMaterial({ color: 0x111113, roughness: 0.7 });
+          const wMesh = new THREE.Mesh(wheelGeo, wheelMat);
+          wMesh.castShadow = true;
+          scene.add(wMesh);
+          wheelVisuals.push(wMesh);
+        };
+
+        addWheel(
+          true,
+          new Ammo.btVector3(CHASSIS_WIDTH * 0.45, -CHASSIS_HEIGHT * 0.2, CHASSIS_LENGTH * 0.35),
+        );
+        addWheel(
+          true,
+          new Ammo.btVector3(-CHASSIS_WIDTH * 0.45, -CHASSIS_HEIGHT * 0.2, CHASSIS_LENGTH * 0.35),
+        );
+        addWheel(
+          false,
+          new Ammo.btVector3(CHASSIS_WIDTH * 0.45, -CHASSIS_HEIGHT * 0.2, -CHASSIS_LENGTH * 0.35),
+        );
+        addWheel(
+          false,
+          new Ammo.btVector3(-CHASSIS_WIDTH * 0.45, -CHASSIS_HEIGHT * 0.2, -CHASSIS_LENGTH * 0.35),
+        );
+      }
+
+      function setupControls() {
+        const keyHandler = (e, value) => {
+          if (e.key === "w" || e.key === "ArrowUp") actions.accel = value;
+          if (e.key === "s" || e.key === "ArrowDown") actions.brake = value;
+          if (e.key === "a" || e.key === "ArrowLeft") actions.left = value;
+          if (e.key === "d" || e.key === "ArrowRight") actions.right = value;
+        };
+        window.addEventListener("keydown", (e) => keyHandler(e, true));
+        window.addEventListener("keyup", (e) => keyHandler(e, false));
+      }
+      function tick() {
+        requestAnimationFrame(tick);
+        const dt = clock.getDelta();
+        updateVehicleInput(dt);
+        physicsWorld.stepSimulation(dt, 10);
+        syncGraphics();
+        updateChaseCamera();
+        renderer.render(scene, camera);
+      }
+      function updateVehicleInput(dt) {
+        let speed = vehicle.getCurrentSpeedKmHour();
+        document.getElementById("speedometer").innerText = Math.round(Math.abs(speed)) + " km/h";
+        if (actions.left) {
+          if (vehicleSteering < STEERING_CLAMP) vehicleSteering += STEERING_INCREMENT;
+        } else if (actions.right) {
+          if (vehicleSteering > -STEERING_CLAMP) vehicleSteering -= STEERING_INCREMENT;
+        } else {
+          if (vehicleSteering > 0)
+            vehicleSteering = Math.max(0, vehicleSteering - STEERING_INCREMENT * 25 * dt);
+          else if (vehicleSteering < 0)
+            vehicleSteering = Math.min(0, vehicleSteering + STEERING_INCREMENT * 25 * dt);
+        }
+        if (actions.accel) {
+          engineForce = MAX_ENGINE_FORCE;
+          breakingForce = 0;
+        } else if (actions.brake) {
+          engineForce = 0;
+          breakingForce = MAX_BRAKING_FORCE;
+        } else {
+          engineForce = 0;
+          breakingForce = 8;
+        }
+        vehicle.setSteeringValue(vehicleSteering, 0);
+        vehicle.setSteeringValue(vehicleSteering, 1);
+        vehicle.applyEngineForce(engineForce, 2);
+        vehicle.applyEngineForce(engineForce, 3);
+        for (let i = 0; i < 4; i++) {
+          vehicle.setBrake(breakingForce, i);
+        }
+      }
+      function syncGraphics() {
+        let tm = vehicle.getChassisWorldTransform();
+        let p = tm.getOrigin();
+        let q = tm.getRotation();
+        chassisGroup.position.set(p.x(), p.y(), p.z());
+        chassisGroup.quaternion.set(q.x(), q.y(), q.z(), q.w());
+        for (let i = 0; i < vehicle.getNumWheels(); i++) {
+          vehicle.updateWheelTransform(i, true);
+          tm = vehicle.getWheelInfo(i).get_m_worldTransform();
+          p = tm.getOrigin();
+          q = tm.getRotation();
+          wheelVisuals[i].position.set(p.x(), p.y(), p.z());
+          wheelVisuals[i].quaternion.set(q.x(), q.y(), q.z(), q.w());
+        }
+      }
+      function updateChaseCamera() {
+        if (!chassisGroup) return;
+        const relativeCameraOffset = new THREE.Vector3(0, 3.0, -8.5);
+        const cameraOffset = relativeCameraOffset.applyMatrix4(chassisGroup.matrixWorld);
+        camera.position.lerp(cameraOffset, 0.08);
+        camera.lookAt(chassisGroup.position);
+      }
+      function onWindowResize() {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      }
+    </script>
+  </body>
+</html>
