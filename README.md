@@ -29,9 +29,18 @@ keyboard. Click the game if keyboard focus is in another window.
 Build speed, turn, then tap the handbrake and counter-steer. The camera follows
 the direction of travel smoothly rather than locking to the car's rotation,
 so you can see the car's angle during slides. Losing focus releases all controls.
+Ammo handles suspension and collisions; a simplified combined-slip tire model
+handles road forces at each wheel's contact point. Tire forces depend on suspension
+load, lateral slip angle, and wheelspin, sharing a finite friction budget. Wheel
+inertia, rear drive torque, a limited-slip differential, and brake torque determine
+traction continuously. There is no drift latch, target angle, yaw assist, or extra
+forward force. Counter-steer and modulate X to balance a slide; lift off to let
+wheelspin settle and regain lateral grip. Steering can transfer the slide either way.
+Power tuning uses up to 1900 Nm of drive torque per rear wheel, with a gradual
+speed-based taper and a 1.25 tire friction coefficient.
 The red Z32 has black wheels and a low chase camera. Hold X from a stop for a
-rear-wheel burnout, with wheelspin, tire smoke, and skid marks; rear grip builds
-back up as speed increases. The tuned engine has a 240 km/h speed limiter.
+rear-wheel burnout, with wheelspin, tire smoke, and skid marks. Grip returns as
+wheel speed matches road speed. The engine has a 240 km/h speed limiter.
 Burnout and drift marks are flat strips matching each rear tire's model width.
 Silver headlight interiors contain warm-white projectors with real, shadow-casting
 spotlights illuminating the surface ahead. Side-view mirror glass uses live planar

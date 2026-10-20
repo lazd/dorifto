@@ -116,7 +116,7 @@ async function start() {
   vector.setValue(0.86, 0.23, 2.02);
   const body = rigidBody(1450, new Ammo.btBoxShape(vector), new THREE.Vector3(0, 0.8, 0));
   body.setActivationState(4);
-  body.setDamping(0.02, 0.25);
+  body.setDamping(0.02, 0.05);
   const tuning = new Ammo.btVehicleTuning();
   const raycaster = new Ammo.btDefaultVehicleRaycaster(world);
   const vehicle = new Ammo.btRaycastVehicle(tuning, body, raycaster);
@@ -133,7 +133,9 @@ async function start() {
     wheel.set_m_wheelsDampingRelaxation(2.8);
     wheel.set_m_wheelsDampingCompression(4.5);
     wheel.set_m_maxSuspensionForce(12000);
-    wheel.set_m_frictionSlip(i < 2 ? 2.6 : 2.2);
+    // Ammo supplies suspension/contact; the combined-slip tire model below
+    // supplies all road forces, so Bullet must not apply a second tire model.
+    wheel.set_m_frictionSlip(0);
     wheel.set_m_rollInfluence(0.06);
   });
   Ammo.destroy(direction);
@@ -145,7 +147,8 @@ async function start() {
   let accumulator = 0;
   let lastTime = 0;
   let burnout = 0;
-  let wheelspin = 0;
+  const tireSpeeds = [0, 0, 0, 0];
+  const tireAngles = [0, 0, 0, 0];
   const cameraHeight = 2.3;
   const fixedStep = 1 / 120;
   const velocity = new THREE.Vector3();
@@ -157,6 +160,11 @@ async function start() {
   const shadowOffset = new THREE.Vector3(-20, 35, -12);
   const wheelBasis = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI);
   const wheelContacts = [false, false, false, false];
+  const physicsRotation = new THREE.Quaternion();
+  const tireOffset = new THREE.Vector3();
+  const tireForward = new THREE.Vector3();
+  const tireLateral = new THREE.Vector3();
+  const forceOffset = new Ammo.btVector3(0, 0, 0);
   const resetTransform = new Ammo.btTransform();
   resetTransform.setIdentity();
   vector.setValue(0, 0.8, 0);
@@ -220,6 +228,7 @@ async function start() {
     car.chassis.position.set(position.x(), position.y(), position.z());
     car.chassis.quaternion.set(rotation.x(), rotation.y(), rotation.z(), rotation.w());
     car.wheels.forEach((wheel, i) => {
+      vehicle.getWheelInfo(i).set_m_rotation(tireAngles[i]);
       vehicle.updateWheelTransform(i, true);
       const transform = vehicle.getWheelTransformWS(i);
       const position = transform.getOrigin();
@@ -227,7 +236,6 @@ async function start() {
       wheel.position.set(position.x(), position.y(), position.z());
       wheel.quaternion.set(rotation.x(), rotation.y(), rotation.z(), rotation.w());
       wheel.quaternion.multiply(wheelBasis);
-      if (i >= 2) wheel.rotateX(wheelspin);
     });
   }
 
@@ -236,7 +244,9 @@ async function start() {
     steering = 0;
     accumulator = 0;
     burnout = 0;
-    wheelspin = 0;
+    tireSpeeds.fill(0);
+    tireAngles.fill(0);
+    wheelContacts.fill(false);
     smokeLife.fill(0);
     smokePositions.fill(0);
     smokeAttribute.needsUpdate = true;
@@ -300,26 +310,77 @@ async function start() {
   });
 
   function step() {
-    const speed = Math.abs(vehicle.getCurrentSpeedKmHour());
+    const linear = body.getLinearVelocity();
+    const angular = body.getAngularVelocity();
+    const speed = Math.hypot(linear.x(), linear.z()) * 3.6;
+    const rotation = body.getWorldTransform().getRotation();
+    physicsRotation.set(rotation.x(), rotation.y(), rotation.z(), rotation.w());
     const input = Number(keys.has('ArrowLeft')) - Number(keys.has('ArrowRight'));
-    const steeringLimit = THREE.MathUtils.lerp(0.48, 0.24, Math.min(speed / 130, 1));
-    steering = THREE.MathUtils.damp(steering, input * steeringLimit, 5, fixedStep);
+    const steeringLimit = THREE.MathUtils.lerp(0.5, 0.3, Math.min(speed / 140, 1));
+    const counterSteering = input !== 0 && Math.sign(input) !== Math.sign(steering);
+    steering = THREE.MathUtils.damp(steering, input * steeringLimit, counterSteering ? 12 : 8, fixedStep);
     const braking = keys.has('KeyZ');
     const handbrake = keys.has('Space');
     const throttle = keys.has('KeyX') && !braking;
-    burnout = throttle && !handbrake ? 1 - THREE.MathUtils.smoothstep(speed, 12, 40) : 0;
-    const engine = throttle && speed < 240 ? 7000 * (1 - Math.min(speed / 320, 0.8)) : 0;
+    burnout = 0;
     for (let i = 0; i < 4; i++) {
       const rear = i >= 2;
       vehicle.setSteeringValue(rear ? 0 : steering, i);
-      vehicle.applyEngineForce(rear && !handbrake ? engine : 0, i);
-      vehicle.setBrake(rear && handbrake ? 2200 : braking ? 110 : throttle ? 0 : 3, i);
-      // Unlocking the handbrake restores rear grip progressively, not instantly.
       const wheel = vehicle.getWheelInfo(i);
-      const grip = rear ? handbrake ? 0.65 : throttle ? THREE.MathUtils.lerp(1.9, 0.85, burnout) : 2.2 : 2.6;
-      wheel.set_m_frictionSlip(THREE.MathUtils.damp(wheel.get_m_frictionSlip(), grip, 7, fixedStep));
+      const contact = wheel.get_m_raycastInfo();
+      tireOffset.copy(car.centers[i]).applyQuaternion(physicsRotation);
+      if (wheelContacts[i]) {
+        const point = contact.get_m_contactPointWS();
+        const origin = body.getWorldTransform().getOrigin();
+        tireOffset.set(point.x() - origin.x(), point.y() - origin.y(), point.z() - origin.z());
+      }
+      tireForward.set(Math.sin(rear ? 0 : steering), 0, Math.cos(rear ? 0 : steering))
+        .applyQuaternion(physicsRotation);
+      tireForward.y = 0;
+      tireForward.normalize();
+      tireLateral.set(tireForward.z, 0, -tireForward.x);
+      const vx = linear.x() + angular.y() * tireOffset.z - angular.z() * tireOffset.y;
+      const vz = linear.z() + angular.x() * tireOffset.y - angular.y() * tireOffset.x;
+      const along = vx * tireForward.x + vz * tireForward.z;
+      const across = vx * tireLateral.x + vz * tireLateral.z;
+      const slipAngle = Math.atan2(across, Math.max(Math.abs(along), 2));
+      const load = wheelContacts[i] ? Math.max(0, wheel.get_m_wheelsSuspensionForce()) : 0;
+      const capacity = load * 1.25;
+      const lateralDemand = -(rear ? 42000 : 38000) * slipAngle;
+      const engineTorque = rear && throttle && speed < 240
+        ? 1900 * (1 - Math.min(Math.abs(tireSpeeds[i]) * car.radii[i] / 130, 0.75)) : 0;
+      const brakeTorque = rear && handbrake ? 4500 : braking ? rear ? 1300 : 1900 : 0;
+      let longitudinalForce = 0;
+      let lateralForce = 0;
+      // Substep wheel inertia so tire slip remains stable at low road speeds.
+      const tireStep = fixedStep / 12;
+      for (let j = 0; j < 12; j++) {
+        const slipRatio = (tireSpeeds[i] * car.radii[i] - along) / Math.max(Math.abs(along), 4);
+        const driveDemand = capacity * Math.tanh(slipRatio * 8);
+        const lateral = capacity * Math.tanh(lateralDemand / Math.max(capacity, 1));
+        const combined = Math.hypot(driveDemand, lateral);
+        const scale = combined > capacity ? capacity / combined : 1;
+        const fx = driveDemand * scale;
+        const fy = lateral * scale;
+        const differential = rear ? THREE.MathUtils.clamp((tireSpeeds[i === 2 ? 3 : 2] - tireSpeeds[i]) * 8, -250, 250) : 0;
+        const torque = engineTorque + differential - fx * car.radii[i];
+        const nextSpeed = tireSpeeds[i] + torque / 2 * tireStep;
+        tireSpeeds[i] = Math.sign(nextSpeed) * Math.max(0, Math.abs(nextSpeed) - brakeTorque / 2 * tireStep);
+        tireAngles[i] += tireSpeeds[i] * tireStep;
+        longitudinalForce += fx / 12;
+        lateralForce += fy / 12;
+      }
+      if (rear && wheelContacts[i]) {
+        burnout = Math.max(burnout, THREE.MathUtils.clamp(
+          (tireSpeeds[i] * car.radii[i] - Math.abs(along)) / 8, 0, 1));
+      }
+      vector.setValue(
+        tireForward.x * longitudinalForce + tireLateral.x * lateralForce, 0,
+        tireForward.z * longitudinalForce + tireLateral.z * lateralForce,
+      );
+      forceOffset.setValue(tireOffset.x, tireOffset.y, tireOffset.z);
+      body.applyForce(vector, forceOffset);
     }
-    const linear = body.getLinearVelocity();
     const drag = 8 + 0.45 * Math.hypot(linear.x(), linear.z());
     vector.setValue(-linear.x() * drag, 0, -linear.z() * drag);
     body.applyCentralForce(vector);
@@ -327,7 +388,6 @@ async function start() {
     for (let i = 0; i < 4; i++) {
       wheelContacts[i] = vehicle.getWheelInfo(i).get_m_raycastInfo().get_m_isInContact();
     }
-    if (wheelContacts[2] || wheelContacts[3]) wheelspin = (wheelspin + burnout * 65 * fixedStep) % (Math.PI * 2);
   }
 
   function frame(time: number) {
