@@ -1,11 +1,79 @@
+import * as THREE from 'three';
+
 export interface CourseDefinition {
   id: string;
   name: string;
   width: number;
-  coneSpacing: number;
+  coneSpacing?: number;
   /** Ground-plane coordinates [x, z], ordered in the driving direction. */
   points: readonly (readonly [number, number])[];
-  spawn: { position: readonly [number, number]; heading: number };
+}
+
+export function courseRoute(definition: CourseDefinition) {
+  const route = new THREE.CatmullRomCurve3(
+    definition.points.map(([x, z]) => new THREE.Vector3(x, 0, z)),
+    true, 'centripetal',
+  );
+  route.arcLengthDivisions = Math.max(1000, definition.points.length * 100);
+  return route;
+}
+
+export function courseSpawn(definition: CourseDefinition) {
+  const route = courseRoute(definition);
+  const position = route.getPointAt(0);
+  const tangent = route.getTangentAt(0);
+  return { position: [position.x, position.z] as const, heading: Math.atan2(tangent.x, tangent.z) };
+}
+
+export function generateCourse(seed: number): CourseDefinition {
+  if (!Number.isInteger(seed) || seed < 0 || seed > 0xffffffff) {
+    throw new Error('Course seed must be an unsigned 32-bit integer');
+  }
+  let state = seed;
+  const random = () => {
+    state = (state + 0x6d2b79f5) | 0;
+    let value = Math.imul(state ^ state >>> 15, 1 | state);
+    value ^= value + Math.imul(value ^ value >>> 7, 61 | value);
+    return ((value ^ value >>> 14) >>> 0) / 4294967296;
+  };
+  for (let attempt = 0; attempt < 80; attempt++) {
+    const radius = 75 + random() * 20;
+    const stretch = 0.85 + random() * 0.4;
+    const phases = [random(), random(), random()].map((value) => value * Math.PI * 2);
+    const points: [number, number][] = [];
+    for (let i = 0; i < 20; i++) {
+      const angle = i / 20 * Math.PI * 2;
+      const r = radius * (1 + 0.16 * Math.sin(angle * 2 + phases[0])
+        + 0.1 * Math.sin(angle * 3 + phases[1]) + 0.05 * Math.sin(angle * 4 + phases[2]));
+      points.push([Math.cos(angle) * r * stretch, Math.sin(angle) * r]);
+    }
+    const definition: CourseDefinition = { id: 'random', name: `Random Circuit (${seed})`, width: 14, points };
+    const route = courseRoute(definition);
+    const samples = route.getSpacedPoints(2048).slice(0, -1);
+    let navigable = true;
+    for (let i = 0; i < samples.length && navigable; i++) {
+      const before = samples[(i + samples.length - 1) % samples.length];
+      const current = samples[i];
+      const after = samples[(i + 1) % samples.length];
+      const incoming = current.clone().sub(before);
+      const outgoing = after.clone().sub(current);
+      const bend = incoming.angleTo(outgoing);
+      // Leave a small margin above the 22 m limit for discrete curve sampling.
+      if (bend > 0 && (incoming.length() + outgoing.length()) / (2 * bend) < 22.1) navigable = false;
+    }
+    const clearanceSamples = samples.filter((_, i) => i % 8 === 0);
+    const spacing = route.getLength() / clearanceSamples.length;
+    for (let i = 0; i < clearanceSamples.length && navigable; i++) {
+      for (let j = i + 1; j < clearanceSamples.length && navigable; j++) {
+        const separation = Math.min(j - i, clearanceSamples.length - (j - i)) * spacing;
+        if (separation > definition.width * 2 && clearanceSamples[i].distanceTo(clearanceSamples[j]) < definition.width + 8) {
+          navigable = false;
+        }
+      }
+    }
+    if (navigable) return definition;
+  }
+  throw new Error(`Unable to generate a navigable course for seed ${seed}`);
 }
 
 export const courses: readonly CourseDefinition[] = [
@@ -20,7 +88,6 @@ export const courses: readonly CourseDefinition[] = [
       [34.5, 42], [51, 33], [69, 43.5], [81, 27],
       [66, -7.5], [33, -21], [7.5, -15],
     ],
-    spawn: { position: [0, 0], heading: 0 },
   },
   {
     id: 'sweeper',
@@ -32,6 +99,5 @@ export const courses: readonly CourseDefinition[] = [
       [65, 110], [90, 80], [85, 45], [60, 25],
       [65, -10], [40, -35], [10, -25],
     ],
-    spawn: { position: [0, 0], heading: 0 },
   },
 ];

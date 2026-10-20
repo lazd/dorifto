@@ -1,11 +1,10 @@
 import * as THREE from 'three';
 import type { CourseDefinition } from './courses';
+import { courseRoute } from './courses';
+import { surfaceMaterial } from './surfaces';
 
 export function createCourse(scene: THREE.Scene, definition: CourseDefinition) {
-  const route = new THREE.CatmullRomCurve3(
-    definition.points.map(([x, z]) => new THREE.Vector3(x, 0, z)),
-    true, 'centripetal',
-  );
+  const route = courseRoute(definition);
   const coneGeometry = new THREE.ConeGeometry(0.23, 0.7, 24);
   const orange = new THREE.MeshStandardMaterial({ color: 0xf07424, roughness: 0.65 });
   const stripeMaterial = new THREE.MeshPhysicalMaterial({
@@ -16,7 +15,7 @@ export function createCourse(scene: THREE.Scene, definition: CourseDefinition) {
   const stripeGeometry = new THREE.CylinderGeometry(0.078, 0.124, 0.14, 24, 1, true);
   const cones: THREE.Mesh[] = [];
   const length = route.getLength();
-  const gates = Math.ceil(length / definition.coneSpacing);
+  const gates = Math.ceil(length / (definition.coneSpacing ?? 6));
   const across = new THREE.Vector3();
   for (let i = 0; i < gates; i++) {
     const t = i / gates;
@@ -41,28 +40,36 @@ export function createCourse(scene: THREE.Scene, definition: CourseDefinition) {
   const white = new THREE.MeshBasicMaterial({ color: 0xe1e6df, side: THREE.DoubleSide });
   const dark = new THREE.MeshBasicMaterial({ color: 0x20282b, side: THREE.DoubleSide });
   const segments = Math.ceil(length / 0.5);
-  for (const side of [-1, 1]) {
+  function ribbon(offset: number, width: number, height: number, material: THREE.Material) {
     const positions: number[] = [];
+    const uvs: number[] = [];
     for (let i = 0; i <= segments; i++) {
       const t = i / segments;
       const center = route.getPointAt(t);
       const tangent = route.getTangentAt(t);
       across.set(tangent.z, 0, -tangent.x).normalize();
-      for (const edge of [-0.08, 0.08]) {
-        const point = center.clone().addScaledVector(across, side * definition.width / 2 + edge);
-        positions.push(point.x, 0.016, point.z);
+      for (const edge of [-width / 2, width / 2]) {
+        const point = center.clone().addScaledVector(across, offset + edge);
+        positions.push(point.x, height, point.z);
+        uvs.push(point.x / 5, point.z / 5);
       }
     }
     const indices: number[] = [];
     for (let i = 0; i < segments; i++) {
       const j = i * 2;
-      indices.push(j, j + 1, j + 2, j + 1, j + 3, j + 2);
+      indices.push(j, j + 2, j + 1, j + 1, j + 2, j + 3);
     }
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
     geometry.setIndex(indices);
-    scene.add(new THREE.Mesh(geometry, white));
+    geometry.computeVertexNormals();
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.receiveShadow = true;
+    scene.add(mesh);
   }
+  ribbon(0, definition.width + 1.2, 0.008, surfaceMaterial('asphalt'));
+  for (const side of [-1, 1]) ribbon(side * definition.width / 2, 0.16, 0.016, white);
   const columns = Math.ceil(definition.width / 0.5);
   const tileWidth = definition.width / columns;
   const start = route.getPointAt(5 / length);

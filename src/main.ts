@@ -5,7 +5,8 @@ import { loadCar } from './car';
 import { TireSmoke } from './smoke';
 import { DrivingControls } from './controls';
 import { createCourse } from './course';
-import { courses } from './courses';
+import { courses, courseSpawn, generateCourse } from './courses';
+import { surfaceMaterial } from './surfaces';
 import { driveModes, isDriveMode } from './drive-modes';
 import './style.css';
 
@@ -37,17 +38,40 @@ async function start() {
     history.replaceState(null, '', url);
     modeSelect.blur();
   });
-  const requestedCourse = new URL(location.href).searchParams.get('course');
-  const definition = requestedCourse ? courses.find((course) => course.id === requestedCourse) : courses[0];
+  const courseUrl = new URL(location.href);
+  const requestedCourse = courseUrl.searchParams.get('course');
+  let seed = 0;
+  if (requestedCourse === 'random') {
+    const value = courseUrl.searchParams.get('seed');
+    if (value !== null && !/^\d{1,10}$/.test(value)) throw new Error(`Invalid course seed: ${value}`);
+    seed = value === null ? crypto.getRandomValues(new Uint32Array(1))[0] : Number(value);
+    courseUrl.searchParams.set('seed', String(seed));
+    history.replaceState(null, '', courseUrl);
+  }
+  const definition = requestedCourse === 'random' ? generateCourse(seed)
+    : requestedCourse ? courses.find((course) => course.id === requestedCourse) : courses[0];
   if (!definition) throw new Error(`Unknown course: ${requestedCourse}`);
-  const spawn = definition.spawn;
+  const spawn = courseSpawn(definition);
   const courseSelect = document.querySelector<HTMLSelectElement>('#course');
   if (!courseSelect) throw new Error('Missing course selector');
   for (const course of courses) courseSelect.add(new Option(course.name, course.id));
+  courseSelect.add(new Option(requestedCourse === 'random' ? definition.name : 'Random Circuit', 'random'));
   courseSelect.value = definition.id;
+  function randomCourse() {
+    const url = new URL(location.href);
+    url.searchParams.set('course', 'random');
+    url.searchParams.set('seed', String(crypto.getRandomValues(new Uint32Array(1))[0]));
+    location.assign(url.href);
+  }
+  element('#random-course').addEventListener('click', randomCourse);
   courseSelect.addEventListener('change', () => {
+    if (courseSelect.value === 'random') {
+      randomCourse();
+      return;
+    }
     const url = new URL(location.href);
     url.searchParams.set('course', courseSelect.value);
+    url.searchParams.delete('seed');
     location.assign(url.href);
   });
   const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -83,15 +107,11 @@ async function start() {
 
   const ground = new THREE.Mesh(
     new THREE.PlaneGeometry(4000, 4000),
-    new THREE.MeshStandardMaterial({ color: 0x414b50, roughness: 0.95 }),
+    surfaceMaterial('gravel', 4000 / 6),
   );
   ground.rotation.x = -Math.PI / 2;
   ground.receiveShadow = true;
   scene.add(ground);
-  const grid = new THREE.GridHelper(4000, 800, 0x718583, 0x566368);
-  grid.position.y = 0.012;
-  scene.add(grid);
-
   const cones = createCourse(scene, definition);
 
   // The upstream Emscripten factory writes to `this`; ESM calls have no receiver.

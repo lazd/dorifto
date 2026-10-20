@@ -121,13 +121,27 @@ Circuit (14 m wide). Switching courses restarts the demo for a clean physics wor
 cones, and tire marks. The selection is encoded in `?course=autocross` or
 `?course=sweeper`, so links can open a particular course.
 
+The driving corridor is textured asphalt with a small paved shoulder; everything
+outside it is textured dirt/gravel. Both receive shadows and headlights. Surfaces
+are visual only for now: off-track tire physics remain unchanged.
+
+**Random course** generates a new closed circuit and restarts the demo, retaining
+your drive mode. Its seed is saved in `?course=random&seed=12345` so the same link
+recreates the same layout. Smooth radial variations create fast sections, sweeping
+bends, and tighter sections. Candidates are checked for a minimum 22 m centerline
+turn radius and clearance between non-neighboring sections; the road is 14 m wide.
+These are geometric limits, not an autopilot: slow down for the tighter bends.
+
 Course data lives in `src/courses.ts`: add a `CourseDefinition` with a unique ID,
-name, corridor width, cone spacing, ordered `[x, z]` centerline points, and spawn
-position/heading (radians, zero faces +Z). Layouts are closed loops. The shared
-renderer in `src/course.ts` samples the centerline to place cones and continuous
-16 cm white boundary strips underneath them, plus start tiles and arrows. Keep
-enough space between bends for the chosen corridor width. The physics and reset
-logic use the returned cones and selected spawn, without course-specific code.
+name, corridor width, and ordered `[x, z]` centerline markers in driving order.
+Cone spacing is optional (defaults to 6 m). A closed centripetal Catmull-Rom
+spline passes smoothly through the markers; no hand-drawn edges are needed.
+Space markers generously and avoid abrupt reversals or crossings.
+The shared curve automatically generates the asphalt ribbon, cones, 16 cm white
+boundary lines, direction arrows, and a combined checkered start/finish line 5 m
+after the first marker. Spawn/reset position and heading come from the first
+marker and its curve tangent. There are no per-course cone, arrow, line, or spawn
+coordinates to maintain. `generateCourse` uses the same definition and renderer.
 
 ## Build
 
