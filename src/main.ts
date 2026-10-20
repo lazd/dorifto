@@ -300,7 +300,8 @@ async function start() {
     steering = THREE.MathUtils.damp(steering, input * steeringLimit, counterSteering ? 16 : 10, fixedStep);
     const braking = keys.has('KeyZ');
     const handbrake = keys.has('Space');
-    const throttle = keys.has('KeyX') && !braking;
+    const throttle = keys.has('KeyX');
+    const brakestand = throttle && braking;
     burnout = 0;
     for (let i = 0; i < 4; i++) {
       const rear = i >= 2;
@@ -324,9 +325,10 @@ async function start() {
       const across = vx * tireLateral.x + vz * tireLateral.z;
       const slipAngle = Math.atan2(across, Math.max(Math.abs(along), 2));
       const load = wheelContacts[i] ? Math.max(0, wheel.get_m_wheelsSuspensionForce()) : 0;
-      const capacity = load * 1.25;
+      const staticGrip = braking && !rear ? 0.15 * (1 - THREE.MathUtils.smoothstep(Math.abs(along), 0.2, 0.5)) : 0;
+      const capacity = load * (1.25 + staticGrip);
       const lateralDemand = -(rear ? 42000 : 38000) * slipAngle;
-      const brakeTorque = rear && handbrake ? 4500 : braking ? rear ? 1300 : 1900 : 0;
+      const brakeTorque = rear && handbrake ? 4500 : braking ? rear ? brakestand ? 650 : 1300 : 1900 : 0;
       let longitudinalForce = 0;
       let lateralForce = 0;
       // Substep wheel inertia so tire slip remains stable at low road speeds.
@@ -336,7 +338,7 @@ async function start() {
         // Excess wheelspin raises wheel speed and reduces available torque.
         const engineTorque = rear && throttle && speed < 240
           ? Math.min(2200, 110000 / Math.max(Math.abs(tireSpeeds[i]), 1)) : 0;
-        const slipRatio = (tireSpeeds[i] * car.radii[i] - along) / Math.max(Math.abs(along), 4);
+        const slipRatio = (tireSpeeds[i] * car.radii[i] - along) / Math.max(Math.abs(along), braking ? 0.5 : 4);
         // Saturate the combined demand, not each axis independently: a tire
         // spinning far above road speed must lose lateral authority.
         const driveDemand = capacity * slipRatio * 8;
@@ -439,7 +441,7 @@ async function start() {
     }
     smoke.update(dt, car.wheels, wheelContacts, leavingMarks, velocity, camera);
     speedDisplay.textContent = String(Math.round(speed * 3.6));
-    stateDisplay.textContent = keys.has('Space') ? 'HANDBRAKE' : keys.has('KeyZ') ? 'BRAKING' : burningOut ? 'BURNOUT' : sliding ? 'SLIDING' : 'REAR-WHEEL DRIVE';
+    stateDisplay.textContent = keys.has('Space') ? 'HANDBRAKE' : keys.has('KeyZ') && keys.has('KeyX') ? 'BRAKESTAND' : keys.has('KeyZ') ? 'BRAKING' : burningOut ? 'BURNOUT' : sliding ? 'SLIDING' : 'REAR-WHEEL DRIVE';
     if (Math.abs(car.chassis.position.x) > 1800 || Math.abs(car.chassis.position.z) > 1800 || car.chassis.position.y < -5) reset();
     smoke.captureDepth(renderer, scene, camera);
     renderer.render(scene, camera);

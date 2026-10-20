@@ -23,6 +23,7 @@ keyboard. Click the game if keyboard focus is in another window.
 | Left / right arrows | Steer |
 | X | Accelerate (rear-wheel drive) |
 | Z | Brake all four wheels |
+| X + Z | Brakestand (front brakes hold, rear tires spin) |
 | Space | Lock the rear wheels / initiate a slide |
 | R or Reset car | Return to the starting position |
 
