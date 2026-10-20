@@ -3,6 +3,7 @@ import AmmoFactory from 'ammojs-typed';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { loadCar } from './car';
 import { TireSmoke } from './smoke';
+import { DrivingControls } from './controls';
 import './style.css';
 
 function element<T extends HTMLElement>(selector: string): T {
@@ -143,12 +144,18 @@ async function start() {
   Ammo.destroy(direction);
   Ammo.destroy(axle);
 
-  const keys = new Set<string>();
+  const controls = new DrivingControls(element('#controller-status'));
+  const keys = controls.keys;
   const controlKeys = new Set(['ArrowLeft', 'ArrowRight', 'KeyX', 'KeyZ', 'Space', 'KeyR']);
   let steering = 0;
   let accumulator = 0;
   let lastTime = 0;
   let burnout = 0;
+  let reversing = false;
+  let cameraYaw = 0;
+  let cameraPitch = 0;
+  const cameraOrbit = new THREE.Vector3();
+  const up = new THREE.Vector3(0, 1, 0);
   const tireSpeeds = [0, 0, 0, 0];
   const tireAngles = [0, 0, 0, 0];
   const cameraHeight = 2.3;
@@ -252,7 +259,9 @@ async function start() {
   }
 
   function reset() {
-    keys.clear();
+    controls.clear();
+    reversing = false;
+    cameraYaw = cameraPitch = 0;
     steering = 0;
     accumulator = 0;
     burnout = 0;
@@ -327,14 +336,19 @@ async function start() {
     const speed = Math.hypot(linear.x(), linear.z()) * 3.6;
     const rotation = body.getWorldTransform().getRotation();
     physicsRotation.set(rotation.x(), rotation.y(), rotation.z(), rotation.w());
-    const input = Number(keys.has('ArrowLeft')) - Number(keys.has('ArrowRight'));
+    tireForward.set(0, 0, 1).applyQuaternion(physicsRotation);
+    const forwardSpeed = linear.x() * tireForward.x + linear.z() * tireForward.z;
+    if (controls.throttle > 0 || controls.reverse === 0) reversing = false;
+    else if (Math.abs(forwardSpeed) < 0.5 && Math.abs(angular.y()) < 0.5 && speed < 4) reversing = true;
+    const input = controls.steer;
     const steeringLimit = THREE.MathUtils.lerp(0.65, 0.5, Math.min(speed / 140, 1));
     const counterSteering = input !== 0 && Math.sign(input) !== Math.sign(steering);
     steering = THREE.MathUtils.damp(steering, input * steeringLimit, counterSteering ? 16 : 10, fixedStep);
-    const braking = keys.has('KeyZ');
-    const handbrake = keys.has('Space');
-    const throttle = keys.has('KeyX');
-    const brakestand = throttle && braking;
+    const brakeAmount = reversing ? Number(keys.has('KeyZ')) : controls.brake;
+    const braking = brakeAmount > 0;
+    const handbrake = controls.handbrake;
+    const throttle = reversing ? controls.reverse : controls.throttle;
+    const brakestand = throttle > 0 && braking && !reversing;
     burnout = 0;
     for (let i = 0; i < 4; i++) {
       const rear = i >= 2;
@@ -358,10 +372,11 @@ async function start() {
       const across = vx * tireLateral.x + vz * tireLateral.z;
       const slipAngle = Math.atan2(across, Math.max(Math.abs(along), 2));
       const load = wheelContacts[i] ? Math.max(0, wheel.get_m_wheelsSuspensionForce()) : 0;
-      const staticGrip = braking && !rear ? 0.15 * (1 - THREE.MathUtils.smoothstep(Math.abs(along), 0.2, 0.5)) : 0;
+      const staticGrip = braking && !rear ? 0.15 * brakeAmount * (1 - THREE.MathUtils.smoothstep(Math.abs(along), 0.2, 0.5)) : 0;
       const capacity = load * (1.25 + staticGrip);
       const lateralDemand = -(rear ? 42000 : 38000) * slipAngle;
-      const brakeTorque = rear && handbrake ? 4500 : braking ? rear ? brakestand ? 650 : 1300 : 1900 : 0;
+      const brakeTorque = rear && handbrake ? 4500
+        : brakeAmount * (rear ? brakestand ? 650 : 1300 : 1900);
       let longitudinalForce = 0;
       let lateralForce = 0;
       // Substep wheel inertia so tire slip remains stable at low road speeds.
@@ -369,8 +384,8 @@ async function start() {
       for (let j = 0; j < 12; j++) {
         // Limit both launch torque and power (220 kW total at the rear wheels).
         // Excess wheelspin raises wheel speed and reduces available torque.
-        const engineTorque = rear && throttle && speed < 240
-          ? Math.min(2200, 110000 / Math.max(Math.abs(tireSpeeds[i]), 1)) : 0;
+        const engineTorque = rear && speed < (reversing ? 35 : 240)
+          ? throttle * (reversing ? -1 : 1) * Math.min(2200, 110000 / Math.max(Math.abs(tireSpeeds[i]), 1)) : 0;
         const slipRatio = (tireSpeeds[i] * car.radii[i] - along) / Math.max(Math.abs(along), braking ? 0.5 : 4);
         // Saturate the combined demand, not each axis independently: a tire
         // spinning far above road speed must lose lateral authority.
@@ -412,6 +427,7 @@ async function start() {
   }
 
   function frame(time: number) {
+    controls.poll();
     const dt = lastTime ? Math.min((time - lastTime) / 1000, 0.05) : fixedStep;
     lastTime = time;
     accumulator += dt;
@@ -434,8 +450,11 @@ async function start() {
     travelVelocity.copy(velocity).normalize();
     travel.lerp(travelVelocity, 0.85 * THREE.MathUtils.smoothstep(speed, 0.5, 3)).normalize();
     cameraDirection.lerp(travel, 1 - Math.exp(-1.8 * dt)).normalize();
-    desiredCamera.copy(car.chassis.position).addScaledVector(cameraDirection, -9 - Math.min(speed * 0.04, 2));
-    desiredCamera.y = car.chassis.position.y + cameraHeight;
+    cameraYaw = THREE.MathUtils.damp(cameraYaw, controls.lookBehind ? Math.PI : -controls.cameraX * 0.45, 9, dt);
+    cameraPitch = THREE.MathUtils.damp(cameraPitch, -controls.cameraY * 0.8, 9, dt);
+    cameraOrbit.copy(cameraDirection).applyAxisAngle(up, cameraYaw);
+    desiredCamera.copy(car.chassis.position).addScaledVector(cameraOrbit, -9 - Math.min(speed * 0.04, 2));
+    desiredCamera.y = car.chassis.position.y + cameraHeight + cameraPitch;
     camera.position.lerp(desiredCamera, 1 - Math.exp(-5 * dt));
     desiredLookTarget.copy(car.chassis.position).addScaledVector(velocity, 0.18);
     desiredLookTarget.y += 0.65;
@@ -445,7 +464,7 @@ async function start() {
     sun.target.position.copy(car.chassis.position);
 
     const slip = speed > 3 ? 1 - Math.abs(forward.dot(velocity) / speed) : 0;
-    const sliding = speed > 3 && (keys.has('Space') || slip > 0.045);
+    const sliding = speed > 3 && (controls.handbrake || slip > 0.045);
     const burningOut = burnout > 0.1 && (wheelContacts[2] || wheelContacts[3]);
     const leavingMarks = sliding || burningOut;
     if (leavingMarks) {
@@ -480,7 +499,10 @@ async function start() {
     }
     smoke.update(dt, car.wheels, wheelContacts, leavingMarks, velocity, camera);
     speedDisplay.textContent = String(Math.round(speed * 3.6));
-    stateDisplay.textContent = keys.has('Space') ? 'HANDBRAKE' : keys.has('KeyZ') && keys.has('KeyX') ? 'BRAKESTAND' : keys.has('KeyZ') ? 'BRAKING' : burningOut ? 'BURNOUT' : sliding ? 'SLIDING' : 'REAR-WHEEL DRIVE';
+    stateDisplay.textContent = controls.handbrake ? 'HANDBRAKE'
+      : controls.brake > 0 && controls.throttle > 0 ? 'BRAKESTAND'
+      : reversing ? 'REVERSE' : controls.brake > 0 ? 'BRAKING'
+      : burningOut ? 'BURNOUT' : sliding ? 'SLIDING' : 'REAR-WHEEL DRIVE';
     if (Math.abs(car.chassis.position.x) > 1800 || Math.abs(car.chassis.position.z) > 1800 || car.chassis.position.y < -5) reset();
     smoke.captureDepth(renderer, scene, camera);
     renderer.render(scene, camera);

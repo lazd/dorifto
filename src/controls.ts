@@ -1,0 +1,63 @@
+export class DrivingControls {
+  readonly keys = new Set<string>();
+  steer = 0;
+  throttle = 0;
+  brake = 0;
+  reverse = 0;
+  handbrake = false;
+  cameraX = 0;
+  cameraY = 0;
+  lookBehind = false;
+  private focused = document.hasFocus();
+
+  constructor(private readonly controllerStatus: HTMLElement) {
+    window.addEventListener('blur', () => {
+      this.focused = false;
+      this.clear();
+    });
+    window.addEventListener('focus', () => { this.focused = true; });
+    document.addEventListener('visibilitychange', () => {
+      this.focused = !document.hidden && document.hasFocus();
+      this.clear();
+    });
+  }
+
+  clear() {
+    this.keys.clear();
+    this.steer = this.throttle = this.brake = this.reverse = 0;
+    this.cameraX = this.cameraY = 0;
+    this.handbrake = this.lookBehind = false;
+  }
+
+  poll() {
+    const available = typeof navigator.getGamepads === 'function';
+    const pads = available ? Array.from(navigator.getGamepads()) : [];
+    const pad = pads.find((pad) => pad?.connected && pad.mapping === 'standard');
+    const message = pad ? 'Controller connected'
+      : pads.some((pad) => pad?.connected) ? 'Controller mapping unsupported. Use a standard-mapped controller.'
+      : available ? 'Controller: connect and press a button'
+      : 'Gamepad API unavailable. Keyboard controls still work.';
+    if (this.controllerStatus.textContent !== message) this.controllerStatus.textContent = message;
+    if (!this.focused || document.hidden) {
+      this.clear();
+      return;
+    }
+    const axis = (index: number) => {
+      const value = Math.max(-1, Math.min(1, pad?.axes[index] ?? 0));
+      return Math.sign(value) * Math.max(0, (Math.abs(value) - 0.12) / 0.88);
+    };
+    const trigger = (index: number) => {
+      const value = Math.max(0, Math.min(1, pad?.buttons[index]?.value ?? 0));
+      return Math.max(0, (value - 0.03) / 0.97);
+    };
+    const keyboardSteer = Number(this.keys.has('ArrowLeft')) - Number(this.keys.has('ArrowRight'));
+    this.steer = keyboardSteer || -axis(0);
+    this.throttle = Math.max(Number(this.keys.has('KeyX')), trigger(7));
+    this.brake = Math.max(Number(this.keys.has('KeyZ')), trigger(6));
+    this.reverse = trigger(6);
+    this.handbrake = this.keys.has('Space') || Boolean(pad?.buttons[5]?.pressed || pad?.buttons[2]?.pressed);
+    this.cameraX = axis(2);
+    this.cameraY = axis(3);
+    this.lookBehind = Boolean(pad?.buttons[11]?.pressed);
+  }
+}

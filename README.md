@@ -14,7 +14,7 @@ npm run dev
 ```
 
 Vite opens the game in your browser. Use a desktop browser with WebGL2 and a
-keyboard. Click the game if keyboard focus is in another window.
+keyboard or standard-mapped gamepad. Click the game if focus is in another window.
 
 ## Controls
 
@@ -26,6 +26,31 @@ keyboard. Click the game if keyboard focus is in another window.
 | X + Z | Brakestand (front brakes hold, rear tires spin) |
 | Space | Lock the rear wheels / initiate a slide |
 | R or Reset car | Return to the starting position |
+
+### Gamepad
+
+Connect an Xbox-style controller and press a button while the game has focus.
+The native Gamepad API requires localhost or HTTPS; browser/OS support determines
+which controllers expose the `standard` mapping. Connection status appears below
+the keyboard controls. The first connected standard-mapped controller is used.
+
+| Controller input | Action |
+| --- | --- |
+| R2 / RT | Analog accelerator |
+| L2 / LT | Analog brake; reverse near a stop |
+| Left stick horizontal | Analog steering |
+| Right stick | Small camera orbit/height adjustment; release to recenter |
+| R1 / RB or Xbox X (west face button) | Handbrake |
+| R3 (right-stick click, hold) | Look behind; release to return |
+| RT + LT | Brakestand |
+
+Both triggers together retain brakestand behavior. LT alone brakes forward
+motion, then engages reverse only near a stop; release LT to leave reverse.
+Reverse is limited to 35 km/h. Keyboard Z remains brake-only. Sticks use a
+rescaled deadzone to avoid drift, and trigger values control torque/brake force
+proportionally. Keyboard inputs remain available alongside the controller.
+Disconnecting releases controller inputs immediately, and losing focus releases
+all controls until the game regains focus.
 
 Build speed, turn, then tap the handbrake and counter-steer. The camera follows
 the direction of travel smoothly rather than locking to the car's rotation,
