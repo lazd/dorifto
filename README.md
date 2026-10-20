@@ -21,8 +21,8 @@ keyboard or standard-mapped gamepad. Click the game if focus is in another windo
 | Key | Action |
 | --- | --- |
 | Left / right arrows | Steer |
-| X | Accelerate (rear-wheel drive) |
-| Z | Brake all four wheels |
+| Z | Accelerate (rear-wheel drive) |
+| X | Brake all four wheels |
 | X + Z | Brakestand (front brakes hold, rear tires spin) |
 | Space | Lock the rear wheels / initiate a slide |
 | R or Reset | Reset the car, cones, smoke, and tire marks |
@@ -46,7 +46,7 @@ the keyboard controls. The first connected standard-mapped controller is used.
 
 Both triggers together retain brakestand behavior. LT alone brakes forward
 motion, then engages reverse only near a stop; release LT to leave reverse.
-Reverse is limited to 35 km/h. Keyboard Z remains brake-only. Sticks use a
+Reverse is limited to 35 km/h. Keyboard X remains brake-only. Sticks use a
 rescaled deadzone to avoid drift, and trigger values control torque/brake force
 proportionally. Keyboard inputs remain available alongside the controller.
 Disconnecting releases controller inputs immediately, and losing focus releases
@@ -64,21 +64,21 @@ handles road forces at each wheel's contact point. Tire forces depend on suspens
 load, lateral slip angle, and wheelspin, sharing a finite friction budget. Wheel
 inertia, rear drive torque, a limited-slip differential, and brake torque determine
 traction continuously. There is no drift latch, target angle, yaw assist, or extra
-forward force. Counter-steer and modulate X to balance a slide; lift off to let
+forward force. Counter-steer and modulate Z to balance a slide; lift off to let
 wheelspin settle and regain lateral grip. Steering can transfer the slide either way.
 Front steering lock ranges from 37 degrees at low speed to 29 degrees at high
 speed, retaining enough range to counter-steer into a slide. Direction changes
 respond faster than initial turn-in. Unwind the steering as rotation stops to
 avoid snapping into an opposite slide.
-Power tuning uses up to 2200 Nm of drive torque per rear wheel, limited to
-110 kW per wheel (220 kW total), with a 1.25 tire friction coefficient. Torque
+Drift tuning uses up to 2000 Nm of drive torque per rear wheel, limited to
+110 kW per wheel (220 kW total), with a 1.4 tire friction coefficient. Torque
 falls as wheel speed rises so launch wheelspin settles as the car accelerates.
 Smoke and burnout marks require substantial slip, not the small tire slip
 needed for ordinary acceleration.
 Longitudinal and lateral slip demands saturate together, so spinning the rear
-tires reduces their cornering grip. Hold X and either steering arrow from a stop
+tires reduces their cornering grip. Hold Z and either steering arrow from a stop
 for donuts; release throttle and unwind/counter-steer to recover traction.
-The red Z32 has black wheels and a low chase camera. Hold X from a stop for a
+The red Z32 has black wheels and a low chase camera. Hold Z from a stop for a
 rear-wheel burnout, with wheelspin, tire smoke, and skid marks. Grip returns as
 wheel speed matches road speed. The engine has a 240 km/h speed limiter.
 Burnout and drift marks are flat strips matching each rear tire's model width.
@@ -102,11 +102,13 @@ approximation, not a retroreflective optical simulation).
 ## Drive modes
 
 The Drive mode selector switches handling live without resetting the course.
-Drift is the default and retains the existing tune, wheelspin, and steering lock.
+Drift is the default, with full steering lock and wheelspin for power slides.
+Increased tire grip and rear cornering stiffness, plus slightly reduced launch
+torque, make it less eager to slide during ordinary cornering.
 Its loose chase camera follows travel direction to show slides. Grip's camera
 stays more closely aligned with the car's heading and responds faster through
 turns, while retaining smooth interpolation and the controller camera controls.
-Grip uses 26-to-11-degree steering lock, 1350 Nm / 80 kW per driven wheel,
+Grip uses 26-to-11-degree steering lock, 1900 Nm / 115 kW per driven wheel,
 higher tire friction and rear cornering stiffness, and slip-based traction
 control to preserve cornering grip under throttle. Traction control reduces
 engine torque, not steering or yaw; it is bypassed for intentional brakestands
@@ -121,9 +123,13 @@ Circuit (14 m wide). Switching courses restarts the demo for a clean physics wor
 cones, and tire marks. The selection is encoded in `?course=autocross` or
 `?course=sweeper`, so links can open a particular course.
 
-The driving corridor is textured asphalt with a small paved shoulder; everything
+The driving corridor is textured asphalt with an 80 cm paved shoulder; everything
 outside it is textured dirt/gravel. Both receive shadows and headlights. Surfaces
 are visual only for now: off-track tire physics remain unchanged.
+The gravel sits below the pavement, with depth bias to prevent distant flicker.
+Cone bases sit 22 cm outside the outer edge of each white boundary line.
+Bent left/right warning arrows appear about 12 m before hard-turn entry,
+not periodically along the course; nearby warnings are merged.
 
 **Random course** generates a new closed circuit and restarts the demo, retaining
 your drive mode. Its seed is saved in `?course=random&seed=12345` so the same link
@@ -134,13 +140,14 @@ These are geometric limits, not an autopilot: slow down for the tighter bends.
 
 Course data lives in `src/courses.ts`: add a `CourseDefinition` with a unique ID,
 name, corridor width, and ordered `[x, z]` centerline markers in driving order.
-Cone spacing is optional (defaults to 6 m). A closed centripetal Catmull-Rom
-spline passes smoothly through the markers; no hand-drawn edges are needed.
+Cone spacing is optional (defaults to 6 m). A closed cubic B-spline fits smoothly
+inside the marker path rather than passing through every marker, rounding tight
+corners so the offset road edges do not fold over; no hand-drawn edges are needed.
 Space markers generously and avoid abrupt reversals or crossings.
 The shared curve automatically generates the asphalt ribbon, cones, 16 cm white
-boundary lines, direction arrows, and a combined checkered start/finish line 5 m
-after the first marker. Spawn/reset position and heading come from the first
-marker and its curve tangent. There are no per-course cone, arrow, line, or spawn
+boundary lines, turn-warning arrows, and a combined checkered start/finish line 5 m
+after the curve's start. Spawn/reset position and heading come from the curve's
+start near the first marker and its tangent. There are no per-course cone, arrow, line, or spawn
 coordinates to maintain. `generateCourse` uses the same definition and renderer.
 
 ## Build

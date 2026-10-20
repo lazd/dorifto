@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { CourseDefinition } from './courses';
-import { courseRoute } from './courses';
+import { courseRoute, courseTurns } from './courses';
 import { surfaceMaterial } from './surfaces';
 
 export function createCourse(scene: THREE.Scene, definition: CourseDefinition) {
@@ -24,7 +24,7 @@ export function createCourse(scene: THREE.Scene, definition: CourseDefinition) {
     across.set(tangent.z, 0, -tangent.x).normalize();
     for (const side of [-1, 1]) {
       const cone = new THREE.Mesh(coneGeometry, orange);
-      cone.position.copy(center).addScaledVector(across, side * definition.width / 2);
+      cone.position.copy(center).addScaledVector(across, side * (definition.width / 2 + 0.53));
       cone.position.y = 0.35;
       cone.castShadow = true;
       cone.receiveShadow = true;
@@ -68,7 +68,11 @@ export function createCourse(scene: THREE.Scene, definition: CourseDefinition) {
     mesh.receiveShadow = true;
     scene.add(mesh);
   }
-  ribbon(0, definition.width + 1.2, 0.008, surfaceMaterial('asphalt'));
+  const asphalt = surfaceMaterial('asphalt');
+  asphalt.polygonOffset = true;
+  asphalt.polygonOffsetFactor = 1;
+  asphalt.polygonOffsetUnits = 1;
+  ribbon(0, definition.width + 1.6, 0.008, asphalt);
   for (const side of [-1, 1]) ribbon(side * definition.width / 2, 0.16, 0.016, white);
   const columns = Math.ceil(definition.width / 0.5);
   const tileWidth = definition.width / columns;
@@ -85,18 +89,18 @@ export function createCourse(scene: THREE.Scene, definition: CourseDefinition) {
       scene.add(tile);
     }
   }
-  // Direction arrows keep the course legible without drawing a racing line.
-  const arrowShape = new THREE.Shape();
-  arrowShape.moveTo(0, 1.3);
-  arrowShape.lineTo(-0.65, 0.35);
-  arrowShape.lineTo(-0.25, 0.35);
-  arrowShape.lineTo(-0.25, -1);
-  arrowShape.lineTo(0.25, -1);
-  arrowShape.lineTo(0.25, 0.35);
-  arrowShape.lineTo(0.65, 0.35);
-  arrowShape.closePath();
-  const arrowGeometry = new THREE.ShapeGeometry(arrowShape);
-  for (let distance = 12; distance < length; distance += 24) {
+  for (const { distance, direction } of courseTurns(route)) {
+    const arrowShape = new THREE.Shape();
+    const points = [
+      [-0.25, -2], [0.25, -2], [0.25, 0.25], [1.1, 0.25],
+      [1.1, -0.3], [2.1, 0.6], [1.1, 1.5], [1.1, 0.95], [-0.25, 0.95],
+    ];
+    points.forEach(([x, y], i) => {
+      if (i === 0) arrowShape.moveTo(-direction * x, y);
+      else arrowShape.lineTo(-direction * x, y);
+    });
+    arrowShape.closePath();
+    const arrowGeometry = new THREE.ShapeGeometry(arrowShape);
     const t = distance / length;
     const position = route.getPointAt(t);
     const tangent = route.getTangentAt(t);

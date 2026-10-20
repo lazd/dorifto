@@ -110,6 +110,10 @@ async function start() {
     surfaceMaterial('gravel', 4000 / 6),
   );
   ground.rotation.x = -Math.PI / 2;
+  ground.position.y = -0.05;
+  ground.material.polygonOffset = true;
+  ground.material.polygonOffsetFactor = 2;
+  ground.material.polygonOffsetUnits = 2;
   ground.receiveShadow = true;
   scene.add(ground);
   const cones = createCourse(scene, definition);
@@ -405,7 +409,7 @@ async function start() {
     const steeringLimit = THREE.MathUtils.lerp(tune.steeringLow, tune.steeringHigh, Math.min(speed / 140, 1));
     const counterSteering = input !== 0 && Math.sign(input) !== Math.sign(steering);
     steering = THREE.MathUtils.damp(steering, input * steeringLimit, counterSteering ? 16 : 10, fixedStep);
-    const brakeAmount = reversing ? Number(keys.has('KeyZ')) : controls.brake;
+    const brakeAmount = reversing ? Number(keys.has('KeyX')) : controls.brake;
     const braking = brakeAmount > 0;
     const handbrake = controls.handbrake;
     const throttle = reversing ? controls.reverse : controls.throttle;

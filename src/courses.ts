@@ -9,13 +9,68 @@ export interface CourseDefinition {
   points: readonly (readonly [number, number])[];
 }
 
+class CourseCurve extends THREE.Curve<THREE.Vector3> {
+  constructor(private readonly markers: CourseDefinition['points']) {
+    super();
+  }
+
+  getPoint(t: number, target = new THREE.Vector3()) {
+    const scaled = THREE.MathUtils.euclideanModulo(t, 1) * this.markers.length;
+    const index = Math.floor(scaled);
+    const u = scaled - index;
+    const v = 1 - u;
+    const weights = [v ** 3, 3 * u ** 3 - 6 * u ** 2 + 4,
+      -3 * u ** 3 + 3 * u ** 2 + 3 * u + 1, u ** 3];
+    target.set(0, 0, 0);
+    for (let i = 0; i < 4; i++) {
+      const [x, z] = this.markers[(index + i - 1 + this.markers.length) % this.markers.length];
+      target.x += x * weights[i] / 6;
+      target.z += z * weights[i] / 6;
+    }
+    return target;
+  }
+
+  getTangent(t: number, target = new THREE.Vector3()) {
+    return target.copy(this.getPoint(t + 0.00001)).sub(this.getPoint(t - 0.00001)).normalize();
+  }
+}
+
 export function courseRoute(definition: CourseDefinition) {
-  const route = new THREE.CatmullRomCurve3(
-    definition.points.map(([x, z]) => new THREE.Vector3(x, 0, z)),
-    true, 'centripetal',
-  );
+  // A periodic cubic B-spline rounds marker corners instead of overshooting them.
+  const route = new CourseCurve(definition.points);
   route.arcLengthDivisions = Math.max(1000, definition.points.length * 100);
   return route;
+}
+
+export function courseTurns(route: THREE.Curve<THREE.Vector3>) {
+  const length = route.getLength();
+  const count = Math.ceil(length / 2);
+  const spacing = length / count;
+  const bends = Array.from({ length: count }, (_, i) => {
+    const before = route.getTangentAt(THREE.MathUtils.euclideanModulo((i * spacing - 6) / length, 1));
+    const after = route.getTangentAt(((i * spacing + 6) / length) % 1);
+    return Math.atan2(before.z * after.x - before.x * after.z, before.dot(after));
+  });
+  const candidates = bends.map((bend, i) => ({ bend, i }))
+    .filter(({ bend, i }) => Math.abs(bend) > 12 / 35
+      && Math.abs(bend) >= Math.abs(bends[(i + count - 1) % count])
+      && Math.abs(bend) > Math.abs(bends[(i + 1) % count]))
+    .sort((a, b) => Math.abs(b.bend) - Math.abs(a.bend));
+  const turns: { distance: number; direction: number }[] = [];
+  for (const { bend, i } of candidates) {
+    let approach = i;
+    while (i - approach < count / 2) {
+      const previous = bends[(approach - 1 + count) % count];
+      if (Math.sign(previous) !== Math.sign(bend) || Math.abs(previous) < 12 / 45) break;
+      approach--;
+    }
+    const distance = THREE.MathUtils.euclideanModulo(approach * spacing - 12, length);
+    if (turns.every((turn) => {
+      const gap = Math.abs(turn.distance - distance);
+      return Math.min(gap, length - gap) > 24;
+    })) turns.push({ distance, direction: Math.sign(bend) });
+  }
+  return turns.sort((a, b) => a.distance - b.distance);
 }
 
 export function courseSpawn(definition: CourseDefinition) {
