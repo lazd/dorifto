@@ -347,14 +347,16 @@ async function start() {
       const load = wheelContacts[i] ? Math.max(0, wheel.get_m_wheelsSuspensionForce()) : 0;
       const capacity = load * 1.25;
       const lateralDemand = -(rear ? 42000 : 38000) * slipAngle;
-      const engineTorque = rear && throttle && speed < 240
-        ? 2200 * (1 - Math.min(Math.abs(tireSpeeds[i]) * car.radii[i] / 130, 0.75)) : 0;
       const brakeTorque = rear && handbrake ? 4500 : braking ? rear ? 1300 : 1900 : 0;
       let longitudinalForce = 0;
       let lateralForce = 0;
       // Substep wheel inertia so tire slip remains stable at low road speeds.
       const tireStep = fixedStep / 12;
       for (let j = 0; j < 12; j++) {
+        // Limit both launch torque and power (220 kW total at the rear wheels).
+        // Excess wheelspin raises wheel speed and reduces available torque.
+        const engineTorque = rear && throttle && speed < 240
+          ? Math.min(2200, 110000 / Math.max(Math.abs(tireSpeeds[i]), 1)) : 0;
         const slipRatio = (tireSpeeds[i] * car.radii[i] - along) / Math.max(Math.abs(along), 4);
         // Saturate the combined demand, not each axis independently: a tire
         // spinning far above road speed must lose lateral authority.
@@ -373,8 +375,11 @@ async function start() {
         lateralForce += fy / 12;
       }
       if (rear && wheelContacts[i]) {
-        burnout = Math.max(burnout, THREE.MathUtils.clamp(
-          (tireSpeeds[i] * car.radii[i] - Math.abs(along)) / 8, 0, 1));
+        const excessSpeed = Math.abs(tireSpeeds[i] * car.radii[i] - along);
+        const slipRatio = excessSpeed / Math.max(Math.abs(along), 4);
+        // Normal acceleration needs a small amount of slip, not tire smoke.
+        burnout = Math.max(burnout, THREE.MathUtils.smoothstep(slipRatio, 0.18, 0.65)
+          * THREE.MathUtils.smoothstep(excessSpeed, 1, 4));
       }
       vector.setValue(
         tireForward.x * longitudinalForce + tireLateral.x * lateralForce, 0,

@@ -36,8 +36,11 @@ inertia, rear drive torque, a limited-slip differential, and brake torque determ
 traction continuously. There is no drift latch, target angle, yaw assist, or extra
 forward force. Counter-steer and modulate X to balance a slide; lift off to let
 wheelspin settle and regain lateral grip. Steering can transfer the slide either way.
-Power tuning uses up to 2200 Nm of drive torque per rear wheel, with a gradual
-speed-based taper and a 1.25 tire friction coefficient.
+Power tuning uses up to 2200 Nm of drive torque per rear wheel, limited to
+110 kW per wheel (220 kW total), with a 1.25 tire friction coefficient. Torque
+falls as wheel speed rises so launch wheelspin settles as the car accelerates.
+Smoke and burnout marks require substantial slip, not the small tire slip
+needed for ordinary acceleration.
 Longitudinal and lateral slip demands saturate together, so spinning the rear
 tires reduces their cornering grip. Hold X and either steering arrow from a stop
 for donuts; release throttle and unwind/counter-steer to recover traction.
