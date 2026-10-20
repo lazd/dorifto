@@ -52,6 +52,12 @@ The red Z32 has black wheels and a low chase camera. Hold X from a stop for a
 rear-wheel burnout, with wheelspin, tire smoke, and skid marks. Grip returns as
 wheel speed matches road speed. The engine has a 240 km/h speed limiter.
 Burnout and drift marks are flat strips matching each rear tire's model width.
+Tracks are opaque, depth-writing ground geometry. Smoke uses sorted, instanced
+billboard puffs that expand, rise, drift, and fade over their lifetime. A solid
+scene depth pass softens intersections with the car and terrain, avoiding hard
+particle cuts and tracks drawing over the smoke. This extra pass runs only while
+puffs are alive and follows the drawing-buffer resolution on resize. Smoke is
+excluded from side-mirror reflection passes, whose camera depth differs.
 Silver headlight interiors contain warm-white projectors with real, shadow-casting
 spotlights illuminating the surface ahead. Side-view mirror glass uses live planar
 reflections. The cones are lightweight dynamic physics objects: hit them to send

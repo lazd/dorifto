@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import AmmoFactory from 'ammojs-typed';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { loadCar } from './car';
+import { TireSmoke } from './smoke';
 import './style.css';
 
 function element<T extends HTMLElement>(selector: string): T {
@@ -29,6 +30,7 @@ async function start() {
   scene.background = new THREE.Color(0xb5c7cd);
   scene.fog = new THREE.Fog(0xb5c7cd, 100, 340);
   const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 1500);
+  camera.layers.enable(1);
   const pmrem = new THREE.PMREMGenerator(renderer);
   const environment = new RoomEnvironment();
   scene.environment = pmrem.fromScene(environment, 0.04).texture;
@@ -177,7 +179,7 @@ async function start() {
   markGeometry.setAttribute('position', markAttribute);
   markGeometry.setDrawRange(0, 0);
   const marks = new THREE.Mesh(markGeometry, new THREE.MeshBasicMaterial({
-    color: 0x11181b, transparent: true, opacity: 0.55, depthWrite: false, side: THREE.DoubleSide,
+    color: 0x293237, side: THREE.DoubleSide,
   }));
   marks.frustumCulled = false;
   scene.add(marks);
@@ -190,29 +192,8 @@ async function start() {
   const marking = [false, false];
   let markCount = 0;
 
-  const smokeCount = 160;
-  const smokePositions = new Float32Array(smokeCount * 3);
-  const smokeLife = new Float32Array(smokeCount);
-  const smokeGeometry = new THREE.BufferGeometry();
-  const smokeAttribute = new THREE.BufferAttribute(smokePositions, 3).setUsage(THREE.DynamicDrawUsage);
-  smokeGeometry.setAttribute('position', smokeAttribute);
-  const smokeCanvas = document.createElement('canvas');
-  smokeCanvas.width = smokeCanvas.height = 64;
-  const smokeContext = smokeCanvas.getContext('2d');
-  if (!smokeContext) throw new Error('Unable to create tire smoke texture.');
-  const gradient = smokeContext.createRadialGradient(32, 32, 0, 32, 32, 32);
-  gradient.addColorStop(0, 'rgba(220,225,230,0.6)');
-  gradient.addColorStop(1, 'rgba(220,225,230,0)');
-  smokeContext.fillStyle = gradient;
-  smokeContext.fillRect(0, 0, 64, 64);
-  const smoke = new THREE.Points(smokeGeometry, new THREE.PointsMaterial({
-    map: new THREE.CanvasTexture(smokeCanvas), size: 1.5, transparent: true,
-    opacity: 0.32, depthWrite: false,
-  }));
-  smoke.frustumCulled = false;
-  scene.add(smoke);
-  let smokeIndex = 0;
-  let smokeEmission = 0;
+  const smoke = new TireSmoke();
+  scene.add(smoke.mesh);
 
   function syncVisuals() {
     cones.forEach((cone, i) => {
@@ -247,9 +228,7 @@ async function start() {
     tireSpeeds.fill(0);
     tireAngles.fill(0);
     wheelContacts.fill(false);
-    smokeLife.fill(0);
-    smokePositions.fill(0);
-    smokeAttribute.needsUpdate = true;
+    smoke.reset();
     body.setCenterOfMassTransform(resetTransform);
     body.getMotionState().setWorldTransform(resetTransform);
     vector.setValue(0, 0, 0);
@@ -458,30 +437,11 @@ async function start() {
     } else {
       marking.fill(false);
     }
-    smokeEmission += leavingMarks ? dt * 80 : 0;
-    while (smokeEmission >= 1) {
-      smokeEmission--;
-      const wheel = 2 + smokeIndex % 2;
-      if (wheelContacts[wheel]) {
-        const i = smokeIndex % smokeCount;
-        smokePositions.set([
-          car.wheels[wheel].position.x + (Math.random() - 0.5) * 0.3,
-          0.25,
-          car.wheels[wheel].position.z + (Math.random() - 0.5) * 0.3,
-        ], i * 3);
-        smokeLife[i] = 1;
-      }
-      smokeIndex++;
-    }
-    for (let i = 0; i < smokeCount; i++) {
-      smokeLife[i] = Math.max(0, smokeLife[i] - dt / 1.5);
-      smokePositions[i * 3 + 1] = smokeLife[i] > 0 ? smokePositions[i * 3 + 1] + dt * 0.65 : -100;
-      smokePositions[i * 3] += dt * 0.25;
-    }
-    smokeAttribute.needsUpdate = true;
+    smoke.update(dt, car.wheels, wheelContacts, leavingMarks, velocity, camera);
     speedDisplay.textContent = String(Math.round(speed * 3.6));
     stateDisplay.textContent = keys.has('Space') ? 'HANDBRAKE' : keys.has('KeyZ') ? 'BRAKING' : burningOut ? 'BURNOUT' : sliding ? 'SLIDING' : 'REAR-WHEEL DRIVE';
     if (Math.abs(car.chassis.position.x) > 1800 || Math.abs(car.chassis.position.z) > 1800 || car.chassis.position.y < -5) reset();
+    smoke.captureDepth(renderer, scene, camera);
     renderer.render(scene, camera);
   }
 
