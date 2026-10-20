@@ -30,6 +30,10 @@ keyboard. Click the game if keyboard focus is in another window.
 Build speed, turn, then tap the handbrake and counter-steer. The camera follows
 the direction of travel smoothly rather than locking to the car's rotation,
 so you can see the car's angle during slides. Losing focus releases all controls.
+Rendered car, wheel, and cone transforms interpolate between fixed physics steps.
+The chase camera smooths both its position and look target, with a gradual
+transition to following travel direction at low speed. Reset snaps the camera
+and interpolation history together.
 Ammo handles suspension and collisions; a simplified combined-slip tire model
 handles road forces at each wheel's contact point. Tire forces depend on suspension
 load, lateral slip angle, and wheelspin, sharing a finite friction budget. Wheel

@@ -159,6 +159,17 @@ async function start() {
   const cameraDirection = new THREE.Vector3(0, 0, 1);
   const desiredCamera = new THREE.Vector3();
   const lookTarget = new THREE.Vector3();
+  const desiredLookTarget = new THREE.Vector3();
+  const travelVelocity = new THREE.Vector3();
+  const previousVelocity = new THREE.Vector3();
+  const currentVelocity = new THREE.Vector3();
+  const visualStates = [car.chassis, ...car.wheels, ...cones].map((object) => ({
+    object,
+    previousPosition: new THREE.Vector3(),
+    position: new THREE.Vector3(),
+    previousRotation: new THREE.Quaternion(),
+    rotation: new THREE.Quaternion(),
+  }));
   const shadowOffset = new THREE.Vector3(-20, 35, -12);
   const wheelBasis = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI);
   const wheelContacts = [false, false, false, false];
@@ -220,6 +231,26 @@ async function start() {
     });
   }
 
+  function captureVisuals(snap = false) {
+    for (const state of visualStates) {
+      state.previousPosition.copy(state.position);
+      state.previousRotation.copy(state.rotation);
+    }
+    previousVelocity.copy(currentVelocity);
+    syncVisuals();
+    const linear = body.getLinearVelocity();
+    currentVelocity.set(linear.x(), 0, linear.z());
+    for (const state of visualStates) {
+      state.position.copy(state.object.position);
+      state.rotation.copy(state.object.quaternion);
+      if (snap) {
+        state.previousPosition.copy(state.position);
+        state.previousRotation.copy(state.rotation);
+      }
+    }
+    if (snap) previousVelocity.copy(currentVelocity);
+  }
+
   function reset() {
     keys.clear();
     steering = 0;
@@ -242,7 +273,8 @@ async function start() {
       vehicle.setBrake(0, i);
     }
     world.updateSingleAabb(body);
-    syncVisuals();
+    captureVisuals(true);
+    velocity.set(0, 0, 0);
     cameraDirection.set(0, 0, 1);
     camera.position.copy(car.chassis.position).add(new THREE.Vector3(0, cameraHeight, -9));
     lookTarget.copy(car.chassis.position).add(new THREE.Vector3(0, 0.65, 0));
@@ -269,6 +301,7 @@ async function start() {
     keys.clear();
     lastTime = 0;
     accumulator = 0;
+    captureVisuals(true);
   });
   element('#reset').addEventListener('click', () => {
     reset();
@@ -384,23 +417,29 @@ async function start() {
     accumulator += dt;
     while (accumulator >= fixedStep) {
       step();
+      captureVisuals();
       accumulator -= fixedStep;
     }
-    syncVisuals();
-    const linear = body.getLinearVelocity();
-    velocity.set(linear.x(), 0, linear.z());
+    const alpha = accumulator / fixedStep;
+    for (const state of visualStates) {
+      state.object.position.lerpVectors(state.previousPosition, state.position, alpha);
+      state.object.quaternion.slerpQuaternions(state.previousRotation, state.rotation, alpha);
+    }
+    velocity.lerpVectors(previousVelocity, currentVelocity, alpha);
     const speed = velocity.length();
     forward.set(0, 0, 1).applyQuaternion(car.chassis.quaternion);
     forward.y = 0;
     forward.normalize();
     travel.copy(forward);
-    if (speed > 2) travel.lerp(velocity.clone().normalize(), 0.85).normalize();
+    travelVelocity.copy(velocity).normalize();
+    travel.lerp(travelVelocity, 0.85 * THREE.MathUtils.smoothstep(speed, 0.5, 3)).normalize();
     cameraDirection.lerp(travel, 1 - Math.exp(-1.8 * dt)).normalize();
     desiredCamera.copy(car.chassis.position).addScaledVector(cameraDirection, -9 - Math.min(speed * 0.04, 2));
     desiredCamera.y = car.chassis.position.y + cameraHeight;
     camera.position.lerp(desiredCamera, 1 - Math.exp(-5 * dt));
-    lookTarget.copy(car.chassis.position).addScaledVector(velocity, 0.18);
-    lookTarget.y += 0.65;
+    desiredLookTarget.copy(car.chassis.position).addScaledVector(velocity, 0.18);
+    desiredLookTarget.y += 0.65;
+    lookTarget.lerp(desiredLookTarget, 1 - Math.exp(-10 * dt));
     camera.lookAt(lookTarget);
     sun.position.copy(car.chassis.position).add(shadowOffset);
     sun.target.position.copy(car.chassis.position);
