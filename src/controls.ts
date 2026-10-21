@@ -8,6 +8,7 @@ export class DrivingControls {
   cameraX = 0;
   cameraY = 0;
   lookBehind = false;
+  mapView = false;
   resetRequested = false;
   cameraRequested = false;
   driveModeRequested = false;
@@ -15,6 +16,7 @@ export class DrivingControls {
   private resetHeld = false;
   private cameraHeld = false;
   private driveModeHeld = false;
+  private mapViewHeld = false;
   private focused = document.hasFocus();
 
   constructor() {
@@ -57,6 +59,9 @@ export class DrivingControls {
     const driveModePressed = Boolean(pad?.buttons[3]?.pressed);
     this.driveModeRequested = driveModePressed && !this.driveModeHeld;
     this.driveModeHeld = driveModePressed;
+    const mapViewPressed = Boolean(pad?.buttons[1]?.pressed);
+    if (mapViewPressed && !this.mapViewHeld) this.mapView = !this.mapView;
+    this.mapViewHeld = mapViewPressed;
     if (!enabled || !this.focused || document.hidden) {
       this.clear();
       return;

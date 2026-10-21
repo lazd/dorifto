@@ -96,7 +96,7 @@ async function start() {
     controls.clear();
   });
   const keys = controls.keys;
-  const controlKeys = new Set(['ArrowLeft', 'ArrowRight', 'KeyX', 'KeyZ', 'Space', 'KeyR', 'KeyC', 'KeyM']);
+  const controlKeys = new Set(['ArrowLeft', 'ArrowRight', 'KeyX', 'KeyZ', 'Space', 'KeyR', 'KeyC', 'KeyD', 'KeyM']);
   let accumulator = 0;
   let lastTime = 0;
   const physics = createVehiclePhysics({ Ammo, car, course, spawn, controls, gameState, laps, audio });
@@ -141,8 +141,10 @@ async function start() {
       if (!event.repeat) reset();
     } else if (event.code === 'KeyC') {
       if (!event.repeat) cycleCamera();
-    } else if (event.code === 'KeyM') {
+    } else if (event.code === 'KeyD') {
       if (!event.repeat) toggleDriveMode();
+    } else if (event.code === 'KeyM') {
+      if (!event.repeat) controls.mapView = !controls.mapView;
     } else keys.add(event.code);
   });
   window.addEventListener('keyup', (event) => {

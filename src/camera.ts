@@ -44,6 +44,18 @@ export function createDrivingCamera(camera: THREE.PerspectiveCamera, car: Awaite
   const desiredLookTarget = new THREE.Vector3();
   const travelVelocity = new THREE.Vector3();
 
+  // Bird's-eye map: straight down over the whole course, with the course's +Z at the top.
+  const mapBounds = new THREE.Box3().setFromPoints(cameraRoutePoints).expandByScalar(cameraCourseWidth);
+  const mapCenter = mapBounds.getCenter(new THREE.Vector3());
+  const mapSize = mapBounds.getSize(new THREE.Vector3());
+  const mapPosition = new THREE.Vector3();
+  const mapQuaternion = new THREE.Quaternion();
+  const mapMatrix = new THREE.Matrix4();
+  const mapUp = new THREE.Vector3(0, 0, 1);
+  const chasePosition = new THREE.Vector3();
+  const chaseQuaternion = new THREE.Quaternion();
+  let mapBlend = 0;
+
   function reset(heading: number) {
     cameraYaw = cameraPitch = 0;
     slideCameraAmount = outsideOffset = cameraTurnRate = 0;
@@ -57,6 +69,11 @@ export function createDrivingCamera(camera: THREE.PerspectiveCamera, car: Awaite
 
   function update(dt: number, velocity: THREE.Vector3, driveMode: DriveMode,
     cameraStyle: GameState['cameraStyle'], reversing: boolean) {
+    if (mapBlend > 0) {
+      // Resume the driving camera from where it was, not from the blended map pose.
+      camera.position.copy(chasePosition);
+      camera.quaternion.copy(chaseQuaternion);
+    }
     const tune = driveModes[driveMode];
     const speed = velocity.length();
     forward.set(0, 0, 1).applyQuaternion(car.chassis.quaternion);
@@ -73,9 +90,9 @@ export function createDrivingCamera(camera: THREE.PerspectiveCamera, car: Awaite
     const cabin = cameraStyle === 'cabin';
     if (cameraStyle !== previousCameraStyle) {
       camera.fov = cabin ? 75 : 55;
-      camera.near = cabin ? 0.03 : 0.1;
       camera.updateProjectionMatrix();
     }
+    const near = cabin ? 0.03 : 0.1;
     if (cabin) {
       camera.position.copy(cabinEye).applyQuaternion(car.chassis.quaternion).add(car.chassis.position);
       cabinDirection.set(0, 0, 1)
@@ -148,6 +165,31 @@ export function createDrivingCamera(camera: THREE.PerspectiveCamera, car: Awaite
       camera.lookAt(lookTarget);
     }
     previousCameraStyle = cameraStyle;
+    mapBlend = THREE.MathUtils.damp(mapBlend, controls.mapView ? 1 : 0, 6, dt);
+    if (mapBlend < 0.001) mapBlend = 0;
+    if (mapBlend > 0) showMap(mapBlend, near);
+    else setNear(near);
+  }
+
+  function setNear(near: number) {
+    if (camera.near === near) return;
+    camera.near = near;
+    camera.updateProjectionMatrix();
+  }
+
+  function showMap(blend: number, near: number) {
+    chasePosition.copy(camera.position);
+    chaseQuaternion.copy(camera.quaternion);
+    const halfHeight = Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2);
+    const height = 1.1 * Math.max(mapSize.z / 2 / halfHeight, mapSize.x / 2 / (halfHeight * camera.aspect));
+    mapPosition.set(mapCenter.x, mapBounds.max.y + height, mapCenter.z);
+    mapMatrix.lookAt(mapPosition, mapCenter, mapUp);
+    mapQuaternion.setFromRotationMatrix(mapMatrix);
+    camera.position.lerp(mapPosition, blend);
+    camera.quaternion.slerp(mapQuaternion, blend);
+    // A cabin-close near plane leaves too little depth precision from this high up,
+    // and the ground z-fights through the road.
+    setNear(THREE.MathUtils.lerp(near, height * 0.05, blend ** 2));
   }
 
   return { reset, update, setCabinEye };

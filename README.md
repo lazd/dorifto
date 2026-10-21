@@ -98,7 +98,8 @@ simulation continues. Settings remains in the main footer.
 | Space | Lock the rear wheels / initiate a slide |
 | R | Reset the car, cones, smoke, and tire marks |
 | C | Cycle corner-aware chase, classic chase, in-cabin (once per press) |
-| M | Toggle Grip / Drift mode (once per press) |
+| D | Toggle Grip / Drift mode (once per press) |
+| M | Toggle the bird's-eye map view of the whole course |
 
 ### Gamepad
 
@@ -115,6 +116,7 @@ the keyboard controls. The first connected standard-mapped controller is used.
 | Right stick | Small camera orbit/height adjustment; release to recenter |
 | R1 / RB or Xbox X (west face button) | Handbrake |
 | R3 (right-stick click, hold) | Look behind; release to return |
+| B / Circle (east face button) | Toggle the bird's-eye map view (once per press) |
 | RT + LT | Brakestand |
 | Start / Menu / Options | Reset (once per press) |
 | View / Select / Back | Cycle corner-aware chase, classic chase, in-cabin (once per press) |
