@@ -351,14 +351,18 @@ async function start() {
   const maxMarks = 6000;
   const markPositions = new Float32Array(maxMarks * 18);
   const markColors = new Float32Array(maxMarks * 18);
+  const markNormals = new Float32Array(maxMarks * 18);
   const markGeometry = new THREE.BufferGeometry();
   const markAttribute = new THREE.BufferAttribute(markPositions, 3).setUsage(THREE.DynamicDrawUsage);
   markGeometry.setAttribute('position', markAttribute);
   const markColorAttribute = new THREE.BufferAttribute(markColors, 3).setUsage(THREE.DynamicDrawUsage);
   markGeometry.setAttribute('color', markColorAttribute);
+  const markNormalAttribute = new THREE.BufferAttribute(markNormals, 3).setUsage(THREE.DynamicDrawUsage);
+  markGeometry.setAttribute('normal', markNormalAttribute);
   markGeometry.setDrawRange(0, 0);
-  const marks = new THREE.Mesh(markGeometry, new THREE.MeshBasicMaterial({
-    vertexColors: true, side: THREE.DoubleSide,
+  const marks = new THREE.Mesh(markGeometry, new THREE.MeshStandardMaterial({
+    vertexColors: true, side: THREE.DoubleSide, roughness: 1,
+    transparent: true, opacity: 0.45, depthWrite: false,
   }));
   marks.frustumCulled = false;
   scene.add(marks);
@@ -368,11 +372,13 @@ async function start() {
   const tireAcross = new THREE.Vector3();
   const tireLeft = new THREE.Vector3();
   const tireRight = new THREE.Vector3();
+  const markTriangle = new THREE.Triangle();
+  const markNormal = new THREE.Vector3();
   const marking = [false, false];
   const wheelAsphalt = [true, true, true, true];
   const previousAsphalt = [true, true];
-  const asphaltMark = new THREE.Color(0x484f53);
-  const dirtMark = new THREE.Color(0x8d7659);
+  const asphaltMark = new THREE.Color(0x101214);
+  const dirtMark = new THREE.Color(0x493827);
   let markCount = 0;
 
   const smoke = new TireSmoke();
@@ -726,6 +732,14 @@ async function start() {
           ], offset);
           const color = paved ? asphaltMark : dirtMark;
           for (let vertex = 0; vertex < 6; vertex++) color.toArray(markColors, offset + vertex * 3);
+          for (let triangle = 0; triangle < 2; triangle++) {
+            const start = offset + triangle * 9;
+            markTriangle.a.fromArray(markPositions, start);
+            markTriangle.b.fromArray(markPositions, start + 3);
+            markTriangle.c.fromArray(markPositions, start + 6);
+            markTriangle.getNormal(markNormal);
+            for (let vertex = 0; vertex < 3; vertex++) markNormal.toArray(markNormals, start + vertex * 3);
+          }
           markCount++;
         }
         previousTires[i].copy(wheel.position);
@@ -736,6 +750,7 @@ async function start() {
       });
       markAttribute.needsUpdate = true;
       markColorAttribute.needsUpdate = true;
+      markNormalAttribute.needsUpdate = true;
       markGeometry.setDrawRange(0, Math.min(markCount, maxMarks) * 6);
     } else {
       marking.fill(false);

@@ -385,7 +385,7 @@ export async function loadCar() {
   for (const bounds of headlightBounds) {
     if (bounds.isEmpty()) throw new Error('Missing headlight inserts in the car model.');
     const center = bounds.getCenter(new THREE.Vector3());
-    const light = new THREE.SpotLight(0xfff3dc, 1400, 65, Math.PI / 7, 0.55, 1.2);
+    const light = new THREE.SpotLight(0xfff3dc, 1100, 65, Math.PI / 7, 0.55, 1.2);
     light.position.set(center.x, center.y, bounds.max.z + 0.12);
     light.target.position.set(center.x * 1.5, center.y - 1.1, light.position.z + 20);
     light.castShadow = true;

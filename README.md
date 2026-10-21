@@ -88,7 +88,10 @@ and a low chase camera. Hold Z from a stop for a
 rear-wheel burnout, with wheelspin, tire smoke, and skid marks. Grip returns as
 wheel speed matches road speed. The engine has a 240 km/h speed limiter.
 Burnout and drift marks are flat strips matching each rear tire's model width.
-Tracks are opaque, depth-writing ground geometry. Smoke uses sorted, instanced
+Tracks are translucent, rough, light-responsive ground geometry that blends with
+the road instead of glowing as solid-color strips at night. Each track triangle
+has a surface normal so headlights illuminate the rubber correctly on slopes.
+Smoke uses sorted, instanced
 billboard puffs that expand, rise, drift, and fade over their lifetime. A solid
 scene depth pass softens intersections with the car and terrain, avoiding hard
 particle cuts and tracks drawing over the smoke. This extra pass runs only while
@@ -218,7 +221,10 @@ grip, and returning to asphalt restores it immediately.
 Rear tires detect the paved corridor, including the shoulder. Off pavement,
 sliding/spinning tires emit tan dust at half the smoke rate with slightly lower
 opacity and less upward drift, and leave muted brown dirt tracks rather than
-dark rubber stripes. Asphalt skid marks are softened charcoal gray.
+dark rubber stripes. Dust opacity is capped at 14% per puff before edge/lifetime
+fading; smoke and dust brightness follow the time-of-day ambient level.
+Asphalt skid marks use near-black rubber and dirt tracks use dark earth brown,
+both at 45% opacity.
 Each tire is classified separately;
 existing puffs and tracks keep their original appearance across surface changes.
 The terrain meets the physics heightfield; the pavement sits only 8 mm above it,

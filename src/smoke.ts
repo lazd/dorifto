@@ -33,6 +33,7 @@ export class TireSmoke {
       resolution: { value: this.size },
       nearPlane: { value: 0.1 },
       farPlane: { value: 1500 },
+      illumination: { value: 1 },
     },
     vertexShader: `
       attribute vec3 center;
@@ -56,7 +57,7 @@ export class TireSmoke {
         puffUv = uv;
         variation = seed;
         dustAmount = dust;
-        opacity = smoothstep(0.0, 0.05, life) * pow(1.0 - life, 1.2) * mix(0.32, 0.28, dust);
+        opacity = smoothstep(0.0, 0.05, life) * pow(1.0 - life, 1.2) * mix(0.32, 0.14, dust);
       }
     `,
     fragmentShader: `
@@ -65,6 +66,7 @@ export class TireSmoke {
       uniform vec2 resolution;
       uniform float nearPlane;
       uniform float farPlane;
+      uniform float illumination;
       varying vec2 puffUv;
       varying float opacity;
       varying float viewDepth;
@@ -84,7 +86,7 @@ export class TireSmoke {
         if (alpha < 0.001) discard;
         vec3 smokeColor = mix(vec3(0.58, 0.62, 0.65), vec3(0.82), puffUv.y);
         vec3 dustColor = mix(vec3(0.48, 0.32, 0.17), vec3(0.72, 0.57, 0.36), puffUv.y);
-        gl_FragColor = vec4(mix(smokeColor, dustColor, dustAmount), alpha);
+        gl_FragColor = vec4(mix(smokeColor, dustColor, dustAmount) * illumination, alpha);
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
       }
@@ -166,6 +168,9 @@ export class TireSmoke {
 
   captureDepth(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.PerspectiveCamera) {
     if (!this.geometry.instanceCount) return;
+    this.material.uniforms.illumination.value = THREE.MathUtils.clamp(
+      Math.sqrt(scene.environmentIntensity / 0.65), 0.15, 1,
+    );
     renderer.getDrawingBufferSize(this.size);
     if (this.depthTarget.width !== this.size.x || this.depthTarget.height !== this.size.y) {
       this.depthTarget.setSize(this.size.x, this.size.y);
