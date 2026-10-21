@@ -400,8 +400,10 @@ The toolbar's **Reverse course** checkbox drives any named, random, or custom
 layout in the opposite direction. Use `?reverse=1` in a course URL to open it
 reversed; omit the parameter (or use `reverse=0`) for the normal direction.
 `reverse=true`, `reverse=false`, and a bare `reverse` flag are also supported.
-Changing direction resets the driving session in place without reloading, keeping
-the same layout, seed, custom generation parameters, and settings. The preference
+Changing direction switches route guidance and resets the car to the start facing
+the new direction, without rebuilding the track or physics world. It resets lap
+timing and effects while keeping the same layout, seed, custom generation
+parameters, and settings. The preference
 also carries over when selecting or generating another course.
 
 Both directions use the same pavement, terrain, banking, and physical start/finish

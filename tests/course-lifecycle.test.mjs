@@ -117,6 +117,26 @@ test('replaces real Ammo worlds while reusing car assets and heightfields and fr
       current.interpolate(0.5);
       assert.ok(car.chassis.position.toArray().every(Number.isFinite));
       assert.equal(heightfields.size, Math.min(i + 1, 2));
+      const worldDestructions = destroyed.get(Ammo.btDiscreteDynamicsWorld);
+      const bodyDestructions = destroyed.get(Ammo.btRigidBody);
+      let directionReset = false;
+      let directionUpdated = false;
+      current.setCourseDirection({ position: [i, 2], heading: Math.PI }, {
+        reset() { directionReset = true; },
+        update() { directionUpdated = true; },
+        hitCone() {},
+      });
+      current.reset();
+      assert.equal(directionReset, true);
+      assert.ok(Math.abs(car.chassis.position.x - i) < 1e-4);
+      assert.ok(Math.abs(car.chassis.position.z - 2) < 1e-4);
+      const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(car.chassis.quaternion);
+      assert.ok(forward.z < -0.999999);
+      current.step();
+      assert.equal(directionUpdated, true);
+      assert.equal(heightfields.size, Math.min(i + 1, 2));
+      assert.equal(destroyed.get(Ammo.btDiscreteDynamicsWorld), worldDestructions);
+      assert.equal(destroyed.get(Ammo.btRigidBody), bodyDestructions);
     }
     current.dispose();
     current = undefined;

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { CourseDefinition } from './courses';
-import { courseRoute, courseStartDistance, courseTurns } from './courses';
+import { courseRoute, courseTurns, startDistance } from './courses';
 import { surfaceMaterial } from './surfaces';
 import { CourseTerrain } from './terrain';
 
@@ -48,7 +48,7 @@ export function createCourse(scene: THREE.Scene, definition: CourseDefinition) {
 }
 
 function buildCourse(scene: THREE.Group, definition: CourseDefinition) {
-  const route = courseRoute(definition);
+  const route = courseRoute({ ...definition, reverse: false });
   const terrain = new CourseTerrain(definition);
   scene.add(terrain.mesh);
   const { height, bottomRadius, topRadius, baseWidth, baseHeight, centerOfMassHeight } = coneDimensions;
@@ -173,7 +173,6 @@ function buildCourse(scene: THREE.Group, definition: CourseDefinition) {
   for (const side of [-1, 1]) ribbon(side * definition.width / 2, 0.16, 0.016, white);
   const columns = Math.ceil(definition.width / 0.5);
   const tileWidth = definition.width / columns;
-  const startDistance = courseStartDistance(definition, length);
   const start = route.getPointAt(startDistance / length);
   const startTangent = route.getTangentAt(startDistance / length);
   across.set(startTangent.z, 0, -startTangent.x).normalize();
@@ -185,7 +184,7 @@ function buildCourse(scene: THREE.Group, definition: CourseDefinition) {
       tile.rotation.set(-Math.PI / 2, 0, Math.atan2(startTangent.x, startTangent.z));
       tile.position.copy(start)
         .addScaledVector(across, -definition.width / 2 + (column + 0.5) * tileWidth)
-        .addScaledVector(startTangent, (definition.reverse ? row - 1 : row) * 0.5).setY(0.02);
+        .addScaledVector(startTangent, row * 0.5).setY(0.02);
       tile.updateMatrix();
       const geometry = tile.geometry.clone().applyMatrix4(tile.matrix);
       tile.geometry.dispose();
@@ -196,33 +195,46 @@ function buildCourse(scene: THREE.Group, definition: CourseDefinition) {
       scene.add(tile);
     }
   }
-  for (const { distance, direction } of courseTurns(route)) {
-    const arrowShape = new THREE.Shape();
-    const points = [
-      [-0.25, -2], [0.25, -2], [0.25, 0.25], [1.1, 0.25],
-      [1.1, -0.3], [2.1, 0.6], [1.1, 1.5], [1.1, 0.95], [-0.25, 0.95],
-    ];
-    points.forEach(([x, y], i) => {
-      if (i === 0) arrowShape.moveTo(-direction * x, y);
-      else arrowShape.lineTo(-direction * x, y);
+  const arrows = [false, true].map((reverse) => {
+    const group = new THREE.Group();
+    group.name = reverse ? 'reverse-turn-arrows' : 'forward-turn-arrows';
+    const arrowRoute = reverse ? courseRoute({ ...definition, reverse: true }) : route;
+    for (const { distance, direction } of courseTurns(arrowRoute)) {
+      const arrowShape = new THREE.Shape();
+      const points = [
+        [-0.25, -2], [0.25, -2], [0.25, 0.25], [1.1, 0.25],
+        [1.1, -0.3], [2.1, 0.6], [1.1, 1.5], [1.1, 0.95], [-0.25, 0.95],
+      ];
+      points.forEach(([x, y], i) => {
+        if (i === 0) arrowShape.moveTo(-direction * x, y);
+        else arrowShape.lineTo(-direction * x, y);
+      });
+      arrowShape.closePath();
+      const arrowGeometry = new THREE.ShapeGeometry(arrowShape);
+      const t = distance / arrowRoute.getLength();
+      const position = arrowRoute.getPointAt(t);
+      const tangent = arrowRoute.getTangentAt(t);
+      const arrow = new THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>(arrowGeometry, white);
+      arrow.rotation.set(-Math.PI / 2, 0, Math.atan2(-tangent.x, -tangent.z));
+      arrow.position.copy(position).setY(0.02);
+      arrow.updateMatrix();
+      const geometry = arrow.geometry.clone().applyMatrix4(arrow.matrix);
+      arrow.geometry.dispose();
+      arrow.geometry = terrain.projectGeometry(geometry, 0.02);
+      geometry.dispose();
+      arrow.position.set(0, 0, 0);
+      arrow.rotation.set(0, 0, 0);
+      group.add(arrow);
+    }
+    scene.add(group);
+    return group;
+  });
+  function setDirection(reverse: boolean) {
+    arrows.forEach((group, i) => {
+      group.visible = i === Number(reverse);
     });
-    arrowShape.closePath();
-    const arrowGeometry = new THREE.ShapeGeometry(arrowShape);
-    const t = distance / length;
-    const position = route.getPointAt(t);
-    const tangent = route.getTangentAt(t);
-    const arrow = new THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>(arrowGeometry, white);
-    arrow.rotation.set(-Math.PI / 2, 0, Math.atan2(-tangent.x, -tangent.z));
-    arrow.position.copy(position).setY(0.02);
-    arrow.updateMatrix();
-    const geometry = arrow.geometry.clone().applyMatrix4(arrow.matrix);
-    arrow.geometry.dispose();
-    arrow.geometry = terrain.projectGeometry(geometry, 0.02);
-    geometry.dispose();
-    arrow.position.set(0, 0, 0);
-    arrow.rotation.set(0, 0, 0);
-    scene.add(arrow);
   }
+  setDirection(definition.reverse ?? false);
   const curbRed = new THREE.MeshStandardMaterial({ color: 0xbc2823, roughness: 0.85, side: THREE.DoubleSide });
   const curbWhite = new THREE.MeshStandardMaterial({ color: 0xe6e3d7, roughness: 0.85, side: THREE.DoubleSide });
   const curbPositions: number[][] = [[], []];
@@ -252,6 +264,7 @@ function buildCourse(scene: THREE.Group, definition: CourseDefinition) {
   return {
     cones,
     terrain,
+    setDirection,
     isAsphalt: (position: THREE.Vector3) => terrain.isAsphalt(position),
   };
 }

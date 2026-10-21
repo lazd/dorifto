@@ -186,7 +186,22 @@ async function start() {
   }
 
   async function changeCourseDirection(reverse: boolean) {
-    await loadCourse(() => activeDefinition, () => {}, reverse);
+    const directed = { ...activeDefinition, reverse };
+    const nextSpawn = courseSpawn(directed);
+    const nextLaps = new LapTimer(directed);
+    const nextCamera = createDrivingCamera(camera, car, controls, directed, terrain);
+    physics.setCourseDirection(nextSpawn, nextLaps);
+    course.setDirection(reverse);
+    spawn = nextSpawn;
+    laps = nextLaps;
+    drivingCamera = nextCamera;
+    reset();
+    lastTime = 0;
+    const url = new URL(location.href);
+    if (reverse) url.searchParams.set('reverse', '1');
+    else url.searchParams.delete('reverse');
+    history.replaceState(null, '', url);
+    gameState.update({ courseReverse: reverse, status: { visible: false, error: false, message: '' } });
   }
 
   bindCoursePicker(courses, definition, changeCourse, changeCourseDirection, (error) => {

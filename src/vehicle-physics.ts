@@ -232,23 +232,27 @@ export function createVehiclePhysics({
   const antiRollOffset = new THREE.Vector3();
   const resetTransform = new Ammo.btTransform();
   resetTransform.setIdentity();
-  const spawnNormal = terrain.normalAt(spawn.position[0], spawn.position[1]);
-  const spawnForward = new THREE.Vector3(Math.sin(spawn.heading), 0, Math.cos(spawn.heading))
-    .projectOnPlane(spawnNormal).normalize();
-  const spawnRight = new THREE.Vector3().crossVectors(spawnNormal, spawnForward).normalize();
-  const spawnQuaternion = new THREE.Quaternion().setFromRotationMatrix(
-    new THREE.Matrix4().makeBasis(spawnRight, spawnNormal, spawnForward),
-  );
-  centerOfMassOffset.copy(centerOfMass).applyQuaternion(spawnQuaternion);
-  vector.setValue(
-    spawn.position[0] + centerOfMassOffset.x,
-    terrain.heightAt(spawn.position[0], spawn.position[1]) + settings.spawnHeightM + centerOfMassOffset.y,
-    spawn.position[1] + centerOfMassOffset.z,
-  );
-  resetTransform.setOrigin(vector);
-  const spawnRotation = new Ammo.btQuaternion(spawnQuaternion.x, spawnQuaternion.y, spawnQuaternion.z, spawnQuaternion.w);
-  resetTransform.setRotation(spawnRotation);
-  Ammo.destroy(spawnRotation);
+  function setCourseDirection(nextSpawn: ReturnType<typeof courseSpawn>, nextLaps: LapTimer) {
+    const spawnNormal = terrain.normalAt(nextSpawn.position[0], nextSpawn.position[1]);
+    const spawnForward = new THREE.Vector3(Math.sin(nextSpawn.heading), 0, Math.cos(nextSpawn.heading))
+      .projectOnPlane(spawnNormal).normalize();
+    const spawnRight = new THREE.Vector3().crossVectors(spawnNormal, spawnForward).normalize();
+    const spawnQuaternion = new THREE.Quaternion().setFromRotationMatrix(
+      new THREE.Matrix4().makeBasis(spawnRight, spawnNormal, spawnForward),
+    );
+    centerOfMassOffset.copy(centerOfMass).applyQuaternion(spawnQuaternion);
+    vector.setValue(
+      nextSpawn.position[0] + centerOfMassOffset.x,
+      terrain.heightAt(nextSpawn.position[0], nextSpawn.position[1]) + settings.spawnHeightM + centerOfMassOffset.y,
+      nextSpawn.position[1] + centerOfMassOffset.z,
+    );
+    resetTransform.setOrigin(vector);
+    const spawnRotation = new Ammo.btQuaternion(spawnQuaternion.x, spawnQuaternion.y, spawnQuaternion.z, spawnQuaternion.w);
+    resetTransform.setRotation(spawnRotation);
+    Ammo.destroy(spawnRotation);
+    laps = nextLaps;
+  }
+  setCourseDirection(spawn, laps);
 
   function syncVisuals() {
     cones.forEach((cone, i) => {
@@ -612,7 +616,7 @@ export function createVehiclePhysics({
   }
 
   return {
-    step, reset, dispose, captureVisuals, interpolate, fixedStep, wheelContacts, tireSounds,
+    step, reset, setCourseDirection, dispose, captureVisuals, interpolate, fixedStep, wheelContacts, tireSounds,
     get engine() { return drivetrain.state; },
     get burnout() { return burnout; },
     get steering() { return steering; },
