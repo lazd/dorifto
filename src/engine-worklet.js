@@ -5,7 +5,6 @@ class VehicleSoundProcessor extends AudioWorkletProcessor {
     this.state = { ...this.target };
     this.phase = 0;
     this.crankPhase = 0;
-    this.limiterPhase = 0;
     this.exhaustBody = 0;
     this.whistlePhase = 0;
     this.turboX1 = this.turboX2 = this.turboY1 = this.turboY2 = 0;
@@ -30,6 +29,7 @@ class VehicleSoundProcessor extends AudioWorkletProcessor {
     this.impactPhase = 0;
     this.parameters = ['rpm', 'load', 'boost', 'cut', 'limiter'];
     this.smoothing = 1 - Math.exp(-1 / (sampleRate * 0.025));
+    this.limiterSmoothing = 1 - Math.exp(-1 / (sampleRate * 0.003));
     this.squealAttack = 1 - Math.exp(-1 / (sampleRate * 0.14));
     this.squealRelease = 1 - Math.exp(-1 / (sampleRate * 0.08));
     this.pulseDecay = Math.exp(-1 / (sampleRate * 0.0035));
@@ -42,7 +42,6 @@ class VehicleSoundProcessor extends AudioWorkletProcessor {
         this.impact = 0;
         this.target = { rpm: 850, load: 0, boost: 0, cut: 0, limiter: 0 };
         this.state = { ...this.target };
-        this.limiterPhase = 0;
         this.turboX1 = this.turboX2 = this.turboY1 = this.turboY2 = 0;
         for (const tire of this.tires) {
           tire.target = { level: 0, speed: 0, load: 0 };
@@ -90,7 +89,7 @@ class VehicleSoundProcessor extends AudioWorkletProcessor {
     }
     for (let i = 0; i < engine.length; i++) {
       for (const key of this.parameters) {
-        state[key] += (this.target[key] - state[key]) * smoothing;
+        state[key] += (this.target[key] - state[key]) * (key === 'limiter' ? this.limiterSmoothing : smoothing);
       }
       this.random ^= this.random << 13;
       this.random ^= this.random >>> 17;
@@ -99,9 +98,8 @@ class VehicleSoundProcessor extends AudioWorkletProcessor {
       this.noiseLow += (noise - this.noiseLow) * 0.04;
       // A four-stroke V6 fires three times per revolution. Each firing excites
       // an exhaust pulse; alternating amplitudes keep it from sounding like a pure tone.
-      this.limiterPhase = (this.limiterPhase + 11 / sampleRate) % 1;
-      const limiterCut = state.limiter * (this.limiterPhase < 0.45 ? 1 : 0);
-      const audibleRpm = state.rpm - state.limiter * 350 * (1 - this.limiterPhase);
+      const limiterCut = state.limiter;
+      const audibleRpm = state.rpm;
       this.phase += audibleRpm / 60 * 3 / sampleRate;
       this.crankPhase = (this.crankPhase + audibleRpm / 120 / sampleRate) % 1;
       if (this.phase >= 1) {

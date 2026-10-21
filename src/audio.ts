@@ -1,17 +1,10 @@
 import processorUrl from './engine-worklet.js?url';
+import type { DrivetrainState } from './drivetrain';
 
-const ratios = [3.214, 1.925, 1.302, 1, 0.752];
-const finalDrive = 3.692;
 const clamp = (value: number, low = 0, high = 1) => Math.max(low, Math.min(high, value));
-const damp = (value: number, target: number, response: number, dt: number) =>
-  target + (value - target) * Math.exp(-response * dt);
 
 export interface VehicleSoundState {
-  speed: number;
-  throttle: number;
-  reversing: boolean;
-  drivenWheelSpeed: number;
-  drivenRoadSpeed: number;
+  drivetrain: Readonly<DrivetrainState>;
   tires: readonly TireSoundState[];
 }
 
@@ -27,15 +20,9 @@ export class VehicleAudio {
   private master?: GainNode;
   private starting?: Promise<void>;
   private muted = false;
-  private gear = 0;
-  private rpm = 850;
-  private boost = 0;
   private previousThrottle = 0;
-  private shiftTime = 0;
-  private shiftCooldown = 0;
-  private wasReversing = false;
+  private previousGear = 1;
   private failed = false;
-  private wheelspin = 0;
 
   constructor(private readonly button: HTMLButtonElement, private readonly reportError: (error: unknown) => void) {
     button.addEventListener('click', () => {
@@ -139,64 +126,26 @@ export class VehicleAudio {
   }
 
   reset() {
-    this.gear = 0;
-    this.rpm = 850;
-    this.boost = this.previousThrottle = this.shiftTime = this.shiftCooldown = 0;
-    this.wasReversing = false;
-    this.wheelspin = 0;
+    this.previousThrottle = 0;
+    this.previousGear = 1;
     this.node?.port.postMessage({ reset: true });
   }
 
-  update(dt: number, state: VehicleSoundState, audible: boolean) {
+  update(state: VehicleSoundState, audible: boolean) {
     this.setAudible(audible);
-    this.shiftCooldown = Math.max(0, this.shiftCooldown - dt);
-    this.shiftTime = Math.max(0, this.shiftTime - dt);
-    if (state.reversing !== this.wasReversing) {
-      this.gear = 0;
-      this.shiftCooldown = 0.6;
-      this.wasReversing = state.reversing;
-    }
-    const wheelRpm = Math.abs(state.speed) / (2 * Math.PI * 0.336) * 60;
-    const excessSpeed = Math.max(0, Math.abs(state.drivenWheelSpeed) * 0.336 - Math.abs(state.drivenRoadSpeed));
-    const driveSlip = excessSpeed / Math.max(Math.abs(state.drivenRoadSpeed), 4);
-    const spinTarget = clamp((driveSlip - 0.06) / 0.16) * clamp(excessSpeed / 2);
-    this.wheelspin = damp(this.wheelspin, spinTarget, spinTarget > this.wheelspin ? 8 : 5, dt);
-    const roadRpm = wheelRpm * ratios[this.gear] * finalDrive;
-    let shifted = false;
-    if (!state.reversing && this.shiftCooldown === 0 && this.wheelspin < 0.25) {
-      if (roadRpm > 4800 + state.throttle * 1500 && this.gear < ratios.length - 1) {
-        this.gear++;
-        shifted = true;
-      } else if (roadRpm < 2300 && this.gear > 0) {
-        this.gear--;
-        shifted = true;
-      }
-      if (shifted) {
-        this.shiftTime = 0.18;
-        this.shiftCooldown = 0.65;
-      }
-    }
-    const ratio = state.reversing ? 3.369 : ratios[this.gear];
-    const spinningRpm = Math.abs(state.drivenWheelSpeed) * 60 / (2 * Math.PI) * ratio * finalDrive;
-    const roadCoupledRpm = wheelRpm * ratio * finalDrive;
-    const coupledRpm = Math.max(roadCoupledRpm, spinningRpm);
-    const spinRevs = 850 + state.throttle * this.wheelspin * 6750;
-    const targetRpm = clamp(Math.max(850 + state.throttle * 1800, coupledRpm, spinRevs), 850, 7200);
-    this.rpm = damp(this.rpm, targetRpm, this.shiftTime > 0 ? 18 : 9, dt);
-    const load = state.throttle * (this.shiftTime > 0 ? 0.2 : 1);
-    const boostTarget = load * clamp((this.rpm - 1800) / 3000);
-    const release = this.previousThrottle - state.throttle > 0.15 || shifted;
-    const blow = release && this.boost > 0.12 ? this.boost : 0;
-    this.boost = damp(this.boost, boostTarget, boostTarget > this.boost ? 2 : 10, dt);
-    this.previousThrottle = state.throttle;
+    const engine = state.drivetrain;
+    const release = this.previousThrottle - engine.throttle > 0.15 || this.previousGear !== engine.gear;
+    const blow = release && engine.boost > 0.12 ? engine.boost : 0;
+    this.previousThrottle = engine.throttle;
+    this.previousGear = engine.gear;
     this.node?.port.postMessage({
-      rpm: this.rpm, load, boost: this.boost, blow,
+      rpm: engine.rpm, load: engine.load, boost: engine.boost, blow,
       tires: state.tires.map((tire) => ({
         level: Math.pow(clamp(tire.slip), 1.6),
         speed: clamp(tire.speed, 0, 50), load: clamp(tire.load, 0, 2),
       })),
-      cut: this.shiftTime > 0 ? 1 : 0,
-      limiter: this.rpm > 6950 && state.throttle > 0.5 ? 1 : 0,
+      cut: engine.shifting ? 1 : 0,
+      limiter: engine.limiterCut ? 1 : 0,
     });
   }
 }

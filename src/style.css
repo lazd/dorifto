@@ -26,6 +26,7 @@ h1 span { display: block; margin-top: 5px; font-size: 12px; font-weight: 400; le
 #speed { font-size: 52px; font-weight: 500; line-height: 1; font-variant-numeric: tabular-nums; }
 .telemetry span { font-size: 10px; letter-spacing: .12em; color: #9ee8d5; }
 #state { display: block; margin-top: 12px; }
+#engine-state { display: block; margin-top: 8px; font-variant-numeric: tabular-nums; }
 footer { left: 0; right: 0; bottom: 0; padding: 20px 32px 12px; background: linear-gradient(transparent, #10191fe8); }
 .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 22px; font-size: 12px; color: #d2dedc; }
 .controls > span { white-space: nowrap; }

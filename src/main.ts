@@ -9,6 +9,7 @@ import { courses, courseRoute, courseSpawn, generateCourse } from './courses';
 import { driveModes, isDriveMode } from './drive-modes';
 import { LapTimer, formatLapTime } from './laps';
 import { VehicleAudio } from './audio';
+import { Drivetrain, wheelInertia, type DrivetrainInput } from './drivetrain';
 import './style.css';
 
 function element<T extends HTMLElement>(selector: string): T {
@@ -19,6 +20,7 @@ function element<T extends HTMLElement>(selector: string): T {
 
 const status = element('#status');
 const speedDisplay = element('#speed');
+const engineDisplay = element('#engine-state');
 const stateDisplay = element('#state');
 
 const daylight = {
@@ -332,7 +334,7 @@ async function start() {
     console.error('Vehicle audio unavailable:', error);
     soundButton.title = `Audio unavailable: ${error instanceof Error ? error.message : String(error)}. Reload to retry.`;
   });
-  const tireSounds = Array.from({ length: 4 }, () => ({ slip: 0, speed: 0, load: 0, roadSpeed: 0 }));
+  const tireSounds = Array.from({ length: 4 }, () => ({ slip: 0, speed: 0, load: 0 }));
   const coneSoundCooldowns = new Map<number, number>();
   const helpDialog = element<HTMLDialogElement>('#help-dialog');
   element('#help').addEventListener('click', () => {
@@ -365,6 +367,16 @@ async function start() {
   const up = new THREE.Vector3(0, 1, 0);
   const tireSpeeds = [0, 0, 0, 0];
   const tireAngles = [0, 0, 0, 0];
+  const drivetrain = new Drivetrain();
+  const drivetrainInput: DrivetrainInput = {
+    throttle: 0, reversing: false, wheelSpeed: 0, sliding: false, handbrake: false,
+    traction: 1, speedLimited: false, peakTorque: 0, peakPower: 0,
+  };
+  const tireContacts = Array.from({ length: 4 }, () => ({
+    forward: new THREE.Vector3(), lateral: new THREE.Vector3(), offset: new THREE.Vector3(),
+    along: 0, across: 0, slipAngle: 0, load: 0, capacity: 0, lateralDemand: 0,
+    brakeTorque: 0, longitudinalForce: 0, lateralForce: 0, paved: true,
+  }));
   const cameraHeight = 2.3;
   const fixedStep = 1 / 120;
   const velocity = new THREE.Vector3();
@@ -494,7 +506,8 @@ async function start() {
   function reset() {
     controls.clear();
     audio.reset();
-    for (const tire of tireSounds) tire.slip = tire.speed = tire.load = tire.roadSpeed = 0;
+    drivetrain.reset();
+    for (const tire of tireSounds) tire.slip = tire.speed = tire.load = 0;
     coneSoundCooldowns.clear();
     spawnBrakeHeld = true;
     car.setBraking(true);
@@ -671,7 +684,6 @@ async function start() {
       const vy = linear.y() + angular.z() * tireOffset.x - angular.x() * tireOffset.z;
       const vz = linear.z() + angular.x() * tireOffset.y - angular.y() * tireOffset.x;
       const along = vx * tireForward.x + vy * tireForward.y + vz * tireForward.z;
-      tireSounds[i].roadSpeed = along;
       const across = vx * tireLateral.x + vy * tireLateral.y + vz * tireLateral.z;
       const slipAngle = Math.atan2(across, Math.max(Math.abs(along), 2));
       const load = wheelContacts[i] ? Math.max(0, wheel.get_m_wheelsSuspensionForce()) : 0;
@@ -679,40 +691,77 @@ async function start() {
       const surfaceGrip = paved ? 1 : 0.65;
       const capacity = load * (tune.friction * (rear ? 1 : tune.frontGrip) + staticGrip) * surfaceGrip;
       const lateralDemand = -(rear ? tune.rearStiffness : tune.frontStiffness) * slipAngle * surfaceGrip;
-      const engineBraking = rear
-        ? 500 * (1 - THREE.MathUtils.smoothstep(throttle, 0, 0.25))
-          * THREE.MathUtils.smoothstep(Math.abs(along), 0.5, 3) : 0;
       const brakeTorque = rear && handbrake ? 4500
-        : Math.max(engineBraking, brakeAmount * (rear ? brakestand ? 650 : 1300 : 1900));
-      let longitudinalForce = 0;
-      let lateralForce = 0;
-      // Substep wheel inertia so tire slip remains stable at low road speeds.
-      const tireStep = fixedStep / 12;
-      for (let j = 0; j < 12; j++) {
-        const driveDirection = reversing ? -1 : 1;
-        const driveSlip = (tireSpeeds[i] * car.radii[i] - along) * driveDirection / Math.max(Math.abs(along), 4);
-        const traction = tune.tractionControl && !brakestand && !handbrake
-          ? 1 - THREE.MathUtils.smoothstep(driveSlip, 0.06, 0.16) : 1;
-        const engineTorque = rear && speed < (reversing ? 35 : 240)
-          ? throttle * driveDirection * traction
-            * Math.min(tune.wheelTorque, tune.wheelPower / Math.max(Math.abs(tireSpeeds[i]), 1)) : 0;
+        : brakeAmount * (rear ? brakestand ? 0 : 1300 : 1900);
+      const tire = tireContacts[i];
+      tire.forward.copy(tireForward);
+      tire.lateral.copy(tireLateral);
+      tire.offset.copy(tireOffset);
+      Object.assign(tire, {
+        along, across, slipAngle, load, capacity, lateralDemand, brakeTorque, paved,
+        longitudinalForce: 0, lateralForce: 0,
+      });
+    }
+    drivetrainInput.throttle = throttle;
+    drivetrainInput.reversing = reversing;
+    drivetrainInput.handbrake = handbrake;
+    drivetrainInput.speedLimited = speed >= (reversing ? 35 : 240);
+    drivetrainInput.peakTorque = tune.engineTorque;
+    drivetrainInput.peakPower = tune.enginePower;
+    // Integrate the engine and both driven wheels together, so each wheel sees
+    // the same differential snapshot and tire reaction reaches the crankshaft.
+    const tireStep = fixedStep / 12;
+    for (let j = 0; j < 12; j++) {
+      let driveSlip = 0;
+      let excessSpeed = 0;
+      let cornerSlip = 0;
+      for (let i = 2; i < 4; i++) {
+        const tire = tireContacts[i];
+        const excess = (tireSpeeds[i] * car.radii[i] - tire.along) * (reversing ? -1 : 1);
+        driveSlip = Math.max(driveSlip, excess / Math.max(Math.abs(tire.along), 4));
+        excessSpeed = Math.max(excessSpeed, excess);
+        if (wheelContacts[i]) cornerSlip = Math.max(cornerSlip, Math.abs(tire.slipAngle));
+      }
+      drivetrainInput.wheelSpeed = (tireSpeeds[2] + tireSpeeds[3]) / 2;
+      drivetrainInput.sliding = (driveSlip > 0.12 && excessSpeed > 1.5)
+        || (cornerSlip > 0.16 && speed > 15);
+      drivetrainInput.traction = tune.tractionControl && !brakestand && !handbrake
+        ? 1 - THREE.MathUtils.smoothstep(driveSlip, 0.06, 0.16) : 1;
+      const engineTorque = drivetrain.step(tireStep, drivetrainInput);
+      const differential = THREE.MathUtils.clamp((tireSpeeds[3] - tireSpeeds[2]) * 8, -250, 250);
+      for (let i = 0; i < 4; i++) {
+        const rear = i >= 2;
+        const tire = tireContacts[i];
+        const { along, capacity, lateralDemand, brakeTorque } = tire;
         const slipRatio = (tireSpeeds[i] * car.radii[i] - along) / Math.max(Math.abs(along), braking ? 0.5 : 4);
         // Bound pure lateral demand before combining slips: a large drift angle
         // must not consume an unbounded share of the tire's drive-force budget.
         const driveDemand = capacity * slipRatio * 8;
         const lateral = capacity * Math.tanh(lateralDemand / Math.max(capacity, 1));
         const combined = Math.hypot(driveDemand, lateral);
-        const scale = combined > capacity ? capacity / combined : 1;
+        // Sliding rubber has less grip than the peak, allowing genuine
+        // wheelspin instead of holding maximum traction at unlimited slip.
+        const combinedSlip = Math.hypot(slipRatio / 0.12, tire.slipAngle / 0.16);
+        const minimumGrip = rear ? tune.rearSlidingGrip : 0.78;
+        const slidingGrip = 1 - (1 - minimumGrip) * THREE.MathUtils.smoothstep(combinedSlip, 1, 4);
+        const scale = (combined > capacity ? capacity / combined : 1) * slidingGrip;
         const fx = driveDemand * scale;
         const fy = lateral * scale;
-        const differential = rear ? THREE.MathUtils.clamp((tireSpeeds[i === 2 ? 3 : 2] - tireSpeeds[i]) * 8, -250, 250) : 0;
-        const torque = engineTorque + differential - fx * car.radii[i];
-        const nextSpeed = tireSpeeds[i] + torque / 2 * tireStep;
-        tireSpeeds[i] = Math.sign(nextSpeed) * Math.max(0, Math.abs(nextSpeed) - brakeTorque / 2 * tireStep);
+        const torque = (rear ? engineTorque + (i === 2 ? differential : -differential) : 0) - fx * car.radii[i];
+        const nextSpeed = tireSpeeds[i] + torque / wheelInertia * tireStep;
+        tireSpeeds[i] = Math.sign(nextSpeed) * Math.max(0, Math.abs(nextSpeed) - brakeTorque / wheelInertia * tireStep);
         tireAngles[i] += tireSpeeds[i] * tireStep;
-        longitudinalForce += fx / 12;
-        lateralForce += fy / 12;
+        tire.longitudinalForce += fx / 12;
+        tire.lateralForce += fy / 12;
       }
+    }
+    for (let i = 0; i < 4; i++) {
+      const rear = i >= 2;
+      const tire = tireContacts[i];
+      const { along, across, slipAngle, load, paved, longitudinalForce, lateralForce } = tire;
+      tireForward.copy(tire.forward);
+      tireLateral.copy(tire.lateral);
+      tireOffset.copy(tire.offset);
       if (wheelContacts[i]) {
         const excessSpeed = Math.abs(tireSpeeds[i] * car.radii[i] - along);
         const slipRatio = excessSpeed / Math.max(Math.abs(along), 4);
@@ -806,12 +855,12 @@ async function start() {
     }
     velocity.lerpVectors(previousVelocity, currentVelocity, alpha);
     const speed = velocity.length();
-    audio.update(dt, {
-      speed, throttle: reversing ? controls.reverse : controls.throttle, reversing,
-      drivenWheelSpeed: (Math.abs(tireSpeeds[2]) + Math.abs(tireSpeeds[3])) / 2,
-      drivenRoadSpeed: (Math.abs(tireSounds[2].roadSpeed) + Math.abs(tireSounds[3].roadSpeed)) / 2,
+    audio.update({
+      drivetrain: drivetrain.state,
       tires: tireSounds,
     }, document.hasFocus() && !document.hidden && !helpDialog.open);
+    const engine = drivetrain.state;
+    engineDisplay.textContent = `${engine.gear < 0 ? 'R' : engine.gear} / ${Math.round(engine.rpm / 50) * 50} RPM${engine.limiterCut ? ' / LIMIT' : ''}`;
     forward.set(0, 0, 1).applyQuaternion(car.chassis.quaternion);
     forward.y = 0;
     forward.normalize();

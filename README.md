@@ -80,9 +80,13 @@ A simplified combined-slip tire model handles road forces at each wheel's
 contact point. Tire forces depend on suspension
 load, lateral slip angle, and wheelspin, sharing a finite friction budget. Wheel
 inertia, rear drive torque, a limited-slip differential, and brake torque determine
-traction continuously. Lifting off adds up to 500 Nm of engine braking per rear wheel
-in both modes. It fades out by 25% throttle and near walking speed, slowing the
-car decisively without changing full-throttle power or locking the wheels at rest.
+traction continuously. Engine inertia, combustion torque, turbo spool, an automatic
+clutch and five forward gears (plus reverse) now run in the same 1,440 Hz
+integration as the wheels. Clutch torque loads the crankshaft and applies equal
+geared drive torque to both rear wheels; tire resistance feeds back to engine RPM.
+Lifting off produces engine braking through the engaged clutch and current gear.
+The clutch slips for launch, releases near idle to avoid stalling, opens during
+shifts, and disengages with the handbrake so locked rear wheels cannot stall the engine.
 Engine braking uses the same tire traction budget as cornering and road braking.
 There is no drift latch, target angle, yaw assist, or extra
 forward force. Counter-steer and modulate Z to balance a slide; lift off to let
@@ -91,21 +95,30 @@ Drift's front steering lock ranges from 54 degrees at low speed to 46 degrees at
 speed, retaining enough range to counter-steer into a slide. Direction changes
 respond faster than initial turn-in. Unwind the steering as rotation stops to
 avoid snapping into an opposite slide.
-Drift tuning uses up to 2000 Nm of drive torque per rear wheel, limited to
-110 kW per wheel (220 kW total), with a 1.45 rear tire friction coefficient and
+Drift tuning uses a 560 Nm / 360 kW engine torque/power envelope with 90% forward
+driveline efficiency (a 324 kW wheel-power ceiling), a 1.45 rear tire friction coefficient and
 44,000 N/rad rear cornering stiffness. Stronger front cornering response and
 greater front grip bias turn-in toward rotation rather than front-end washout;
-throttle can break rear traction without requiring the handbrake. Torque
-falls as wheel speed rises so launch wheelspin settles as the car accelerates.
+throttle can break rear traction without requiring the handbrake. Wheel torque
+depends on engine RPM, boost, gear ratio and clutch engagement, not a separate
+wheel-speed power approximation.
 Smoke and burnout marks require substantial slip, not the small tire slip
 needed for ordinary acceleration.
 Longitudinal and lateral slip demands saturate together, so spinning the rear
 tires reduces their cornering grip. Pure lateral demand is smoothly bounded
 before the combined friction-circle limit, so extreme drift angles do not
 crowd out drive force. Throttle redirects the available rear traction toward
-propulsion rather than applying a scripted shove. Drift's front stiffness is
+propulsion rather than applying a scripted shove. Combined slip beyond the grip
+peak progressively reduces rear friction to 65% of peak in Drift, versus 78%
+in Grip; front tires retain the 78% sliding floor in both modes. This represents
+sliding rubber instead of holding peak traction at unlimited wheelspin. Drift's
+torque reserve can overcome rear sliding resistance even while the car is moving
+backward, spinning the tires forward before the chassis changes direction.
+During a brakestand, the foot brake holds the front wheels while releasing the
+rear brakes, allowing the driven tires to spin.
+Drift's front stiffness is
 52,000 N/rad with a 30% front grip allowance (1.885 effective friction coefficient)
-for stronger turn-in; Grip is unchanged.
+for stronger turn-in; Grip retains its previous front/rear tire tuning.
 Hold Z and either steering arrow from a stop
 for donuts; release throttle and unwind/counter-steer to recover traction.
 The red Z32 has black wheels, no front license plate (the rear plate is retained),
@@ -184,8 +197,8 @@ stays more closely aligned with the car's heading and responds faster through
 turns, while retaining smooth interpolation and the controller camera controls.
 Grip recenters quickly after releasing the camera stick or look-behind, with
 faster heading/position response; Drift retains its slower camera return.
-Grip uses 26-to-11-degree steering lock, 1900 Nm / 115 kW per driven wheel,
-higher tire friction and rear cornering stiffness, and slip-based traction
+Grip uses 26-to-11-degree steering lock, a 400 Nm / 255 kW engine envelope,
+a 1.5 tire friction coefficient, 52,000 N/rad rear stiffness, and slip-based traction
 control to preserve cornering grip under throttle. Traction control reduces
 engine torque, not steering or yaw; it is bypassed for intentional brakestands
 and handbrake use. Both modes support keyboard, analog gamepad, and reverse.
@@ -311,19 +324,21 @@ browser audio; controller-only players must click Enable sound once. The Sound
 button mutes/unmutes. Audio fades out on blur, hidden tabs, and while Help is open.
 
 The four-stroke V6 voice combines combustion pulses, exhaust harmonics, and noise.
-A speed-driven five-speed automatic sound model uses gear ratios, shift hysteresis,
-an RPM drop/load cut on upshifts, and downshifts while slowing. Engine RPM follows
-the greater of road-coupled and driven-wheel RPM, without attenuating the
-wheel-speed contribution. Rear overspeed starts a throttle-driven rev flare at
-6% slip and reaches full strength at 22%, gated by 2 m/s of excess tread speed
-to avoid flaring on tiny low-speed differences. Sustained wheelspin holds the gear.
-Full-throttle burnouts and powered slides with sufficient wheelspin reach
-a pulsed 11 Hz fuel-cut limiter with a small RPM bounce; recovering grip smoothly
-restores speed/gear coupling. A lateral slide alone does not trigger the limiter.
+It reads RPM, combustion load, boost, gear shifts and limiter cuts directly from
+the physical drivetrain; there is no independent audio gearbox or synthetic
+slip-to-RPM target. The automatic shifts up under rolling traction, holds the gear
+during slides and for 0.6 seconds after slip settles, and can downshift under
+throttle to avoid bogging when the next lower gear is safe. When the wheels roll
+against the selected drive direction, throttle requests lower gears rather than
+leaving the engine slipping the clutch in a tall gear.
+Fuel is cut at 7,200 RPM and restored below 6,850 RPM, changing both delivered
+torque and sound. Burnouts and powered slides can bounce off this physical limiter
+when engine torque overcomes sliding-tire resistance; merely sliding sideways
+does not force maximum RPM. Grip recovery loads the engine through the clutch,
+bringing wheel speed and revs back toward rolling speed.
 The engine mixes deep two-bank/cycle components, saturated exhaust pulses and
 low-frequency body rather than emphasizing a thin high-frequency buzz.
-This is an audio drivetrain only:
-gearing does not alter existing physics or power delivery.
+The driving HUD shows the same gear, RPM and limiter state used by the sound.
 Turbo boost spools with throttle/RPM, with a breathy 3.2-4.6 kHz whistle made
 from narrow-band airflow noise and a lightly wavering tone rather than a dominant
 lower-pitched whine. It vents a short noise burst when lifting off or shifting
@@ -342,7 +357,7 @@ Influences on the vibration frequencies of tyre tread blocks](https://past.isma-
 Its quiet mix, progressive slip-volume curve, and 140 ms onset ease it in gently;
 an 80 ms release lets it fade promptly as traction returns.
 Car/cone contact impulses produce debounced hollow thuds, with harder hits louder.
-Reset clears the audio drivetrain and transients.
+Reset clears the physical drivetrain, wheel state and audio transients together.
 All voices share a conservative master level and dynamics compressor. Procedural
 voices approximate a turbocharged car rather than reproduce a recorded Z32.
 
