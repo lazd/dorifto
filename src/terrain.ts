@@ -18,9 +18,11 @@ export class CourseTerrain {
   private readonly segments;
   private readonly buckets = new Map<string, number[]>();
   private readonly halfWidth: number;
+  private readonly padRadius?: number;
 
   constructor(definition: CourseDefinition) {
     this.halfWidth = definition.width / 2 + 0.8;
+    this.padRadius = definition.padRadius;
     const route = courseRoute(definition);
     const length = route.getLength();
     const count = Math.ceil(length);
@@ -34,6 +36,10 @@ export class CourseTerrain {
       return { a, b, bank: -THREE.MathUtils.clamp(bend / 10 * 2.5, -0.065, 0.065) };
     });
     const bounds = new THREE.Box3().setFromPoints(this.segments.map((segment) => segment.a));
+    if (this.padRadius !== undefined) {
+      bounds.expandByPoint(new THREE.Vector3(-this.padRadius, 0, -this.padRadius));
+      bounds.expandByPoint(new THREE.Vector3(this.padRadius, 0, this.padRadius));
+    }
     this.minX = Math.floor((bounds.min.x - 200) / this.spacing) * this.spacing;
     this.minZ = Math.floor((bounds.min.z - 200) / this.spacing) * this.spacing;
     this.columns = Math.ceil((bounds.max.x + 200 - this.minX) / this.spacing) + 1;
@@ -66,7 +72,7 @@ export class CourseTerrain {
         // Elevation follows the centerline, not the hillside's cross-slope:
         // positive turns lower the inside (+across) and raise the outside.
         const road = this.baseHeight(near.x, near.z) + near.bank * near.across;
-        const height = THREE.MathUtils.lerp(road, base + hills, blend);
+        const height = definition.flat ? 0 : THREE.MathUtils.lerp(road, base + hills, blend);
         const i = z * this.columns + x;
         this.heights[i] = height;
         min = Math.min(min, height);
@@ -77,8 +83,9 @@ export class CourseTerrain {
         colors.push(shade, shade * 0.98, shade * 0.91);
       }
     }
-    this.minHeight = min;
-    this.maxHeight = max;
+    // Bullet needs a nonzero vertical range even for an entirely flat heightfield.
+    this.minHeight = min === max ? min - 0.01 : min;
+    this.maxHeight = min === max ? max + 0.01 : max;
     const indices: number[] = [];
     for (let z = 0; z < this.rows - 1; z++) {
       for (let x = 0; x < this.columns - 1; x++) {
@@ -159,6 +166,7 @@ export class CourseTerrain {
   }
 
   isAsphalt(position: THREE.Vector3) {
+    if (this.padRadius !== undefined) return Math.hypot(position.x, position.z) <= this.padRadius;
     return this.nearest(position.x, position.z).distance <= this.halfWidth;
   }
 

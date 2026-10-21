@@ -26,6 +26,14 @@
       <span id="engine-state">1 / 850 RPM</span>
       <span id="state">READY</span>
     </aside>
+    <details id="drift-tuning">
+      <summary>Drift tuning</summary>
+      <p>Changes apply immediately in Drift mode. Counter-steering assist helps catch slides. Try raising rear peak grip and rear sliding grip if the rear steps out too quickly.</p>
+      <p id="drift-tuning-mode" role="status"></p>
+      <fieldset id="drift-tuning-sliders"><legend>Steering, tire grip and response</legend></fieldset>
+      <button id="drift-tuning-reset" type="button"><kbd>Restore defaults</kbd></button>
+      <p>Front/rear peak factors multiply the 1.45 base friction independently. Car reset keeps your tuning; reloading restores defaults.</p>
+    </details>
     <footer>
       <div class="controls">
         <label>Course <select id="course" aria-label="Course (restarts demo)"></select></label>

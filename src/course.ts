@@ -82,7 +82,21 @@ export function createCourse(scene: THREE.Scene, definition: CourseDefinition) {
   asphalt.polygonOffset = true;
   asphalt.polygonOffsetFactor = 1;
   asphalt.polygonOffsetUnits = 1;
-  ribbon(0, definition.width + 1.6, 0.008, asphalt);
+  if (definition.padRadius !== undefined) {
+    const geometry = new THREE.CircleGeometry(definition.padRadius, 256);
+    geometry.rotateX(-Math.PI / 2);
+    const positions = geometry.getAttribute('position');
+    const uv = geometry.getAttribute('uv');
+    for (let i = 0; i < positions.count; i++) {
+      uv.setXY(i, positions.getX(i) / 5, positions.getZ(i) / 5);
+    }
+    const projected = definition.flat ? geometry.translate(0, 0.008, 0) : terrain.projectGeometry(geometry, 0.008);
+    if (projected !== geometry) geometry.dispose();
+    const pad = new THREE.Mesh(projected, asphalt);
+    pad.name = 'skidpad-asphalt';
+    pad.receiveShadow = true;
+    scene.add(pad);
+  } else ribbon(0, definition.width + 1.6, 0.008, asphalt);
   for (const side of [-1, 1]) ribbon(side * definition.width / 2, 0.16, 0.016, white);
   const columns = Math.ceil(definition.width / 0.5);
   const tileWidth = definition.width / columns;
@@ -139,6 +153,7 @@ export function createCourse(scene: THREE.Scene, definition: CourseDefinition) {
   const curbWhite = new THREE.MeshStandardMaterial({ color: 0xe6e3d7, roughness: 0.85, side: THREE.DoubleSide });
   const curbPositions: number[][] = [[], []];
   for (let distance = 0; distance < length; distance += 2) {
+    if (definition.padRadius !== undefined) break;
     const t = (distance + 1) / length;
     const before = route.getTangentAt(THREE.MathUtils.euclideanModulo(t - 4 / length, 1));
     const after = route.getTangentAt((t + 4 / length) % 1);

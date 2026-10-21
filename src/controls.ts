@@ -32,7 +32,7 @@ export class DrivingControls {
     this.resetRequested = false;
   }
 
-  poll(enabled = true) {
+  poll(enabled = true, steeringExpo = 0) {
     const available = typeof navigator.getGamepads === 'function';
     const pads = available ? Array.from(navigator.getGamepads()) : [];
     const pad = pads.find((pad) => pad?.connected && pad.mapping === 'standard');
@@ -57,7 +57,8 @@ export class DrivingControls {
       return Math.max(0, (value - 0.03) / 0.97);
     };
     const keyboardSteer = Number(this.keys.has('ArrowLeft')) - Number(this.keys.has('ArrowRight'));
-    this.steer = keyboardSteer || -axis(0);
+    const stick = -axis(0);
+    this.steer = keyboardSteer || stick * (1 - steeringExpo) + stick ** 3 * steeringExpo;
     this.throttle = Math.max(Number(this.keys.has('KeyZ')), trigger(7));
     this.brake = Math.max(Number(this.keys.has('KeyX')), trigger(6));
     this.reverse = this.brake;

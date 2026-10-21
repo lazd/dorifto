@@ -91,13 +91,13 @@ Engine braking uses the same tire traction budget as cornering and road braking.
 There is no drift latch, target angle, yaw assist, or extra
 forward force. Counter-steer and modulate Z to balance a slide; lift off to let
 wheelspin settle and regain lateral grip. Steering can transfer the slide either way.
-Drift's front steering lock ranges from 54 degrees at low speed to 46 degrees at high
+Drift's default front steering lock ranges from 64 degrees at low speed to 59 degrees at high
 speed, retaining enough range to counter-steer into a slide. Direction changes
 respond faster than initial turn-in. Unwind the steering as rotation stops to
 avoid snapping into an opposite slide.
 Drift tuning uses a 560 Nm / 360 kW engine torque/power envelope with 90% forward
 driveline efficiency (a 324 kW wheel-power ceiling), a 1.45 rear tire friction coefficient and
-44,000 N/rad rear cornering stiffness. Stronger front cornering response and
+54,000 N/rad rear cornering stiffness. Front steering response and
 greater front grip bias turn-in toward rotation rather than front-end washout;
 throttle can break rear traction without requiring the handbrake. Wheel torque
 depends on engine RPM, boost, gear ratio and clutch engagement, not a separate
@@ -109,7 +109,7 @@ tires reduces their cornering grip. Pure lateral demand is smoothly bounded
 before the combined friction-circle limit, so extreme drift angles do not
 crowd out drive force. Throttle redirects the available rear traction toward
 propulsion rather than applying a scripted shove. Combined slip beyond the grip
-peak progressively reduces rear friction to 65% of peak in Drift, versus 78%
+peak progressively reduces rear friction to 83% of peak in Drift, versus 78%
 in Grip; front tires retain the 78% sliding floor in both modes. This represents
 sliding rubber instead of holding peak traction at unlimited wheelspin. Drift's
 torque reserve can overcome rear sliding resistance even while the car is moving
@@ -117,7 +117,7 @@ backward, spinning the tires forward before the chassis changes direction.
 During a brakestand, the foot brake holds the front wheels while releasing the
 rear brakes, allowing the driven tires to spin.
 Drift's front stiffness is
-52,000 N/rad with a 30% front grip allowance (1.885 effective friction coefficient)
+52,000 N/rad with a 45% front grip allowance (2.1025 effective friction coefficient)
 for stronger turn-in; Grip retains its previous front/rear tire tuning.
 Hold Z and either steering arrow from a stop
 for donuts; release throttle and unwind/counter-steer to recover traction.
@@ -188,6 +188,44 @@ Reset clears all lap times. Reloading or changing courses also starts a new sess
 
 ## Drive modes
 
+Open **Drift tuning** at the left of the screen to adjust handling live without
+resetting the car. Sliders control steering angle (showing low/high-speed limits
+in degrees), independent front/rear peak-grip multipliers, front/rear cornering
+stiffness, and rear sliding grip retained after breakaway. Steering adjustment
+scales both speed-dependent limits together. Higher stiffness builds force sooner
+but does not raise peak traction. For a rear end that breaks loose too quickly,
+try increasing rear peak grip and rear sliding grip retained first.
+Settings affect Drift only; the sliders are disabled in Grip. **Restore defaults**
+resets all eight sliders and enables counter-steering assist. Car reset and mode changes retain tuning for the current
+page; reloading restores defaults. Focused sliders use arrow keys for adjustment,
+not steering. Controller driving remains available while the panel is open.
+
+Drift defaults to **60% controller steering expo**, blending linear and cubic
+response after the stick deadzone. This softens fine adjustments near center
+while preserving full lock at full stick; keyboard, camera axes and Grip retain
+their previous input response. **Steering rate** defaults to 126 degrees/second
+(2.2 rad/s), limiting how quickly the wheels move toward lock in addition to
+existing smoothing. Counter-steering and unwinding can move 60% faster to catch
+slides. The rate limit covers manual and assisted Drift steering, including
+keyboard input. Both controls are adjustable live in Drift tuning.
+
+**Counter-steering assist** is enabled by default and can be toggled live in
+the tuning panel. During forward slides it progressively steers toward the
+front axle's actual velocity (including rotation of the chassis), with up to
+0.22 radians of driver-controlled cornering angle. It uses the selected steering
+lock and existing steering smoothing, fades out near walking speed and small
+slip angles, and does not assist reverse/backward travel. Disabling it restores
+fully manual steering. Grip is unaffected. This is steering assistance only:
+it does not add drive force, apply yaw torque, or follow the course centerline.
+
+Throttle's forward "push" during a slide is ordinary longitudinal rear-tire force:
+engine/clutch torque accelerates the wheels, tread overspeed creates drive demand,
+and the combined-slip friction limit shares available traction with cornering.
+The force acts along the car's rear wheel direction, not necessarily along its
+current travel direction. It can drive through a counter-steered corner or shed
+backward momentum, but there is no extra forward impulse or yaw assistance.
+Raising rear grip also raises this propulsion budget while making wheelspin harder.
+
 The Drive mode selector switches handling live without resetting the course.
 Drift is the default, with full steering lock and wheelspin for power slides.
 Its front-biased grip and cornering response let the rear break loose under
@@ -242,6 +280,15 @@ The selection is saved in `?time=noon`, `?time=sunset`, or `?time=night` and
 preserved when switching courses or generating a random layout. Noon is the default.
 
 ## Courses
+
+**Flat Skidpad** is a solid asphalt disk 500 m across, with a counter-clockwise
+reference route of approximately 50 m centerline radius and 50 m marked width.
+The center and the space outside the reference circle are paved and have full
+asphalt traction; dirt begins at the disk's 250 m radius. Select it from the Course picker
+or use `?course=skidpad`. The entire terrain, including runoff, is at zero
+elevation with no banking or hills; physics and rendering use the same flat
+heightfield. Cones and edge markings provide references for sustained circles,
+donuts and live Drift tuning. Existing courses retain their hills and banking.
 
 ### Elevation and terrain
 

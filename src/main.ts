@@ -6,10 +6,11 @@ import { TireSmoke } from './smoke';
 import { DrivingControls } from './controls';
 import { createCourse } from './course';
 import { courses, courseRoute, courseSpawn, generateCourse } from './courses';
-import { driveModes, isDriveMode } from './drive-modes';
+import { driveModes, isDriveMode, assistedSteeringAngle } from './drive-modes';
 import { LapTimer, formatLapTime } from './laps';
 import { VehicleAudio } from './audio';
 import { Drivetrain, wheelInertia, type DrivetrainInput } from './drivetrain';
+import { createDriftTuning } from './drift-tuning';
 import './style.css';
 
 function element<T extends HTMLElement>(selector: string): T {
@@ -78,6 +79,14 @@ async function start() {
   const requestedMode = new URL(location.href).searchParams.get('mode') ?? 'drift';
   if (!isDriveMode(requestedMode)) throw new Error(`Unknown drive mode: ${requestedMode}`);
   let driveMode = requestedMode;
+  const tuningFieldset = element<HTMLFieldSetElement>('#drift-tuning-sliders');
+  const driftTuning = createDriftTuning(tuningFieldset, element<HTMLButtonElement>('#drift-tuning-reset'));
+  const updateTuningMode = () => {
+    tuningFieldset.disabled = driveMode !== 'drift';
+    element('#drift-tuning-mode').textContent = driveMode === 'drift'
+      ? 'Live in Drift mode' : 'Switch to Drift mode to use these settings. Grip is unchanged.';
+  };
+  updateTuningMode();
   modeSelect.value = driveMode;
   modeSelect.addEventListener('change', () => {
     const value = modeSelect.value;
@@ -86,6 +95,7 @@ async function start() {
       return;
     }
     driveMode = value;
+    updateTuningMode();
     const url = new URL(location.href);
     url.searchParams.set('mode', driveMode);
     history.replaceState(null, '', url);
@@ -329,6 +339,7 @@ async function start() {
   Ammo.destroy(axle);
 
   const controls = new DrivingControls(element('#controller-status'));
+  element('#drift-tuning').addEventListener('focusin', () => controls.clear());
   const soundButton = element<HTMLButtonElement>('#sound');
   const audio = new VehicleAudio(soundButton, (error) => {
     console.error('Vehicle audio unavailable:', error);
@@ -571,7 +582,7 @@ async function start() {
 
   window.addEventListener('keydown', (event) => {
     if (helpDialog.open) return;
-    if (event.target instanceof HTMLSelectElement) return;
+    if (event.target instanceof HTMLSelectElement || event.target instanceof HTMLInputElement) return;
     if (!controlKeys.has(event.code)) return;
     if (event.target instanceof HTMLButtonElement && event.code === 'Space') return;
     event.preventDefault();
@@ -580,6 +591,10 @@ async function start() {
     } else keys.add(event.code);
   });
   window.addEventListener('keyup', (event) => {
+    if (event.target instanceof HTMLInputElement) {
+      keys.delete(event.code);
+      return;
+    }
     if (event.target instanceof HTMLSelectElement) return;
     if (controlKeys.has(event.code)) {
       event.preventDefault();
@@ -614,6 +629,7 @@ async function start() {
 
   function step() {
     const tune = driveModes[driveMode];
+    const tireTune = driveMode === 'drift' ? driftTuning : tune;
     const linear = body.getLinearVelocity();
     const angular = body.getAngularVelocity();
     const speed = Math.hypot(linear.x(), linear.z()) * 3.6;
@@ -625,9 +641,26 @@ async function start() {
     if (spawnBrakeHeld || controls.throttle > 0 || controls.reverse === 0) reversing = false;
     else if (Math.abs(forwardSpeed) < 0.5 && Math.abs(angular.y()) < 0.5 && speed < 4) reversing = true;
     const input = controls.steer;
-    const steeringLimit = THREE.MathUtils.lerp(tune.steeringLow, tune.steeringHigh, Math.min(speed / 140, 1));
-    const counterSteering = input !== 0 && Math.sign(input) !== Math.sign(steering);
-    steering = THREE.MathUtils.damp(steering, input * steeringLimit, counterSteering ? 16 : 10, fixedStep);
+    const steeringLimit = THREE.MathUtils.lerp(tune.steeringLow, tune.steeringHigh, Math.min(speed / 140, 1))
+      * (driveMode === 'drift' ? driftTuning.steeringScale : 1);
+    let targetSteering = input * steeringLimit;
+    if (driveMode === 'drift' && driftTuning.steeringAssist && !reversing) {
+      tireOffset.copy(car.centers[0]).add(car.centers[1]).multiplyScalar(0.5).applyQuaternion(physicsRotation);
+      tireLateral.set(1, 0, 0).applyQuaternion(physicsRotation);
+      const vx = linear.x() + angular.y() * tireOffset.z - angular.z() * tireOffset.y;
+      const vy = linear.y() + angular.z() * tireOffset.x - angular.x() * tireOffset.z;
+      const vz = linear.z() + angular.x() * tireOffset.y - angular.y() * tireOffset.x;
+      targetSteering = assistedSteeringAngle(input, steeringLimit,
+        vx * tireForward.x + vy * tireForward.y + vz * tireForward.z,
+        vx * tireLateral.x + vy * tireLateral.y + vz * tireLateral.z);
+    }
+    const counterSteering = targetSteering !== 0 && Math.sign(targetSteering) !== Math.sign(steering);
+    const smoothedSteering = THREE.MathUtils.damp(steering, targetSteering, counterSteering ? 16 : 10, fixedStep);
+    if (driveMode === 'drift') {
+      const unwinding = Math.abs(targetSteering) < Math.abs(steering);
+      const maxChange = driftTuning.steeringRate * (counterSteering || unwinding ? 1.6 : 1) * fixedStep;
+      steering += THREE.MathUtils.clamp(smoothedSteering - steering, -maxChange, maxChange);
+    } else steering = smoothedSteering;
     const brakeAmount = spawnBrakeHeld ? 1 : reversing ? 0 : controls.brake;
     const braking = brakeAmount > 0;
     const handbrake = controls.handbrake;
@@ -689,8 +722,8 @@ async function start() {
       const load = wheelContacts[i] ? Math.max(0, wheel.get_m_wheelsSuspensionForce()) : 0;
       const staticGrip = braking && !rear ? 0.15 * brakeAmount * (1 - THREE.MathUtils.smoothstep(Math.abs(along), 0.2, 0.5)) : 0;
       const surfaceGrip = paved ? 1 : 0.65;
-      const capacity = load * (tune.friction * (rear ? 1 : tune.frontGrip) + staticGrip) * surfaceGrip;
-      const lateralDemand = -(rear ? tune.rearStiffness : tune.frontStiffness) * slipAngle * surfaceGrip;
+      const capacity = load * (tune.friction * (rear ? tireTune.rearGrip : tireTune.frontGrip) + staticGrip) * surfaceGrip;
+      const lateralDemand = -(rear ? tireTune.rearStiffness : tireTune.frontStiffness) * slipAngle * surfaceGrip;
       const brakeTorque = rear && handbrake ? 4500
         : brakeAmount * (rear ? brakestand ? 0 : 1300 : 1900);
       const tire = tireContacts[i];
@@ -742,7 +775,7 @@ async function start() {
         // Sliding rubber has less grip than the peak, allowing genuine
         // wheelspin instead of holding maximum traction at unlimited slip.
         const combinedSlip = Math.hypot(slipRatio / 0.12, tire.slipAngle / 0.16);
-        const minimumGrip = rear ? tune.rearSlidingGrip : 0.78;
+        const minimumGrip = rear ? tireTune.rearSlidingGrip : 0.78;
         const slidingGrip = 1 - (1 - minimumGrip) * THREE.MathUtils.smoothstep(combinedSlip, 1, 4);
         const scale = (combined > capacity ? capacity / combined : 1) * slidingGrip;
         const fx = driveDemand * scale;
@@ -836,7 +869,7 @@ async function start() {
 
   function frame(time: number) {
     const tune = driveModes[driveMode];
-    controls.poll(!helpDialog.open);
+    controls.poll(!helpDialog.open, driveMode === 'drift' ? driftTuning.steeringExpo : 0);
     if (controls.resetRequested) reset();
     const dt = lastTime ? Math.min((time - lastTime) / 1000, 0.05) : fixedStep;
     lastTime = time;

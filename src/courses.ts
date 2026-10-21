@@ -7,6 +7,8 @@ export interface CourseDefinition {
   name: string;
   width: number;
   coneSpacing?: number;
+  flat?: boolean;
+  padRadius?: number;
   /** Ground-plane coordinates [x, z], ordered in the driving direction. */
   points: readonly (readonly [number, number])[];
 }
@@ -156,5 +158,17 @@ export const courses: readonly CourseDefinition[] = [
       [65, 110], [90, 80], [85, 45], [60, 25],
       [65, -10], [40, -35], [10, -25],
     ],
+  },
+  {
+    id: 'skidpad',
+    name: 'Flat Skidpad',
+    width: 50,
+    coneSpacing: 12,
+    flat: true,
+    padRadius: 250,
+    points: Array.from({ length: 32 }, (_, i): [number, number] => {
+      const angle = -i / 32 * Math.PI * 2;
+      return [50 * Math.cos(angle), 50 * Math.sin(angle)];
+    }),
   },
 ];
