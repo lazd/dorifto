@@ -432,6 +432,10 @@ Noon has a blue sky and neutral daylight. Sunset uses a warm horizon, golden
 directional light, and a low sun angle for long shadows. Night uses a dark blue
 sky with soft cool ambient moonlight to reveal the car and nearby hills;
 the car's headlights remain the main illumination on the road.
+Procedural billowy clouds and thin wisps are baked into the sky texture, with
+peach-lit edges and lavender shadows at sunset, soft white daylight clouds, and
+muted blue clouds at night. The layout stays consistent across lighting changes,
+wraps seamlessly around the horizon, and adds no per-frame cloud rendering passes.
 Sky, fog, ambient illumination, reflections, and exposure change together.
 At Sunset and Night, headlights (beams and lens glow) switch on together with
 the running lights. At Noon they switch off. The two body brake lenses use a

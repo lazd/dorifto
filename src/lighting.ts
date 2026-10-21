@@ -1,28 +1,33 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import type { GameState } from './game-state';
+import { createCloudLayer } from './clouds';
 
 const daylight = {
   noon: {
     sky: '#78b5ec', horizon: '#b6d7ee', ground: '#656052',
+    cloudLight: '#fffaf0', cloudShade: '#849bb8',
     ambient: '#d9edff', ambientIntensity: 0.65, environmentIntensity: 0.65,
     sun: '#ffefd4', sunIntensity: 2.4, sunOffset: [-20, 35, -12],
     exposure: 0.95,
   },
   sunset: {
     sky: '#647ca6', horizon: '#f3b074', ground: '#654035',
+    cloudLight: '#ffd0a3', cloudShade: '#776f91',
     ambient: '#ffd3ab', ambientIntensity: 0.45, environmentIntensity: 0.28,
     sun: '#ffb45e', sunIntensity: 3.2, sunOffset: [-42, 12, -20],
     exposure: 0.95,
   },
   night: {
     sky: '#030914', horizon: '#101d35', ground: '#080b13',
+    cloudLight: '#33415c', cloudShade: '#111b30',
     ambient: '#a8bde3', ambientIntensity: 0.35, environmentIntensity: 0.08,
     sun: '#9fbfff', sunIntensity: 0.22, sunOffset: [-20, 35, -12],
     exposure: 0.85,
   },
 } satisfies Record<string, {
   sky: string; horizon: string; ground: string; ambient: string;
+  cloudLight: string; cloudShade: string;
   ambientIntensity: number; environmentIntensity: number;
   sun: string; sunIntensity: number; sunOffset: [number, number, number]; exposure: number;
 }>;
@@ -51,10 +56,16 @@ export function createLighting(scene: THREE.Scene, renderer: THREE.WebGLRenderer
   scene.add(sun, sun.target);
 
   const skyCanvas = document.createElement('canvas');
-  skyCanvas.width = 16;
-  skyCanvas.height = 256;
+  skyCanvas.width = 2048;
+  skyCanvas.height = 1024;
   const skyContext = skyCanvas.getContext('2d');
   if (!skyContext) throw new Error('Unable to create sky texture');
+  const cloudCanvas = document.createElement('canvas');
+  cloudCanvas.width = 1024;
+  cloudCanvas.height = 512;
+  const cloudContext = cloudCanvas.getContext('2d');
+  if (!cloudContext) throw new Error('Unable to create cloud texture');
+  const paintClouds = createCloudLayer(cloudCanvas.width, cloudCanvas.height);
   let sky: THREE.CanvasTexture | undefined;
   const applyTimeOfDay = (time: GameState['timeOfDay']) => {
     const preset = daylight[time];
@@ -64,6 +75,8 @@ export function createLighting(scene: THREE.Scene, renderer: THREE.WebGLRenderer
     gradient.addColorStop(1, preset.ground);
     skyContext.fillStyle = gradient;
     skyContext.fillRect(0, 0, skyCanvas.width, skyCanvas.height);
+    cloudContext.putImageData(new ImageData(paintClouds(preset), cloudCanvas.width, cloudCanvas.height), 0, 0);
+    skyContext.drawImage(cloudCanvas, 0, 0, skyCanvas.width, skyCanvas.height);
     // Replacing the texture invalidates Three's cached equirectangular conversion.
     const previousSky = sky;
     sky = new THREE.CanvasTexture(skyCanvas);
