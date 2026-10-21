@@ -36,11 +36,18 @@ function bindDialog(
   });
   const outside = (event: MouseEvent) => {
     const bounds = dialog.getBoundingClientRect();
-    return event.target === dialog && (event.clientX < bounds.left || event.clientX > bounds.right
-      || event.clientY < bounds.top || event.clientY > bounds.bottom);
+    return (
+      event.target === dialog &&
+      (event.clientX < bounds.left ||
+        event.clientX > bounds.right ||
+        event.clientY < bounds.top ||
+        event.clientY > bounds.bottom)
+    );
   };
   let pressedOutside = false;
-  dialog.addEventListener("pointerdown", (event) => { pressedOutside = outside(event); });
+  dialog.addEventListener("pointerdown", (event) => {
+    pressedOutside = outside(event);
+  });
   dialog.addEventListener("click", (event) => {
     if (pressedOutside && outside(event)) close();
     pressedOutside = false;
@@ -194,13 +201,8 @@ export function bindGameUI(store: Store<GameState>, reportError: (error: unknown
     soundStatus(
       state.sound.failed
         ? `Sound unavailable: ${state.sound.error ?? "Reload to retry."}`
-        : !state.sound.running && !state.sound.muted
-          ? "Click or press a key to start sound."
-          : "",
+        : "",
     );
-    const soundTitle =
-      state.sound.error === null ? "" : `Audio unavailable: ${state.sound.error}. Reload to retry.`;
-    if (sound.title !== soundTitle) sound.title = soundTitle;
     const name = state.driveMode === "grip" ? "Grip" : "Drift";
     modeHint(`Live in ${name} mode / base friction ${driveModes[state.driveMode].friction}`);
     if (status.hidden === state.status.visible) status.hidden = !state.status.visible;
