@@ -1,4 +1,5 @@
-const ratios = [3.214, 1.925, 1.302, 1, 0.752];
+const redlineSpeedsMph = [46, 65, 94, 137, 171, 217];
+const redlineRpm = 7200;
 const finalDrive = 3.692;
 const radiansToRpm = 60 / (2 * Math.PI);
 const idleSpeed = 850 / radiansToRpm;
@@ -14,7 +15,7 @@ export interface DrivetrainInput {
   throttle: number;
   reversing: boolean;
   wheelSpeed: number;
-  sliding: boolean;
+  roadWheelSpeed: number;
   handbrake: boolean;
   speedLimited: boolean;
   peakTorque: number;
@@ -32,6 +33,7 @@ export interface DrivetrainState {
 }
 
 export class Drivetrain {
+  private readonly ratios: readonly number[];
   readonly state: DrivetrainState = {
     rpm: 850, gear: 1, throttle: 0, load: 0, boost: 0, shifting: false, limiterCut: false,
   };
@@ -40,13 +42,22 @@ export class Drivetrain {
   private reversing = false;
   private shiftTime = 0;
   private shiftCooldown = 0;
-  private slideHold = 0;
+  private launchTime = 0;
+
+  constructor(private readonly drivenWheelRadius: number) {
+    if (!Number.isFinite(drivenWheelRadius) || drivenWheelRadius <= 0) {
+      throw new Error('Drivetrain requires a positive driven-wheel radius.');
+    }
+    this.ratios = redlineSpeedsMph.map((mph) =>
+      redlineRpm / radiansToRpm * drivenWheelRadius / (mph * 0.44704 * finalDrive));
+  }
 
   reset() {
     this.engineSpeed = idleSpeed;
     this.gearIndex = 0;
     this.reversing = false;
-    this.shiftTime = this.shiftCooldown = this.slideHold = 0;
+    this.shiftTime = this.shiftCooldown = 0;
+    this.launchTime = 0;
     Object.assign(this.state, {
       rpm: 850, gear: 1, throttle: 0, load: 0, boost: 0, shifting: false, limiterCut: false,
     });
@@ -56,9 +67,9 @@ export class Drivetrain {
   // while the equal and opposite geared torque drives the two rear wheels.
   step(dt: number, input: DrivetrainInput): number {
     const state = this.state;
+    const ratios = this.ratios;
     this.shiftTime = Math.max(0, this.shiftTime - dt);
     this.shiftCooldown = Math.max(0, this.shiftCooldown - dt);
-    this.slideHold = input.sliding || input.handbrake ? 0.6 : Math.max(0, this.slideHold - dt);
     if (input.reversing !== this.reversing) {
       this.reversing = input.reversing;
       this.gearIndex = 0;
@@ -67,15 +78,23 @@ export class Drivetrain {
     }
     const direction = this.reversing ? -1 : 1;
     const wheelSpeed = input.wheelSpeed * direction;
-    if (!this.reversing && !this.shiftCooldown) {
-      const upshiftRpm = 4800 + input.throttle * 1800;
-      const lowerGearRpm = wheelSpeed * (ratios[this.gearIndex - 1] ?? ratios[0]) * finalDrive * radiansToRpm;
-      if (!this.slideHold && state.rpm > upshiftRpm && this.gearIndex < ratios.length - 1) {
+    const launching = !this.reversing && this.gearIndex === 0
+      && input.throttle > 0.65 && !input.handbrake && input.roadWheelSpeed * this.drivenWheelRadius > 2;
+    this.launchTime = launching ? this.launchTime + dt : 0;
+    if (!this.reversing && !this.shiftCooldown && !input.handbrake) {
+      // Leave headroom for normal driven-tire slip: crank RPM reaches the
+      // limiter before rolling-road RPM does, otherwise first gear can get stuck.
+      const upshiftRpm = this.launchTime >= 1 ? 4500 : 4800 + input.throttle * 2000;
+      // Shift scheduling follows road speed, not wheelspin or free engine revs.
+      // Wheel speed still drives the physical clutch and engine RPM below.
+      const roadSpeed = Math.max(0, input.roadWheelSpeed);
+      const roadRpm = roadSpeed * ratios[this.gearIndex] * finalDrive * radiansToRpm;
+      const lowerGearRpm = roadSpeed * (ratios[this.gearIndex - 1] ?? ratios[0]) * finalDrive * radiansToRpm;
+      if (roadRpm > upshiftRpm && this.gearIndex < ratios.length - 1) {
         this.gearIndex++;
         this.shiftTime = 0.22;
-      } else if (!input.handbrake && this.gearIndex > 0
-        && (state.rpm < (input.throttle > 0.65 ? 3800 : 2300)
-          || (wheelSpeed < -1 && input.throttle > 0.25)) && lowerGearRpm < 6000) {
+      } else if (this.gearIndex > 0
+        && roadRpm < (input.throttle > 0.65 ? 2800 : 1800) && lowerGearRpm < 6000) {
         this.gearIndex--;
         this.shiftTime = 0.22;
       }
@@ -88,8 +107,9 @@ export class Drivetrain {
     const launchEngagement = Math.max(
       smoothstep(state.rpm, 2500, 4400), smoothstep(shaftRpm, 1400, 2400),
     );
-    const clutchCapacity = input.handbrake ? 0 : 560 * launchEngagement * shiftEngagement;
-    if (state.rpm >= 7200) state.limiterCut = true;
+    const clutchCapacity = input.handbrake ? 0
+      : Math.max(560, input.peakTorque * 1.25) * launchEngagement * shiftEngagement;
+    if (state.rpm >= redlineRpm) state.limiterCut = true;
     else if (state.rpm <= 6850) state.limiterCut = false;
     const firing = !state.limiterCut && this.shiftTime === 0 && !input.speedLimited;
     const load = firing ? input.throttle : 0;

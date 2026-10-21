@@ -23,7 +23,6 @@ export function defaultTuning(mode: DriveMode) {
     steeringExpo: preset.steeringExpo,
     steeringRate: preset.steeringRate,
     horsepower: Math.round(preset.enginePower / wattsPerHorsepower),
-    steeringAssist: Boolean(preset.steeringAssist),
   };
 }
 

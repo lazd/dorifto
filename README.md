@@ -99,7 +99,7 @@ contact point. Tire forces depend on suspension
 load, lateral slip angle, and wheelspin, sharing a finite friction budget. Wheel
 inertia, rear drive torque, a limited-slip differential, and brake torque determine
 traction continuously. Engine inertia, combustion torque, turbo spool, an automatic
-clutch and five forward gears (plus reverse) now run in the same 1,440 Hz
+clutch and six forward gears (plus reverse) now run in the same 1,440 Hz
 integration as the wheels. Clutch torque loads the crankshaft and applies equal
 geared drive torque to both rear wheels; tire resistance feeds back to engine RPM.
 Lifting off produces engine braking through the engaged clutch and current gear.
@@ -109,16 +109,15 @@ Engine braking uses the same tire traction budget as cornering and road braking.
 There is no drift latch, target angle, yaw assist, or extra
 forward force. Counter-steer and modulate Z to balance a slide; lift off to let
 wheelspin settle and regain lateral grip. Steering can transfer the slide either way.
-Drift's default front steering lock ranges from 64 degrees at low speed to 59 degrees at high
-speed, retaining enough range to counter-steer into a slide. Direction changes
-respond faster than initial turn-in. Unwind the steering as rotation stops to
-avoid snapping into an opposite slide.
-Drift tuning defaults to 700 hp, using an approximately 812 Nm / 522 kW engine
-torque/power envelope with 90% forward driveline efficiency (a 470 kW wheel-power
-ceiling), a 1.65 rear tire friction coefficient and
-72,000 N/rad rear cornering stiffness. Front steering response and
-greater front grip bias turn-in toward rotation rather than front-end washout;
-throttle can break rear traction without requiring the handbrake. Wheel torque
+Both modes use manual steering with symmetric steering response. Drift uses
+55-to-45-degree speed-dependent lock; Grip retains 37-to-17-degree lock.
+There is no automatic counter-steering,
+velocity-alignment remapping, or Drift-only tire-response memory.
+Drift defaults to 483 hp with a 560 Nm / 360 kW engine envelope,
+90% forward driveline efficiency, and a 1.25 tire friction coefficient.
+Grip defaults to 342 hp with 400 Nm / 255 kW and a 1.35 friction coefficient.
+Both use 45,000/48,000 N/rad front/rear cornering stiffness with no axle grip bias.
+Wheel torque
 depends on engine RPM, boost, gear ratio and clutch engagement, not a separate
 wheel-speed power approximation.
 Smoke and burnout marks require substantial slip, not the small tire slip
@@ -131,22 +130,20 @@ letting unbounded longitudinal demand crowd out virtually all lateral force.
 It is a game-oriented approximation, not a calibrated real-tire model.
 Throttle redirects the available rear traction toward
 propulsion rather than applying a scripted shove. Combined slip beyond the grip
-peak progressively reduces rear friction to 88% of peak in Drift and 95% in Grip;
-front tires retain 90%. This represents
+peak progressively reduces friction to 95% of peak at both axles in both modes.
+This represents
 sliding rubber instead of holding peak traction at unlimited wheelspin. Drift's
 torque reserve can overcome rear sliding resistance even while the car is moving
 backward, spinning the tires forward before the chassis changes direction.
 During a brakestand, the foot brake holds the front wheels while releasing the
 rear brakes, allowing the driven tires to spin.
-Drift's front stiffness is
-62,000 N/rad with a 35% front grip allowance (2.2275 effective friction coefficient)
-for stronger turn-in; Grip uses the same model with its own tire parameters.
 Hold Z and either steering arrow from a stop
 for donuts; release throttle and unwind/counter-steer to recover traction.
 The red Z32 has black wheels, no front license plate (the rear plate is retained),
 and a low chase camera. Hold Z from a stop for a
 rear-wheel burnout, with wheelspin, tire smoke, and skid marks. Grip returns as
-wheel speed matches road speed. The engine has a 240 km/h speed limiter.
+wheel speed matches road speed. Reverse is limited to 35 km/h; forward speed is
+limited by engine power, drag and the 7,200 RPM rev limiter, not a road-speed cap.
 Burnout and drift marks are flat strips matching each rear tire's model width.
 Tracks are translucent, rough, light-responsive ground geometry that blends with
 the road instead of glowing as solid-color strips at night. Each track triangle
@@ -220,57 +217,28 @@ try increasing rear peak grip and rear sliding grip retained first.
 Both modes have independent settings, including an **Engine horsepower** slider
 (100–1,000 crank hp). Horsepower scales the engine's power ceiling and torque curve
 together, retaining each mode's engine characteristics. Defaults are approximately
-342 hp for Grip and 700 hp for Drift; driveline losses still apply.
-**Restore defaults** resets all nine sliders and enables counter-steering assist
+342 hp for Grip and 483 hp for Drift; driveline losses still apply.
+**Restore defaults** resets all nine sliders
 for the active mode only. Car reset and mode changes retain tuning for the current
 page; reloading restores defaults. Focused sliders use arrow keys for adjustment,
 not steering. Controller driving remains available while the panel is open.
 
-Drift defaults to **65% controller steering expo**, blending linear and cubic
+Both modes default to **60% controller steering expo**, blending linear and cubic
 response after the stick deadzone. This softens fine adjustments near center
 while preserving full lock at full stick; keyboard and camera axes retain
 their previous input response. **Steering rate** defaults to 115 degrees/second
 (2 rad/s), limiting how quickly the wheels move toward lock in addition to
-existing smoothing. Drift uses the same rate limit for turn-in, counter-steering,
-and unwinding rather than accelerating the catch/release by 60%. Its steering
-smoothing response is 6/s rather than 10/s (previously 16/s on reversal).
-Grip retains its existing 60%-faster return behavior. Both modes use this expo and rate-limited steering implementation,
-including keyboard and assisted steering. Both controls are adjustable live in either mode;
-Grip defaults to 60% expo and 126 degrees/second. Drift's steering scale defaults
-to 1.01 (69.4 degrees low-speed / 63.7 degrees high-speed lock), with assist enabled.
-
-Drift's lateral tire response models a short 0.3 m relaxation length, bounded
-to an 8–40 ms response time depending on wheel-plane road speed. Normalized
-lateral demand builds/releases progressively before combined-slip saturation;
-the current contact load and friction circle still bound the actual forces.
-Contact loss, car reset, and mode changes clear tire-response memory.
-Longitudinal tire response and engine torque are not smoothed or reduced.
-Grip keeps its previous instantaneous tire response.
-
-**Counter-steering assist** is enabled by default and can be toggled live in
-the tuning panel. Drift keeps stick input as a wheel-angle request and adds
-35% of the front axle's travel angle (including chassis rotation), capped at
-0.22 radians (12.6 degrees). That correction fades linearly to zero at full stick,
-so the driver retains full manual lock and counter-steering authority.
-The correction is additive: it does not align the wheels to velocity or remap
-the stick into a front-tire slip request. It uses the selected steering
-lock and existing steering smoothing, fades out near walking speed and small
-slip angles, and does not assist reverse/backward travel. Disabling it restores
-fully manual steering in either mode.
-This is steering assistance only:
-it does not add drive force, apply yaw torque, or follow the course centerline.
-In Drift, slide-assist engagement/release has an 80 ms exponential response. Driver
-steering remains subject to the normal angle/rate limits; disabling assist
-clears its blend memory. No yaw-rate stability controller is added.
-Grip retains its velocity-alignment assist and blends it in when requested steering would exceed the
-front axle's travel angle by more than 0.12 radians (about 7 degrees), targeting
-up to 0.12 radians of driver-controlled cornering slip. This reduces excessive
-front-tire scrub at speed rather than cutting engine torque. It fades out below
-6 m/s and leaves full manual lock below 2 m/s. This scrub-protection remapping
-does not apply in Drift, where excessive manual lock can still scrub the fronts.
-The closer front/rear grip balance and higher sliding-grip retention make
-breakaway more progressive; full throttle and excessive steering can still spin
-the car. Unwind/counter-steer and reduce throttle to recover rear lateral grip.
+existing smoothing. Both modes use the same rate limit for turn-in,
+counter-steering, and unwind, with a 10/s smoothing response and a steering scale
+of 1 (55 degrees low-speed / 45 degrees high-speed lock in Drift,
+37.2 / 17.2 degrees in Grip).
+Expo and steering rate remain adjustable live; the rate limit also applies to
+keyboard steering. Steering always requests a wheel angle, never a target slip
+angle. Automatic counter-steering, front-scrub remapping, faster return steering,
+and Drift-only lateral relaxation have been removed.
+Both modes now use the same instantaneous combined-slip tire model.
+Full throttle and excessive steering can still spin or scrub the car.
+Unwind/counter-steer and reduce throttle to recover rear lateral grip.
 
 Throttle's forward "push" during a slide is ordinary longitudinal rear-tire force:
 engine/clutch torque accelerates the wheels, tread overspeed creates drive demand,
@@ -281,19 +249,18 @@ backward momentum, but there is no extra forward impulse or yaw assistance.
 Raising rear grip also raises this propulsion budget while making wheelspin harder.
 
 The Drive mode selector switches handling live without resetting the course.
-Drift is the default, with full steering lock and wheelspin for power slides.
-Its front-biased grip and cornering response let the rear break loose under
-throttle, without a scripted drift gate or yaw assistance.
+Drift is the default, with more power and slightly less tire grip for power slides.
+Neither mode has a front-biased grip preset, scripted drift gate, or yaw assistance.
 Its loose chase camera follows travel direction to show slides. Grip's camera
 stays more closely aligned with the car's heading and responds faster through
 turns, while retaining smooth interpolation and the controller camera controls.
 Grip recenters quickly after releasing the camera stick or look-behind, with
 faster heading/position response; Drift retains its slower camera return.
-Grip and Drift share the steering, assist, drivetrain, combined-slip tire and
+Grip and Drift share the steering, drivetrain, combined-slip tire and
 force-application implementation; differences are parameter presets, not separate
-handling paths. Grip uses 37-to-23-degree steering lock, a 400 Nm / 255 kW engine envelope,
-a 1.8 base friction coefficient with 1.2x grip at both axles (2.16 effective),
-62,000/68,000 N/rad front/rear stiffness. Neither mode has traction control:
+handling paths. Grip uses a 400 Nm / 255 kW engine envelope and a 1.35 base
+friction coefficient, versus Drift's 560 Nm / 360 kW and 1.25 coefficient.
+Neither mode has traction control:
 wheelspin does not cut throttle or engine torque. Grip comes from tire parameters
 and lower engine output; normal gear-shift, rev-limiter and speed-limit cuts
 still apply. Both modes support keyboard, analog gamepad, and reverse.
@@ -442,11 +409,38 @@ button mutes/unmutes. Audio fades out on blur, hidden tabs, and while Help is op
 The four-stroke V6 voice combines combustion pulses, exhaust harmonics, and noise.
 It reads RPM, combustion load, boost, gear shifts and limiter cuts directly from
 the physical drivetrain; there is no independent audio gearbox or synthetic
-slip-to-RPM target. The automatic shifts up under rolling traction, holds the gear
-during slides and for 0.6 seconds after slip settles, and can downshift under
-throttle to avoid bogging when the next lower gear is safe. When the wheels roll
-against the selected drive direction, throttle requests lower gears rather than
-leaving the engine slipping the clutch in a tall gear.
+slip-to-RPM target. Six fixed forward ratios, a 3.692 final drive and 3.369
+reverse ratio do not depend on horsepower. Forward ratios are calculated once
+from the model's average driven-wheel radius to reach 7,200 RPM at these speeds
+with a locked clutch and no wheelspin:
+
+| Gear | Redline speed |
+| --- | --- |
+| 1 | 46 mph |
+| 2 | 65 mph |
+| 3 | 94 mph |
+| 4 | 137 mph |
+| 5 | 171 mph |
+| 6 | 217 mph |
+
+These are gearing targets, not guaranteed attainable speeds at every power setting.
+Automatic shifts use chassis forward road speed converted to rolling-wheel RPM,
+not engine free-revving or driven-wheel spin. At full throttle, upshifts occur at
+the road-speed equivalent of 6,800 RPM; light-throttle shifts start at 4,800 RPM.
+This leaves headroom for normal driven-tire slip so the engine's rev limiter
+does not prevent road speed from reaching the upshift threshold. The redline
+speeds above still describe the fixed ratios at 7,200 RPM, not shift speeds.
+First gear short-shifts at a road-speed equivalent of 4,500 RPM (28.75 mph)
+after one continuous second above 2 m/s under heavy throttle. Lifting, stopping,
+reverse or handbraking clears that launch timer. This lets the car build speed
+before selecting second, rather than spending the launch on the rev limiter.
+Other gears keep their normal shift schedule. No wheelspin-based torque cut is used.
+Downshift thresholds are 2,800 RPM under heavy throttle or 1,800 RPM otherwise,
+with lower-gear safety and shift cooldown. There is no slide/after-slide gear hold;
+the handbrake temporarily suspends shifting and opens the clutch.
+Clutch capacity scales with peak engine torque so increasing horsepower does not
+overwhelm a fixed 560 Nm clutch. The clutch still slips during launch and opens
+during shifts; wheelspin can still raise engine RPM above road-speed RPM.
 Fuel is cut at 7,200 RPM and restored below 6,850 RPM, changing both delivered
 torque and sound. Burnouts and powered slides can bounce off this physical limiter
 when engine torque overcomes sliding-tire resistance; merely sliding sideways

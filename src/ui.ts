@@ -162,7 +162,7 @@ export function bindGameUI(store: Store<GameState>, reportError: (error: unknown
   const soundText = bindText("#sound");
   store.subscribe((state) => {
     const t = state.telemetry;
-    speed(String(Math.round(t.speed * 3.6)));
+    speed(String(Math.round(t.speed / 0.44704)));
     engine(
       `${t.gear < 0 ? "R" : t.gear} / ${Math.round(t.rpm / 50) * 50} RPM${t.limiter ? "🔴" : ""}`,
     );

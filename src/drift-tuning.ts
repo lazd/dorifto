@@ -3,14 +3,14 @@ import { defaultTuning, type DrivingTuning, type GameState } from './game-state'
 import type { Store } from './store';
 
 const sliders: {
-  key: Exclude<keyof DrivingTuning, 'steeringAssist'>; label: string; min: number; max: number; step: number; hint: string;
+  key: keyof DrivingTuning; label: string; min: number; max: number; step: number; hint: string;
 }[] = [
   { key: 'horsepower', label: 'Engine horsepower', min: 100, max: 1000, step: 1,
     hint: 'Crank horsepower. Scales the power ceiling and torque curve together; wheel power is lower due to driveline losses.' },
   { key: 'steeringExpo', label: 'Controller steering expo', min: 0, max: 1, step: 0.05,
     hint: 'Softens the stick near center without reducing full lock. 0% is linear; 100% is cubic. Keyboard and camera sticks are unchanged.' },
   { key: 'steeringRate', label: 'Steering rate', min: 0.8, max: 6, step: 0.1,
-    hint: 'Maximum steering speed. Drift uses the same limit for turn-in, counter-steering and unwind; Grip allows 60% faster returns. Applies to keyboard, controller and assist.' },
+    hint: 'Maximum wheel-angle change per second, identical for turn-in, counter-steering and unwind in both modes.' },
   { key: 'steeringScale', label: 'Steering angle (low / high speed)', min: 0.4, max: 1.15, step: 0.01,
     hint: 'Higher allows more steering and counter-steer lock. Excessive lock can scrub the front tires.' },
   { key: 'frontGrip', label: 'Front peak grip', min: 0.7, max: 1.8, step: 0.05,
@@ -36,23 +36,6 @@ export function createDrivingTuning(fieldset: HTMLFieldSetElement, resetButton: 
     } });
   };
   const refresh: (() => void)[] = [];
-  const assistLabel = document.createElement('label');
-  assistLabel.className = 'assist-toggle';
-  const assist = document.createElement('input');
-  assist.type = 'checkbox';
-  assist.id = 'drift-steering-assist';
-  assist.checked = tuning.steeringAssist;
-  const assistTitle = document.createElement('span');
-  assistTitle.id = 'drift-steering-assist-title';
-  assistTitle.textContent = 'Counter-steering assist';
-  assist.setAttribute('aria-labelledby', assistTitle.id);
-  const assistHint = document.createElement('small');
-  assistHint.id = 'drift-steering-assist-hint';
-  assistHint.textContent = 'Drift adds a small counter-steering correction that fades as you apply lock; your stick still controls wheel angle. Grip aligns toward front-wheel travel to limit scrub. No extra force or yaw assist.';
-  assist.setAttribute('aria-describedby', assistHint.id);
-  assist.addEventListener('change', () => update({ steeringAssist: assist.checked }));
-  assistLabel.append(assist, assistTitle, assistHint);
-  fieldset.append(assistLabel);
   for (const slider of sliders) {
     const label = document.createElement('label');
     const title = document.createElement('span');
@@ -101,7 +84,6 @@ export function createDrivingTuning(fieldset: HTMLFieldSetElement, resetButton: 
     if (mode === state.driveMode && tuning === next) return;
     mode = state.driveMode;
     tuning = next;
-    assist.checked = tuning.steeringAssist;
     refresh.forEach((sync) => sync());
   });
 }
