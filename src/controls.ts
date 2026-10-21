@@ -9,10 +9,11 @@ export class DrivingControls {
   cameraY = 0;
   lookBehind = false;
   resetRequested = false;
+  controllerStatus = '';
   private resetHeld = false;
   private focused = document.hasFocus();
 
-  constructor(private readonly controllerStatus: HTMLElement) {
+  constructor() {
     window.addEventListener('blur', () => {
       this.focused = false;
       this.clear();
@@ -40,7 +41,7 @@ export class DrivingControls {
       : pads.some((pad) => pad?.connected) ? 'Controller mapping unsupported. Use a standard-mapped controller.'
       : available ? 'Controller: connect and press a button'
       : 'Gamepad API unavailable. Keyboard controls still work.';
-    if (this.controllerStatus.textContent !== message) this.controllerStatus.textContent = message;
+    this.controllerStatus = message;
     const resetPressed = Boolean(pad?.buttons[9]?.pressed);
     this.resetRequested = resetPressed && !this.resetHeld;
     this.resetHeld = resetPressed;

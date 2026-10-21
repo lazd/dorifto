@@ -4,6 +4,24 @@ A small Three.js + Ammo.js driving playground built with TypeScript and Vite.
 Ammo.js is installed through the `ammojs-typed` npm distribution; there are no
 runtime CDN dependencies.
 
+## UI and game state
+
+The dependency-free observable store in `src/store.ts` exposes `getState()`,
+`update(patch)`, and `subscribe(listener)` (returning an unsubscribe function).
+Subscribers receive an initial snapshot, then one notification per changed patch.
+Use immutable replacements for nested values rather than mutating snapshots.
+
+`src/game-state.ts` defines raw telemetry, settings, and independent drive-mode
+tuning profiles. Physics reads settings from this store; the frame loop publishes
+one telemetry batch per rendered frame, not per physics substep. Three.js and
+Ammo objects stay outside the store.
+
+`src/ui.ts` owns HUD formatting, DOM bindings, menus, and status/error rendering;
+`src/drift-tuning.ts` binds tuning inputs to profile updates. UI events update the
+store or invoke explicit actions (reset/sound). Only changed display values are
+written to the DOM. Input polling and audio report state rather than owning UI
+elements. `src/main.ts` wires these pieces together and owns rendering/physics.
+
 ## Run
 
 Use Node.js 20.19+ or 22.12+ (Node 24 recommended).
@@ -95,9 +113,10 @@ Drift's default front steering lock ranges from 64 degrees at low speed to 59 de
 speed, retaining enough range to counter-steer into a slide. Direction changes
 respond faster than initial turn-in. Unwind the steering as rotation stops to
 avoid snapping into an opposite slide.
-Drift tuning uses a 560 Nm / 360 kW engine torque/power envelope with 90% forward
-driveline efficiency (a 324 kW wheel-power ceiling), a 1.45 rear tire friction coefficient and
-54,000 N/rad rear cornering stiffness. Front steering response and
+Drift tuning defaults to 700 hp, using an approximately 812 Nm / 522 kW engine
+torque/power envelope with 90% forward driveline efficiency (a 470 kW wheel-power
+ceiling), a 1.65 rear tire friction coefficient and
+72,000 N/rad rear cornering stiffness. Front steering response and
 greater front grip bias turn-in toward rotation rather than front-end washout;
 throttle can break rear traction without requiring the handbrake. Wheel torque
 depends on engine RPM, boost, gear ratio and clutch engagement, not a separate
@@ -105,19 +124,22 @@ wheel-speed power approximation.
 Smoke and burnout marks require substantial slip, not the small tire slip
 needed for ordinary acceleration.
 Longitudinal and lateral slip demands saturate together, so spinning the rear
-tires reduces their cornering grip. Pure lateral demand is smoothly bounded
-before the combined friction-circle limit, so extreme drift angles do not
-crowd out drive force. Throttle redirects the available rear traction toward
+tires reduces their cornering grip. Both longitudinal and lateral pure-slip
+demands saturate smoothly before the combined friction-circle limit. This
+simplified tire model preserves cornering authority under wheelspin instead of
+letting unbounded longitudinal demand crowd out virtually all lateral force.
+It is a game-oriented approximation, not a calibrated real-tire model.
+Throttle redirects the available rear traction toward
 propulsion rather than applying a scripted shove. Combined slip beyond the grip
-peak progressively reduces rear friction to 83% of peak in Drift, versus 95%
-in Grip; front tires retain 78% in Drift and 90% in Grip. This represents
+peak progressively reduces rear friction to 88% of peak in Drift and 95% in Grip;
+front tires retain 90%. This represents
 sliding rubber instead of holding peak traction at unlimited wheelspin. Drift's
 torque reserve can overcome rear sliding resistance even while the car is moving
 backward, spinning the tires forward before the chassis changes direction.
 During a brakestand, the foot brake holds the front wheels while releasing the
 rear brakes, allowing the driven tires to spin.
 Drift's front stiffness is
-52,000 N/rad with a 45% front grip allowance (2.1025 effective friction coefficient)
+62,000 N/rad with a 35% front grip allowance (2.2275 effective friction coefficient)
 for stronger turn-in; Grip uses the same model with its own tire parameters.
 Hold Z and either steering arrow from a stop
 for donuts; release throttle and unwind/counter-steer to recover traction.
@@ -168,7 +190,7 @@ them sliding and tumbling. Reset restores the car and all cones to their startin
 positions and clears smoke and tire marks.
 The autocross loop starts straight ahead through a checkered line, then follows
 an opening slalom, sweeping bend, hairpin, and return section. Paired cones mark
-a twelve-meter-wide corridor, with painted arrows indicating direction. Cones
+a fifteen-meter-wide corridor, with painted arrows indicating direction. Cones
 have glossy white reflective-style bands that catch the headlights (a visual
 approximation, not a retroreflective optical simulation).
 
@@ -198,21 +220,22 @@ try increasing rear peak grip and rear sliding grip retained first.
 Both modes have independent settings, including an **Engine horsepower** slider
 (100–1,000 crank hp). Horsepower scales the engine's power ceiling and torque curve
 together, retaining each mode's engine characteristics. Defaults are approximately
-342 hp for Grip and 483 hp for Drift; driveline losses still apply.
+342 hp for Grip and 700 hp for Drift; driveline losses still apply.
 **Restore defaults** resets all nine sliders and enables counter-steering assist
 for the active mode only. Car reset and mode changes retain tuning for the current
 page; reloading restores defaults. Focused sliders use arrow keys for adjustment,
 not steering. Controller driving remains available while the panel is open.
 
-Drift defaults to **60% controller steering expo**, blending linear and cubic
+Drift defaults to **65% controller steering expo**, blending linear and cubic
 response after the stick deadzone. This softens fine adjustments near center
 while preserving full lock at full stick; keyboard and camera axes retain
-their previous input response. **Steering rate** defaults to 126 degrees/second
-(2.2 rad/s), limiting how quickly the wheels move toward lock in addition to
+their previous input response. **Steering rate** defaults to 115 degrees/second
+(2 rad/s), limiting how quickly the wheels move toward lock in addition to
 existing smoothing. Counter-steering and unwinding can move 60% faster to catch
 slides. Both modes use this expo and rate-limited steering implementation,
 including keyboard and assisted steering. Both controls are adjustable live in either mode;
-Grip defaults to the same 60% expo and 126 degrees/second preset.
+Grip defaults to 60% expo and 126 degrees/second. Drift's steering scale defaults
+to 1.01 (69.4 degrees low-speed / 63.7 degrees high-speed lock), with assist enabled.
 
 **Counter-steering assist** is enabled by default and can be toggled live in
 the tuning panel. During forward slides it progressively steers toward the
@@ -227,8 +250,11 @@ Grip also blends this assist in when the requested steering would exceed the
 front axle's travel angle by more than 0.12 radians (about 7 degrees), targeting
 up to 0.12 radians of driver-controlled cornering slip. This reduces excessive
 front-tire scrub at speed rather than cutting engine torque. It fades out below
-6 m/s and leaves full manual lock below 2 m/s; Drift keeps its existing
-counter-steering behavior without this turn-in slip limit.
+6 m/s and leaves full manual lock below 2 m/s. Drift uses a wider 0.16-radian
+(about 9-degree) turn-in slip limit while retaining its full counter-steering lock.
+The closer front/rear grip balance and higher sliding-grip retention make
+breakaway more progressive; full throttle and excessive steering can still spin
+the car. Unwind/counter-steer and reduce throttle to recover rear lateral grip.
 
 Throttle's forward "push" during a slide is ordinary longitudinal rear-tire force:
 engine/clutch torque accelerates the wheels, tread overspeed creates drive demand,
@@ -261,13 +287,16 @@ switching courses. Tune values are defined in `src/drive-modes.ts`.
 ## Camera style
 
 The live Camera style picker offers **Corner-aware chase** (default) and
-**Classic chase** (the original camera). Camera style is independent of drive mode.
+**Classic chase** (the original camera), plus **In-cabin** at the right-hand
+driver's seat. In-cabin follows the car's orientation, including hills, banking,
+and slides, with a wider 75-degree field of view. Right-stick look and R3
+look-behind remain available. Camera style is independent of drive mode.
 Corner-aware chase shifts gently outside the direction of motion's turn during
 slides, raises/pulls back slightly, and looks ahead along the course toward the
 exit. Off-course, low-speed, reverse, and manual camera input fade or suppress
 the assistance. Transitions are smoothed; counter-steering does not flip the offset.
 Classic chase keeps the original framing and motion. `?camera=corner` or
-`?camera=classic` persists the choice through reloads and course changes.
+`?camera=classic` or `?camera=cabin` persists the choice through reloads and course changes.
 Corner look-ahead projects continuously between route samples; filtered motion
 turn rate and a slower look-target response prevent small physics changes from
 jerking the view.
@@ -297,7 +326,7 @@ preserved when switching courses or generating a random layout. Noon is the defa
 ## Courses
 
 **Flat Skidpad** is a solid asphalt disk 500 m across, with a counter-clockwise
-reference route of approximately 50 m centerline radius and 50 m marked width.
+reference route of approximately 50 m centerline radius and 62.5 m marked width.
 The center and the space outside the reference circle are paved and have full
 asphalt traction; dirt begins at the disk's 250 m radius. Select it from the Course picker
 or use `?course=skidpad`. The entire terrain, including runoff, is at zero
@@ -326,8 +355,8 @@ After releasing the hold, ordinary braking/reverse and lift-off behavior resume.
 
 ### Layouts
 
-Use the Course selector to load Autocross Playground (12 m wide) or Sweeper
-Circuit (14 m wide). Switching courses restarts the demo for a clean physics world,
+Use the Course selector to load Autocross Playground (15 m wide) or Sweeper
+Circuit (17.5 m wide). Switching courses restarts the demo for a clean physics world,
 cones, and tire marks. The selection is encoded in `?course=autocross` or
 `?course=sweeper`, so links can open a particular course.
 
@@ -363,7 +392,7 @@ not periodically along the course; nearby warnings are merged.
 your drive mode. Its seed is saved in `?course=random&seed=12345` so the same link
 recreates the same layout. Smooth radial variations create fast sections, sweeping
 bends, and tighter sections. Candidates are checked for a minimum 22 m centerline
-turn radius and clearance between non-neighboring sections; the road is 14 m wide.
+turn radius and clearance between non-neighboring sections; the road is 17.5 m wide.
 These are geometric limits, not an autopilot: slow down for the tighter bends.
 
 Course data lives in `src/courses.ts`: add a `CourseDefinition` with a unique ID,

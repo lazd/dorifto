@@ -1,26 +1,9 @@
 import { driveModes, type DriveMode } from './drive-modes';
-
-export const wattsPerHorsepower = 745.699872;
-
-function defaults(mode: DriveMode) {
-  const preset = driveModes[mode];
-  return {
-    frontGrip: preset.frontGrip,
-    rearGrip: preset.rearGrip,
-    frontStiffness: preset.frontStiffness,
-    rearStiffness: preset.rearStiffness,
-    rearSlidingGrip: preset.rearSlidingGrip,
-    steeringScale: preset.steeringScale,
-    steeringExpo: preset.steeringExpo,
-    steeringRate: preset.steeringRate,
-    horsepower: Math.round(preset.enginePower / wattsPerHorsepower),
-  };
-}
-
-type DriftTuning = { [Key in keyof ReturnType<typeof defaults>]: number };
+import { defaultTuning, type DrivingTuning, type GameState } from './game-state';
+import type { Store } from './store';
 
 const sliders: {
-  key: keyof DriftTuning; label: string; min: number; max: number; step: number; hint: string;
+  key: Exclude<keyof DrivingTuning, 'steeringAssist'>; label: string; min: number; max: number; step: number; hint: string;
 }[] = [
   { key: 'horsepower', label: 'Engine horsepower', min: 100, max: 1000, step: 1,
     hint: 'Crank horsepower. Scales the power ceiling and torque curve together; wheel power is lower due to driveline losses.' },
@@ -42,13 +25,16 @@ const sliders: {
     hint: 'Higher retains more traction after breakaway, making slides less slippery but resisting wheelspin.' },
 ];
 
-export function createDrivingTuning(fieldset: HTMLFieldSetElement, resetButton: HTMLButtonElement) {
-  const settings: Record<DriveMode, DriftTuning & { steeringAssist: boolean }> = {
-    drift: { ...defaults('drift'), steeringAssist: driveModes.drift.steeringAssist },
-    grip: { ...defaults('grip'), steeringAssist: driveModes.grip.steeringAssist },
+export function createDrivingTuning(fieldset: HTMLFieldSetElement, resetButton: HTMLButtonElement, store: Store<GameState>) {
+  let mode: DriveMode = store.getState().driveMode;
+  let tuning = store.getState().profiles[mode];
+  const update = (patch: Partial<DrivingTuning>) => {
+    const state = store.getState();
+    store.update({ profiles: {
+      ...state.profiles,
+      [state.driveMode]: { ...state.profiles[state.driveMode], ...patch },
+    } });
   };
-  let mode: DriveMode = 'drift';
-  let tuning: DriftTuning & { steeringAssist: boolean } = settings[mode];
   const refresh: (() => void)[] = [];
   const assistLabel = document.createElement('label');
   assistLabel.className = 'assist-toggle';
@@ -62,9 +48,9 @@ export function createDrivingTuning(fieldset: HTMLFieldSetElement, resetButton: 
   assist.setAttribute('aria-labelledby', assistTitle.id);
   const assistHint = document.createElement('small');
   assistHint.id = 'drift-steering-assist-hint';
-  assistHint.textContent = 'Helps front wheels follow their travel direction during forward slides. In Grip, also limits excessive turn-in scrub. No extra force or yaw assist.';
+  assistHint.textContent = 'Helps front wheels follow their travel direction during forward slides and limits excessive turn-in scrub. Drift allows more cornering slip than Grip. No extra force or yaw assist.';
   assist.setAttribute('aria-describedby', assistHint.id);
-  assist.addEventListener('change', () => { tuning.steeringAssist = assist.checked; });
+  assist.addEventListener('change', () => update({ steeringAssist: assist.checked }));
   assistLabel.append(assist, assistTitle, assistHint);
   fieldset.append(assistLabel);
   for (const slider of sliders) {
@@ -88,7 +74,7 @@ export function createDrivingTuning(fieldset: HTMLFieldSetElement, resetButton: 
     input.setAttribute('aria-describedby', hint.id);
     const sync = () => {
       const value = tuning[slider.key];
-      input.value = String(value);
+      if (input.value !== String(value)) input.value = String(value);
       output.value = slider.key === 'steeringScale'
         ? `${(driveModes[mode].steeringLow * value * 180 / Math.PI).toFixed(1)} / ${(driveModes[mode].steeringHigh * value * 180 / Math.PI).toFixed(1)} deg`
         : slider.key === 'horsepower' ? `${value.toFixed(0)} hp`
@@ -99,8 +85,7 @@ export function createDrivingTuning(fieldset: HTMLFieldSetElement, resetButton: 
       input.setAttribute('aria-valuetext', output.value);
     };
     input.addEventListener('input', () => {
-      tuning[slider.key] = input.valueAsNumber;
-      sync();
+      update({ [slider.key]: input.valueAsNumber });
     });
     sync();
     refresh.push(sync);
@@ -108,18 +93,15 @@ export function createDrivingTuning(fieldset: HTMLFieldSetElement, resetButton: 
     fieldset.append(label);
   }
   resetButton.addEventListener('click', () => {
-    Object.assign(tuning, defaults(mode));
-    tuning.steeringAssist = assist.checked = driveModes[mode].steeringAssist;
-    refresh.forEach((sync) => sync());
+    update(defaultTuning(store.getState().driveMode));
     resetButton.blur();
   });
-  return {
-    settings,
-    setMode(value: DriveMode) {
-      mode = value;
-      tuning = settings[mode];
-      assist.checked = tuning.steeringAssist;
-      refresh.forEach((sync) => sync());
-    },
-  };
+  return store.subscribe((state) => {
+    const next = state.profiles[state.driveMode];
+    if (mode === state.driveMode && tuning === next) return;
+    mode = state.driveMode;
+    tuning = next;
+    assist.checked = tuning.steeringAssist;
+    refresh.forEach((sync) => sync());
+  });
 }

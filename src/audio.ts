@@ -24,17 +24,10 @@ export class VehicleAudio {
   private previousGear = 1;
   private failed = false;
 
-  constructor(private readonly button: HTMLButtonElement, private readonly reportError: (error: unknown) => void) {
-    button.addEventListener('click', () => {
-      if (!this.node || this.context?.state !== 'running') {
-        this.muted = false;
-        this.activate();
-      } else {
-        this.muted = !this.muted;
-      }
-      this.updateButton();
-      button.blur();
-    });
+  constructor(
+    private readonly reportState: (state: { running: boolean; muted: boolean; failed: boolean }) => void,
+    private readonly reportError: (error: unknown) => void,
+  ) {
     const unlock = () => this.activate();
     window.addEventListener('pointerdown', unlock);
     window.addEventListener('keydown', unlock);
@@ -44,18 +37,31 @@ export class VehicleAudio {
     });
   }
 
+  toggle() {
+    if (!this.node || this.context?.state !== 'running') {
+      this.muted = false;
+      this.activate();
+    } else {
+      this.muted = !this.muted;
+    }
+    this.publishState();
+  }
+
   private activate() {
     if (this.starting || this.failed || (this.node && this.context?.state === 'running')) return;
     this.starting = this.start().catch((error: unknown) => {
       this.muted = true;
       this.failed = true;
-      this.button.textContent = 'Sound unavailable';
+      this.publishState();
       this.reportError(error);
     }).finally(() => { this.starting = undefined; });
   }
 
   private async start() {
-    if (!this.context) this.context = new AudioContext();
+    if (!this.context) {
+      this.context = new AudioContext();
+      this.context.addEventListener('statechange', () => this.publishState());
+    }
     const context = this.context;
     // Resume directly in the gesture handler before awaiting worklet loading.
     const resumed = context.resume();
@@ -67,7 +73,7 @@ export class VehicleAudio {
       node.onprocessorerror = () => {
         this.failed = true;
         this.setAudible(false);
-        this.button.textContent = 'Sound unavailable';
+        this.publishState();
         this.reportError(new Error('Vehicle audio processor failed. Reload to restart sound.'));
       };
       const master = context.createGain();
@@ -102,13 +108,11 @@ export class VehicleAudio {
       this.master = master;
     }
     await resumed;
-    this.updateButton();
+    this.publishState();
   }
 
-  private updateButton() {
-    this.button.textContent = !this.node || this.context?.state !== 'running'
-      ? 'Enable sound' : this.muted ? 'Sound: Off' : 'Sound: On';
-    this.button.setAttribute('aria-pressed', String(Boolean(this.node) && !this.muted));
+  private publishState() {
+    this.reportState({ running: Boolean(this.node) && this.context?.state === 'running', muted: this.muted, failed: this.failed });
   }
 
   private setAudible(enabled: boolean) {

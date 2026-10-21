@@ -106,7 +106,7 @@ export function generateCourse(seed: number): CourseDefinition {
         + 0.1 * Math.sin(angle * 3 + phases[1]) + 0.05 * Math.sin(angle * 4 + phases[2]));
       points.push([Math.cos(angle) * r * stretch, Math.sin(angle) * r]);
     }
-    const definition: CourseDefinition = { id: 'random', name: `Random Circuit (${seed})`, width: 14, points };
+    const definition: CourseDefinition = { id: 'random', name: `Random Circuit (${seed})`, width: 17.5, points };
     const route = courseRoute(definition);
     const samples = route.getSpacedPoints(2048).slice(0, -1);
     let navigable = true;
@@ -139,7 +139,7 @@ export const courses: readonly CourseDefinition[] = [
   {
     id: 'autocross',
     name: 'Autocross Playground',
-    width: 12,
+    width: 15,
     coneSpacing: 5,
     points: [
       [0, 0], [0, 21], [-6, 40.5], [6, 60], [-6, 79.5],
@@ -151,7 +151,7 @@ export const courses: readonly CourseDefinition[] = [
   {
     id: 'sweeper',
     name: 'Sweeper Circuit',
-    width: 14,
+    width: 17.5,
     coneSpacing: 6,
     points: [
       [0, 0], [0, 30], [-8, 60], [0, 90], [30, 115],
@@ -162,7 +162,7 @@ export const courses: readonly CourseDefinition[] = [
   {
     id: 'skidpad',
     name: 'Flat Skidpad',
-    width: 50,
+    width: 62.5,
     coneSpacing: 12,
     flat: true,
     padRadius: 250,

@@ -7,22 +7,15 @@ import { DrivingControls } from './controls';
 import { createCourse } from './course';
 import { courses, courseRoute, courseSpawn, generateCourse } from './courses';
 import { driveModes, isDriveMode, assistedSteeringAngle } from './drive-modes';
-import { LapTimer, formatLapTime } from './laps';
+import { LapTimer } from './laps';
 import { VehicleAudio } from './audio';
 import { Drivetrain, wheelInertia, type DrivetrainInput } from './drivetrain';
-import { createDrivingTuning, wattsPerHorsepower } from './drift-tuning';
+import { createGameState, wattsPerHorsepower, isCameraStyle, isTimeOfDay } from './game-state';
+import { bindGameUI, bindGameActions, bindCoursePicker, element } from './ui';
 import './style.css';
 
-function element<T extends HTMLElement>(selector: string): T {
-  const found = document.querySelector<T>(selector);
-  if (!found) throw new Error(`Missing UI element: ${selector}`);
-  return found;
-}
-
-const status = element('#status');
-const speedDisplay = element('#speed');
-const engineDisplay = element('#engine-state');
-const stateDisplay = element('#state');
+const gameState = createGameState();
+bindGameUI(gameState, showError);
 
 const daylight = {
   noon: {
@@ -49,58 +42,12 @@ const daylight = {
   sun: string; sunIntensity: number; sunOffset: [number, number, number]; exposure: number;
 }>;
 
-function isTimeOfDay(value: string): value is keyof typeof daylight {
-  return Object.hasOwn(daylight, value);
-}
-
-function isCameraStyle(value: string): value is 'corner' | 'classic' {
-  return value === 'corner' || value === 'classic';
-}
-
 async function start() {
-  const cameraSelect = element<HTMLSelectElement>('#camera-style');
   const requestedCamera = new URL(location.href).searchParams.get('camera') ?? 'corner';
   if (!isCameraStyle(requestedCamera)) throw new Error(`Unknown camera style: ${requestedCamera}`);
-  let cameraStyle = requestedCamera;
-  cameraSelect.value = cameraStyle;
-  cameraSelect.addEventListener('change', () => {
-    const value = cameraSelect.value;
-    if (!isCameraStyle(value)) {
-      showError(new Error(`Unknown camera style: ${value}`));
-      return;
-    }
-    cameraStyle = value;
-    const url = new URL(location.href);
-    url.searchParams.set('camera', value);
-    history.replaceState(null, '', url);
-    cameraSelect.blur();
-  });
-  const modeSelect = element<HTMLSelectElement>('#drive-mode');
   const requestedMode = new URL(location.href).searchParams.get('mode') ?? 'drift';
   if (!isDriveMode(requestedMode)) throw new Error(`Unknown drive mode: ${requestedMode}`);
-  let driveMode = requestedMode;
-  const tuningFieldset = element<HTMLFieldSetElement>('#drift-tuning-sliders');
-  const drivingTuning = createDrivingTuning(tuningFieldset, element<HTMLButtonElement>('#drift-tuning-reset'));
-  const updateTuningMode = () => {
-    drivingTuning.setMode(driveMode);
-    element('#drift-tuning summary').textContent = `${driveMode === 'drift' ? 'Drift' : 'Grip'} tuning`;
-    element('#drift-tuning-mode').textContent = `Live in ${driveMode === 'drift' ? 'Drift' : 'Grip'} mode / base friction ${driveModes[driveMode].friction}`;
-  };
-  updateTuningMode();
-  modeSelect.value = driveMode;
-  modeSelect.addEventListener('change', () => {
-    const value = modeSelect.value;
-    if (!isDriveMode(value)) {
-      showError(new Error(`Unknown drive mode: ${value}`));
-      return;
-    }
-    driveMode = value;
-    updateTuningMode();
-    const url = new URL(location.href);
-    url.searchParams.set('mode', driveMode);
-    history.replaceState(null, '', url);
-    modeSelect.blur();
-  });
+  gameState.update({ driveMode: requestedMode, cameraStyle: requestedCamera });
   const courseUrl = new URL(location.href);
   const requestedCourse = courseUrl.searchParams.get('course');
   let seed = 0;
@@ -122,34 +69,7 @@ async function start() {
   cameraRoutePoints.pop();
   const laps = new LapTimer(definition);
   const lapPosition = new THREE.Vector3();
-  const lapNumber = element('#lap-number');
-  const lapCurrent = element('#lap-current');
-  const lapLast = element('#lap-last');
-  const lapBest = element('#lap-best');
-  const lapCones = element('#lap-cones');
-  const lapLastCones = element('#lap-last-cones');
-  const courseSelect = document.querySelector<HTMLSelectElement>('#course');
-  if (!courseSelect) throw new Error('Missing course selector');
-  for (const course of courses) courseSelect.add(new Option(course.name, course.id));
-  courseSelect.add(new Option(requestedCourse === 'random' ? definition.name : 'Random Circuit', 'random'));
-  courseSelect.value = definition.id;
-  function randomCourse() {
-    const url = new URL(location.href);
-    url.searchParams.set('course', 'random');
-    url.searchParams.set('seed', String(crypto.getRandomValues(new Uint32Array(1))[0]));
-    location.assign(url.href);
-  }
-  element('#random-course').addEventListener('click', randomCourse);
-  courseSelect.addEventListener('change', () => {
-    if (courseSelect.value === 'random') {
-      randomCourse();
-      return;
-    }
-    const url = new URL(location.href);
-    url.searchParams.set('course', courseSelect.value);
-    url.searchParams.delete('seed');
-    location.assign(url.href);
-  });
+  bindCoursePicker(courses, definition);
   const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
   renderer.setSize(innerWidth, innerHeight);
@@ -187,9 +107,9 @@ async function start() {
   const skyContext = skyCanvas.getContext('2d');
   if (!skyContext) throw new Error('Unable to create sky texture');
   let sky: THREE.CanvasTexture | undefined;
-  const timeSelect = element<HTMLSelectElement>('#time-of-day');
   const requestedTime = new URL(location.href).searchParams.get('time') ?? 'noon';
   if (!isTimeOfDay(requestedTime)) throw new Error(`Unknown time of day: ${requestedTime}`);
+  gameState.update({ timeOfDay: requestedTime });
   const applyTimeOfDay = (time: keyof typeof daylight) => {
     const preset = daylight[time];
     const gradient = skyContext.createLinearGradient(0, 0, 0, skyCanvas.height);
@@ -215,7 +135,6 @@ async function start() {
     shadowOffset.fromArray(preset.sunOffset);
     sun.position.copy(sun.target.position).add(shadowOffset);
     renderer.toneMappingExposure = preset.exposure;
-    timeSelect.value = time;
   };
   applyTimeOfDay(requestedTime);
   const { cones, terrain, isAsphalt } = createCourse(scene, definition);
@@ -223,22 +142,15 @@ async function start() {
   // The upstream Emscripten factory writes to `this`; ESM calls have no receiver.
   const [Ammo, car] = await Promise.all([AmmoFactory.call({}), loadCar()]);
   // The picker may change while the model is loading.
-  const selectedTime = timeSelect.value;
-  if (!isTimeOfDay(selectedTime)) throw new Error(`Unknown time of day: ${selectedTime}`);
+  const selectedTime = gameState.getState().timeOfDay;
   applyTimeOfDay(selectedTime);
   car.setLighting(selectedTime !== 'noon', selectedTime === 'night');
-  timeSelect.addEventListener('change', () => {
-    const value = timeSelect.value;
-    if (!isTimeOfDay(value)) {
-      showError(new Error(`Unknown time of day: ${value}`));
-      return;
-    }
-    applyTimeOfDay(value);
-    car.setLighting(value !== 'noon', value === 'night');
-    const url = new URL(location.href);
-    url.searchParams.set('time', value);
-    history.replaceState(null, '', url);
-    timeSelect.blur();
+  let appliedTime = selectedTime;
+  gameState.subscribe(({ timeOfDay }) => {
+    if (timeOfDay === appliedTime) return;
+    appliedTime = timeOfDay;
+    applyTimeOfDay(timeOfDay);
+    car.setLighting(timeOfDay !== 'noon', timeOfDay === 'night');
   });
 
   scene.add(car.chassis, ...car.wheels);
@@ -338,23 +250,22 @@ async function start() {
   Ammo.destroy(direction);
   Ammo.destroy(axle);
 
-  const controls = new DrivingControls(element('#controller-status'));
-  element('#drift-tuning').addEventListener('focusin', () => controls.clear());
-  const soundButton = element<HTMLButtonElement>('#sound');
-  const audio = new VehicleAudio(soundButton, (error) => {
+  const controls = new DrivingControls();
+  const audio = new VehicleAudio((sound) => {
+    gameState.update({ sound: { ...gameState.getState().sound, ...sound } });
+  }, (error) => {
     console.error('Vehicle audio unavailable:', error);
-    soundButton.title = `Audio unavailable: ${error instanceof Error ? error.message : String(error)}. Reload to retry.`;
+    gameState.update({ sound: {
+      ...gameState.getState().sound, error: error instanceof Error ? error.message : String(error),
+    } });
   });
   const tireSounds = Array.from({ length: 4 }, () => ({ slip: 0, speed: 0, load: 0 }));
   const coneSoundCooldowns = new Map<number, number>();
-  const helpDialog = element<HTMLDialogElement>('#help-dialog');
-  element('#help').addEventListener('click', () => {
+  let helpOpen = gameState.getState().helpOpen;
+  gameState.subscribe((state) => {
+    if (state.helpOpen === helpOpen) return;
+    helpOpen = state.helpOpen;
     controls.clear();
-    helpDialog.showModal();
-  });
-  helpDialog.addEventListener('close', () => {
-    controls.clear();
-    element('#help').blur();
   });
   const keys = controls.keys;
   const controlKeys = new Set(['ArrowLeft', 'ArrowRight', 'KeyX', 'KeyZ', 'Space', 'KeyR']);
@@ -368,6 +279,10 @@ async function start() {
   let cameraYaw = 0;
   let cameraPitch = 0;
   const cameraOrbit = new THREE.Vector3();
+  const cabinEye = new THREE.Vector3(-0.36, 0.55, -0.25);
+  const cabinDirection = new THREE.Vector3();
+  const cabinUp = new THREE.Vector3();
+  let previousCameraStyle: ReturnType<typeof gameState.getState>['cameraStyle'] | null = null;
   const previousTravel = new THREE.Vector3();
   const cameraRight = new THREE.Vector3();
   const cornerTarget = new THREE.Vector3();
@@ -581,7 +496,7 @@ async function start() {
   }
 
   window.addEventListener('keydown', (event) => {
-    if (helpDialog.open) return;
+    if (gameState.getState().helpOpen) return;
     if (event.target instanceof HTMLSelectElement || event.target instanceof HTMLInputElement) return;
     if (!controlKeys.has(event.code)) return;
     if (event.target instanceof HTMLButtonElement && event.code === 'Space') return;
@@ -608,10 +523,7 @@ async function start() {
     accumulator = 0;
     captureVisuals(true);
   });
-  element('#reset').addEventListener('click', () => {
-    reset();
-    element<HTMLButtonElement>('#reset').blur();
-  });
+  bindGameActions({ reset, sound: () => audio.toggle(), clearInput: () => controls.clear() });
   window.addEventListener('resize', () => {
     camera.aspect = innerWidth / innerHeight;
     camera.updateProjectionMatrix();
@@ -622,14 +534,13 @@ async function start() {
     event.preventDefault();
     audio.silence();
     renderer.setAnimationLoop(null);
-    status.hidden = false;
-    status.classList.add('error');
-    status.textContent = 'Graphics context lost. Reload the page to restart.';
+    gameState.update({ status: { visible: true, error: true, message: 'Graphics context lost. Reload the page to restart.' } });
   });
 
   function step() {
+    const { driveMode, profiles } = gameState.getState();
     const tune = driveModes[driveMode];
-    const tireTune = drivingTuning.settings[driveMode];
+    const tireTune = profiles[driveMode];
     const linear = body.getLinearVelocity();
     const angular = body.getAngularVelocity();
     const speed = Math.hypot(linear.x(), linear.z()) * 3.6;
@@ -764,9 +675,9 @@ async function start() {
         const tire = tireContacts[i];
         const { along, capacity, lateralDemand, brakeTorque } = tire;
         const slipRatio = (tireSpeeds[i] * car.radii[i] - along) / Math.max(Math.abs(along), braking ? 0.5 : 4);
-        // Bound pure lateral demand before combining slips: a large drift angle
-        // must not consume an unbounded share of the tire's drive-force budget.
-        const driveDemand = capacity * slipRatio * 8;
+        // Saturate both pure-slip demands before sharing the friction circle;
+        // unbounded wheelspin demand would erase lateral force under throttle.
+        const driveDemand = capacity * Math.tanh(slipRatio * 8);
         const lateral = capacity * Math.tanh(lateralDemand / Math.max(capacity, 1));
         const combined = Math.hypot(driveDemand, lateral);
         // Sliding rubber has less grip than the peak, allowing genuine
@@ -865,8 +776,9 @@ async function start() {
   }
 
   function frame(time: number) {
+    const { driveMode, profiles, cameraStyle, helpOpen, focused } = gameState.getState();
     const tune = driveModes[driveMode];
-    controls.poll(!helpDialog.open, drivingTuning.settings[driveMode].steeringExpo);
+    controls.poll(!helpOpen, profiles[driveMode].steeringExpo);
     if (controls.resetRequested) reset();
     const dt = lastTime ? Math.min((time - lastTime) / 1000, 0.05) : fixedStep;
     lastTime = time;
@@ -888,9 +800,8 @@ async function start() {
     audio.update({
       drivetrain: drivetrain.state,
       tires: tireSounds,
-    }, document.hasFocus() && !document.hidden && !helpDialog.open);
+    }, focused && !helpOpen);
     const engine = drivetrain.state;
-    engineDisplay.textContent = `${engine.gear < 0 ? 'R' : engine.gear} / ${Math.round(engine.rpm / 50) * 50} RPM${engine.limiterCut ? ' / LIMIT' : ''}`;
     forward.set(0, 0, 1).applyQuaternion(car.chassis.quaternion);
     forward.y = 0;
     forward.normalize();
@@ -902,62 +813,84 @@ async function start() {
     const pitchResponse = controls.cameraY === 0 ? tune.cameraRecenterResponse : 9;
     cameraYaw = THREE.MathUtils.damp(cameraYaw, controls.lookBehind ? Math.PI : -controls.cameraX * 0.45, yawResponse, dt);
     cameraPitch = THREE.MathUtils.damp(cameraPitch, -controls.cameraY * 0.8, pitchResponse, dt);
-    cameraOrbit.copy(cameraDirection).applyAxisAngle(up, cameraYaw);
-    desiredCamera.copy(car.chassis.position).addScaledVector(cameraOrbit, -9 - Math.min(speed * 0.04, 2));
-    desiredCamera.y = car.chassis.position.y + cameraHeight + cameraPitch;
-    const motionTurn = speed > 3 && previousTravel.lengthSq() > 0
-      ? Math.atan2(previousTravel.z * travelVelocity.x - previousTravel.x * travelVelocity.z,
-        previousTravel.dot(travelVelocity)) / Math.max(dt, 0.001) : 0;
-    previousTravel.copy(travelVelocity);
-    cameraTurnRate = THREE.MathUtils.damp(cameraTurnRate, motionTurn, 4, dt);
-    const manualCamera = controls.lookBehind || Math.abs(cameraYaw) > 0.1
-      || Math.abs(controls.cameraX) > 0 || Math.abs(controls.cameraY) > 0;
-    const cornerCamera = cameraStyle === 'corner' && !manualCamera && !reversing;
-    const slideAngle = speed > 3 ? Math.acos(THREE.MathUtils.clamp(forward.dot(travelVelocity), -1, 1)) : 0;
-    const slideAmount = cornerCamera
-      ? THREE.MathUtils.smoothstep(slideAngle, 0.12, 0.65) * THREE.MathUtils.smoothstep(speed, 3, 10) : 0;
-    slideCameraAmount = THREE.MathUtils.damp(slideCameraAmount, slideAmount, 3, dt);
-    outsideOffset = THREE.MathUtils.damp(outsideOffset,
-      -THREE.MathUtils.clamp(cameraTurnRate / 0.35, -1, 1) * slideCameraAmount * 1.8, 3, dt);
-    if (cameraStyle === 'corner') {
-      cameraRight.set(cameraDirection.z, 0, -cameraDirection.x);
-      desiredCamera.addScaledVector(cameraRight, outsideOffset).addScaledVector(cameraOrbit, -slideCameraAmount);
-      desiredCamera.y += slideCameraAmount * 0.7;
+    const cabin = cameraStyle === 'cabin';
+    if (cameraStyle !== previousCameraStyle) {
+      camera.fov = cabin ? 75 : 55;
+      camera.near = cabin ? 0.03 : 0.1;
+      camera.updateProjectionMatrix();
     }
-    camera.position.lerp(desiredCamera, 1 - Math.exp(-tune.cameraPositionResponse * dt));
-    camera.position.y = Math.max(camera.position.y, terrain.heightAt(camera.position.x, camera.position.z) + 1);
-    desiredLookTarget.copy(car.chassis.position).addScaledVector(velocity, 0.18);
-    desiredLookTarget.y += 0.65;
-    if (cornerCamera) {
-      let nearest = 0;
-      let distance = Infinity;
-      for (let i = 0; i < cameraRoutePoints.length; i++) {
-        const point = cameraRoutePoints[i];
-        const next = cameraRoutePoints[(i + 1) % cameraRoutePoints.length];
-        const dx = next.x - point.x;
-        const dz = next.z - point.z;
-        const fraction = THREE.MathUtils.clamp(
-          ((car.chassis.position.x - point.x) * dx + (car.chassis.position.z - point.z) * dz)
-          / Math.max(dx * dx + dz * dz, 0.000001), 0, 1,
-        );
-        const squared = (point.x + dx * fraction - car.chassis.position.x) ** 2
-          + (point.z + dz * fraction - car.chassis.position.z) ** 2;
-        if (squared < distance) {
-          distance = squared;
-          nearest = i + fraction;
-        }
+    if (cabin) {
+      camera.position.copy(cabinEye).applyQuaternion(car.chassis.quaternion).add(car.chassis.position);
+      cabinDirection.set(0, 0, 1)
+        .applyAxisAngle(up, cameraYaw)
+        .applyAxisAngle(cameraRight.set(Math.cos(cameraYaw), 0, -Math.sin(cameraYaw)), -cameraPitch * 0.6)
+        .applyQuaternion(car.chassis.quaternion);
+      cabinUp.set(0, 1, 0).applyQuaternion(car.chassis.quaternion);
+      camera.up.copy(cabinUp);
+      camera.lookAt(desiredLookTarget.copy(camera.position).add(cabinDirection));
+      previousTravel.copy(travelVelocity);
+    } else {
+      camera.up.copy(up);
+      cameraOrbit.copy(cameraDirection).applyAxisAngle(up, cameraYaw);
+      desiredCamera.copy(car.chassis.position).addScaledVector(cameraOrbit, -9 - Math.min(speed * 0.04, 2));
+      desiredCamera.y = car.chassis.position.y + cameraHeight + cameraPitch;
+      const motionTurn = speed > 3 && previousTravel.lengthSq() > 0
+        ? Math.atan2(previousTravel.z * travelVelocity.x - previousTravel.x * travelVelocity.z,
+          previousTravel.dot(travelVelocity)) / Math.max(dt, 0.001) : 0;
+      previousTravel.copy(travelVelocity);
+      cameraTurnRate = THREE.MathUtils.damp(cameraTurnRate, motionTurn, 4, dt);
+      const manualCamera = controls.lookBehind || Math.abs(cameraYaw) > 0.1
+        || Math.abs(controls.cameraX) > 0 || Math.abs(controls.cameraY) > 0;
+      const cornerCamera = cameraStyle === 'corner' && !manualCamera && !reversing;
+      const slideAngle = speed > 3 ? Math.acos(THREE.MathUtils.clamp(forward.dot(travelVelocity), -1, 1)) : 0;
+      const slideAmount = cornerCamera
+        ? THREE.MathUtils.smoothstep(slideAngle, 0.12, 0.65) * THREE.MathUtils.smoothstep(speed, 3, 10) : 0;
+      slideCameraAmount = THREE.MathUtils.damp(slideCameraAmount, slideAmount, 3, dt);
+      outsideOffset = THREE.MathUtils.damp(outsideOffset,
+        -THREE.MathUtils.clamp(cameraTurnRate / 0.35, -1, 1) * slideCameraAmount * 1.8, 3, dt);
+      if (cameraStyle === 'corner') {
+        cameraRight.set(cameraDirection.z, 0, -cameraDirection.x);
+        desiredCamera.addScaledVector(cameraRight, outsideOffset).addScaledVector(cameraOrbit, -slideCameraAmount);
+        desiredCamera.y += slideCameraAmount * 0.7;
       }
-      const t = nearest / cameraRoutePoints.length;
-      cameraRoute.getTangentAt(t, routeTangent);
-      const onCourse = 1 - THREE.MathUtils.smoothstep(Math.sqrt(distance), cameraCourseWidth / 2, cameraCourseWidth);
-      const alignment = THREE.MathUtils.smoothstep(travelVelocity.dot(routeTangent), 0.2, 0.8);
-      const amount = onCourse * alignment * THREE.MathUtils.smoothstep(speed, 2, 8);
-      cameraRoute.getPointAt((t + THREE.MathUtils.clamp(speed * 0.8, 10, 28) / cameraRouteLength) % 1, cornerTarget);
-      cornerTarget.y = terrain.heightAt(cornerTarget.x, cornerTarget.z) + 0.65;
-      desiredLookTarget.lerp(cornerTarget, amount * 0.4);
+      if (previousCameraStyle === 'cabin') camera.position.copy(desiredCamera);
+      else camera.position.lerp(desiredCamera, 1 - Math.exp(-tune.cameraPositionResponse * dt));
+      camera.position.y = Math.max(camera.position.y, terrain.heightAt(camera.position.x, camera.position.z) + 1);
+      desiredLookTarget.copy(car.chassis.position).addScaledVector(velocity, 0.18);
+      desiredLookTarget.y += 0.65;
+      if (cornerCamera) {
+        let nearest = 0;
+        let distance = Infinity;
+        for (let i = 0; i < cameraRoutePoints.length; i++) {
+          const point = cameraRoutePoints[i];
+          const next = cameraRoutePoints[(i + 1) % cameraRoutePoints.length];
+          const dx = next.x - point.x;
+          const dz = next.z - point.z;
+          const fraction = THREE.MathUtils.clamp(
+            ((car.chassis.position.x - point.x) * dx + (car.chassis.position.z - point.z) * dz)
+            / Math.max(dx * dx + dz * dz, 0.000001), 0, 1,
+          );
+          const squared = (point.x + dx * fraction - car.chassis.position.x) ** 2
+            + (point.z + dz * fraction - car.chassis.position.z) ** 2;
+          if (squared < distance) {
+            distance = squared;
+            nearest = i + fraction;
+          }
+        }
+        const t = nearest / cameraRoutePoints.length;
+        cameraRoute.getTangentAt(t, routeTangent);
+        const onCourse = 1 - THREE.MathUtils.smoothstep(Math.sqrt(distance), cameraCourseWidth / 2, cameraCourseWidth);
+        const alignment = THREE.MathUtils.smoothstep(travelVelocity.dot(routeTangent), 0.2, 0.8);
+        const amount = onCourse * alignment * THREE.MathUtils.smoothstep(speed, 2, 8);
+        cameraRoute.getPointAt((t + THREE.MathUtils.clamp(speed * 0.8, 10, 28) / cameraRouteLength) % 1, cornerTarget);
+        cornerTarget.y = terrain.heightAt(cornerTarget.x, cornerTarget.z) + 0.65;
+        desiredLookTarget.lerp(cornerTarget, amount * 0.4);
+      }
+      if (previousCameraStyle === 'cabin') lookTarget.copy(desiredLookTarget);
+      else lookTarget.lerp(desiredLookTarget, 1 - Math.exp(-(cameraStyle === 'corner' ? 5 : 10) * dt));
+      camera.lookAt(lookTarget);
     }
-    lookTarget.lerp(desiredLookTarget, 1 - Math.exp(-(cameraStyle === 'corner' ? 5 : 10) * dt));
-    camera.lookAt(lookTarget);
+    previousCameraStyle = cameraStyle;
     sun.position.copy(car.chassis.position).add(shadowOffset);
     sun.target.position.copy(car.chassis.position);
 
@@ -1014,18 +947,19 @@ async function start() {
     }
     smoke.update(dt, car.wheels, wheelContacts, leavingMarks, velocity, camera, wheelAsphalt,
       (x, z) => terrain.heightAt(x, z));
-    speedDisplay.textContent = String(Math.round(speed * 3.6));
-    lapNumber.textContent = laps.lap ? `LAP ${laps.lap}` : 'CROSS START TO BEGIN';
-    lapCurrent.textContent = formatLapTime(laps.lap ? laps.current : null);
-    lapLast.textContent = formatLapTime(laps.last);
-    lapBest.textContent = formatLapTime(laps.best);
-    lapCones.textContent = String(laps.conesHit);
-    lapLastCones.textContent = laps.lastCones === null ? '--' : String(laps.lastCones);
-    stateDisplay.textContent = spawnBrakeHeld ? 'BRAKES HELD'
-      : controls.handbrake ? 'HANDBRAKE'
-      : controls.brake > 0 && controls.throttle > 0 ? 'BRAKESTAND'
-      : reversing ? 'REVERSE' : controls.brake > 0 ? 'BRAKING'
-      : burningOut ? 'BURNOUT' : sliding ? 'SLIDING' : 'REAR-WHEEL DRIVE';
+    gameState.update({
+      controllerStatus: controls.controllerStatus,
+      telemetry: {
+        speed, rpm: engine.rpm, gear: engine.gear, limiter: engine.limiterCut,
+        lap: laps.lap, current: laps.current, last: laps.last, best: laps.best,
+        cones: laps.conesHit, lastCones: laps.lastCones,
+        driving: spawnBrakeHeld ? 'brakes-held'
+          : controls.handbrake ? 'handbrake'
+          : controls.brake > 0 && controls.throttle > 0 ? 'brakestand'
+          : reversing ? 'reverse' : controls.brake > 0 ? 'braking'
+          : burningOut ? 'burnout' : sliding ? 'sliding' : 'driving',
+      },
+    });
     if (!terrain.contains(car.chassis.position.x, car.chassis.position.z)
       || car.chassis.position.y < terrain.heightAt(car.chassis.position.x, car.chassis.position.z) - 5) reset();
     smoke.captureDepth(renderer, scene, camera);
@@ -1033,7 +967,7 @@ async function start() {
   }
 
   reset();
-  status.hidden = true;
+  gameState.update({ status: { visible: false, error: false, message: '' } });
   renderer.setAnimationLoop((time) => {
     try {
       frame(time);
@@ -1047,10 +981,10 @@ async function start() {
 
 function showError(error: unknown) {
   console.error('Unable to run Dorifto:', error);
-  status.hidden = false;
-  status.classList.add('error');
-  status.setAttribute('role', 'alert');
-  status.textContent = `Unable to run the demo: ${error instanceof Error ? error.message : String(error)}. Check the console and reload to retry.`;
+  gameState.update({ status: {
+    visible: true, error: true,
+    message: `Unable to run the demo: ${error instanceof Error ? error.message : String(error)}. Check the console and reload to retry.`,
+  } });
 }
 
 void start().catch(showError);
