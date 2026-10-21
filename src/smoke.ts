@@ -46,6 +46,11 @@ export class TireSmoke {
       resolution: { value: this.size },
       nearPlane: { value: 0.1 },
       farPlane: { value: 1500 },
+      viewToCar: { value: new THREE.Matrix4() },
+      bodyCenter: { value: new THREE.Vector3(0, 0, 0) },
+      bodyHalfSize: { value: new THREE.Vector3(0.78, 0.28, 2) },
+      cabinCenter: { value: new THREE.Vector3(0, 0.48, -0.25) },
+      cabinHalfSize: { value: new THREE.Vector3(0.65, 0.32, 0.85) },
     },
     vertexShader: `
       attribute vec3 center;
@@ -53,6 +58,8 @@ export class TireSmoke {
       attribute float seed;
       attribute float dust;
       attribute vec3 lighting;
+      uniform mat4 viewToCar;
+      varying vec3 carPosition;
       varying vec3 illumination;
       varying float dustAmount;
       varying vec2 puffUv;
@@ -66,6 +73,7 @@ export class TireSmoke {
         float angle = seed * 6.283 + life * 0.5;
         mat2 rotation = mat2(cos(angle), -sin(angle), sin(angle), cos(angle));
         viewPosition.xy += rotation * position.xy * radius;
+        carPosition = (viewToCar * viewPosition).xyz;
         gl_Position = projectionMatrix * viewPosition;
         viewDepth = -viewPosition.z;
         puffUv = uv;
@@ -81,12 +89,21 @@ export class TireSmoke {
       uniform vec2 resolution;
       uniform float nearPlane;
       uniform float farPlane;
+      uniform vec3 bodyCenter;
+      uniform vec3 bodyHalfSize;
+      uniform vec3 cabinCenter;
+      uniform vec3 cabinHalfSize;
+      varying vec3 carPosition;
       varying vec3 illumination;
       varying vec2 puffUv;
       varying float opacity;
       varying float viewDepth;
       varying float variation;
       varying float dustAmount;
+      float boxDistance(vec3 p, vec3 center, vec3 halfSize) {
+        vec3 q = abs(p - center) - halfSize;
+        return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0);
+      }
       void main() {
         vec2 p = puffUv * 2.0 - 1.0;
         float edge = length(p);
@@ -97,7 +114,10 @@ export class TireSmoke {
         float solidDepth = -perspectiveDepthToViewZ(depth, nearPlane, farPlane);
         float intersectionFade = smoothstep(0.0, 0.55, solidDepth - viewDepth);
         float cameraFade = smoothstep(0.3, 1.2, viewDepth);
-        float alpha = density * opacity * intersectionFade * cameraFade;
+        float carDistance = min(boxDistance(carPosition, bodyCenter, bodyHalfSize),
+          boxDistance(carPosition, cabinCenter, cabinHalfSize));
+        float carFade = smoothstep(0.0, 0.18, carDistance);
+        float alpha = density * opacity * intersectionFade * cameraFade * carFade;
         if (alpha < 0.001) discard;
         vec3 smokeColor = mix(vec3(0.58, 0.62, 0.65), vec3(0.82), puffUv.y);
         vec3 dustColor = mix(vec3(0.48, 0.32, 0.17), vec3(0.72, 0.57, 0.36), puffUv.y);
@@ -109,7 +129,7 @@ export class TireSmoke {
   });
   readonly mesh: THREE.Mesh<THREE.InstancedBufferGeometry, THREE.ShaderMaterial>;
 
-  constructor(scene: THREE.Scene) {
+  constructor(scene: THREE.Scene, private readonly chassis: THREE.Object3D) {
     scene.traverse((object) => {
       if (object instanceof THREE.SpotLight || object instanceof THREE.RectAreaLight) {
         this.localLights.push({
@@ -262,6 +282,9 @@ export class TireSmoke {
 
   captureDepth(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.PerspectiveCamera) {
     if (!this.geometry.instanceCount) return;
+    this.chassis.updateWorldMatrix(true, false);
+    camera.updateWorldMatrix(true, false);
+    this.material.uniforms.viewToCar.value.copy(this.chassis.matrixWorld).invert().multiply(camera.matrixWorld);
     this.updateLighting(scene);
     renderer.getDrawingBufferSize(this.size);
     if (this.depthTarget.width !== this.size.x || this.depthTarget.height !== this.size.y) {

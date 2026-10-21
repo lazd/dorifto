@@ -213,7 +213,11 @@ has a surface normal so headlights illuminate the rubber correctly on slopes.
 Smoke uses sorted, instanced
 billboard puffs that expand, rise, drift, and fade over their lifetime. A solid
 scene depth pass softens intersections with the car and terrain, avoiding hard
-particle cuts and tracks drawing over the smoke. This extra pass runs only while
+particle cuts. Per-fragment car-local body/cabin exclusion boxes also suppress
+smoke and dust inside the car, fading over 18 cm outside the boxes. These follow
+the rendered chassis pose and approximate its volume rather than simulating
+particle collisions against the model. The depth pass also prevents
+tracks drawing over the smoke. This extra pass runs only while
 puffs are alive and follows the drawing-buffer resolution on resize. Smoke is
 excluded from side-mirror reflection passes, whose camera depth differs.
 Silver headlight interiors contain warm-white projectors with real, shadow-casting

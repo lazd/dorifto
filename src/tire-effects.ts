@@ -38,7 +38,7 @@ export function createTireEffects(scene: THREE.Scene, car: Awaited<ReturnType<ty
   const dirtMark = new THREE.Color(0x493827);
   let markCount = 0;
 
-  const smoke = new TireSmoke(scene);
+  const smoke = new TireSmoke(scene, car.chassis);
   scene.add(smoke.mesh);
 
   function reset() {
