@@ -42,12 +42,28 @@ elements.
   tire forces, vehicle reset, and interpolated vehicle/cone poses.
 - `src/tire-effects.ts`: skid marks, tire smoke/dust, and smoke depth capture.
 - `src/drive-modes.ts`: Grip/Drift handling and camera presets.
-- `src/drivetrain.ts`: engine and clutch integration, applying transmission decisions.
-- `src/transmission.ts`: fixed gear ratios, final drive,
-  reverse ratio, Sport throttle mapping, shared redline, and RPM-based gear decisions.
+- `src/drivetrain.ts`: fixed ratios, final drive, reverse, shared redline, Sport
+  throttle mapping, shift decisions/safety, boost, engine torque, and clutch
+  integration, separated into named methods.
+- `src/vehicle-settings.ts`: shared vehicle mass, center of mass, inertia,
+  suspension/anti-roll, damping, brake torque, differential, drag, and engine/wheel inertia.
 
 Each runtime module owns its working state; the entry point coordinates updates
 without sharing its local variables with the camera, physics, or effects.
+
+Edit `vehicleSettings` in `src/vehicle-settings.ts` and reload to change the
+vehicle's physical setup. Defaults preserve the existing behavior: 1,450 kg,
+zero COM offset, and 2,400/2,600/700 kg m^2 pitch/yaw/roll inertia.
+`centerOfMass` is in chassis-local meters (+X right, +Y up, +Z forward).
+Moving Z forward increases front weight distribution; lowering Y lowers the COM.
+Axle loads are calculated by the suspension, not by a separate weight-bias multiplier.
+Collision vertices, suspension mounts, force lever arms, reset, and rendered chassis
+positions all account for the COM offset. Inertia is specified independently; changing
+mass or COM does not automatically recalculate the inertia tensor.
+Grip/Drift tire and steering presets remain in `src/drive-modes.ts`.
+Aerodynamic drag uses `0.5 * airDensityKgM3 * coefficient * frontalAreaM2 * speed²`,
+with Cd 0.31, air density 1.225 kg/m³, and an estimated 2.0 m² frontal area.
+The separate linear resistance and Bullet chassis damping remain unchanged.
 
 ## Run
 
@@ -446,7 +462,7 @@ It reads RPM, combustion load, boost, gear shifts and limiter cuts directly from
 the physical drivetrain; there is no independent audio gearbox or synthetic
 slip-to-RPM target. Six fixed forward ratios, a 3.692 final drive and 3.369
 reverse ratio do not depend on horsepower or wheel radius. Forward ratios are
-specified directly in `src/transmission.ts`:
+specified directly in `src/drivetrain.ts`:
 
 | Gear | Ratio |
 | --- | --- |
@@ -460,7 +476,7 @@ specified directly in `src/transmission.ts`:
 The transmission always uses Sport behavior in both Grip and Drift; there is no
 transmission selector. The TCU uses actual engine RPM: upshifts at 7,200 RPM and
 downshifts below 4,000 RPM to keep the engine in its useful power range.
-The shared `redlineRpm` constant in `src/transmission.ts` controls the upshift
+The shared `redlineRpm` constant in `src/drivetrain.ts` controls the upshift
 threshold and rev limiter.
 Sport applies the square root of pedal input (50% pedal gives about 71% throttle).
 This mapping affects combustion and boost, not just the audio.

@@ -11,6 +11,7 @@ import type { Store } from './store';
 import { wattsPerHorsepower } from './game-state';
 import { driveModes } from './drive-modes';
 import { Drivetrain, wheelInertia, type DrivetrainInput } from './drivetrain';
+import { vehicleSettings } from './vehicle-settings';
 
 interface VehiclePhysicsOptions {
   Ammo: typeof AmmoFactory;
@@ -27,6 +28,12 @@ export function createVehiclePhysics({
   Ammo, car, course, spawn, controls, gameState, laps, audio,
 }: VehiclePhysicsOptions) {
   const { cones, terrain, isAsphalt } = course;
+  const settings = vehicleSettings;
+  const { suspension } = settings;
+  const centerOfMass = new THREE.Vector3(
+    settings.centerOfMass.x, settings.centerOfMass.y, settings.centerOfMass.z,
+  );
+  const centerOfMassOffset = new THREE.Vector3();
   const lapPosition = new THREE.Vector3();
   const configuration = new Ammo.btDefaultCollisionConfiguration();
   const dispatcher = new Ammo.btCollisionDispatcher(configuration);
@@ -87,19 +94,20 @@ export function createVehiclePhysics({
   const chassisShape = new Ammo.btConvexHullShape();
   for (let i = 0; i < car.collisionVertices.length; i++) {
     const point = car.collisionVertices[i];
-    vector.setValue(point.x, point.y, point.z);
+    vector.setValue(point.x - centerOfMass.x, point.y - centerOfMass.y, point.z - centerOfMass.z);
     chassisShape.addPoint(vector, i === car.collisionVertices.length - 1);
   }
-  chassisShape.setMargin(0.025);
-  const body = rigidBody(1450, chassisShape, new THREE.Vector3(0, 0.8, 0));
+  chassisShape.setMargin(settings.collisionMarginM);
+  const body = rigidBody(settings.massKg, chassisShape,
+    new THREE.Vector3(0, settings.spawnHeightM, 0).add(centerOfMass));
   // Vehicle-scale pitch/yaw/roll inertia, not the thin underbody box's inertia.
-  vector.setValue(2400, 2600, 700);
-  body.setMassProps(1450, vector);
+  vector.setValue(settings.inertiaKgM2.pitch, settings.inertiaKgM2.yaw, settings.inertiaKgM2.roll);
+  body.setMassProps(settings.massKg, vector);
   body.updateInertiaTensor();
   const carPointer = Ammo.getPointer(body);
   const coneIds = new Map(coneBodies.map((cone, i) => [Ammo.getPointer(cone), i]));
   body.setActivationState(4);
-  body.setDamping(0.02, 0.05);
+  body.setDamping(settings.damping.linear, settings.damping.angular);
   const tuning = new Ammo.btVehicleTuning();
   const raycaster = new Ammo.btDefaultVehicleRaycaster(world);
   const vehicle = new Ammo.btRaycastVehicle(tuning, body, raycaster);
@@ -110,16 +118,20 @@ export function createVehiclePhysics({
   car.centers.forEach((center, i) => {
     const pair = i < 2 ? car.centers.slice(0, 2) : car.centers.slice(2);
     const halfTrack = (Math.abs(pair[0].x) + Math.abs(pair[1].x)) / 2;
-    vector.setValue(i % 2 === 0 ? -halfTrack : halfTrack, center.y + 0.28, (pair[0].z + pair[1].z) / 2);
-    const wheel = vehicle.addWheel(vector, direction, axle, 0.28, car.radii[i], tuning, i < 2);
-    wheel.set_m_suspensionStiffness(35);
-    wheel.set_m_wheelsDampingRelaxation(2.8);
-    wheel.set_m_wheelsDampingCompression(4.5);
-    wheel.set_m_maxSuspensionForce(12000);
+    vector.setValue(
+      (i % 2 === 0 ? -halfTrack : halfTrack) - centerOfMass.x,
+      center.y + suspension.mountHeightOffsetM - centerOfMass.y,
+      (pair[0].z + pair[1].z) / 2 - centerOfMass.z,
+    );
+    const wheel = vehicle.addWheel(vector, direction, axle, suspension.restLengthM, car.radii[i], tuning, i < 2);
+    wheel.set_m_suspensionStiffness(suspension.stiffness);
+    wheel.set_m_wheelsDampingRelaxation(suspension.dampingRelaxation);
+    wheel.set_m_wheelsDampingCompression(suspension.dampingCompression);
+    wheel.set_m_maxSuspensionForce(suspension.maxForceN);
     // Ammo supplies suspension/contact; the combined-slip tire model below
     // supplies all road forces, so Bullet must not apply a second tire model.
     wheel.set_m_frictionSlip(0);
-    wheel.set_m_rollInfluence(0.06);
+    wheel.set_m_rollInfluence(suspension.bulletRollInfluence);
   });
   Ammo.destroy(direction);
   Ammo.destroy(axle);
@@ -177,7 +189,12 @@ export function createVehiclePhysics({
   const spawnQuaternion = new THREE.Quaternion().setFromRotationMatrix(
     new THREE.Matrix4().makeBasis(spawnRight, spawnNormal, spawnForward),
   );
-  vector.setValue(spawn.position[0], terrain.heightAt(spawn.position[0], spawn.position[1]) + 0.8, spawn.position[1]);
+  centerOfMassOffset.copy(centerOfMass).applyQuaternion(spawnQuaternion);
+  vector.setValue(
+    spawn.position[0] + centerOfMassOffset.x,
+    terrain.heightAt(spawn.position[0], spawn.position[1]) + settings.spawnHeightM + centerOfMassOffset.y,
+    spawn.position[1] + centerOfMassOffset.z,
+  );
   resetTransform.setOrigin(vector);
   const spawnRotation = new Ammo.btQuaternion(spawnQuaternion.x, spawnQuaternion.y, spawnQuaternion.z, spawnQuaternion.w);
   resetTransform.setRotation(spawnRotation);
@@ -196,6 +213,8 @@ export function createVehiclePhysics({
     const rotation = transform.getRotation();
     car.chassis.position.set(position.x(), position.y(), position.z());
     car.chassis.quaternion.set(rotation.x(), rotation.y(), rotation.z(), rotation.w());
+    centerOfMassOffset.copy(centerOfMass).applyQuaternion(car.chassis.quaternion);
+    car.chassis.position.sub(centerOfMassOffset);
     car.wheels.forEach((wheel, i) => {
       vehicle.getWheelInfo(i).set_m_rotation(tireAngles[i]);
       vehicle.updateWheelTransform(i, true);
@@ -319,12 +338,12 @@ export function createVehiclePhysics({
       if (!wheelContacts[axle] || !wheelContacts[axle + 1]) continue;
       const leftLoad = Math.max(0, vehicle.getWheelInfo(axle).get_m_wheelsSuspensionForce());
       const rightLoad = Math.max(0, vehicle.getWheelInfo(axle + 1).get_m_wheelsSuspensionForce());
-      const limit = Math.min(leftLoad, rightLoad) * 0.4;
+      const limit = Math.min(leftLoad, rightLoad) * suspension.antiRollMaxLoadFraction;
       const barForce = THREE.MathUtils.clamp(
-        (right.get_m_suspensionLength() - left.get_m_suspensionLength()) * 12000, -limit, limit,
+        (right.get_m_suspensionLength() - left.get_m_suspensionLength()) * suspension.antiRollStiffness, -limit, limit,
       );
       for (let side = 0; side < 2; side++) {
-        antiRollOffset.copy(car.centers[axle + side]).applyQuaternion(physicsRotation);
+        antiRollOffset.copy(car.centers[axle + side]).sub(centerOfMass).applyQuaternion(physicsRotation);
         const force = side === 0 ? barForce : -barForce;
         vector.setValue(suspensionUp.x * force, suspensionUp.y * force, suspensionUp.z * force);
         forceOffset.setValue(antiRollOffset.x, antiRollOffset.y, antiRollOffset.z);
@@ -338,7 +357,7 @@ export function createVehiclePhysics({
       const contact = wheel.get_m_raycastInfo();
       let paved = true;
       tireNormal.set(0, 1, 0);
-      tireOffset.copy(car.centers[i]).applyQuaternion(physicsRotation);
+      tireOffset.copy(car.centers[i]).sub(centerOfMass).applyQuaternion(physicsRotation);
       if (wheelContacts[i]) {
         const point = contact.get_m_contactPointWS();
         const origin = body.getWorldTransform().getOrigin();
@@ -363,8 +382,8 @@ export function createVehiclePhysics({
       const surfaceGrip = paved ? 1 : 0.65;
       const capacity = load * (tune.friction * (rear ? tireTune.rearGrip : tireTune.frontGrip) + staticGrip) * surfaceGrip;
       const lateralDemand = -(rear ? tireTune.rearStiffness : tireTune.frontStiffness) * slipAngle * surfaceGrip;
-      const brakeTorque = rear && handbrake ? 4500
-        : brakeAmount * (rear ? brakestand ? 0 : 1300 : 1900);
+      const brakeTorque = rear && handbrake ? settings.brakes.handbrakeTorqueNm
+        : brakeAmount * (rear ? brakestand ? 0 : settings.brakes.rearTorqueNm : settings.brakes.frontTorqueNm);
       const tire = tireContacts[i];
       tire.forward.copy(tireForward);
       tire.lateral.copy(tireLateral);
@@ -388,7 +407,10 @@ export function createVehiclePhysics({
     for (let j = 0; j < 12; j++) {
       drivetrainInput.wheelSpeed = (tireSpeeds[2] + tireSpeeds[3]) / 2;
       const engineTorque = drivetrain.step(tireStep, drivetrainInput);
-      const differential = THREE.MathUtils.clamp((tireSpeeds[3] - tireSpeeds[2]) * 8, -250, 250);
+      const differential = THREE.MathUtils.clamp(
+        (tireSpeeds[3] - tireSpeeds[2]) * settings.differential.coupling,
+        -settings.differential.maxTorqueNm, settings.differential.maxTorqueNm,
+      );
       for (let i = 0; i < 4; i++) {
         const rear = i >= 2;
         const tire = tireContacts[i];
@@ -432,7 +454,7 @@ export function createVehiclePhysics({
             * THREE.MathUtils.smoothstep(excessSpeed, 1, 5);
           tireSounds[i].slip = Math.max(lateralSlip, longitudinalSlip);
           tireSounds[i].speed = Math.hypot(across, excessSpeed);
-          tireSounds[i].load = load / (1450 * 9.81 / 4);
+          tireSounds[i].load = load / (settings.massKg * 9.81 / 4);
         }
         // Normal acceleration needs a small amount of slip, not tire smoke.
         if (rear) burnout = Math.max(burnout, THREE.MathUtils.smoothstep(slipRatio, 0.18, 0.65)
@@ -447,7 +469,7 @@ export function createVehiclePhysics({
       body.applyForce(vector, forceOffset);
       // Approximate suspension roll-center geometry for our custom lateral forces.
       // Bullet's rollInfluence only affects its disabled built-in tire model.
-      const rollCenterOffset = -tireOffset.dot(suspensionUp) * 0.5;
+      const rollCenterOffset = -tireOffset.dot(suspensionUp) * suspension.lateralForceHeightFraction;
       forceOffset.setValue(
         tireOffset.x + suspensionUp.x * rollCenterOffset,
         tireOffset.y + suspensionUp.y * rollCenterOffset,
@@ -456,7 +478,9 @@ export function createVehiclePhysics({
       vector.setValue(tireLateral.x * lateralForce, tireLateral.y * lateralForce, tireLateral.z * lateralForce);
       body.applyForce(vector, forceOffset);
     }
-    const drag = 8 + 0.45 * Math.hypot(linear.x(), linear.z());
+    const drag = settings.drag.linearResistance
+      + 0.5 * settings.drag.airDensityKgM3 * settings.drag.coefficient * settings.drag.frontalAreaM2
+      * Math.hypot(linear.x(), linear.z());
     vector.setValue(-linear.x() * drag, 0, -linear.z() * drag);
     body.applyCentralForce(vector);
     world.stepSimulation(fixedStep, 0);
