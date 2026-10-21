@@ -96,8 +96,9 @@ puffs are alive and follows the drawing-buffer resolution on resize. Smoke is
 excluded from side-mirror reflection passes, whose camera depth differs.
 Silver headlight interiors contain warm-white projectors with real, shadow-casting
 spotlights illuminating the surface ahead. The two rear brake lenses and spoiler
-brake strip glow red only
-while the foot brake is pressed (keyboard X or controller LT when braking).
+brake strip glow red
+while the foot brake is pressed (keyboard X or controller LT when braking)
+or the initial spawn brake hold is active.
 They stay unlit while coasting, engine braking, or using LT to reverse;
 bumper reflectors remain unchanged. Front and rear turn-signal lenses are clear
 instead of amber beneath their existing tinted covers.
@@ -163,6 +164,27 @@ switching courses. Tune values are defined in `src/drive-modes.ts`.
 
 ## Courses
 
+### Elevation and terrain
+
+All layouts use a shared rolling heightfield: gentle climbs and descents on the
+road, with dry golden hills rising beside the course. Corners bank toward the
+inside (up to about 3.7 degrees); the road's cross-slope is derived from its turn,
+not from the surrounding hillside, so hills do not introduce adverse camber.
+Red-and-white painted curbs follow the inside of bends, within the paved shoulder.
+They are flush painted runoff, not raised collision bumps.
+
+The 1.5 m terrain grid drives both rendering and Ammo heightfield collisions.
+Pavement and markings are split along those same triangles to avoid clipping.
+Cones, spawn/reset orientation, tire forces, skid marks, smoke/dust and camera
+clearance all follow the elevated surface. `src/terrain.ts` owns the height and
+banking profile; existing marker definitions and random seeds still work.
+
+On spawn/reset, the brakes hold the car until the first accelerator input
+(Z or RT/R2). The HUD shows BRAKES HELD and brake lights stay on during the hold.
+After releasing the hold, ordinary braking/reverse and lift-off behavior resume.
+
+### Layouts
+
 Use the Course selector to load Autocross Playground (12 m wide) or Sweeper
 Circuit (14 m wide). Switching courses restarts the demo for a clean physics world,
 cones, and tire marks. The selection is encoded in `?course=autocross` or
@@ -170,17 +192,17 @@ cones, and tire marks. The selection is encoded in `?course=autocross` or
 
 The driving corridor is textured asphalt with an 80 cm paved shoulder; everything
 outside it is textured dirt/gravel. Both receive shadows and headlights.
-Each wheel checks its physics contact against the pavement mesh: dirt/gravel has
+Each wheel checks its physics contact against the course corridor: dirt/gravel has
 65% of the selected mode's asphalt friction and cornering stiffness, reducing
 acceleration, braking, and cornering traction. The paved shoulder retains full
 grip, and returning to asphalt restores it immediately.
-Rear tires detect the actual pavement mesh, including the shoulder. Off pavement,
+Rear tires detect the paved corridor, including the shoulder. Off pavement,
 sliding/spinning tires emit tan dust at half the smoke rate with slightly lower
 opacity and less upward drift, and leave muted brown dirt tracks rather than
 dark rubber stripes. Asphalt skid marks are softened charcoal gray.
 Each tire is classified separately;
 existing puffs and tracks keep their original appearance across surface changes.
-The gravel meets the physics ground plane; the pavement sits only 8 mm above it,
+The terrain meets the physics heightfield; the pavement sits only 8 mm above it,
 with depth bias to prevent distant flicker without a visible tire-to-ground gap.
 Cone bases sit 22 cm outside the outer edge of each white boundary line.
 Bent left/right warning arrows appear about 12 m before hard-turn entry,

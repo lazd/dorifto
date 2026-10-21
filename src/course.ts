@@ -2,9 +2,12 @@ import * as THREE from 'three';
 import type { CourseDefinition } from './courses';
 import { courseRoute, courseTurns, startDistance } from './courses';
 import { surfaceMaterial } from './surfaces';
+import { CourseTerrain } from './terrain';
 
 export function createCourse(scene: THREE.Scene, definition: CourseDefinition) {
   const route = courseRoute(definition);
+  const terrain = new CourseTerrain(definition);
+  scene.add(terrain.mesh);
   const coneGeometry = new THREE.ConeGeometry(0.23, 0.7, 24);
   const orange = new THREE.MeshStandardMaterial({ color: 0xf07424, roughness: 0.65 });
   const stripeMaterial = new THREE.MeshPhysicalMaterial({
@@ -25,7 +28,10 @@ export function createCourse(scene: THREE.Scene, definition: CourseDefinition) {
     for (const side of [-1, 1]) {
       const cone = new THREE.Mesh(coneGeometry, orange);
       cone.position.copy(center).addScaledVector(across, side * (definition.width / 2 + 0.53));
-      cone.position.y = 0.35;
+      const normal = terrain.normalAt(cone.position.x, cone.position.z);
+      cone.position.y = terrain.heightAt(cone.position.x, cone.position.z);
+      cone.position.addScaledVector(normal, 0.35);
+      cone.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), normal);
       cone.castShadow = true;
       cone.receiveShadow = true;
       const stripe = new THREE.Mesh(stripeGeometry, stripeMaterial);
@@ -40,11 +46,13 @@ export function createCourse(scene: THREE.Scene, definition: CourseDefinition) {
   const white = new THREE.MeshBasicMaterial({ color: 0xe1e6df, side: THREE.DoubleSide });
   const dark = new THREE.MeshBasicMaterial({ color: 0x20282b, side: THREE.DoubleSide });
   const segments = Math.ceil(length / 0.5);
-  function ribbon(offset: number, width: number, height: number, material: THREE.Material) {
+  function ribbon(offset: number, width: number, height: number, material: THREE.Material,
+    from = 0, to = 1) {
     const positions: number[] = [];
     const uvs: number[] = [];
-    for (let i = 0; i <= segments; i++) {
-      const t = i / segments;
+    const steps = Math.max(1, Math.ceil((to - from) * segments));
+    for (let i = 0; i <= steps; i++) {
+      const t = THREE.MathUtils.lerp(from, to, i / steps);
       const center = route.getPointAt(t);
       const tangent = route.getTangentAt(t);
       across.set(tangent.z, 0, -tangent.x).normalize();
@@ -55,7 +63,7 @@ export function createCourse(scene: THREE.Scene, definition: CourseDefinition) {
       }
     }
     const indices: number[] = [];
-    for (let i = 0; i < segments; i++) {
+    for (let i = 0; i < steps; i++) {
       const j = i * 2;
       indices.push(j, j + 2, j + 1, j + 1, j + 2, j + 3);
     }
@@ -63,8 +71,9 @@ export function createCourse(scene: THREE.Scene, definition: CourseDefinition) {
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
     geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
     geometry.setIndex(indices);
-    geometry.computeVertexNormals();
-    const mesh = new THREE.Mesh(geometry, material);
+    const projected = terrain.projectGeometry(geometry, height);
+    geometry.dispose();
+    const mesh = new THREE.Mesh(projected, material);
     mesh.receiveShadow = true;
     scene.add(mesh);
     return mesh;
@@ -73,7 +82,7 @@ export function createCourse(scene: THREE.Scene, definition: CourseDefinition) {
   asphalt.polygonOffset = true;
   asphalt.polygonOffsetFactor = 1;
   asphalt.polygonOffsetUnits = 1;
-  const pavement = ribbon(0, definition.width + 1.6, 0.008, asphalt);
+  ribbon(0, definition.width + 1.6, 0.008, asphalt);
   for (const side of [-1, 1]) ribbon(side * definition.width / 2, 0.16, 0.016, white);
   const columns = Math.ceil(definition.width / 0.5);
   const tileWidth = definition.width / columns;
@@ -82,11 +91,20 @@ export function createCourse(scene: THREE.Scene, definition: CourseDefinition) {
   across.set(startTangent.z, 0, -startTangent.x).normalize();
   for (let row = 0; row < 2; row++) {
     for (let column = 0; column < columns; column++) {
-      const tile = new THREE.Mesh(new THREE.PlaneGeometry(tileWidth, 0.5), (row + column) % 2 ? dark : white);
+      const tile = new THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>(
+        new THREE.PlaneGeometry(tileWidth, 0.5), (row + column) % 2 ? dark : white,
+      );
       tile.rotation.set(-Math.PI / 2, 0, Math.atan2(startTangent.x, startTangent.z));
       tile.position.copy(start)
         .addScaledVector(across, -definition.width / 2 + (column + 0.5) * tileWidth)
         .addScaledVector(startTangent, row * 0.5).setY(0.02);
+      tile.updateMatrix();
+      const geometry = tile.geometry.clone().applyMatrix4(tile.matrix);
+      tile.geometry.dispose();
+      tile.geometry = terrain.projectGeometry(geometry, 0.02);
+      geometry.dispose();
+      tile.position.set(0, 0, 0);
+      tile.rotation.set(0, 0, 0);
       scene.add(tile);
     }
   }
@@ -105,22 +123,46 @@ export function createCourse(scene: THREE.Scene, definition: CourseDefinition) {
     const t = distance / length;
     const position = route.getPointAt(t);
     const tangent = route.getTangentAt(t);
-    const arrow = new THREE.Mesh(arrowGeometry, white);
+    const arrow = new THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>(arrowGeometry, white);
     arrow.rotation.set(-Math.PI / 2, 0, Math.atan2(-tangent.x, -tangent.z));
     arrow.position.copy(position).setY(0.02);
+    arrow.updateMatrix();
+    const geometry = arrow.geometry.clone().applyMatrix4(arrow.matrix);
+    arrow.geometry.dispose();
+    arrow.geometry = terrain.projectGeometry(geometry, 0.02);
+    geometry.dispose();
+    arrow.position.set(0, 0, 0);
+    arrow.rotation.set(0, 0, 0);
     scene.add(arrow);
   }
-  const surfaceRay = new THREE.Raycaster();
-  surfaceRay.ray.direction.set(0, -1, 0);
-  const hits: THREE.Intersection[] = [];
-  pavement.updateMatrixWorld();
+  const curbRed = new THREE.MeshStandardMaterial({ color: 0xbc2823, roughness: 0.85, side: THREE.DoubleSide });
+  const curbWhite = new THREE.MeshStandardMaterial({ color: 0xe6e3d7, roughness: 0.85, side: THREE.DoubleSide });
+  const curbPositions: number[][] = [[], []];
+  for (let distance = 0; distance < length; distance += 2) {
+    const t = (distance + 1) / length;
+    const before = route.getTangentAt(THREE.MathUtils.euclideanModulo(t - 4 / length, 1));
+    const after = route.getTangentAt((t + 4 / length) % 1);
+    const bend = Math.atan2(before.z * after.x - before.x * after.z, before.dot(after));
+    if (Math.abs(bend) < 8 / 65) continue;
+    const curb = ribbon(Math.sign(bend) * (definition.width / 2 + 0.4), 0.64, 0.024,
+      curbRed, distance / length, Math.min(distance + 2, length) / length);
+    const positions = curb.geometry.getAttribute('position');
+    curbPositions[Math.floor(distance / 2) % 2].push(...Array.from(positions.array));
+    scene.remove(curb);
+    curb.geometry.dispose();
+  }
+  curbPositions.forEach((positions, i) => {
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geometry.computeVertexNormals();
+    const curbs = new THREE.Mesh(geometry, i ? curbWhite : curbRed);
+    curbs.name = 'inside-corner-curbs';
+    curbs.receiveShadow = true;
+    scene.add(curbs);
+  });
   return {
     cones,
-    isAsphalt(position: THREE.Vector3) {
-      surfaceRay.ray.origin.set(position.x, 1, position.z);
-      hits.length = 0;
-      surfaceRay.intersectObject(pavement, false, hits);
-      return hits.length > 0;
-    },
+    terrain,
+    isAsphalt: (position: THREE.Vector3) => terrain.isAsphalt(position),
   };
 }

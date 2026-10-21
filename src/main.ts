@@ -6,7 +6,6 @@ import { TireSmoke } from './smoke';
 import { DrivingControls } from './controls';
 import { createCourse } from './course';
 import { courses, courseSpawn, generateCourse } from './courses';
-import { surfaceMaterial } from './surfaces';
 import { driveModes, isDriveMode } from './drive-modes';
 import { LapTimer, formatLapTime } from './laps';
 import './style.css';
@@ -95,7 +94,7 @@ async function start() {
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x78b5ec);
-  scene.fog = new THREE.Fog(0x78b5ec, 100, 340);
+  scene.fog = new THREE.Fog(0x78b5ec, 220, 650);
   const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 1500);
   camera.layers.enable(1);
   const pmrem = new THREE.PMREMGenerator(renderer);
@@ -115,17 +114,7 @@ async function start() {
   sun.shadow.normalBias = 0.035;
   scene.add(sun, sun.target);
 
-  const ground = new THREE.Mesh(
-    new THREE.PlaneGeometry(4000, 4000),
-    surfaceMaterial('gravel', 4000 / 6),
-  );
-  ground.rotation.x = -Math.PI / 2;
-  ground.material.polygonOffset = true;
-  ground.material.polygonOffsetFactor = 2;
-  ground.material.polygonOffsetUnits = 2;
-  ground.receiveShadow = true;
-  scene.add(ground);
-  const { cones, isAsphalt } = createCourse(scene, definition);
+  const { cones, terrain, isAsphalt } = createCourse(scene, definition);
 
   // The upstream Emscripten factory writes to `this`; ESM calls have no receiver.
   const [Ammo, car] = await Promise.all([AmmoFactory.call({}), loadCar()]);
@@ -154,12 +143,31 @@ async function start() {
     return body;
   }
 
-  vector.setValue(0, 1, 0);
-  rigidBody(0, new Ammo.btStaticPlaneShape(vector, 0), new THREE.Vector3());
+  const heightData = Ammo._malloc(terrain.heights.byteLength);
+  Ammo.HEAPF32.set(terrain.heights, heightData / 4);
+  const groundShape = new Ammo.btHeightfieldTerrainShape(
+    terrain.columns, terrain.rows, heightData, 1, terrain.minHeight, terrain.maxHeight, 1, Ammo.PHY_FLOAT, false,
+  );
+  vector.setValue(terrain.spacing, 1, terrain.spacing);
+  groundShape.setLocalScaling(vector);
+  groundShape.setMargin(0.01);
+  rigidBody(0, groundShape, new THREE.Vector3(
+    terrain.minX + (terrain.columns - 1) * terrain.spacing / 2,
+    (terrain.minHeight + terrain.maxHeight) / 2,
+    terrain.minZ + (terrain.rows - 1) * terrain.spacing / 2,
+  ));
   const coneStarts = cones.map((cone) => cone.position.clone());
+  const coneRotations = cones.map((cone) => cone.quaternion.clone());
   const coneResetTransform = new Ammo.btTransform();
   const coneBodies = cones.map((mesh) => {
     const body = rigidBody(3, new Ammo.btConeShape(0.23, 0.7), mesh.position);
+    const transform = body.getWorldTransform();
+    const rotation = new Ammo.btQuaternion(mesh.quaternion.x, mesh.quaternion.y, mesh.quaternion.z, mesh.quaternion.w);
+    transform.setRotation(rotation);
+    body.setCenterOfMassTransform(transform);
+    body.getMotionState().setWorldTransform(transform);
+    world.updateSingleAabb(body);
+    Ammo.destroy(rotation);
     body.setFriction(0.7);
     body.setRestitution(0.15);
     body.setDamping(0.08, 0.12);
@@ -205,6 +213,7 @@ async function start() {
   let lastTime = 0;
   let burnout = 0;
   let reversing = false;
+  let spawnBrakeHeld = true;
   let offTrackTime = 0;
   let cameraYaw = 0;
   let cameraPitch = 0;
@@ -239,12 +248,20 @@ async function start() {
   const contactPosition = new THREE.Vector3();
   const tireForward = new THREE.Vector3();
   const tireLateral = new THREE.Vector3();
+  const tireNormal = new THREE.Vector3();
   const forceOffset = new Ammo.btVector3(0, 0, 0);
   const resetTransform = new Ammo.btTransform();
   resetTransform.setIdentity();
-  vector.setValue(spawn.position[0], 0.8, spawn.position[1]);
+  const spawnNormal = terrain.normalAt(spawn.position[0], spawn.position[1]);
+  const spawnForward = new THREE.Vector3(Math.sin(spawn.heading), 0, Math.cos(spawn.heading))
+    .projectOnPlane(spawnNormal).normalize();
+  const spawnRight = new THREE.Vector3().crossVectors(spawnNormal, spawnForward).normalize();
+  const spawnQuaternion = new THREE.Quaternion().setFromRotationMatrix(
+    new THREE.Matrix4().makeBasis(spawnRight, spawnNormal, spawnForward),
+  );
+  vector.setValue(spawn.position[0], terrain.heightAt(spawn.position[0], spawn.position[1]) + 0.8, spawn.position[1]);
   resetTransform.setOrigin(vector);
-  const spawnRotation = new Ammo.btQuaternion(0, Math.sin(spawn.heading / 2), 0, Math.cos(spawn.heading / 2));
+  const spawnRotation = new Ammo.btQuaternion(spawnQuaternion.x, spawnQuaternion.y, spawnQuaternion.z, spawnQuaternion.w);
   resetTransform.setRotation(spawnRotation);
   Ammo.destroy(spawnRotation);
 
@@ -325,7 +342,8 @@ async function start() {
 
   function reset() {
     controls.clear();
-    car.setBraking(false);
+    spawnBrakeHeld = true;
+    car.setBraking(true);
     car.setReversing(false);
     car.setHazards(false);
     offTrackTime = 0;
@@ -343,6 +361,10 @@ async function start() {
     coneBodies.forEach((cone, i) => {
       coneResetTransform.setIdentity();
       const start = coneStarts[i];
+      const rotation = coneRotations[i];
+      const coneRotation = new Ammo.btQuaternion(rotation.x, rotation.y, rotation.z, rotation.w);
+      coneResetTransform.setRotation(coneRotation);
+      Ammo.destroy(coneRotation);
       vector.setValue(start.x, start.y, start.z);
       coneResetTransform.setOrigin(vector);
       cone.setCenterOfMassTransform(coneResetTransform);
@@ -428,13 +450,14 @@ async function start() {
     physicsRotation.set(rotation.x(), rotation.y(), rotation.z(), rotation.w());
     tireForward.set(0, 0, 1).applyQuaternion(physicsRotation);
     const forwardSpeed = linear.x() * tireForward.x + linear.z() * tireForward.z;
-    if (controls.throttle > 0 || controls.reverse === 0) reversing = false;
+    if (controls.throttle > 0) spawnBrakeHeld = false;
+    if (spawnBrakeHeld || controls.throttle > 0 || controls.reverse === 0) reversing = false;
     else if (Math.abs(forwardSpeed) < 0.5 && Math.abs(angular.y()) < 0.5 && speed < 4) reversing = true;
     const input = controls.steer;
     const steeringLimit = THREE.MathUtils.lerp(tune.steeringLow, tune.steeringHigh, Math.min(speed / 140, 1));
     const counterSteering = input !== 0 && Math.sign(input) !== Math.sign(steering);
     steering = THREE.MathUtils.damp(steering, input * steeringLimit, counterSteering ? 16 : 10, fixedStep);
-    const brakeAmount = reversing ? 0 : controls.brake;
+    const brakeAmount = spawnBrakeHeld ? 1 : reversing ? 0 : controls.brake;
     const braking = brakeAmount > 0;
     const handbrake = controls.handbrake;
     const throttle = reversing ? controls.reverse : controls.throttle;
@@ -446,23 +469,26 @@ async function start() {
       const wheel = vehicle.getWheelInfo(i);
       const contact = wheel.get_m_raycastInfo();
       let paved = true;
+      tireNormal.set(0, 1, 0);
       tireOffset.copy(car.centers[i]).applyQuaternion(physicsRotation);
       if (wheelContacts[i]) {
         const point = contact.get_m_contactPointWS();
         const origin = body.getWorldTransform().getOrigin();
         tireOffset.set(point.x() - origin.x(), point.y() - origin.y(), point.z() - origin.z());
-        contactPosition.set(point.x(), 0, point.z());
+        contactPosition.set(point.x(), point.y(), point.z());
         paved = isAsphalt(contactPosition);
+        const normal = contact.get_m_contactNormalWS();
+        tireNormal.set(normal.x(), normal.y(), normal.z()).normalize();
       }
       tireForward.set(Math.sin(rear ? 0 : steering), 0, Math.cos(rear ? 0 : steering))
         .applyQuaternion(physicsRotation);
-      tireForward.y = 0;
-      tireForward.normalize();
-      tireLateral.set(tireForward.z, 0, -tireForward.x);
+      tireForward.projectOnPlane(tireNormal).normalize();
+      tireLateral.crossVectors(tireNormal, tireForward).normalize();
       const vx = linear.x() + angular.y() * tireOffset.z - angular.z() * tireOffset.y;
+      const vy = linear.y() + angular.z() * tireOffset.x - angular.x() * tireOffset.z;
       const vz = linear.z() + angular.x() * tireOffset.y - angular.y() * tireOffset.x;
-      const along = vx * tireForward.x + vz * tireForward.z;
-      const across = vx * tireLateral.x + vz * tireLateral.z;
+      const along = vx * tireForward.x + vy * tireForward.y + vz * tireForward.z;
+      const across = vx * tireLateral.x + vy * tireLateral.y + vz * tireLateral.z;
       const slipAngle = Math.atan2(across, Math.max(Math.abs(along), 2));
       const load = wheelContacts[i] ? Math.max(0, wheel.get_m_wheelsSuspensionForce()) : 0;
       const staticGrip = braking && !rear ? 0.15 * brakeAmount * (1 - THREE.MathUtils.smoothstep(Math.abs(along), 0.2, 0.5)) : 0;
@@ -511,7 +537,8 @@ async function start() {
           * THREE.MathUtils.smoothstep(excessSpeed, 1, 4));
       }
       vector.setValue(
-        tireForward.x * longitudinalForce + tireLateral.x * lateralForce, 0,
+        tireForward.x * longitudinalForce + tireLateral.x * lateralForce,
+        tireForward.y * longitudinalForce + tireLateral.y * lateralForce,
         tireForward.z * longitudinalForce + tireLateral.z * lateralForce,
       );
       forceOffset.setValue(tireOffset.x, tireOffset.y, tireOffset.z);
@@ -557,7 +584,7 @@ async function start() {
       accumulator -= fixedStep;
     }
     const alpha = accumulator / fixedStep;
-    car.setBraking(!reversing && controls.brake > 0);
+    car.setBraking(spawnBrakeHeld || (!reversing && controls.brake > 0));
     car.setReversing(reversing);
     for (const state of visualStates) {
       state.object.position.lerpVectors(state.previousPosition, state.position, alpha);
@@ -580,6 +607,7 @@ async function start() {
     desiredCamera.copy(car.chassis.position).addScaledVector(cameraOrbit, -9 - Math.min(speed * 0.04, 2));
     desiredCamera.y = car.chassis.position.y + cameraHeight + cameraPitch;
     camera.position.lerp(desiredCamera, 1 - Math.exp(-tune.cameraPositionResponse * dt));
+    camera.position.y = Math.max(camera.position.y, terrain.heightAt(camera.position.x, camera.position.z) + 1);
     desiredLookTarget.copy(car.chassis.position).addScaledVector(velocity, 0.18);
     desiredLookTarget.y += 0.65;
     lookTarget.lerp(desiredLookTarget, 1 - Math.exp(-10 * dt));
@@ -599,9 +627,10 @@ async function start() {
         tireAcross.y = 0;
         tireAcross.normalize().multiplyScalar(car.widths[i + 2] / 2);
         const paved = wheelAsphalt[i + 2];
-        const height = paved ? 0.025 : 0.015;
-        tireLeft.copy(wheel.position).sub(tireAcross).setY(height);
-        tireRight.copy(wheel.position).add(tireAcross).setY(height);
+        tireLeft.copy(wheel.position).sub(tireAcross);
+        tireRight.copy(wheel.position).add(tireAcross);
+        tireLeft.y = terrain.heightAt(tireLeft.x, tireLeft.z) + 0.04;
+        tireRight.y = terrain.heightAt(tireRight.x, tireRight.z) + 0.04;
         if (marking[i] && contact && paved === previousAsphalt[i] && wheel.position.distanceToSquared(previousTires[i]) < 4) {
           const offset = (markCount % maxMarks) * 18;
           markPositions.set([
@@ -628,7 +657,8 @@ async function start() {
     } else {
       marking.fill(false);
     }
-    smoke.update(dt, car.wheels, wheelContacts, leavingMarks, velocity, camera, wheelAsphalt);
+    smoke.update(dt, car.wheels, wheelContacts, leavingMarks, velocity, camera, wheelAsphalt,
+      (x, z) => terrain.heightAt(x, z));
     speedDisplay.textContent = String(Math.round(speed * 3.6));
     lapNumber.textContent = laps.lap ? `LAP ${laps.lap}` : 'CROSS START TO BEGIN';
     lapCurrent.textContent = formatLapTime(laps.lap ? laps.current : null);
@@ -636,11 +666,13 @@ async function start() {
     lapBest.textContent = formatLapTime(laps.best);
     lapCones.textContent = String(laps.conesHit);
     lapLastCones.textContent = laps.lastCones === null ? '--' : String(laps.lastCones);
-    stateDisplay.textContent = controls.handbrake ? 'HANDBRAKE'
+    stateDisplay.textContent = spawnBrakeHeld ? 'BRAKES HELD'
+      : controls.handbrake ? 'HANDBRAKE'
       : controls.brake > 0 && controls.throttle > 0 ? 'BRAKESTAND'
       : reversing ? 'REVERSE' : controls.brake > 0 ? 'BRAKING'
       : burningOut ? 'BURNOUT' : sliding ? 'SLIDING' : 'REAR-WHEEL DRIVE';
-    if (Math.abs(car.chassis.position.x) > 1800 || Math.abs(car.chassis.position.z) > 1800 || car.chassis.position.y < -5) reset();
+    if (!terrain.contains(car.chassis.position.x, car.chassis.position.z)
+      || car.chassis.position.y < terrain.heightAt(car.chassis.position.x, car.chassis.position.z) - 5) reset();
     smoke.captureDepth(renderer, scene, camera);
     renderer.render(scene, camera);
   }

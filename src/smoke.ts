@@ -117,11 +117,13 @@ export class TireSmoke {
   update(
     dt: number, wheels: THREE.Group[], contacts: boolean[], emitting: boolean,
     velocity: THREE.Vector3, camera: THREE.Camera, asphalt: readonly boolean[],
+    groundHeight: (x: number, z: number) => number,
   ) {
     for (const particle of this.particles) {
       if (particle.age >= lifetime) continue;
       particle.age += dt;
       particle.position.addScaledVector(particle.velocity, dt);
+      particle.position.y = Math.max(particle.position.y, groundHeight(particle.position.x, particle.position.z) + 0.12);
       particle.velocity.multiplyScalar(Math.exp(-dt * 1.4));
       particle.velocity.y += dt * (particle.dust ? 0.2 : 0.45);
     }
@@ -137,7 +139,7 @@ export class TireSmoke {
         const particle = this.particles[this.next++ % count];
         particle.dust = !asphalt[wheel];
         particle.position.copy(wheels[wheel].position);
-        particle.position.y = 0.16;
+        particle.position.y = groundHeight(particle.position.x, particle.position.z) + 0.16;
         particle.velocity.set(
           velocity.x * 0.12 + (Math.random() - 0.5) * 0.6,
           (particle.dust ? 0.15 : 0.3) + Math.random() * 0.3,
