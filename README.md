@@ -188,15 +188,19 @@ Reset clears all lap times. Reloading or changing courses also starts a new sess
 
 ## Drive modes
 
-Open **Drift tuning** at the left of the screen to adjust handling live without
+Open **Grip tuning** or **Drift tuning** at the left of the screen to adjust the selected mode live without
 resetting the car. Sliders control steering angle (showing low/high-speed limits
 in degrees), independent front/rear peak-grip multipliers, front/rear cornering
 stiffness, and rear sliding grip retained after breakaway. Steering adjustment
 scales both speed-dependent limits together. Higher stiffness builds force sooner
 but does not raise peak traction. For a rear end that breaks loose too quickly,
 try increasing rear peak grip and rear sliding grip retained first.
-Settings affect Drift only; the sliders are disabled in Grip. **Restore defaults**
-resets all eight sliders and enables counter-steering assist. Car reset and mode changes retain tuning for the current
+Both modes have independent settings, including an **Engine horsepower** slider
+(100–1,000 crank hp). Horsepower scales the engine's power ceiling and torque curve
+together, retaining each mode's engine characteristics. Defaults are approximately
+342 hp for Grip and 483 hp for Drift; driveline losses still apply.
+**Restore defaults** resets all nine sliders and enables counter-steering assist
+for the active mode only. Car reset and mode changes retain tuning for the current
 page; reloading restores defaults. Focused sliders use arrow keys for adjustment,
 not steering. Controller driving remains available while the panel is open.
 
@@ -207,8 +211,8 @@ their previous input response. **Steering rate** defaults to 126 degrees/second
 (2.2 rad/s), limiting how quickly the wheels move toward lock in addition to
 existing smoothing. Counter-steering and unwinding can move 60% faster to catch
 slides. Both modes use this expo and rate-limited steering implementation,
-including keyboard and assisted steering. Both controls are adjustable live in Drift tuning;
-Grip uses the same 60% expo and 126 degrees/second preset.
+including keyboard and assisted steering. Both controls are adjustable live in either mode;
+Grip defaults to the same 60% expo and 126 degrees/second preset.
 
 **Counter-steering assist** is enabled by default and can be toggled live in
 the tuning panel. During forward slides it progressively steers toward the
@@ -216,9 +220,15 @@ front axle's actual velocity (including rotation of the chassis), with up to
 0.22 radians of driver-controlled cornering angle. It uses the selected steering
 lock and existing steering smoothing, fades out near walking speed and small
 slip angles, and does not assist reverse/backward travel. Disabling it restores
-fully manual Drift steering. Grip enables the same assist through its preset.
+fully manual steering in either mode.
 This is steering assistance only:
 it does not add drive force, apply yaw torque, or follow the course centerline.
+Grip also blends this assist in when the requested steering would exceed the
+front axle's travel angle by more than 0.12 radians (about 7 degrees), targeting
+up to 0.12 radians of driver-controlled cornering slip. This reduces excessive
+front-tire scrub at speed rather than cutting engine torque. It fades out below
+6 m/s and leaves full manual lock below 2 m/s; Drift keeps its existing
+counter-steering behavior without this turn-in slip limit.
 
 Throttle's forward "push" during a slide is ordinary longitudinal rear-tire force:
 engine/clutch torque accelerates the wheels, tread overspeed creates drive demand,

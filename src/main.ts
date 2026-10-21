@@ -10,7 +10,7 @@ import { driveModes, isDriveMode, assistedSteeringAngle } from './drive-modes';
 import { LapTimer, formatLapTime } from './laps';
 import { VehicleAudio } from './audio';
 import { Drivetrain, wheelInertia, type DrivetrainInput } from './drivetrain';
-import { createDriftTuning } from './drift-tuning';
+import { createDrivingTuning, wattsPerHorsepower } from './drift-tuning';
 import './style.css';
 
 function element<T extends HTMLElement>(selector: string): T {
@@ -80,11 +80,11 @@ async function start() {
   if (!isDriveMode(requestedMode)) throw new Error(`Unknown drive mode: ${requestedMode}`);
   let driveMode = requestedMode;
   const tuningFieldset = element<HTMLFieldSetElement>('#drift-tuning-sliders');
-  const driftTuning = createDriftTuning(tuningFieldset, element<HTMLButtonElement>('#drift-tuning-reset'));
+  const drivingTuning = createDrivingTuning(tuningFieldset, element<HTMLButtonElement>('#drift-tuning-reset'));
   const updateTuningMode = () => {
-    tuningFieldset.disabled = driveMode !== 'drift';
-    element('#drift-tuning-mode').textContent = driveMode === 'drift'
-      ? 'Live in Drift mode' : 'Grip uses its own grippier preset. Switch to Drift to tune these settings.';
+    drivingTuning.setMode(driveMode);
+    element('#drift-tuning summary').textContent = `${driveMode === 'drift' ? 'Drift' : 'Grip'} tuning`;
+    element('#drift-tuning-mode').textContent = `Live in ${driveMode === 'drift' ? 'Drift' : 'Grip'} mode / base friction ${driveModes[driveMode].friction}`;
   };
   updateTuningMode();
   modeSelect.value = driveMode;
@@ -629,7 +629,7 @@ async function start() {
 
   function step() {
     const tune = driveModes[driveMode];
-    const tireTune = driveMode === 'drift' ? driftTuning : tune;
+    const tireTune = drivingTuning.settings[driveMode];
     const linear = body.getLinearVelocity();
     const angular = body.getAngularVelocity();
     const speed = Math.hypot(linear.x(), linear.z()) * 3.6;
@@ -652,7 +652,7 @@ async function start() {
       const vz = linear.z() + angular.x() * tireOffset.y - angular.y() * tireOffset.x;
       targetSteering = assistedSteeringAngle(input, steeringLimit,
         vx * tireForward.x + vy * tireForward.y + vz * tireForward.z,
-        vx * tireLateral.x + vy * tireLateral.y + vz * tireLateral.z);
+        vx * tireLateral.x + vy * tireLateral.y + vz * tireLateral.z, tune.steeringSlipLimit);
     }
     const counterSteering = targetSteering !== 0 && Math.sign(targetSteering) !== Math.sign(steering);
     const smoothedSteering = THREE.MathUtils.damp(steering, targetSteering, counterSteering ? 16 : 10, fixedStep);
@@ -737,8 +737,9 @@ async function start() {
     drivetrainInput.reversing = reversing;
     drivetrainInput.handbrake = handbrake;
     drivetrainInput.speedLimited = speed >= (reversing ? 35 : 240);
-    drivetrainInput.peakTorque = tune.engineTorque;
-    drivetrainInput.peakPower = tune.enginePower;
+    const powerScale = tireTune.horsepower / Math.round(tune.enginePower / wattsPerHorsepower);
+    drivetrainInput.peakTorque = tune.engineTorque * powerScale;
+    drivetrainInput.peakPower = tune.enginePower * powerScale;
     // Integrate the engine and both driven wheels together, so each wheel sees
     // the same differential snapshot and tire reaction reaches the crankshaft.
     const tireStep = fixedStep / 12;
@@ -865,7 +866,7 @@ async function start() {
 
   function frame(time: number) {
     const tune = driveModes[driveMode];
-    controls.poll(!helpDialog.open, (driveMode === 'drift' ? driftTuning : tune).steeringExpo);
+    controls.poll(!helpDialog.open, drivingTuning.settings[driveMode].steeringExpo);
     if (controls.resetRequested) reset();
     const dt = lastTime ? Math.min((time - lastTime) / 1000, 0.05) : fixedStep;
     lastTime = time;

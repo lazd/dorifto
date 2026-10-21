@@ -6,6 +6,7 @@ export const driveModes = {
     steeringExpo: 0.6,
     steeringRate: 2.2,
     steeringAssist: true,
+    steeringSlipLimit: Infinity,
     friction: 1.45,
     rearStiffness: 54000,
     rearSlidingGrip: 0.83,
@@ -27,6 +28,7 @@ export const driveModes = {
     steeringExpo: 0.6,
     steeringRate: 2.2,
     steeringAssist: true,
+    steeringSlipLimit: 0.12,
     friction: 1.8,
     rearStiffness: 68000,
     rearSlidingGrip: 0.95,
@@ -49,7 +51,8 @@ export function isDriveMode(value: string): value is DriveMode {
   return value === 'grip' || value === 'drift';
 }
 
-export function assistedSteeringAngle(input: number, limit: number, forward: number, lateral: number): number {
+export function assistedSteeringAngle(input: number, limit: number, forward: number, lateral: number,
+  slipLimit = Infinity): number {
   const manual = input * limit;
   if (forward <= 2) return manual;
   const angle = Math.atan2(lateral, forward);
@@ -57,9 +60,11 @@ export function assistedSteeringAngle(input: number, limit: number, forward: num
     const t = Math.max(0, Math.min(1, (value - low) / (high - low)));
     return t * t * (3 - 2 * t);
   };
-  const blend = smoothstep(Math.abs(angle), 0.08, 0.35) * smoothstep(forward, 2, 6);
+  const scrubBlend = Number.isFinite(slipLimit)
+    ? smoothstep(Math.abs(manual - angle), slipLimit, slipLimit + 0.1) : 0;
+  const blend = Math.max(smoothstep(Math.abs(angle), 0.08, 0.35), scrubBlend) * smoothstep(forward, 2, 6);
   // Leave a small driver-controlled slip angle for cornering force instead of
   // aligning perfectly with travel and removing all front lateral force.
-  const assisted = angle + input * 0.22;
+  const assisted = angle + input * Math.min(0.22, slipLimit);
   return Math.max(-limit, Math.min(limit, manual + (assisted - manual) * blend));
 }
