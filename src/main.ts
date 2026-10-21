@@ -8,6 +8,7 @@ import { createCourse } from './course';
 import { courses, courseSpawn, generateCourse } from './courses';
 import { surfaceMaterial } from './surfaces';
 import { driveModes, isDriveMode } from './drive-modes';
+import { LapTimer, formatLapTime } from './laps';
 import './style.css';
 
 function element<T extends HTMLElement>(selector: string): T {
@@ -52,6 +53,14 @@ async function start() {
     : requestedCourse ? courses.find((course) => course.id === requestedCourse) : courses[0];
   if (!definition) throw new Error(`Unknown course: ${requestedCourse}`);
   const spawn = courseSpawn(definition);
+  const laps = new LapTimer(definition);
+  const lapPosition = new THREE.Vector3();
+  const lapNumber = element('#lap-number');
+  const lapCurrent = element('#lap-current');
+  const lapLast = element('#lap-last');
+  const lapBest = element('#lap-best');
+  const lapCones = element('#lap-cones');
+  const lapLastCones = element('#lap-last-cones');
   const courseSelect = document.querySelector<HTMLSelectElement>('#course');
   if (!courseSelect) throw new Error('Missing course selector');
   for (const course of courses) courseSelect.add(new Option(course.name, course.id));
@@ -160,6 +169,8 @@ async function start() {
   });
   vector.setValue(0.86, 0.23, 2.02);
   const body = rigidBody(1450, new Ammo.btBoxShape(vector), new THREE.Vector3(0, 0.8, 0));
+  const carPointer = Ammo.getPointer(body);
+  const coneIds = new Map(coneBodies.map((cone, i) => [Ammo.getPointer(cone), i]));
   body.setActivationState(4);
   body.setDamping(0.02, 0.05);
   const tuning = new Ammo.btVehicleTuning();
@@ -352,6 +363,7 @@ async function start() {
     }
     world.updateSingleAabb(body);
     captureVisuals(true);
+    laps.reset(car.chassis.position);
     velocity.set(0, 0, 0);
     cameraDirection.set(Math.sin(spawn.heading), 0, Math.cos(spawn.heading));
     camera.position.copy(car.chassis.position).addScaledVector(cameraDirection, -9);
@@ -501,6 +513,23 @@ async function start() {
     vector.setValue(-linear.x() * drag, 0, -linear.z() * drag);
     body.applyCentralForce(vector);
     world.stepSimulation(fixedStep, 0);
+    for (let i = 0; i < dispatcher.getNumManifolds(); i++) {
+      const manifold = dispatcher.getManifoldByIndexInternal(i);
+      const first = Ammo.getPointer(manifold.getBody0());
+      const second = Ammo.getPointer(manifold.getBody1());
+      const cone = first === carPointer ? coneIds.get(second)
+        : second === carPointer ? coneIds.get(first) : undefined;
+      if (cone === undefined) continue;
+      for (let j = 0; j < manifold.getNumContacts(); j++) {
+        if (manifold.getContactPoint(j).getDistance() <= 0) {
+          laps.hitCone(cone);
+          break;
+        }
+      }
+    }
+    const lapOrigin = body.getWorldTransform().getOrigin();
+    lapPosition.set(lapOrigin.x(), lapOrigin.y(), lapOrigin.z());
+    laps.update(lapPosition, fixedStep);
     for (let i = 0; i < 4; i++) {
       wheelContacts[i] = vehicle.getWheelInfo(i).get_m_raycastInfo().get_m_isInContact();
     }
@@ -587,6 +616,12 @@ async function start() {
     }
     smoke.update(dt, car.wheels, wheelContacts, leavingMarks, velocity, camera, wheelAsphalt);
     speedDisplay.textContent = String(Math.round(speed * 3.6));
+    lapNumber.textContent = laps.lap ? `LAP ${laps.lap}` : 'CROSS START TO BEGIN';
+    lapCurrent.textContent = formatLapTime(laps.lap ? laps.current : null);
+    lapLast.textContent = formatLapTime(laps.last);
+    lapBest.textContent = formatLapTime(laps.best);
+    lapCones.textContent = String(laps.conesHit);
+    lapLastCones.textContent = laps.lastCones === null ? '--' : String(laps.lastCones);
     stateDisplay.textContent = controls.handbrake ? 'HANDBRAKE'
       : controls.brake > 0 && controls.throttle > 0 ? 'BRAKESTAND'
       : reversing ? 'REVERSE' : controls.brake > 0 ? 'BRAKING'

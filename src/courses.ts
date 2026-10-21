@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 
+export const startDistance = 5;
+
 export interface CourseDefinition {
   id: string;
   name: string;

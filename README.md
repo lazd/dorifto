@@ -99,6 +99,20 @@ a twelve-meter-wide corridor, with painted arrows indicating direction. Cones
 have glossy white reflective-style bands that catch the headlights (a visual
 approximation, not a retroreflective optical simulation).
 
+## Lap timing
+
+Cross the checkered start/finish line in the driving direction to start lap 1.
+The timing panel shows the current lap, last completed lap, and session best.
+It also shows cones hit on the current and last completed lap. Actual car/cone
+contacts count each cone once per lap; ground contacts and cone-to-cone collisions
+do not count. Hits before timing starts are ignored. The count restarts each lap
+and clears on reset; cone hits do not add time penalties.
+Sixteen ordered gates around the course require a full forward lap, preventing
+extra laps from reversing across the line or cutting directly back to the start.
+Crossings must be within the paved corridor. Timing uses fixed physics time and
+interpolates the crossing within a step; hidden-tab pauses do not add lap time.
+Reset clears all lap times. Reloading or changing courses also starts a new session.
+
 ## Drive modes
 
 The Drive mode selector switches handling live without resetting the course.

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { CourseDefinition } from './courses';
-import { courseRoute, courseTurns } from './courses';
+import { courseRoute, courseTurns, startDistance } from './courses';
 import { surfaceMaterial } from './surfaces';
 
 export function createCourse(scene: THREE.Scene, definition: CourseDefinition) {
@@ -77,8 +77,8 @@ export function createCourse(scene: THREE.Scene, definition: CourseDefinition) {
   for (const side of [-1, 1]) ribbon(side * definition.width / 2, 0.16, 0.016, white);
   const columns = Math.ceil(definition.width / 0.5);
   const tileWidth = definition.width / columns;
-  const start = route.getPointAt(5 / length);
-  const startTangent = route.getTangentAt(5 / length);
+  const start = route.getPointAt(startDistance / length);
+  const startTangent = route.getTangentAt(startDistance / length);
   across.set(startTangent.z, 0, -startTangent.x).normalize();
   for (let row = 0; row < 2; row++) {
     for (let column = 0; column < columns; column++) {
