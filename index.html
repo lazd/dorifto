@@ -34,6 +34,7 @@
         <label>Camera style <select id="camera-style"><option value="corner">Corner-aware chase</option><option value="classic">Classic chase</option></select></label>
         <button id="reset" type="button"><kbd>R</kbd> Reset</button>
         <button id="help" type="button" aria-haspopup="dialog"><kbd>Help</kbd></button>
+        <button id="sound" type="button" aria-pressed="false">Enable sound</button>
       </div>
       <p class="credit">
         “<a href="https://sketchfab.com/3d-models/nissan-fairlady-300zx-z32-1989-8c04336a4ed84f6f836760db8256f9f0" target="_blank" rel="noreferrer">Nissan Fairlady 300ZX (Z32) 1989</a>”
@@ -65,6 +66,7 @@
       </dl>
       <p id="controller-status" role="status">Controller: connect and press a button</p>
       <p>Press the accelerator to release the initial brake hold. Driving inputs are disabled while Help is open; the simulation continues.</p>
+      <p>Sound starts after a click or keypress. Use Sound: On/Off to mute. For controller-only play, click Enable sound once first.</p>
       <form method="dialog"><button type="submit" autofocus><kbd>Close</kbd></button></form>
     </dialog>
     <script type="module" src="/src/main.ts"></script>

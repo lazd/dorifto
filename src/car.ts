@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { Reflector } from 'three/addons/objects/Reflector.js';
 import { RectAreaLightUniformsLib } from 'three/addons/lights/RectAreaLightUniformsLib.js';
+import { ConvexHull } from 'three/addons/math/ConvexHull.js';
 
 const WHEEL_MATERIALS = new Set([
   'Material.004', 'brake_disc1', 'brake_disc', 'nothing.', 'rubber.001',
@@ -461,5 +462,37 @@ export async function loadCar() {
   wheels.forEach((wheel, i) => {
     for (const object of wheel.children) object.position.copy(centers[i]).negate();
   });
-  return { chassis, wheels, centers, radii, widths, setBraking, setReversing, setHazards, setLighting };
+  // Preserve underbody clearance while covering the actual roof, hatch and spoiler.
+  const collisionPoints: THREE.Vector3[] = [];
+  for (const x of [-0.86, 0.86]) {
+    for (const y of [-0.23, 0.23]) {
+      for (const z of [-2.02, 2.02]) collisionPoints.push(new THREE.Vector3(x, y, z));
+    }
+  }
+  chassis.updateMatrixWorld(true);
+  chassis.traverse((object) => {
+    if (!(object instanceof THREE.Mesh) || object.material.name !== 'Material.001') return;
+    const positions = object.geometry.getAttribute('position');
+    const index = object.geometry.getIndex();
+    const used = new Set<number>();
+    for (let i = 0; i < (index?.count ?? positions.count); i++) {
+      const v = index ? index.getX(i) : i;
+      if (used.has(v)) continue;
+      used.add(v);
+      const point = new THREE.Vector3().fromBufferAttribute(positions, v).applyMatrix4(object.matrixWorld);
+      if (point.y >= 0) collisionPoints.push(point);
+    }
+  });
+  if (collisionPoints.length === 8) throw new Error('Missing car body geometry for collision hull.');
+  const hull = new ConvexHull().setFromPoints(collisionPoints);
+  const collisionVertices = new Set<THREE.Vector3>();
+  for (const face of hull.faces) {
+    let edge = face.edge;
+    do {
+      collisionVertices.add(edge.head().point);
+      edge = edge.next;
+    } while (edge !== face.edge);
+  }
+  return { chassis, wheels, centers, radii, widths, collisionVertices: [...collisionVertices],
+    setBraking, setReversing, setHazards, setLighting };
 }

@@ -65,8 +65,11 @@ Rendered car, wheel, and cone transforms interpolate between fixed physics steps
 The chase camera smooths both its position and look target, with a gradual
 transition to following travel direction at low speed. Reset snaps the camera
 and interpolation history together.
-Ammo handles suspension and collisions; a simplified combined-slip tire model
-handles road forces at each wheel's contact point. Tire forces depend on suspension
+Ammo handles suspension and collisions using a compact convex chassis envelope
+covering the roof, rear hatch and spoiler
+for rollover contacts, while retaining the original underbody clearance and inertia.
+A simplified combined-slip tire model handles road forces at each wheel's
+contact point. Tire forces depend on suspension
 load, lateral slip angle, and wheelspin, sharing a finite friction budget. Wheel
 inertia, rear drive torque, a limited-slip differential, and brake torque determine
 traction continuously. Lifting off adds up to 500 Nm of engine braking per rear wheel
@@ -285,6 +288,30 @@ boundary lines, turn-warning arrows, and a combined checkered start/finish line 
 after the curve's start. Spawn/reset position and heading come from the curve's
 start near the first marker and its tangent. There are no per-course cone, arrow, line, or spawn
 coordinates to maintain. `generateCourse` uses the same definition and renderer.
+
+## Sound
+
+Audio is synthesized in real time with Web Audio and an AudioWorklet; no recorded
+sound assets or external audio services are used. A click or keypress unlocks
+browser audio; controller-only players must click Enable sound once. The Sound
+button mutes/unmutes. Audio fades out on blur, hidden tabs, and while Help is open.
+
+The four-stroke V6 voice combines combustion pulses, exhaust harmonics, and noise.
+A speed-driven five-speed automatic sound model uses gear ratios, shift hysteresis,
+an RPM drop/load cut on upshifts, and downshifts while slowing. Rear wheelspin can
+flare RPM without forcing premature upshifts. This is an audio drivetrain only:
+gearing does not alter existing physics or power delivery.
+Turbo boost spools with throttle/RPM and vents a short noise burst when lifting
+off or shifting under boost. Asphalt tire squeal follows actual contacting-wheel
+lateral/longitudinal slip (including burnouts and handbrake lockup), not steering
+input; dirt does not squeal. Tire squeal uses wavering stick-slip tones and harmonics with a small noise layer,
+rather than a continuous broadband hiss.
+Its quiet mix, progressive slip-volume curve, and 140 ms onset ease it in gently;
+an 80 ms release lets it fade promptly as traction returns.
+Car/cone contact impulses produce debounced hollow thuds, with harder hits louder.
+Reset clears the audio drivetrain and transients.
+All voices share a conservative master level and dynamics compressor. Procedural
+voices approximate a turbocharged car rather than reproduce a recorded Z32.
 
 ## Build
 

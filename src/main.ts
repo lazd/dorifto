@@ -8,6 +8,7 @@ import { createCourse } from './course';
 import { courses, courseRoute, courseSpawn, generateCourse } from './courses';
 import { driveModes, isDriveMode } from './drive-modes';
 import { LapTimer, formatLapTime } from './laps';
+import { VehicleAudio } from './audio';
 import './style.css';
 
 function element<T extends HTMLElement>(selector: string): T {
@@ -286,7 +287,20 @@ async function start() {
     return body;
   });
   vector.setValue(0.86, 0.23, 2.02);
-  const body = rigidBody(1450, new Ammo.btBoxShape(vector), new THREE.Vector3(0, 0.8, 0));
+  const inertiaShape = new Ammo.btBoxShape(vector);
+  const chassisShape = new Ammo.btConvexHullShape();
+  for (let i = 0; i < car.collisionVertices.length; i++) {
+    const point = car.collisionVertices[i];
+    vector.setValue(point.x, point.y, point.z);
+    chassisShape.addPoint(vector, i === car.collisionVertices.length - 1);
+  }
+  chassisShape.setMargin(0.025);
+  const body = rigidBody(1450, chassisShape, new THREE.Vector3(0, 0.8, 0));
+  // Keep the existing mass distribution/handling; only the collision envelope changes.
+  inertiaShape.calculateLocalInertia(1450, vector);
+  body.setMassProps(1450, vector);
+  body.updateInertiaTensor();
+  Ammo.destroy(inertiaShape);
   const carPointer = Ammo.getPointer(body);
   const coneIds = new Map(coneBodies.map((cone, i) => [Ammo.getPointer(cone), i]));
   body.setActivationState(4);
@@ -316,6 +330,13 @@ async function start() {
   Ammo.destroy(axle);
 
   const controls = new DrivingControls(element('#controller-status'));
+  const soundButton = element<HTMLButtonElement>('#sound');
+  const audio = new VehicleAudio(soundButton, (error) => {
+    console.error('Vehicle audio unavailable:', error);
+    soundButton.title = `Audio unavailable: ${error instanceof Error ? error.message : String(error)}. Reload to retry.`;
+  });
+  let tireSqueal = 0;
+  const coneSoundCooldowns = new Map<number, number>();
   const helpDialog = element<HTMLDialogElement>('#help-dialog');
   element('#help').addEventListener('click', () => {
     controls.clear();
@@ -473,6 +494,9 @@ async function start() {
 
   function reset() {
     controls.clear();
+    audio.reset();
+    tireSqueal = 0;
+    coneSoundCooldowns.clear();
     spawnBrakeHeld = true;
     car.setBraking(true);
     car.setReversing(false);
@@ -569,6 +593,7 @@ async function start() {
   });
   renderer.domElement.addEventListener('webglcontextlost', (event) => {
     event.preventDefault();
+    audio.silence();
     renderer.setAnimationLoop(null);
     status.hidden = false;
     status.classList.add('error');
@@ -597,6 +622,11 @@ async function start() {
     const throttle = reversing ? controls.reverse : controls.throttle;
     const brakestand = throttle > 0 && braking && !reversing;
     burnout = 0;
+    tireSqueal = 0;
+    for (const [cone, remaining] of coneSoundCooldowns) {
+      if (remaining <= fixedStep) coneSoundCooldowns.delete(cone);
+      else coneSoundCooldowns.set(cone, remaining - fixedStep);
+    }
     for (let i = 0; i < 4; i++) {
       const rear = i >= 2;
       vehicle.setSteeringValue(rear ? 0 : steering, i);
@@ -663,11 +693,18 @@ async function start() {
         longitudinalForce += fx / 12;
         lateralForce += fy / 12;
       }
-      if (rear && wheelContacts[i]) {
+      if (wheelContacts[i]) {
         const excessSpeed = Math.abs(tireSpeeds[i] * car.radii[i] - along);
         const slipRatio = excessSpeed / Math.max(Math.abs(along), 4);
+        if (paved && load > 100) {
+          const lateralSlip = THREE.MathUtils.smoothstep(Math.abs(slipAngle), 0.08, 0.35)
+            * THREE.MathUtils.smoothstep(Math.abs(across), 0.8, 4);
+          const longitudinalSlip = THREE.MathUtils.smoothstep(slipRatio, 0.15, 0.65)
+            * THREE.MathUtils.smoothstep(excessSpeed, 1, 5);
+          tireSqueal = Math.max(tireSqueal, lateralSlip, longitudinalSlip);
+        }
         // Normal acceleration needs a small amount of slip, not tire smoke.
-        burnout = Math.max(burnout, THREE.MathUtils.smoothstep(slipRatio, 0.18, 0.65)
+        if (rear) burnout = Math.max(burnout, THREE.MathUtils.smoothstep(slipRatio, 0.18, 0.65)
           * THREE.MathUtils.smoothstep(excessSpeed, 1, 4));
       }
       vector.setValue(
@@ -689,10 +726,20 @@ async function start() {
       const cone = first === carPointer ? coneIds.get(second)
         : second === carPointer ? coneIds.get(first) : undefined;
       if (cone === undefined) continue;
+      let impulse = 0;
+      let touching = false;
       for (let j = 0; j < manifold.getNumContacts(); j++) {
-        if (manifold.getContactPoint(j).getDistance() <= 0) {
-          laps.hitCone(cone);
-          break;
+        const point = manifold.getContactPoint(j);
+        if (point.getDistance() <= 0) {
+          touching = true;
+          impulse += point.getAppliedImpulse();
+        }
+      }
+      if (touching) {
+        laps.hitCone(cone);
+        if (impulse >= 0.5 && !coneSoundCooldowns.has(cone)) {
+          audio.hitCone(impulse);
+          coneSoundCooldowns.set(cone, 0.3);
         }
       }
     }
@@ -727,6 +774,11 @@ async function start() {
     }
     velocity.lerpVectors(previousVelocity, currentVelocity, alpha);
     const speed = velocity.length();
+    audio.update(dt, {
+      speed, throttle: reversing ? controls.reverse : controls.throttle, reversing,
+      drivenWheelSpeed: (Math.abs(tireSpeeds[2]) + Math.abs(tireSpeeds[3])) / 2,
+      tireSlip: tireSqueal,
+    }, document.hasFocus() && !document.hidden && !helpDialog.open);
     forward.set(0, 0, 1).applyQuaternion(car.chassis.quaternion);
     forward.y = 0;
     forward.normalize();
@@ -874,6 +926,7 @@ async function start() {
     try {
       frame(time);
     } catch (error) {
+      audio.silence();
       renderer.setAnimationLoop(null);
       showError(error);
     }
