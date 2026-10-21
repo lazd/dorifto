@@ -205,6 +205,7 @@ async function start() {
     const manifoldMmHg = THREE.MathUtils.lerp(-550, 0, engine.load) * (1 - engine.boost) + 650 * engine.boost;
     car.setGauges(Math.abs(forward.dot(velocity)) * 3.6, engine.rpm, manifoldMmHg);
     car.setSteering(physics.steering);
+    car.setDashLight('brake', controls.handbrake && time % 800 < 400);
     const slip = speed > 3 ? 1 - Math.abs(forward.dot(velocity) / speed) : 0;
     const sliding = speed > 3 && (controls.handbrake || slip > 0.045);
     const burningOut = burnout > 0.1 && (wheelContacts[2] || wheelContacts[3]);

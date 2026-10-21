@@ -175,6 +175,8 @@ export async function loadCar() {
     setIntensity(rearSignals, illuminated ? 3 : 0);
     setIntensity(frontSignals, illuminated ? 3 : headlightsOn ? 0.4 : 0);
     setIntensity(sideMarkers, illuminated ? 2 : headlightsOn ? 0.5 : 0);
+    setDashLight("leftSignal", illuminated);
+    setDashLight("rightSignal", illuminated);
   }
   function setReversing(reversing: boolean) {
     setIntensity(reverseLenses, reversing ? 4 : 0);
@@ -460,6 +462,34 @@ export async function loadCar() {
     new THREE.Vector3(-0.5365, 0.2157, 0.4039),
     gaugeAxis,
   )(-THREE.MathUtils.degToRad(FUEL_FULL_DEG));
+  // Instrument-cluster warning lamps share one texture. Lit lamps glow unshaded; unlit lamps
+  // are flat black so sunlight and reflections can't reveal them through the smoked panel.
+  const dashLightMeshes = {
+    leftSignal: /^leftind_/,
+    rightSignal: /^rightind_/,
+    highBeam: /^highbeam_/,
+    brake: /^pbrake_/,
+    battery: /^battery_/,
+    checkEngine: /^check_/,
+    catalyst: /^cattemp_/,
+    abs: /^abswarning_/,
+  };
+  type DashLight = keyof typeof dashLightMeshes;
+  const dashLights = {} as Record<DashLight, THREE.Mesh[]>;
+  const unlitDashLight = new THREE.MeshBasicMaterial({ color: 0x000000 });
+  let litDashLight: THREE.MeshBasicMaterial | undefined;
+  for (const [light, pattern] of Object.entries(dashLightMeshes) as [DashLight, RegExp][]) {
+    dashLights[light] = named(pattern);
+    if (!dashLights[light].length) throw new Error(`Missing ${pattern} in the car model.`);
+    litDashLight ??= new THREE.MeshBasicMaterial({
+      map: (dashLights[light][0].material as THREE.MeshStandardMaterial).map,
+    });
+  }
+  function setDashLight(light: DashLight, on: boolean) {
+    for (const mesh of dashLights[light]) mesh.material = on ? litDashLight! : unlitDashLight;
+  }
+  for (const light of Object.keys(dashLights) as DashLight[]) setDashLight(light, false);
+
   // Quick race-style rack: about ±150-250° at the wheel across the drive modes.
   const STEERING_RATIO = 4;
   function setSteering(roadWheelAngle: number) {
@@ -544,6 +574,7 @@ export async function loadCar() {
     setLighting,
     setSteering,
     setGauges,
+    setDashLight,
     aimMirrors,
   };
 }

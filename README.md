@@ -255,6 +255,9 @@ set them. `DRIVER_MIRROR_OUTBOARD_DEG` and `PASSENGER_MIRROR_OUTBOARD_DEG` in
 `REAR_VIEW_MIRROR_TILT_DEG` tilts the interior mirror's view up (positive) or
 down. `setCabinEye()` in `src/camera.ts` moves the head and re-aims all
 three mirrors. The interior mirror's whole housing swivels on its ball joint.
+Dash warning lamps are off by default. The turn-signal arrows flash with the
+hazards, BRAKE flashes while the handbrake is held, and `car.setDashLight()` can
+switch any lamp (including the high-beam indicator) on or off.
 Window tint only renders when looking in from outside, so the cabin view is
 clear, and the on-screen tachometer is hidden in cabin view in favor of the
 car's working gauges. The cones are lightweight dynamic physics objects: hit them to send
