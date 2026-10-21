@@ -11,6 +11,7 @@ export const driveModes = {
     cameraTravelBlend: 0.85,
     cameraDirectionResponse: 1.8,
     cameraPositionResponse: 5,
+    cameraRecenterResponse: 9,
   },
   grip: {
     steeringLow: 0.45,
@@ -21,9 +22,10 @@ export const driveModes = {
     wheelTorque: 1900,
     wheelPower: 115000,
     tractionControl: true,
-    cameraTravelBlend: 0.2,
-    cameraDirectionResponse: 6,
-    cameraPositionResponse: 9,
+    cameraTravelBlend: 0.08,
+    cameraDirectionResponse: 18,
+    cameraPositionResponse: 20,
+    cameraRecenterResponse: 28,
   },
 } as const;
 

@@ -63,7 +63,11 @@ Ammo handles suspension and collisions; a simplified combined-slip tire model
 handles road forces at each wheel's contact point. Tire forces depend on suspension
 load, lateral slip angle, and wheelspin, sharing a finite friction budget. Wheel
 inertia, rear drive torque, a limited-slip differential, and brake torque determine
-traction continuously. There is no drift latch, target angle, yaw assist, or extra
+traction continuously. Lifting off adds up to 500 Nm of engine braking per rear wheel
+in both modes. It fades out by 25% throttle and near walking speed, slowing the
+car decisively without changing full-throttle power or locking the wheels at rest.
+Engine braking uses the same tire traction budget as cornering and road braking.
+There is no drift latch, target angle, yaw assist, or extra
 forward force. Counter-steer and modulate Z to balance a slide; lift off to let
 wheelspin settle and regain lateral grip. Steering can transfer the slide either way.
 Front steering lock ranges from 37 degrees at low speed to 29 degrees at high
@@ -122,6 +126,8 @@ torque, make it less eager to slide during ordinary cornering.
 Its loose chase camera follows travel direction to show slides. Grip's camera
 stays more closely aligned with the car's heading and responds faster through
 turns, while retaining smooth interpolation and the controller camera controls.
+Grip recenters quickly after releasing the camera stick or look-behind, with
+faster heading/position response; Drift retains its slower camera return.
 Grip uses 26-to-11-degree steering lock, 1900 Nm / 115 kW per driven wheel,
 higher tire friction and rear cornering stiffness, and slip-based traction
 control to preserve cornering grip under throttle. Traction control reduces

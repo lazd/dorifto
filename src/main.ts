@@ -464,8 +464,11 @@ async function start() {
       const surfaceGrip = paved ? 1 : 0.65;
       const capacity = load * (tune.friction + staticGrip) * surfaceGrip;
       const lateralDemand = -(rear ? tune.rearStiffness : tune.frontStiffness) * slipAngle * surfaceGrip;
+      const engineBraking = rear
+        ? 500 * (1 - THREE.MathUtils.smoothstep(throttle, 0, 0.25))
+          * THREE.MathUtils.smoothstep(Math.abs(along), 0.5, 3) : 0;
       const brakeTorque = rear && handbrake ? 4500
-        : brakeAmount * (rear ? brakestand ? 650 : 1300 : 1900);
+        : Math.max(engineBraking, brakeAmount * (rear ? brakestand ? 650 : 1300 : 1900));
       let longitudinalForce = 0;
       let lateralForce = 0;
       // Substep wheel inertia so tire slip remains stable at low road speeds.
@@ -560,8 +563,10 @@ async function start() {
     travelVelocity.copy(velocity).normalize();
     travel.lerp(travelVelocity, tune.cameraTravelBlend * THREE.MathUtils.smoothstep(speed, 0.5, 3)).normalize();
     cameraDirection.lerp(travel, 1 - Math.exp(-tune.cameraDirectionResponse * dt)).normalize();
-    cameraYaw = THREE.MathUtils.damp(cameraYaw, controls.lookBehind ? Math.PI : -controls.cameraX * 0.45, 9, dt);
-    cameraPitch = THREE.MathUtils.damp(cameraPitch, -controls.cameraY * 0.8, 9, dt);
+    const yawResponse = !controls.lookBehind && controls.cameraX === 0 ? tune.cameraRecenterResponse : 9;
+    const pitchResponse = controls.cameraY === 0 ? tune.cameraRecenterResponse : 9;
+    cameraYaw = THREE.MathUtils.damp(cameraYaw, controls.lookBehind ? Math.PI : -controls.cameraX * 0.45, yawResponse, dt);
+    cameraPitch = THREE.MathUtils.damp(cameraPitch, -controls.cameraY * 0.8, pitchResponse, dt);
     cameraOrbit.copy(cameraDirection).applyAxisAngle(up, cameraYaw);
     desiredCamera.copy(car.chassis.position).addScaledVector(cameraOrbit, -9 - Math.min(speed * 0.04, 2));
     desiredCamera.y = car.chassis.position.y + cameraHeight + cameraPitch;
