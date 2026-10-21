@@ -198,7 +198,7 @@ export function createCourse(scene: THREE.Scene, definition: CourseDefinition) {
     const after = route.getTangentAt((t + 4 / length) % 1);
     const bend = Math.atan2(before.z * after.x - before.x * after.z, before.dot(after));
     if (Math.abs(bend) < 8 / 65) continue;
-    const curb = ribbon(Math.sign(bend) * (definition.width / 2 + 0.4), 0.64, 0.024,
+    const curb = ribbon(Math.sign(bend) * (definition.width / 2 + 0.4), 0.8, 0.024,
       curbRed, distance / length, Math.min(distance + 2, length) / length);
     const positions = curb.geometry.getAttribute('position');
     curbPositions[Math.floor(distance / 2) % 2].push(...Array.from(positions.array));

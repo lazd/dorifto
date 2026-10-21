@@ -401,6 +401,16 @@ Red-and-white painted curbs follow the inside of bends, within the paved shoulde
 They are flush painted runoff, not raised collision bumps.
 
 The 1.5 m terrain grid drives both rendering and Ammo heightfield collisions.
+Terrain keeps a gravel shoulder, blending to muted meadow-green ground cover
+roughly 1.5–3.2 m beyond the pavement. Per-fragment noise breaks up the transition
+edge and adds broad color patches alongside the fine grass texture. Vegetation
+favors gentle slopes and fades to exposed earth between 30 and 50 degrees, using
+the smoothed heightfield.
+Grass includes subdued dry strands and broad color variation. Grass and soil use
+separate procedural normal maps blended with the surface coverage. Sparse instanced
+grass tufts add height along the verge, aligned to the terrain; they are decorative
+and do not add collision bodies.
+This material blend does not change terrain geometry, collision, or tire grip.
 Off-track height smoothing softens infield ridges without changing pavement or
 the immediate shoulder. The hillside blend completes within the route lookup's
 50 m range so its cutoff cannot leave a height seam.
