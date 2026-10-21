@@ -241,14 +241,16 @@ export async function loadCar() {
   if (reverseCounts.some((count) => count === 0)) throw new Error('Missing reverse light lenses in the car model.');
   if (!signalMaterials.length) throw new Error('Missing turn signal lenses in the car model.');
   if (!markerMaterials.length) throw new Error('Missing side marker lenses in the car model.');
-  let nightLighting = false;
+  let headlightsOn = false;
+  const headlights: THREE.SpotLight[] = [];
+  const projectors: THREE.MeshStandardMaterial[] = [];
   let brakingActive = false;
   let hazardsActive = false;
   function setHazards(illuminated: boolean) {
     hazardsActive = illuminated;
     setCoverLit(coverMaterials[0], illuminated);
     for (const { material, front } of signalMaterials) {
-      const running = nightLighting && front;
+      const running = headlightsOn && front;
       const lit = illuminated || running;
       material.color.set(lit ? 0xff9900 : 0xdce1e6);
       material.emissive.set(0xff8800);
@@ -268,11 +270,11 @@ export async function loadCar() {
   }
   function setBraking(braking: boolean) {
     brakingActive = braking;
-    setCoverLit(coverMaterials[1], braking || nightLighting);
+    setCoverLit(coverMaterials[1], braking || headlightsOn);
     for (const { material, restingColor, running } of brakeMaterials) {
-      const lit = braking || (nightLighting && running);
+      const lit = braking || (headlightsOn && running);
       material.color.set(lit ? 0xff0000 : restingColor);
-      material.emissiveIntensity = braking ? 4 : nightLighting && running ? 0.45 : 0;
+      material.emissiveIntensity = braking ? 4 : headlightsOn && running ? 0.45 : 0;
     }
     for (const light of brakeLights) {
       light.intensity = braking ? 16 : 0;
@@ -297,8 +299,8 @@ export async function loadCar() {
     chassis.add(light);
     underglow.push(light);
   }
-  function setNightLighting(enabled: boolean) {
-    nightLighting = enabled;
+  function setLighting(enabled: boolean, underglowEnabled: boolean) {
+    headlightsOn = enabled;
     setBraking(brakingActive);
     setHazards(hazardsActive);
     for (const material of markerMaterials) {
@@ -306,7 +308,10 @@ export async function loadCar() {
       material.emissive.set(0xff8800);
       material.emissiveIntensity = enabled ? 0.4 : 0;
     }
-    for (const light of underglow) light.visible = enabled;
+    silver.emissiveIntensity = enabled ? 0.7 : 0;
+    for (const material of projectors) material.emissiveIntensity = enabled ? 3 : 0;
+    for (const light of headlights) light.visible = enabled;
+    for (const light of underglow) light.visible = underglowEnabled;
   }
 
   const mirrors: Reflector[] = [];
@@ -386,6 +391,8 @@ export async function loadCar() {
     if (bounds.isEmpty()) throw new Error('Missing headlight inserts in the car model.');
     const center = bounds.getCenter(new THREE.Vector3());
     const light = new THREE.SpotLight(0xfff3dc, 1100, 65, Math.PI / 7, 0.55, 1.2);
+    light.name = 'headlight-beam';
+    headlights.push(light);
     light.position.set(center.x, center.y, bounds.max.z + 0.12);
     light.target.position.set(center.x * 1.5, center.y - 1.1, light.position.z + 20);
     light.castShadow = true;
@@ -402,6 +409,7 @@ export async function loadCar() {
       }),
     );
     projector.position.copy(center);
+    projectors.push(projector.material);
     chassis.add(projector);
   }
 
@@ -452,5 +460,5 @@ export async function loadCar() {
   wheels.forEach((wheel, i) => {
     for (const object of wheel.children) object.position.copy(centers[i]).negate();
   });
-  return { chassis, wheels, centers, radii, widths, setBraking, setReversing, setHazards, setNightLighting };
+  return { chassis, wheels, centers, radii, widths, setBraking, setReversing, setHazards, setLighting };
 }

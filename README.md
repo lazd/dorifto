@@ -173,14 +173,15 @@ directional light, and a low sun angle for long shadows. Night uses a dark blue
 sky with soft cool ambient moonlight to reveal the car and nearby hills;
 the car's headlights remain the main illumination on the road.
 Sky, fog, ambient illumination, reflections, and exposure change together.
-At night, the two body brake lenses act as dim red running lights and brighten
+At Sunset and Night, headlights (beams and lens glow) switch on together with
+the running lights. At Noon they switch off. The two body brake lenses act as dim red running lights and brighten
 when braking; the spoiler strip remains brake-only. Front turn signals glow dim amber
 and brighten during hazard flashes; rear signals illuminate only for hazards.
 Side markers glow amber. Soft red
 underglow uses downward-facing area-light strips beneath the side rails (between
 the wheel wells) and front/rear bumpers for an even pool of light, without visible
-point sources. These night lights switch off
-in Noon/Sunset, while headlights and reverse lights retain their existing behavior.
+point sources. Underglow is Night-only. Foot braking, hazards, and reverse lights
+still work at any time of day, independently of the running-light state.
 The selection is saved in `?time=noon`, `?time=sunset`, or `?time=night` and
 preserved when switching courses or generating a random layout. Noon is the default.
 
@@ -222,7 +223,14 @@ Rear tires detect the paved corridor, including the shoulder. Off pavement,
 sliding/spinning tires emit tan dust at half the smoke rate with slightly lower
 opacity and less upward drift, and leave muted brown dirt tracks rather than
 dark rubber stripes. Dust opacity is capped at 14% per puff before edge/lifetime
-fading; smoke and dust brightness follow the time-of-day ambient level.
+fading. Smoke and dust receive per-puff colored lighting from daylight/moonlight,
+headlight and brake/reverse beams, and downward underglow strips. Beam angle,
+distance falloff, and light state control illumination; unlit nighttime puffs
+remain faint. Lighting is calculated once per puff with the existing instanced
+draw and depth pass, without additional rendering passes or shadow-map sampling.
+Smoke lighting does not account for car/terrain occlusion.
+Pavement smoke receives only a subtle daylight tint so it remains white at
+sunset; dirt dust keeps the full daylight tint. Local car-light colors are retained.
 Asphalt skid marks use near-black rubber and dirt tracks use dark earth brown,
 both at 45% opacity.
 Each tire is classified separately;

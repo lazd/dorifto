@@ -187,7 +187,7 @@ async function start() {
   const selectedTime = timeSelect.value;
   if (!isTimeOfDay(selectedTime)) throw new Error(`Unknown time of day: ${selectedTime}`);
   applyTimeOfDay(selectedTime);
-  car.setNightLighting(selectedTime === 'night');
+  car.setLighting(selectedTime !== 'noon', selectedTime === 'night');
   timeSelect.addEventListener('change', () => {
     const value = timeSelect.value;
     if (!isTimeOfDay(value)) {
@@ -195,7 +195,7 @@ async function start() {
       return;
     }
     applyTimeOfDay(value);
-    car.setNightLighting(value === 'night');
+    car.setLighting(value !== 'noon', value === 'night');
     const url = new URL(location.href);
     url.searchParams.set('time', value);
     history.replaceState(null, '', url);
@@ -381,7 +381,7 @@ async function start() {
   const dirtMark = new THREE.Color(0x493827);
   let markCount = 0;
 
-  const smoke = new TireSmoke();
+  const smoke = new TireSmoke(scene);
   scene.add(smoke.mesh);
 
   function syncVisuals() {
