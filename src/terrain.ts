@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { courseRoute } from './courses';
 import type { CourseDefinition } from './courses';
 import { surfaceMaterial } from './surfaces';
+import { terrainBaseHeight } from './terrain-profile';
 
 type Point = { x: number; z: number };
 
@@ -68,7 +69,7 @@ export class CourseTerrain {
         const px = this.minX + x * this.spacing;
         const pz = this.minZ + z * this.spacing;
         const near = this.nearest(px, pz);
-        const base = this.baseHeight(px, pz);
+        const base = terrainBaseHeight(px, pz);
         const hills = 12 + 9 * Math.sin(px / 48 + 0.6) * Math.cos(pz / 61)
           + 5 * Math.sin((px - pz) / 83);
         const blendStart = Math.min(this.halfWidth + 3, 48);
@@ -76,7 +77,7 @@ export class CourseTerrain {
         const blend = THREE.MathUtils.smoothstep(near.distance, blendStart, blendEnd);
         // Elevation follows the centerline, not the hillside's cross-slope:
         // positive turns lower the inside (+across) and raise the outside.
-        const road = this.baseHeight(near.x, near.z) + near.bank * near.across;
+        const road = terrainBaseHeight(near.x, near.z) + near.bank * near.across;
         const height = definition.flat ? 0
           : THREE.MathUtils.lerp(road, base + hills, blend) * (definition.elevationScale ?? 1);
         const i = z * this.columns + x;
@@ -270,10 +271,6 @@ export class CourseTerrain {
     });
     tufts.receiveShadow = true;
     this.mesh.add(tufts);
-  }
-
-  private baseHeight(x: number, z: number) {
-    return 5 * Math.sin(x / 65) + 4 * Math.sin(z / 75) + 2 * Math.cos((x + z) / 90);
   }
 
   private nearest(x: number, z: number) {

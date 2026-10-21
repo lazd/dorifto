@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { terrainBaseHeight } from './terrain-profile';
 
 export const startDistance = 5;
 
@@ -85,6 +86,20 @@ export function courseSpawn(definition: CourseDefinition) {
   return { position: [position.x, position.z] as const, heading: Math.atan2(tangent.x, tangent.z) };
 }
 
+// Fixed markers preserve the named course independently of random generation.
+const hillsidePoints: CourseDefinition['points'] = [
+  [84.01622954751265, 0], [83.92487526054921, 26.12612762443657],
+  [69.15384490029841, 48.13773738710717], [43.14160621121232, 56.89100040112654],
+  [19.06506027584704, 56.21735976199199], [0, 59.729722283795326],
+  [-23.623736833566536, 69.65958110175593], [-54.73388835855688, 72.17778701416533],
+  [-81.52414272569827, 56.748656259050236], [-92.32171154378821, 28.74009417125997],
+  [-87.49982195923651, 0], [-100, -30], [-145, -45], [-190, -40], [-245, -45],
+  [-275, -80], [-275, -130], [-250, -175], [-200, -190],
+  [-155, -175], [-115, -140], [-70, -115], [-25, -95],
+  [27.363917446122286, -80.68829415215477], [53.8119932085613, -70.96208036913637],
+  [70.2405650712074, -48.89419930583218], [78.21984842673713, -24.350131429050233],
+];
+
 export function generateCourse(seed: number): CourseDefinition {
   if (!Number.isInteger(seed) || seed < 0 || seed > 0xffffffff) {
     throw new Error('Course seed must be an unsigned 32-bit integer');
@@ -96,37 +111,67 @@ export function generateCourse(seed: number): CourseDefinition {
     value ^= value + Math.imul(value ^ value >>> 7, 61 | value);
     return ((value ^ value >>> 14) >>> 0) / 4294967296;
   };
-  for (let attempt = 0; attempt < 80; attempt++) {
-    const radius = 75 + random() * 20;
-    const stretch = 0.85 + random() * 0.4;
-    const phases = [random(), random(), random()].map((value) => value * Math.PI * 2);
-    const points: [number, number][] = [];
-    for (let i = 0; i < 20; i++) {
-      const angle = i / 20 * Math.PI * 2;
-      const r = radius * (1 + 0.16 * Math.sin(angle * 2 + phases[0])
-        + 0.1 * Math.sin(angle * 3 + phases[1]) + 0.05 * Math.sin(angle * 4 + phases[2]));
-      points.push([Math.cos(angle) * r * stretch, Math.sin(angle) * r]);
-    }
+  for (let attempt = 0; attempt < 256; attempt++) {
+    const stretchX = 0.9 + random() * 0.2;
+    const stretchZ = 0.9 + random() * 0.2;
+    const angle = random() * Math.PI * 2;
+    const mirror = random() < 0.5 ? -1 : 1;
+    const phaseX = random() * Math.PI * 2;
+    const phaseZ = random() * Math.PI * 2;
+    // Spatially smooth warping varies the lobes without kinking nearby markers.
+    const points: [number, number][] = hillsidePoints.map(([x, z]) => {
+      const px = (x + 95) * stretchX + 15 * Math.sin((z + 55) / 100 + phaseX);
+      const pz = (z + 55) * stretchZ + 15 * Math.sin((x + 95) / 150 + phaseZ);
+      return [mirror * (px * Math.cos(angle) - pz * Math.sin(angle)),
+        px * Math.sin(angle) + pz * Math.cos(angle)];
+    });
     const definition: CourseDefinition = { id: 'random', name: `Random Circuit (${seed})`, width: 17.5, points };
+    const scale = (975 + random() * 100) / courseRoute(definition).getLength();
+    points.forEach((point) => {
+      point[0] *= scale;
+      point[1] *= scale;
+    });
     const route = courseRoute(definition);
-    const samples = route.getSpacedPoints(2048).slice(0, -1);
+    const length = route.getLength();
+    const samples = route.getSpacedPoints(Math.ceil(length / 0.5)).slice(0, -1);
     let navigable = true;
+    const radii: number[] = [];
+    let leftDistance = 0;
+    let rightDistance = 0;
+    let minHeight = Infinity;
+    let maxHeight = -Infinity;
     for (let i = 0; i < samples.length && navigable; i++) {
       const before = samples[(i + samples.length - 1) % samples.length];
       const current = samples[i];
       const after = samples[(i + 1) % samples.length];
       const incoming = current.clone().sub(before);
       const outgoing = after.clone().sub(current);
-      const bend = incoming.angleTo(outgoing);
-      // Leave a small margin above the 22 m limit for discrete curve sampling.
-      if (bend > 0 && (incoming.length() + outgoing.length()) / (2 * bend) < 22.1) navigable = false;
+      const bend = Math.atan2(incoming.z * outgoing.x - incoming.x * outgoing.z, incoming.dot(outgoing));
+      const radius = (incoming.length() + outgoing.length()) / (2 * Math.abs(bend));
+      radii.push(radius);
+      // Sampling margin keeps the actual centerline radius above 38 m.
+      if (radius < 38.2) navigable = false;
+      if (radius < 150) {
+        if (bend > 0) leftDistance += length / samples.length;
+        else rightDistance += length / samples.length;
+      }
+      const height = terrainBaseHeight(current.x, current.z);
+      minHeight = Math.min(minHeight, height);
+      maxHeight = Math.max(maxHeight, height);
+      const grade = Math.abs(terrainBaseHeight(after.x, after.z) - height) / outgoing.length();
+      if (grade > 0.12) navigable = false;
     }
-    const clearanceSamples = samples.filter((_, i) => i % 8 === 0);
-    const spacing = route.getLength() / clearanceSamples.length;
+    if (!navigable || Math.min(leftDistance, rightDistance) < length * 0.1
+      || maxHeight - minHeight < 10 || maxHeight - minHeight > 20) continue;
+    radii.sort((a, b) => a - b);
+    const medianRadius = radii[Math.floor(radii.length / 2)];
+    if (medianRadius < 60 || medianRadius > 110) continue;
+    const clearanceSamples = route.getSpacedPoints(Math.ceil(length / 2)).slice(0, -1);
+    const spacing = length / clearanceSamples.length;
     for (let i = 0; i < clearanceSamples.length && navigable; i++) {
       for (let j = i + 1; j < clearanceSamples.length && navigable; j++) {
         const separation = Math.min(j - i, clearanceSamples.length - (j - i)) * spacing;
-        if (separation > definition.width * 2 && clearanceSamples[i].distanceTo(clearanceSamples[j]) < definition.width + 8) {
+        if (separation > definition.width * 2 && clearanceSamples[i].distanceTo(clearanceSamples[j]) < definition.width + 10) {
           navigable = false;
         }
       }
@@ -135,8 +180,6 @@ export function generateCourse(seed: number): CourseDefinition {
   }
   throw new Error(`Unable to generate a navigable course for seed ${seed}`);
 }
-
-const hillsideBase = generateCourse(1077036780);
 
 export const courses: readonly CourseDefinition[] = [
   {
@@ -177,16 +220,10 @@ export const courses: readonly CourseDefinition[] = [
     ],
   },
   {
-    ...hillsideBase,
     id: 'hillside',
     name: 'Hillside Circuit',
-    points: [
-      ...hillsideBase.points.slice(0, 11),
-      [-100, -30], [-145, -45], [-190, -40], [-245, -45],
-      [-275, -80], [-275, -130], [-250, -175], [-200, -190],
-      [-155, -175], [-115, -140], [-70, -115], [-25, -95],
-      ...hillsideBase.points.slice(16),
-    ],
+    width: 17.5,
+    points: hillsidePoints,
   },
   {
     id: 'skidpad',

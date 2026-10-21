@@ -83,6 +83,9 @@ npm run dev
 Vite opens the game in your browser. Use a desktop browser with WebGL2 and a
 keyboard or standard-mapped gamepad. Click the game if focus is in another window.
 
+Run `npm test` for deterministic course-generation and geometry regression checks,
+including a multi-seed sweep. Run `npm run build` to type-check and build the app.
+
 ## Controls
 
 Click **Help** to open the keyboard/controller controls dialog; close it with
@@ -396,8 +399,8 @@ into a roughly 982 m lap, about twice the original 511 m. It keeps the original
 eastern and northern sweepers and replaces the southwest section with a longer
 loop and linked left-hand transitions. The tightest centerline radius remains
 about 38 m, with the same 17.5 m road width, rolling terrain, and corner banking
-as the original. Select it from the Course picker; the original random seed and
-random-course generator are unchanged.
+as the original. Its fixed markers preserve this layout independently of later
+changes to the random-course generator. Select it from the Course picker.
 
 **Drift Test Loop** (`?course=drift-test`) is a compact 14 m-wide handling circuit
 with gentle elevation and banking (35% of the normal terrain relief). Hills in
@@ -486,9 +489,17 @@ not periodically along the course; nearby warnings are merged.
 
 **Random course** generates a new closed circuit and restarts the demo, retaining
 your drive mode. Its seed is saved in `?course=random&seed=12345` so the same link
-recreates the same layout. Smooth radial variations create fast sections, sweeping
-bends, and tighter sections. Candidates are checked for a minimum 22 m centerline
-turn radius and clearance between non-neighboring sections; the road is 17.5 m wide.
+recreates the same layout with the current generator. The generator smoothly warps,
+stretches, rotates, and mirrors Hillside Circuit's lobed outline, targeting
+975–1,075 m laps with a 17.5 m road width. It rejects layouts with centerline
+turn radii below 38 m or median radii outside 60–110 m. Each direction must account
+for at least 10% of the lap in bends tighter than 150 m radius, ensuring meaningful
+left- and right-hand cornering rather than tiny inflections. Centerline elevation
+relief must stay between 10 and 20 m, with grades no steeper than 12%, using the
+same height profile as the terrain. Non-neighboring sections retain at least 8 m
+between their marked road edges, with an extra sampling margin.
+Existing random seed links now use this generator and therefore produce new layouts;
+the named Hillside Circuit stays fixed.
 These are geometric limits, not an autopilot: slow down for the tighter bends.
 
 Course data lives in `src/courses.ts`: add a `CourseDefinition` with a unique ID,
