@@ -17,6 +17,44 @@ function bindText(selector: string) {
   };
 }
 
+function bindDialog(
+  store: Store<GameState>,
+  trigger: string,
+  selector: string,
+  key: "helpOpen" | "settingsOpen" | "tuningOpen",
+) {
+  const dialog = element<HTMLDialogElement>(selector);
+  let displayedOpen = dialog.open;
+  const close = () => store.update({ [key]: false });
+  element(trigger).addEventListener("click", () => store.update({ [key]: true }));
+  dialog.addEventListener("cancel", (event) => {
+    event.preventDefault();
+    close();
+  });
+  dialog.addEventListener("close", () => {
+    if (!dialog.open) close();
+  });
+  const outside = (event: MouseEvent) => {
+    const bounds = dialog.getBoundingClientRect();
+    return event.target === dialog && (event.clientX < bounds.left || event.clientX > bounds.right
+      || event.clientY < bounds.top || event.clientY > bounds.bottom);
+  };
+  let pressedOutside = false;
+  dialog.addEventListener("pointerdown", (event) => { pressedOutside = outside(event); });
+  dialog.addEventListener("click", (event) => {
+    if (pressedOutside && outside(event)) close();
+    pressedOutside = false;
+  });
+  store.subscribe((state) => {
+    if (state[key] === displayedOpen) return;
+    displayedOpen = state[key];
+    if (displayedOpen && !dialog.open) {
+      dialog.showModal();
+      dialog.scrollTop = 0;
+    } else if (!displayedOpen && dialog.open) dialog.close();
+  });
+}
+
 const drivingLabels: Record<GameState["telemetry"]["driving"], string> = {
   "brakes-held": "BRAKES HELD",
   handbrake: "HANDBRAKE",
@@ -29,20 +67,11 @@ const drivingLabels: Record<GameState["telemetry"]["driving"], string> = {
 };
 
 export function bindGameActions(actions: {
-  reset: () => void;
-  sound: () => void;
+  sound: (muted: boolean) => void;
   clearInput: () => void;
 }) {
-  for (const [selector, action] of [
-    ["#reset", actions.reset],
-    ["#sound", actions.sound],
-  ] as const) {
-    const button = element<HTMLButtonElement>(selector);
-    button.addEventListener("click", () => {
-      action();
-      button.blur();
-    });
-  }
+  const sound = element<HTMLSelectElement>("#sound");
+  sound.addEventListener("change", () => actions.sound(sound.value === "off"));
   element("#drift-tuning").addEventListener("focusin", actions.clearInput);
 }
 
@@ -84,17 +113,13 @@ export function bindGameUI(store: Store<GameState>, reportError: (error: unknown
   const cones = bindText("#lap-cones");
   const lastCones = bindText("#lap-last-cones");
   const controller = bindText("#controller-status");
-  const title = bindText("#drift-tuning summary");
   const modeHint = bindText("#drift-tuning-mode");
   const status = element("#status");
   const statusText = bindText("#status");
   createDrivingTuning(element("#drift-tuning-sliders"), element("#drift-tuning-reset"), store);
-  const tuningDisclosure = element<HTMLDetailsElement>("#drift-tuning");
-  document.addEventListener("click", (event) => {
-    if (tuningDisclosure.open && event.target instanceof Node && !tuningDisclosure.contains(event.target)) {
-      tuningDisclosure.open = false;
-    }
-  });
+  bindDialog(store, "#tuning", "#drift-tuning", "tuningOpen");
+  bindDialog(store, "#settings", "#settings-dialog", "settingsOpen");
+  bindDialog(store, "#help", "#help-dialog", "helpOpen");
 
   function select<Value extends string>(
     selector: string,
@@ -142,24 +167,13 @@ export function bindGameUI(store: Store<GameState>, reportError: (error: unknown
     (timeOfDay) => ({ timeOfDay }),
     isTimeOfDay,
   );
-  const help = element<HTMLDialogElement>("#help-dialog");
-  let displayedHelpOpen = help.open;
-  element("#help").addEventListener("click", () => store.update({ helpOpen: true }));
-  help.addEventListener("cancel", (event) => {
-    event.preventDefault();
-    store.update({ helpOpen: false });
-  });
-  help.addEventListener("close", () => {
-    store.update({ helpOpen: false });
-    element("#help").blur();
-  });
   const focus = () => store.update({ focused: document.hasFocus() && !document.hidden });
   window.addEventListener("focus", focus);
   window.addEventListener("blur", focus);
   document.addEventListener("visibilitychange", focus);
   focus();
-  const sound = element<HTMLButtonElement>("#sound");
-  const soundText = bindText("#sound");
+  const sound = element<HTMLSelectElement>("#sound");
+  const soundStatus = bindText("#sound-status");
   store.subscribe((state) => {
     const t = state.telemetry;
     speed(String(Math.round(t.speed / 0.44704)));
@@ -174,22 +188,20 @@ export function bindGameUI(store: Store<GameState>, reportError: (error: unknown
     cones(String(t.cones));
     lastCones(t.lastCones === null ? "--" : String(t.lastCones));
     controller(state.controllerStatus);
-    soundText(
+    const soundValue = state.sound.muted ? "off" : "on";
+    if (sound.value !== soundValue) sound.value = soundValue;
+    sound.disabled = state.sound.failed;
+    soundStatus(
       state.sound.failed
-        ? "Sound unavailable"
-        : !state.sound.running
-          ? "Enable sound"
-          : state.sound.muted
-            ? "Sound: Off"
-            : "Sound: On",
+        ? `Sound unavailable: ${state.sound.error ?? "Reload to retry."}`
+        : !state.sound.running && !state.sound.muted
+          ? "Click or press a key to start sound."
+          : "",
     );
-    const pressed = String(state.sound.running && !state.sound.muted && !state.sound.failed);
-    if (sound.getAttribute("aria-pressed") !== pressed) sound.setAttribute("aria-pressed", pressed);
     const soundTitle =
       state.sound.error === null ? "" : `Audio unavailable: ${state.sound.error}. Reload to retry.`;
     if (sound.title !== soundTitle) sound.title = soundTitle;
     const name = state.driveMode === "grip" ? "Grip" : "Drift";
-    title(`${name} tuning`);
     modeHint(`Live in ${name} mode / base friction ${driveModes[state.driveMode].friction}`);
     if (status.hidden === state.status.visible) status.hidden = !state.status.visible;
     if (status.classList.contains("error") !== state.status.error)
@@ -197,10 +209,5 @@ export function bindGameUI(store: Store<GameState>, reportError: (error: unknown
     const role = state.status.error ? "alert" : "status";
     if (status.getAttribute("role") !== role) status.setAttribute("role", role);
     statusText(state.status.message);
-    if (state.helpOpen !== displayedHelpOpen) {
-      displayedHelpOpen = state.helpOpen;
-      if (state.helpOpen && !help.open) help.showModal();
-      else if (!state.helpOpen && help.open) help.close();
-    }
   });
 }

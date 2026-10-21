@@ -31,19 +31,12 @@ export class VehicleAudio {
     const unlock = () => this.activate();
     window.addEventListener('pointerdown', unlock);
     window.addEventListener('keydown', unlock);
-    window.addEventListener('blur', () => this.setAudible(false));
-    document.addEventListener('visibilitychange', () => {
-      if (document.hidden) this.setAudible(false);
-    });
   }
 
-  toggle() {
-    if (!this.node || this.context?.state !== 'running') {
-      this.muted = false;
-      this.activate();
-    } else {
-      this.muted = !this.muted;
-    }
+  setMuted(muted: boolean) {
+    this.muted = muted;
+    if (!muted) this.activate();
+    this.setAudible(true);
     this.publishState();
   }
 
@@ -108,6 +101,7 @@ export class VehicleAudio {
       this.master = master;
     }
     await resumed;
+    this.setAudible(true);
     this.publishState();
   }
 
@@ -135,8 +129,8 @@ export class VehicleAudio {
     this.node?.port.postMessage({ reset: true });
   }
 
-  update(state: VehicleSoundState, audible: boolean) {
-    this.setAudible(audible);
+  update(state: VehicleSoundState) {
+    this.setAudible(true);
     const engine = state.drivetrain;
     const release = this.previousThrottle - engine.throttle > 0.15 || this.previousGear !== engine.gear;
     const blow = release && engine.boost > 0.12 ? engine.boost : 0;

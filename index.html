@@ -8,10 +8,6 @@
   </head>
   <body>
     <div id="app"></div>
-    <header class="title">
-      <span class="eyebrow">DORIFTO / FREE DRIVE</span>
-      <h1>Z32 Playground<span>1989 Nissan Fairlady 300ZX</span></h1>
-    </header>
     <div id="status" role="status">Starting physics & loading the Z32…</div>
     <aside class="lap-timing" aria-label="Lap timing">
       <span id="lap-number">CROSS START TO BEGIN</span>
@@ -26,57 +22,140 @@
       <span id="engine-state">1 / 850 RPM</span>
       <span id="state">READY</span>
     </aside>
-    <details id="drift-tuning">
-      <summary>Drift tuning</summary>
-      <p>Changes apply immediately to the selected drive mode. Each mode keeps separate settings. Try raising rear peak grip and rear sliding grip if the rear steps out too quickly.</p>
+    <dialog id="drift-tuning" aria-labelledby="drift-tuning-title">
+      <form method="dialog" class="dialog-close">
+        <button type="submit" aria-label="Close" title="Close">×</button>
+      </form>
+      <h2 id="drift-tuning-title" tabindex="-1" autofocus>Tuning</h2>
+      <p>
+        Changes apply immediately to the selected drive mode. Each mode keeps separate settings. Try
+        raising rear peak grip and rear sliding grip if the rear steps out too quickly.
+      </p>
       <p id="drift-tuning-mode" role="status"></p>
-      <fieldset id="drift-tuning-sliders"><legend>Engine, steering, tire grip and response</legend></fieldset>
+      <fieldset id="drift-tuning-sliders">
+        <legend>Engine, steering, tire grip and response</legend>
+      </fieldset>
       <button id="drift-tuning-reset" type="button"><kbd>Restore defaults</kbd></button>
-      <p>Front/rear peak factors multiply the active mode's base friction independently. Restore defaults resets only this mode. Car reset keeps your tuning; reloading restores defaults.</p>
-    </details>
+      <p>
+        Front/rear peak factors multiply the active mode's base friction independently. Restore
+        defaults resets only this mode. Car reset keeps your tuning; reloading restores defaults.
+      </p>
+    </dialog>
     <footer>
       <div class="controls">
         <label>Course <select id="course" aria-label="Course (restarts demo)"></select></label>
         <button id="random-course" type="button" title="Generate a new course (restarts demo)"><kbd>Random course</kbd></button>
-        <label>Drive mode <select id="drive-mode"><option value="grip">Grip</option><option value="drift" selected>Drift</option></select></label>
-        <label>Time of day <select id="time-of-day"><option value="noon">Noon</option><option value="sunset">Sunset</option><option value="night">Night</option></select></label>
-        <label>Camera style <select id="camera-style"><option value="corner">Corner-aware chase</option><option value="classic">Classic chase</option><option value="cabin">In-cabin</option></select></label>
-        <button id="reset" type="button"><kbd>R</kbd> Reset</button>
+        <button id="settings" type="button" aria-haspopup="dialog" aria-controls="settings-dialog"><kbd>Settings</kbd></button>
+        <button id="tuning" type="button" aria-haspopup="dialog" aria-controls="drift-tuning"><kbd>Tuning</kbd></button>
         <button id="help" type="button" aria-haspopup="dialog"><kbd>Help</kbd></button>
-        <button id="sound" type="button" aria-pressed="false">Enable sound</button>
       </div>
       <p class="credit">
-        “<a href="https://sketchfab.com/3d-models/nissan-fairlady-300zx-z32-1989-8c04336a4ed84f6f836760db8256f9f0" target="_blank" rel="noreferrer">Nissan Fairlady 300ZX (Z32) 1989</a>”
-        by <a href="https://sketchfab.com/Lexyc16" target="_blank" rel="noreferrer">Lexyc16</a>
-        · <a href="https://creativecommons.org/licenses/by-nc/4.0/" target="_blank" rel="noreferrer">CC BY-NC 4.0</a> · Non-commercial demo
+        “<a
+          href="https://sketchfab.com/3d-models/nissan-fairlady-300zx-z32-1989-8c04336a4ed84f6f836760db8256f9f0"
+          target="_blank"
+          rel="noreferrer"
+          >Nissan Fairlady 300ZX (Z32) 1989</a
+        >” by <a href="https://sketchfab.com/Lexyc16" target="_blank" rel="noreferrer">Lexyc16</a> ·
+        <a href="https://creativecommons.org/licenses/by-nc/4.0/" target="_blank" rel="noreferrer"
+          >CC BY-NC 4.0</a
+        >
+        · Non-commercial demo
       </p>
     </footer>
+    <dialog id="settings-dialog" aria-labelledby="settings-title">
+      <form method="dialog" class="dialog-close">
+        <button type="submit" aria-label="Close" title="Close">×</button>
+      </form>
+      <h2 id="settings-title" tabindex="-1" autofocus>Settings</h2>
+      <div class="settings-controls">
+        <label>Sound
+          <select id="sound">
+            <option value="on" selected>On</option>
+            <option value="off">Off</option>
+          </select>
+        </label>
+        <p id="sound-status" role="status"></p>
+        <label
+          >Drive mode
+          <select id="drive-mode">
+            <option value="grip">Grip</option>
+            <option value="drift" selected>Drift</option>
+          </select></label
+        >
+        <label
+          >Time of day
+          <select id="time-of-day">
+            <option value="noon">Noon</option>
+            <option value="sunset">Sunset</option>
+            <option value="night">Night</option>
+          </select></label
+        >
+        <label
+          >Camera style
+          <select id="camera-style">
+            <option value="corner">Corner-aware chase</option>
+            <option value="classic">Classic chase</option>
+            <option value="cabin">In-cabin</option>
+          </select></label
+        >
+      </div>
+    </dialog>
     <dialog id="help-dialog" aria-labelledby="help-title">
-      <h2 id="help-title">Driving controls</h2>
+      <form method="dialog" class="dialog-close">
+        <button type="submit" aria-label="Close" title="Close">×</button>
+      </form>
+      <h2 id="help-title" tabindex="-1" autofocus>Driving controls</h2>
       <h3>Keyboard</h3>
       <dl>
-        <dt><kbd>←</kbd><kbd>→</kbd></dt><dd>Steer</dd>
-        <dt><kbd>Z</kbd></dt><dd>Accelerate</dd>
-        <dt><kbd>X</kbd></dt><dd>Brake; hold to reverse near a stop</dd>
-        <dt><kbd>X</kbd> + <kbd>Z</kbd></dt><dd>Brakestand</dd>
-        <dt><kbd>Space</kbd></dt><dd>Handbrake</dd>
-        <dt><kbd>R</kbd></dt><dd>Reset car, cones, effects, and lap timing</dd>
+        <dt><kbd>←</kbd><kbd>→</kbd></dt>
+        <dd>Steer</dd>
+        <dt><kbd>Z</kbd></dt>
+        <dd>Accelerate</dd>
+        <dt><kbd>X</kbd></dt>
+        <dd>Brake; hold to reverse near a stop</dd>
+        <dt><kbd>X</kbd> + <kbd>Z</kbd></dt>
+        <dd>Brakestand</dd>
+        <dt><kbd>Space</kbd></dt>
+        <dd>Handbrake</dd>
+        <dt><kbd>R</kbd></dt>
+        <dd>Reset car, cones, effects, and lap timing</dd>
+        <dt><kbd>C</kbd></dt>
+        <dd>Cycle camera: corner-aware chase, classic chase, in-cabin</dd>
+        <dt><kbd>M</kbd></dt>
+        <dd>Toggle Grip / Drift mode</dd>
       </dl>
       <h3>Controller</h3>
       <dl>
-        <dt>R2 / RT</dt><dd>Accelerate</dd>
-        <dt>L2 / LT</dt><dd>Brake; hold to reverse near a stop</dd>
-        <dt>RT + LT</dt><dd>Brakestand</dd>
-        <dt>Left stick</dt><dd>Steer</dd>
-        <dt>Right stick</dt><dd>Adjust camera</dd>
-        <dt>R1 / RB or X</dt><dd>Handbrake (X is the west face button)</dd>
-        <dt>R3 (hold)</dt><dd>Look behind</dd>
-        <dt>Start / Menu / Options</dt><dd>Reset</dd>
+        <dt>R2 / RT</dt>
+        <dd>Accelerate</dd>
+        <dt>L2 / LT</dt>
+        <dd>Brake; hold to reverse near a stop</dd>
+        <dt>RT + LT</dt>
+        <dd>Brakestand</dd>
+        <dt>Left stick</dt>
+        <dd>Steer</dd>
+        <dt>Right stick</dt>
+        <dd>Adjust camera</dd>
+        <dt>R1 / RB or X</dt>
+        <dd>Handbrake (X is the west face button)</dd>
+        <dt>R3 (hold)</dt>
+        <dd>Look behind</dd>
+        <dt>View / Select / Back</dt>
+        <dd>Cycle camera: corner-aware chase, classic chase, in-cabin (once per press)</dd>
+        <dt>Y / Triangle</dt>
+        <dd>Toggle Grip / Drift mode (once per press)</dd>
+        <dt>Start / Menu / Options</dt>
+        <dd>Reset</dd>
       </dl>
       <p id="controller-status" role="status">Controller: connect and press a button</p>
-      <p>Press the accelerator to release the initial brake hold. Driving inputs are disabled while Help is open; the simulation continues.</p>
-      <p>Sound starts after a click or keypress. Use Sound: On/Off to mute. For controller-only play, click Enable sound once first.</p>
-      <form method="dialog"><button type="submit" autofocus><kbd>Close</kbd></button></form>
+      <p>
+        Press the accelerator to release the initial brake hold. Driving inputs are disabled while
+        Help, Settings, or tuning is open; the simulation continues.
+      </p>
+      <p>
+        Sound defaults to On and starts after a click or keypress. Use Settings to
+        turn it off. Sound continues when the window loses focus.
+      </p>
     </dialog>
     <script type="module" src="/src/main.ts"></script>
   </body>

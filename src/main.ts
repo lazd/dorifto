@@ -83,14 +83,15 @@ async function start() {
       ...gameState.getState().sound, error: error instanceof Error ? error.message : String(error),
     } });
   });
-  let helpOpen = gameState.getState().helpOpen;
+  let dialogOpen = false;
   gameState.subscribe((state) => {
-    if (state.helpOpen === helpOpen) return;
-    helpOpen = state.helpOpen;
+    const open = state.helpOpen || state.tuningOpen || state.settingsOpen;
+    if (open === dialogOpen) return;
+    dialogOpen = open;
     controls.clear();
   });
   const keys = controls.keys;
-  const controlKeys = new Set(['ArrowLeft', 'ArrowRight', 'KeyX', 'KeyZ', 'Space', 'KeyR']);
+  const controlKeys = new Set(['ArrowLeft', 'ArrowRight', 'KeyX', 'KeyZ', 'Space', 'KeyR', 'KeyC', 'KeyM']);
   let accumulator = 0;
   let lastTime = 0;
   const physics = createVehiclePhysics({ Ammo, car, course, spawn, controls, gameState, laps, audio });
@@ -108,14 +109,35 @@ async function start() {
     tireEffects.reset();
   }
 
+  function cycleCamera() {
+    const styles = ['corner', 'classic', 'cabin'] as const;
+    const cameraStyle = styles[(styles.indexOf(gameState.getState().cameraStyle) + 1) % styles.length];
+    gameState.update({ cameraStyle });
+    const url = new URL(location.href);
+    url.searchParams.set('camera', cameraStyle);
+    history.replaceState(null, '', url);
+  }
+
+  function toggleDriveMode() {
+    const driveMode = gameState.getState().driveMode === 'drift' ? 'grip' : 'drift';
+    gameState.update({ driveMode });
+    const url = new URL(location.href);
+    url.searchParams.set('mode', driveMode);
+    history.replaceState(null, '', url);
+  }
+
   window.addEventListener('keydown', (event) => {
-    if (gameState.getState().helpOpen) return;
+    if (dialogOpen) return;
     if (event.target instanceof HTMLSelectElement || event.target instanceof HTMLInputElement) return;
     if (!controlKeys.has(event.code)) return;
     if (event.target instanceof HTMLButtonElement && event.code === 'Space') return;
     event.preventDefault();
     if (event.code === 'KeyR') {
       if (!event.repeat) reset();
+    } else if (event.code === 'KeyC') {
+      if (!event.repeat) cycleCamera();
+    } else if (event.code === 'KeyM') {
+      if (!event.repeat) toggleDriveMode();
     } else keys.add(event.code);
   });
   window.addEventListener('keyup', (event) => {
@@ -136,7 +158,7 @@ async function start() {
     accumulator = 0;
     physics.captureVisuals(true);
   });
-  bindGameActions({ reset, sound: () => audio.toggle(), clearInput: () => controls.clear() });
+  bindGameActions({ sound: (muted) => audio.setMuted(muted), clearInput: () => controls.clear() });
   window.addEventListener('resize', () => {
     camera.aspect = innerWidth / innerHeight;
     camera.updateProjectionMatrix();
@@ -151,8 +173,10 @@ async function start() {
   });
 
   function frame(time: number) {
-    const { driveMode, profiles, cameraStyle, helpOpen, focused } = gameState.getState();
-    controls.poll(!helpOpen, profiles[driveMode].steeringExpo);
+    const { driveMode, profiles } = gameState.getState();
+    controls.poll(!dialogOpen, profiles[driveMode].steeringExpo);
+    if (controls.driveModeRequested) toggleDriveMode();
+    if (controls.cameraRequested) cycleCamera();
     if (controls.resetRequested) reset();
     const dt = lastTime ? Math.min((time - lastTime) / 1000, 0.05) : fixedStep;
     lastTime = time;
@@ -165,8 +189,9 @@ async function start() {
     const velocity = physics.interpolate(accumulator / fixedStep);
     const speed = velocity.length();
     const { engine, reversing, spawnBrakeHeld, wheelContacts, burnout } = physics;
-    audio.update({ drivetrain: engine, tires: physics.tireSounds }, focused && !helpOpen);
-    drivingCamera.update(dt, velocity, driveMode, cameraStyle, reversing);
+    audio.update({ drivetrain: engine, tires: physics.tireSounds });
+    const cameraState = gameState.getState();
+    drivingCamera.update(dt, velocity, cameraState.driveMode, cameraState.cameraStyle, reversing);
     lighting.update(car.chassis.position);
     forward.set(0, 0, 1).applyQuaternion(car.chassis.quaternion);
     forward.y = 0;

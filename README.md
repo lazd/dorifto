@@ -6,6 +6,15 @@ runtime CDN dependencies.
 
 ## UI and game state
 
+The toolbar's **Settings** button opens sound, drive mode, time of day, and camera
+style controls in a modal dialog. Changes apply immediately. Close with **Close**,
+Escape, or a backdrop click; driving inputs are disabled while it is open.
+Course selection stays in the toolbar. Reset uses keyboard **R** or the controller's
+Start/Menu/Options button rather than a toolbar button.
+Settings, Tuning, and Help share one dialog lifecycle in `src/ui.ts`: open at the
+top, close with the upper-right ×, Escape, or an outside click, and restore focus
+to the opening button. Clicking or dragging controls inside does not dismiss them.
+
 The dependency-free observable store in `src/store.ts` exposes `getState()`,
 `update(patch)`, and `subscribe(listener)` (returning an unsubscribe function).
 Subscribers receive an initial snapshot, then one notification per changed patch.
@@ -54,7 +63,7 @@ keyboard or standard-mapped gamepad. Click the game if focus is in another windo
 
 Click **Help** to open the keyboard/controller controls dialog; close it with
 Close or Escape. Driving inputs are disabled while the dialog is open, but the
-simulation continues. Settings and Reset remain in the main footer.
+simulation continues. Settings remains in the main footer.
 
 | Key | Action |
 | --- | --- |
@@ -63,7 +72,9 @@ simulation continues. Settings and Reset remain in the main footer.
 | X (hold) | Brake, then reverse near a stop |
 | X + Z | Brakestand (front brakes hold, rear tires spin) |
 | Space | Lock the rear wheels / initiate a slide |
-| R or Reset | Reset the car, cones, smoke, and tire marks |
+| R | Reset the car, cones, smoke, and tire marks |
+| C | Cycle corner-aware chase, classic chase, in-cabin (once per press) |
+| M | Toggle Grip / Drift mode (once per press) |
 
 ### Gamepad
 
@@ -82,6 +93,8 @@ the keyboard controls. The first connected standard-mapped controller is used.
 | R3 (right-stick click, hold) | Look behind; release to return |
 | RT + LT | Brakestand |
 | Start / Menu / Options | Reset (once per press) |
+| View / Select / Back | Cycle corner-aware chase, classic chase, in-cabin (once per press) |
+| Y / Triangle (north face button) | Toggle Grip / Drift mode (once per press) |
 
 Both triggers together retain brakestand behavior. LT alone brakes forward
 motion, then engages reverse only near a stop; release LT to leave reverse.
@@ -223,7 +236,7 @@ Reset clears all lap times. Reloading or changing courses also starts a new sess
 
 ## Drive modes
 
-Open **Grip tuning** or **Drift tuning** at the left of the screen to adjust the selected mode live without
+Click **Tuning** in the bottom toolbar to open a dialog and adjust the selected mode live without
 resetting the car. Sliders control steering angle (showing low/high-speed limits
 in degrees), independent front/rear peak-grip multipliers, front/rear cornering
 stiffness, and rear sliding grip retained after breakaway. Steering adjustment
@@ -237,7 +250,9 @@ together, retaining each mode's engine characteristics. Defaults are approximate
 **Restore defaults** resets all nine sliders
 for the active mode only. Car reset and mode changes retain tuning for the current
 page; reloading restores defaults. Focused sliders use arrow keys for adjustment,
-not steering. Controller driving remains available while the panel is open.
+not steering. Keyboard and controller driving inputs are disabled while the dialog
+is open; the simulation continues. Close it with **Close**, Escape, or a backdrop
+click. Focus returns to the tuning button.
 
 Both modes default to **60% controller steering expo**, blending linear and cubic
 response after the stick deadzone. This softens fine adjustments near center
@@ -419,8 +434,10 @@ coordinates to maintain. `generateCourse` uses the same definition and renderer.
 
 Audio is synthesized in real time with Web Audio and an AudioWorklet; no recorded
 sound assets or external audio services are used. A click or keypress unlocks
-browser audio; controller-only players must click Enable sound once. The Sound
-button mutes/unmutes. Audio fades out on blur, hidden tabs, and while Help is open.
+browser audio; controller-only players must click the page once. The Sound
+dropdown in Settings defaults to On and selects On/Off explicitly.
+Audio is not muted on window blur, hidden tabs, or while dialogs are open.
+Browser autoplay and background-tab suspension policies still apply.
 
 The four-stroke V6 voice combines combustion pulses, exhaust harmonics, and noise.
 It reads RPM, combustion load, boost, gear shifts and limiter cuts directly from

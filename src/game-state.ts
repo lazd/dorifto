@@ -33,6 +33,8 @@ export interface GameState {
   cameraStyle: 'corner' | 'classic' | 'cabin';
   timeOfDay: 'noon' | 'sunset' | 'night';
   helpOpen: boolean;
+  tuningOpen: boolean;
+  settingsOpen: boolean;
   focused: boolean;
   controllerStatus: string;
   sound: Readonly<{ running: boolean; muted: boolean; failed: boolean; error: string | null }>;
@@ -49,7 +51,7 @@ export function createGameState() {
   const store = createStore<GameState>({
     driveMode: 'drift',
     profiles: { drift: defaultTuning('drift'), grip: defaultTuning('grip') },
-    cameraStyle: 'corner', timeOfDay: 'noon', helpOpen: false,
+    cameraStyle: 'corner', timeOfDay: 'noon', helpOpen: false, tuningOpen: false, settingsOpen: false,
     focused: true, controllerStatus: '',
     sound: { running: false, muted: false, failed: false, error: null },
     status: { message: 'Loading car and physics...', error: false, visible: true },

@@ -9,8 +9,12 @@ export class DrivingControls {
   cameraY = 0;
   lookBehind = false;
   resetRequested = false;
+  cameraRequested = false;
+  driveModeRequested = false;
   controllerStatus = '';
   private resetHeld = false;
+  private cameraHeld = false;
+  private driveModeHeld = false;
   private focused = document.hasFocus();
 
   constructor() {
@@ -31,6 +35,8 @@ export class DrivingControls {
     this.cameraX = this.cameraY = 0;
     this.handbrake = this.lookBehind = false;
     this.resetRequested = false;
+    this.cameraRequested = false;
+    this.driveModeRequested = false;
   }
 
   poll(enabled = true, steeringExpo = 0) {
@@ -45,6 +51,12 @@ export class DrivingControls {
     const resetPressed = Boolean(pad?.buttons[9]?.pressed);
     this.resetRequested = resetPressed && !this.resetHeld;
     this.resetHeld = resetPressed;
+    const cameraPressed = Boolean(pad?.buttons[8]?.pressed);
+    this.cameraRequested = cameraPressed && !this.cameraHeld;
+    this.cameraHeld = cameraPressed;
+    const driveModePressed = Boolean(pad?.buttons[3]?.pressed);
+    this.driveModeRequested = driveModePressed && !this.driveModeHeld;
+    this.driveModeHeld = driveModePressed;
     if (!enabled || !this.focused || document.hidden) {
       this.clear();
       return;
