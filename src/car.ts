@@ -1,8 +1,8 @@
-import * as THREE from 'three';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { Reflector } from 'three/addons/objects/Reflector.js';
-import { RectAreaLightUniformsLib } from 'three/addons/lights/RectAreaLightUniformsLib.js';
-import { ConvexHull } from 'three/addons/math/ConvexHull.js';
+import * as THREE from "three";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { Reflector } from "three/addons/objects/Reflector.js";
+import { RectAreaLightUniformsLib } from "three/addons/lights/RectAreaLightUniformsLib.js";
+import { ConvexHull } from "three/addons/math/ConvexHull.js";
 
 type StandardMesh = THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>;
 
@@ -10,12 +10,13 @@ type StandardMesh = THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>
 const CAR_LENGTH_M = 4.31;
 const PAINT_COLOR = 0xe51b23;
 const WHEEL_COLOR = 0x111216;
+const INTERIOR_COLOR = 0x303030;
 // Needle sweeps measured from the instrument-cluster texture.
 const SPEEDO_DEG_PER_KMH = 1.338;
 const TACH_DEG_PER_RPM = 0.02759;
 const BOOST_DEG_PER_MMHG = 0.0523;
 // The boost needle's hub is hidden behind the speedometer face, above the sub-dial.
-const DOOR_MIRROR_OUTBOARD_DEG = 12;
+const DOOR_MIRROR_OUTBOARD_DEG = 2;
 const TEMP_NORMAL_DEG = 30;
 const FUEL_FULL_DEG = 57;
 const BOOST_PIVOT = new THREE.Vector3(-0.3258, 0.2205, 0.4106);
@@ -35,7 +36,8 @@ export async function loadCar() {
 
   const meshes: StandardMesh[] = [];
   model.traverse((object) => {
-    if (!(object instanceof THREE.Mesh) || !(object.material instanceof THREE.MeshStandardMaterial)) return;
+    if (!(object instanceof THREE.Mesh) || !(object.material instanceof THREE.MeshStandardMaterial))
+      return;
     object.castShadow = true;
     object.receiveShadow = true;
     meshes.push(object as StandardMesh);
@@ -43,9 +45,15 @@ export async function loadCar() {
   // Mesh names are `<node>_<material>_0`; the exported material names are not descriptive.
   const named = (pattern: RegExp) => meshes.filter((mesh) => pattern.test(mesh.name));
   const tuned = new Set<THREE.Material>();
-  function tune(pattern: RegExp, settings: {
-    color?: number; metalness?: number; roughness?: number; envMapIntensity?: number;
-  }) {
+  function tune(
+    pattern: RegExp,
+    settings: {
+      color?: number;
+      metalness?: number;
+      roughness?: number;
+      envMapIntensity?: number;
+    },
+  ) {
     for (const { material } of named(pattern)) {
       if (tuned.has(material)) continue;
       tuned.add(material);
@@ -55,15 +63,30 @@ export async function loadCar() {
     }
   }
   tune(/_Paint_0$/, { color: PAINT_COLOR, metalness: 0.25, roughness: 0.16, envMapIntensity: 0.3 });
-  tune(/^llantaoem.*_(llantaoem|wheelalu)_0$/, { color: WHEEL_COLOR, metalness: 0.35, roughness: 0.6 });
+  tune(/^llantaoem.*_(llantaoem|wheelalu)_0$/, {
+    color: WHEEL_COLOR,
+    metalness: 0.35,
+    roughness: 0.6,
+  });
   tune(/^llantaoem.*_centercap_0$/, { color: 0x1c1d22, metalness: 0.5, roughness: 0.35 });
   tune(/^tyr_/, { roughness: 0.92 });
   tune(/rotors(front|rear)_0$/, { metalness: 0.8, roughness: 0.45 });
   tune(/_(Chrome|LightChrome|Interiorchrome)_0$/, { metalness: 1, roughness: 0.12 });
-  tune(/_(Windows|Headlightsglass|Headlight|LightsGlass|FogGlass)_0$/, { metalness: 0, roughness: 0.04 });
+  tune(/_(Windows|Headlightsglass|Headlight|LightsGlass|FogGlass)_0$/, {
+    metalness: 0,
+    roughness: 0.04,
+  });
+  // Near-black cabin like the real car; the textures are light gray and soaked up sunset tint.
+  tune(
+    /_(Leather|Smoothleather|PlasticInterior|Trim|carpetfabric|Darkfabric|Alcantara|Leatherboots)_0$/,
+    { color: INTERIOR_COLOR, envMapIntensity: 0.45 },
+  );
   // The tinted glass is two shells (outer normals face out, inner face in). Draw both
   // only from outside, so the tint shows on the car but the cabin view is clear.
-  for (const [pattern, side] of [[/^Windows_Windows_0$/, THREE.FrontSide], [/^WindowIn_WindowsIn_0$/, THREE.BackSide]] as const) {
+  for (const [pattern, side] of [
+    [/^Windows_Windows_0$/, THREE.FrontSide],
+    [/^WindowIn_WindowsIn_0$/, THREE.BackSide],
+  ] as const) {
     const [glass] = named(pattern);
     if (!glass) throw new Error(`Missing ${pattern} in the car model.`);
     glass.material = glass.material.clone();
@@ -93,13 +116,14 @@ export async function loadCar() {
     const sides = [new THREE.Box3(), new THREE.Box3()];
     const point = new THREE.Vector3();
     for (const mesh of named(pattern)) {
-      const positions = mesh.geometry.getAttribute('position');
+      const positions = mesh.geometry.getAttribute("position");
       for (let i = 0; i < positions.count; i++) {
         point.fromBufferAttribute(positions, i).applyMatrix4(mesh.matrixWorld);
         sides[point.x < 0 ? 0 : 1].expandByPoint(point);
       }
     }
-    if (sides.some((side) => side.isEmpty())) throw new Error(`Missing paired car light geometry: ${pattern}`);
+    if (sides.some((side) => side.isEmpty()))
+      throw new Error(`Missing paired car light geometry: ${pattern}`);
     return sides;
   }
 
@@ -128,8 +152,12 @@ export async function loadCar() {
     chassis.add(light, light.target);
     return light;
   }
-  const brakeLights = sideBounds(/^184_001_001_BrakeRefraction_0$/).map((box) => rearSpot(box, 0xff0000));
-  const reverseLights = sideBounds(/^RevRefraction_Reverseref1_0$/).map((box) => rearSpot(box, 0xfff6df));
+  const brakeLights = sideBounds(/^184_001_001_BrakeRefraction_0$/).map((box) =>
+    rearSpot(box, 0xff0000),
+  );
+  const reverseLights = sideBounds(/^RevRefraction_Reverseref1_0$/).map((box) =>
+    rearSpot(box, 0xfff6df),
+  );
 
   let headlightsOn = false;
   let brakingActive = false;
@@ -172,7 +200,7 @@ export async function loadCar() {
   ];
   for (const strip of lightStrips) {
     const light = new THREE.RectAreaLight(0xff1824, 18, strip.width, strip.length);
-    light.name = 'red-underglow';
+    light.name = "red-underglow";
     light.position.set(strip.x, -0.25, strip.z);
     light.rotation.x = -Math.PI / 2;
     light.visible = false;
@@ -183,7 +211,7 @@ export async function loadCar() {
   const headlights = sideBounds(/^Projectorglass_/).map((box) => {
     const lamp = box.getCenter(new THREE.Vector3());
     const light = new THREE.SpotLight(0xfff3dc, 1100, 65, Math.PI / 7, 0.55, 1.2);
-    light.name = 'headlight-beam';
+    light.name = "headlight-beam";
     light.position.set(lamp.x, lamp.y, meshBounds(/^hlglass_/).max.z + 0.05);
     light.target.position.set(lamp.x * 1.5, lamp.y - 1.1, light.position.z + 20);
     light.castShadow = true;
@@ -207,18 +235,24 @@ export async function loadCar() {
 
   // Replace the flat mirror-glass mesh with live planar reflections.
   const mirrors: Reflector[] = [];
-  const mirrorMounts: { mirror: Reflector; center: THREE.Vector3; normal: THREE.Vector3;
-    orientation: THREE.Quaternion; sightLine: THREE.Vector3; housing?: THREE.Group }[] = [];
+  const mirrorMounts: {
+    mirror: Reflector;
+    center: THREE.Vector3;
+    normal: THREE.Vector3;
+    orientation: THREE.Quaternion;
+    sightLine: THREE.Vector3;
+    housing?: THREE.Group;
+  }[] = [];
   for (const mesh of named(/^Mirrorglass_/)) {
     const geometry = mesh.geometry.clone().applyMatrix4(mesh.matrixWorld);
-    const positions = geometry.getAttribute('position');
-    const normals = geometry.getAttribute('normal');
+    const positions = geometry.getAttribute("position");
+    const normals = geometry.getAttribute("normal");
     const index = geometry.getIndex();
     // Right door mirror, interior rear-view mirror, left door mirror.
     const sides: number[][] = [[], [], []];
     const point = new THREE.Vector3();
     for (let i = 0; i < (index?.count ?? positions.count); i += 3) {
-      const triangle = [0, 1, 2].map((j) => index ? index.getX(i + j) : i + j);
+      const triangle = [0, 1, 2].map((j) => (index ? index.getX(i + j) : i + j));
       let x = 0;
       for (const v of triangle) x += point.fromBufferAttribute(positions, v).x;
       sides[x / 3 < -0.5 ? 0 : x / 3 > 0.5 ? 2 : 1].push(...triangle);
@@ -237,12 +271,19 @@ export async function loadCar() {
       normal.normalize();
       if (normal.z > 0) normal.negate();
       const mirrorCenter = box.getCenter(new THREE.Vector3());
-      const orientation = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), normal);
+      const orientation = new THREE.Quaternion().setFromUnitVectors(
+        new THREE.Vector3(0, 0, 1),
+        normal,
+      );
       side.translate(-mirrorCenter.x, -mirrorCenter.y, -mirrorCenter.z);
       side.applyQuaternion(orientation.clone().invert());
-      side.deleteAttribute('normal');
+      side.deleteAttribute("normal");
       const mirror = new Reflector(side, {
-        color: 0xe8efff, textureWidth: 512, textureHeight: 256, clipBias: 0.003, multisample: 0,
+        color: 0xe8efff,
+        textureWidth: 512,
+        textureHeight: 256,
+        clipBias: 0.003,
+        multisample: 0,
       });
       mirror.position.copy(mirrorCenter).addScaledVector(normal, 0.002);
       mirror.quaternion.copy(orientation);
@@ -251,28 +292,33 @@ export async function loadCar() {
       const eye = new THREE.Vector3();
       const size = new THREE.Vector2();
       mirror.onBeforeRender = function (...args) {
-        // The reflection texture spans the whole viewport, so a mirror filling a close-up
-        // cabin view needs screen resolution to stay sharp.
-        if (interior) {
-          const [renderer, , camera] = args;
-          const close = mirror.getWorldPosition(eye).distanceToSquared(camera.position) < 1.5 ** 2;
-          if (close) renderer.getDrawingBufferSize(size);
-          else size.set(512, 256);
-          const target = mirror.getRenderTarget();
-          if (target.width !== size.x || target.height !== size.y) target.setSize(size.x, size.y);
-        }
+        // The reflection texture spans the whole viewport, so mirrors seen up close from
+        // the cabin need screen resolution to stay sharp. Off-screen mirrors are culled
+        // and skip this pass entirely.
+        const [renderer, , camera] = args;
+        const close = mirror.getWorldPosition(eye).distanceToSquared(camera.position) < 2 ** 2;
+        if (close) renderer.getDrawingBufferSize(size);
+        else size.set(512, 256);
+        const target = mirror.getRenderTarget();
+        if (target.width !== size.x || target.height !== size.y) target.setSize(size.x, size.y);
         const others = mirrors.filter((other) => other !== mirror);
-        others.forEach((other) => { other.visible = false; });
+        others.forEach((other) => {
+          other.visible = false;
+        });
         try {
           reflect.apply(this, args);
         } finally {
-          others.forEach((other) => { other.visible = true; });
+          others.forEach((other) => {
+            other.visible = true;
+          });
         }
       };
       mirrors.push(mirror);
       // Interior mirror looks straight back; door mirrors are set slightly outboard
       // so the car's flank only just shows at their inner edge.
-      const outboard = interior ? 0 : Math.sign(mirrorCenter.x) * Math.sin(THREE.MathUtils.degToRad(DOOR_MIRROR_OUTBOARD_DEG));
+      const outboard = interior
+        ? 0
+        : Math.sign(mirrorCenter.x) * Math.sin(THREE.MathUtils.degToRad(DOOR_MIRROR_OUTBOARD_DEG));
       const sightLine = new THREE.Vector3(outboard, 0, -1).normalize();
       mirrorMounts.push({ mirror, center: mirrorCenter, normal, orientation, sightLine });
       chassis.add(mirror);
@@ -280,7 +326,7 @@ export async function loadCar() {
     geometry.dispose();
     mesh.visible = false;
   }
-  if (mirrors.length !== 3) throw new Error('Missing mirror glass in the car model.');
+  if (mirrors.length !== 3) throw new Error("Missing mirror glass in the car model.");
 
   // Pivot each glass in its housing so that a ray from the driver's eye reflects
   // along the mirror's sight line (eye is in chassis space).
@@ -289,21 +335,29 @@ export async function loadCar() {
   const housing = new THREE.Group();
   housing.position.set(0, 0.55, 0.05);
   const housingParts: [RegExp, (point: THREE.Vector3) => boolean][] = [
-    [/^intmain_Leather_0$/, (v) => Math.abs(v.x) < 0.11 && v.y > 0.48 && v.y < 0.56 && v.z > 0 && v.z < 0.09],
-    [/^Plastic_PlasticInterior_0$/, (v) => Math.abs(v.x) < 0.02 && v.y > 0.47 && v.y < 0.515 && v.z > 0.04 && v.z < 0.07],
+    [
+      /^intmain_Leather_0$/,
+      (v) => Math.abs(v.x) < 0.11 && v.y > 0.48 && v.y < 0.56 && v.z > 0 && v.z < 0.09,
+    ],
+    [
+      /^Plastic_PlasticInterior_0$/,
+      (v) => Math.abs(v.x) < 0.02 && v.y > 0.47 && v.y < 0.515 && v.z > 0.04 && v.z < 0.07,
+    ],
   ];
   for (const [pattern, inside] of housingParts) {
     const [mesh] = named(pattern);
     if (!mesh) throw new Error(`Missing ${pattern} in the car model.`);
     const geometry = mesh.geometry.clone();
-    const positions = geometry.getAttribute('position');
+    const positions = geometry.getAttribute("position");
     const index = geometry.getIndex();
     const vertex = new THREE.Vector3();
     const kept: number[] = [];
     const moved: number[] = [];
     for (let i = 0; i < (index?.count ?? positions.count); i += 3) {
-      const triangle = [0, 1, 2].map((j) => index ? index.getX(i + j) : i + j);
-      const inHousing = triangle.every((v) => inside(vertex.fromBufferAttribute(positions, v).applyMatrix4(mesh.matrixWorld)));
+      const triangle = [0, 1, 2].map((j) => (index ? index.getX(i + j) : i + j));
+      const inHousing = triangle.every((v) =>
+        inside(vertex.fromBufferAttribute(positions, v).applyMatrix4(mesh.matrixWorld)),
+      );
       (inHousing ? moved : kept).push(...triangle);
     }
     if (!moved.length) throw new Error(`Missing interior mirror housing in ${pattern}.`);
@@ -339,7 +393,8 @@ export async function loadCar() {
     }
   }
 
-  for (const mesh of named(/^(visors_|Frontplate_ext_plate_rear_0$|165_T_Plastico_0$)/)) mesh.removeFromParent();
+  for (const mesh of named(/^(visors_|Frontplate_ext_plate_rear_0$|165_T_Plastico_0$)/))
+    mesh.removeFromParent();
 
   // Re-parent interior parts under pivots so they can rotate about their real hubs.
   function pivot(pattern: RegExp, origin: THREE.Vector3, axis: THREE.Vector3) {
@@ -357,17 +412,36 @@ export async function loadCar() {
     chassis.add(group);
     return (angle: number) => group.quaternion.setFromAxisAngle(axis, angle);
   }
-  const rotateSteeringWheel = pivot(/^(Steeringwheel|badgeglass|badgechrome|badgeburgundy)_/,
-    new THREE.Vector3(-0.3808, 0.1946, 0.07), new THREE.Vector3(0, 0.3095, -0.9509).normalize());
+  const rotateSteeringWheel = pivot(
+    /^(Steeringwheel|badgeglass|badgechrome|badgeburgundy)_/,
+    new THREE.Vector3(-0.3808, 0.1946, 0.07),
+    new THREE.Vector3(0, 0.3095, -0.9509).normalize(),
+  );
   // The gauge face points at the driver; positive rotation is counter-clockwise from the seat.
   // The boost needle hangs below its hub, so sweeping toward +7 is counter-clockwise.
   const gaugeAxis = new THREE.Vector3(0, 0.1591, -0.9873).normalize();
-  const rotateSpeedNeedle = pivot(/^speedarrow_/, new THREE.Vector3(-0.3287, 0.2348, 0.4068), gaugeAxis);
-  const rotateRpmNeedle = pivot(/^rpmarrow_/, new THREE.Vector3(-0.4389, 0.2348, 0.4068), gaugeAxis);
+  const rotateSpeedNeedle = pivot(
+    /^speedarrow_/,
+    new THREE.Vector3(-0.3287, 0.2348, 0.4068),
+    gaugeAxis,
+  );
+  const rotateRpmNeedle = pivot(
+    /^rpmarrow_/,
+    new THREE.Vector3(-0.4389, 0.2348, 0.4068),
+    gaugeAxis,
+  );
   const rotateBoostNeedle = pivot(/^turboarrow_/, BOOST_PIVOT, gaugeAxis);
   // Coolant temperature sits mid-scale and the tank stays full.
-  pivot(/^temparrow_/, new THREE.Vector3(-0.2615, 0.2159, 0.4037), gaugeAxis)(-THREE.MathUtils.degToRad(TEMP_NORMAL_DEG));
-  pivot(/^fuelarrow_/, new THREE.Vector3(-0.5365, 0.2157, 0.4039), gaugeAxis)(-THREE.MathUtils.degToRad(FUEL_FULL_DEG));
+  pivot(
+    /^temparrow_/,
+    new THREE.Vector3(-0.2615, 0.2159, 0.4037),
+    gaugeAxis,
+  )(-THREE.MathUtils.degToRad(TEMP_NORMAL_DEG));
+  pivot(
+    /^fuelarrow_/,
+    new THREE.Vector3(-0.5365, 0.2157, 0.4039),
+    gaugeAxis,
+  )(-THREE.MathUtils.degToRad(FUEL_FULL_DEG));
   // Quick race-style rack: about ±150-250° at the wheel across the drive modes.
   const STEERING_RATIO = 4;
   function setSteering(roadWheelAngle: number) {
@@ -394,7 +468,7 @@ export async function loadCar() {
     tireBounds[cornerOf(box)].union(box);
   }
   const centers = tireBounds.map((box) => {
-    if (box.isEmpty()) throw new Error('The car model is missing expected wheel geometry.');
+    if (box.isEmpty()) throw new Error("The car model is missing expected wheel geometry.");
     return box.getCenter(new THREE.Vector3());
   });
   const radii = tireBounds.map((box) => box.getSize(new THREE.Vector3()).y / 2);
@@ -419,13 +493,16 @@ export async function loadCar() {
     }
   }
   for (const mesh of named(/^(Body2|Front|Hood|rbumper|Wing)_Paint_0$/)) {
-    const positions = mesh.geometry.getAttribute('position');
+    const positions = mesh.geometry.getAttribute("position");
     for (let i = 0; i < positions.count; i++) {
-      const point = new THREE.Vector3().fromBufferAttribute(positions, i).applyMatrix4(mesh.matrixWorld);
+      const point = new THREE.Vector3()
+        .fromBufferAttribute(positions, i)
+        .applyMatrix4(mesh.matrixWorld);
       if (point.y >= 0) collisionPoints.push(point);
     }
   }
-  if (collisionPoints.length === 8) throw new Error('Missing car body geometry for collision hull.');
+  if (collisionPoints.length === 8)
+    throw new Error("Missing car body geometry for collision hull.");
   const hull = new ConvexHull().setFromPoints(collisionPoints);
   const collisionVertices = new Set<THREE.Vector3>();
   for (const face of hull.faces) {
@@ -435,6 +512,20 @@ export async function loadCar() {
       edge = edge.next;
     } while (edge !== face.edge);
   }
-  return { chassis, wheels, hubs, centers, radii, widths, collisionVertices: [...collisionVertices],
-    setBraking, setReversing, setHazards, setLighting, setSteering, setGauges, aimMirrors };
+  return {
+    chassis,
+    wheels,
+    hubs,
+    centers,
+    radii,
+    widths,
+    collisionVertices: [...collisionVertices],
+    setBraking,
+    setReversing,
+    setHazards,
+    setLighting,
+    setSteering,
+    setGauges,
+    aimMirrors,
+  };
 }

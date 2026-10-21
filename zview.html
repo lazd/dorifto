@@ -1,0 +1,21 @@
+<!doctype html><html><body style="margin:0;background:#888"><script type="module">
+import * as THREE from 'three';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { loadCar } from '/src/car.ts';
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(900, 600); renderer.toneMapping = THREE.ACESFilmicToneMapping; document.body.append(renderer.domElement);
+const scene = new THREE.Scene(); scene.background = new THREE.Color(0x888888);
+const env = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment()).texture;
+scene.environment = env;
+const sun = new THREE.DirectionalLight(0xffffff, 2); sun.position.set(3, 5, 2); scene.add(sun);
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(40, 40), new THREE.MeshStandardMaterial({ color: 0x555555 })); ground.rotation.x = -Math.PI / 2; ground.position.y = -0.55; scene.add(ground);
+const camera = new THREE.PerspectiveCamera(35, 1.5, 0.01, 100);
+const car = await loadCar();
+scene.add(car.chassis);
+car.wheels.forEach((w, i) => { w.position.copy(car.centers[i]); scene.add(w); });
+car.hubs.forEach((w, i) => { w.position.copy(car.centers[i]); scene.add(w); });
+window.Z = { THREE, scene, car, camera, renderer, env, sun,
+  night(on) { scene.environment = on ? null : env; scene.background.set(on ? 0x05070a : 0x888888); sun.intensity = on ? 0.05 : 2; },
+  shot(px, py, pz, tx = 0, ty = 0.1, tz = 0) { camera.position.set(px, py, pz); camera.lookAt(tx, ty, tz); } };
+window.Z.shot(6, 2, 6); renderer.setAnimationLoop(() => renderer.render(scene, camera)); window.ready = true;
+</script></body></html>

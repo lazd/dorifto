@@ -589,4 +589,5 @@ by [MattDoesBlender](https://sketchfab.com/MattDoesBlender), licensed under
 license.** See [the original model license](models/nissan_300zx/license.txt).
 The demo rescales/recenters the model, separates its wheels, brake hubs, steering
 wheel, gauge needles and interior mirror housing for animation, removes the sun
-visors and front plate, and repaints it with red paint and black rims.
+visors and front plate, and repaints it with red paint, black rims and a
+near-black interior.
