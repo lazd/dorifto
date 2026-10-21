@@ -446,6 +446,13 @@ export function bindGameUI(store: Store<GameState>, reportError: (error: unknown
   );
   const isToggle = (value: string): value is "on" | "off" => value === "on" || value === "off";
   select<"on" | "off">(
+    "#cabin-head-motion",
+    "head-motion",
+    (state) => (state.cabinHeadMotion ? "on" : "off"),
+    (value) => ({ cabinHeadMotion: value === "on" }),
+    isToggle,
+  );
+  select<"on" | "off">(
     "#show-cones",
     "cones",
     (state) => (state.showCones ? "on" : "off"),

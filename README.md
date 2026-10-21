@@ -7,7 +7,7 @@ runtime CDN dependencies.
 ## UI and game state
 
 The toolbar's **Settings** button opens sound, drive mode, time of day, camera
-style, map orientation, cones, and grass tufts controls in a modal dialog. Changes apply immediately. Close with **Close**,
+style, cabin head motion, map orientation, cones, and grass tufts controls in a modal dialog. Changes apply immediately. Close with **Close**,
 Escape, or a backdrop click; driving inputs are disabled while it is open.
 Turning **Cones** off (`?cones=off`) hides them and removes their physics bodies;
 **Grass tufts** off (`?grass=off`) hides the decorative blades. Both help
@@ -269,8 +269,9 @@ particle collisions against the model. The depth pass also prevents
 tracks drawing over the smoke. This extra pass runs only while
 puffs are alive and follows the drawing-buffer resolution on resize. Smoke is
 excluded from side-mirror reflection passes, whose camera depth differs.
-Silver headlight interiors contain warm-white projectors with real, shadow-casting
-spotlights illuminating the surface ahead. The two rear brake lenses and spoiler
+Silver headlight interiors contain softly glowing warm-white projectors with real,
+shadow-casting spotlights at intensity 800 and a slightly warm `#ffe8c8` tint
+illuminating the surface ahead. The two rear brake lenses and spoiler
 brake strip glow red
 while the foot brake is pressed (keyboard X or controller LT when braking)
 or the initial spawn brake hold is active.
@@ -401,7 +402,18 @@ switching courses. Tune values are defined in `src/drive-modes.ts`.
 The live Camera style picker offers **Corner-aware chase** (default) and
 **Classic chase** (the original camera), plus **In-cabin** at the right-hand
 driver's seat. In-cabin follows the car's orientation, including hills, banking,
-and slides, with a wider 75-degree field of view. Right-stick look and R3
+and slides, with a wider 75-degree field of view. A damped head response shifts
+opposite the car's measured 3D acceleration, with subtle pitch/roll from the same
+motion. This naturally responds to turns, gear changes, braking, elevation changes,
+and impacts without event-specific effects. `cabinCameraMotion` in `src/camera.ts`
+sets lateral, longitudinal, and vertical displacement in meters per g, the force
+limit, spring response, and tilt per meter. Resets clear the motion history;
+constant velocity settles back to the base seating position. Mirrors remain aimed
+at that base position and do not re-aim with head movement.
+**Settings > Cabin head motion** turns this effect off or on (on by default).
+The choice persists in the URL as `?head-motion=off` or `?head-motion=on`.
+Turning it off clears the offset immediately; re-enabling it starts with fresh
+motion history, avoiding a jump from stale velocity. Right-stick look and R3
 look-behind remain available. Camera style is independent of drive mode.
 Corner-aware chase shifts gently outside the direction of motion's turn during
 slides, raises/pulls back slightly, and looks ahead along the course toward the

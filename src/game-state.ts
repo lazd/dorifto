@@ -35,6 +35,7 @@ export interface GameState {
   driveMode: DriveMode;
   profiles: Readonly<Record<DriveMode, DrivingTuning>>;
   cameraStyle: 'corner' | 'classic' | 'cabin';
+  cabinHeadMotion: boolean;
   minimapOrientation: 'north-up' | 'heading-up';
   timeOfDay: 'noon' | 'sunset' | 'night';
   helpOpen: boolean;
@@ -63,7 +64,7 @@ export function createGameState() {
     driveMode: 'drift',
     profiles: { drift: defaultTuning('drift'), grip: defaultTuning('grip') },
     cameraStyle: 'corner', timeOfDay: 'noon', helpOpen: false, tuningOpen: false, settingsOpen: false,
-    minimapOrientation: 'north-up',
+    minimapOrientation: 'north-up', cabinHeadMotion: true,
     customCourseOpen: false, courseMenuOpen: false, courseWeights: { ...defaultCourseWeights },
     courseReverse: false, showCones: true, showGrass: true,
     focused: true, controllerStatus: '',

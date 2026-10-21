@@ -6,6 +6,16 @@ import type { DrivingControls } from './controls';
 import type { CourseTerrain } from './terrain';
 import type { loadCar } from './car';
 
+export const cabinCameraMotion = {
+  // Displacement in meters per g, along the car's local axes.
+  lateralMovement: 0.04,
+  longitudinalMovement: 0.035,
+  verticalMovement: 0.025,
+  maxGForce: 2.5,
+  response: 14,
+  tiltPerMeter: 0.8,
+};
+
 export function createDrivingCamera(camera: THREE.PerspectiveCamera, car: Awaited<ReturnType<typeof loadCar>>,
   controls: DrivingControls, definition: CourseDefinition, terrain: CourseTerrain) {
   const drivingFar = camera.far;
@@ -26,6 +36,16 @@ export function createDrivingCamera(camera: THREE.PerspectiveCamera, car: Awaite
   setCabinEye(new THREE.Vector3(-0.38, 0.43, -0.25));
   const cabinDirection = new THREE.Vector3();
   const cabinUp = new THREE.Vector3();
+  const previousCabinVelocity = new THREE.Vector3();
+  const cabinOffset = new THREE.Vector3();
+  const cabinOffsetVelocity = new THREE.Vector3();
+  const cabinTargetOffset = new THREE.Vector3();
+  const cabinDisplacement = new THREE.Vector3();
+  const cabinStep = new THREE.Vector3();
+  const cabinInverseRotation = new THREE.Quaternion();
+  const cabinTilt = new THREE.Quaternion();
+  const cabinTiltAngles = new THREE.Euler();
+  let hasCabinVelocity = false;
   let previousCameraStyle: GameState['cameraStyle'] | null = null;
   const previousTravel = new THREE.Vector3();
   const cameraRight = new THREE.Vector3();
@@ -62,6 +82,9 @@ export function createDrivingCamera(camera: THREE.PerspectiveCamera, car: Awaite
     cameraYaw = cameraPitch = 0;
     slideCameraAmount = outsideOffset = cameraTurnRate = 0;
     previousTravel.set(0, 0, 0);
+    hasCabinVelocity = false;
+    cabinOffset.set(0, 0, 0);
+    cabinOffsetVelocity.set(0, 0, 0);
     cameraDirection.set(Math.sin(heading), 0, Math.cos(heading));
     camera.position.copy(car.chassis.position).addScaledVector(cameraDirection, -9);
     camera.position.y += cameraHeight;
@@ -69,20 +92,53 @@ export function createDrivingCamera(camera: THREE.PerspectiveCamera, car: Awaite
     camera.lookAt(lookTarget);
   }
 
+  function updateCabinMotion(dt: number, velocity: THREE.Vector3, enabled: boolean) {
+    if (!enabled) {
+      hasCabinVelocity = false;
+      cabinOffset.set(0, 0, 0);
+      cabinOffsetVelocity.set(0, 0, 0);
+      return;
+    }
+    if (dt <= 0) return;
+    cabinTargetOffset.set(0, 0, 0);
+    if (hasCabinVelocity) {
+      cabinInverseRotation.copy(car.chassis.quaternion).invert();
+      cabinTargetOffset.subVectors(velocity, previousCabinVelocity)
+        .multiplyScalar(1 / (dt * 9.81))
+        .applyQuaternion(cabinInverseRotation)
+        .clampScalar(-cabinCameraMotion.maxGForce, cabinCameraMotion.maxGForce);
+      cabinTargetOffset.set(
+        -cabinTargetOffset.x * cabinCameraMotion.lateralMovement,
+        -cabinTargetOffset.y * cabinCameraMotion.verticalMovement,
+        -cabinTargetOffset.z * cabinCameraMotion.longitudinalMovement,
+      );
+    }
+    previousCabinVelocity.copy(velocity);
+    hasCabinVelocity = true;
+    // Exact critically damped spring integration stays stable across frame rates and impact spikes.
+    const response = cabinCameraMotion.response;
+    const decay = Math.exp(-response * dt);
+    cabinDisplacement.subVectors(cabinOffset, cabinTargetOffset);
+    cabinStep.copy(cabinOffsetVelocity).addScaledVector(cabinDisplacement, response).multiplyScalar(dt);
+    cabinOffset.copy(cabinTargetOffset).addScaledVector(cabinDisplacement, decay).addScaledVector(cabinStep, decay);
+    cabinOffsetVelocity.addScaledVector(cabinStep, -response).multiplyScalar(decay);
+  }
+
   function update(dt: number, velocity: THREE.Vector3, driveMode: DriveMode,
-    cameraStyle: GameState['cameraStyle'], reversing: boolean) {
+    cameraStyle: GameState['cameraStyle'], reversing: boolean, cabinHeadMotion = true) {
     if (mapShown) {
       // Resume the driving camera from its saved pose, not from the map.
       camera.position.copy(chasePosition);
       camera.quaternion.copy(chaseQuaternion);
     }
     const tune = driveModes[driveMode];
-    const speed = velocity.length();
+    updateCabinMotion(dt, velocity, cabinHeadMotion);
+    const speed = Math.hypot(velocity.x, velocity.z);
     forward.set(0, 0, 1).applyQuaternion(car.chassis.quaternion);
     forward.y = 0;
     forward.normalize();
     travel.copy(forward);
-    travelVelocity.copy(velocity).normalize();
+    travelVelocity.copy(velocity).setY(0).normalize();
     travel.lerp(travelVelocity, tune.cameraTravelBlend * THREE.MathUtils.smoothstep(speed, 0.5, 3)).normalize();
     cameraDirection.lerp(travel, 1 - Math.exp(-tune.cameraDirectionResponse * dt)).normalize();
     const yawResponse = !controls.lookBehind && controls.cameraX === 0 ? tune.cameraRecenterResponse : 9;
@@ -96,12 +152,16 @@ export function createDrivingCamera(camera: THREE.PerspectiveCamera, car: Awaite
     }
     const near = cabin ? 0.03 : 0.1;
     if (cabin) {
-      camera.position.copy(cabinEye).applyQuaternion(car.chassis.quaternion).add(car.chassis.position);
+      camera.position.copy(cabinEye).add(cabinOffset).applyQuaternion(car.chassis.quaternion).add(car.chassis.position);
+      cabinTilt.setFromEuler(cabinTiltAngles.set(
+        cabinOffset.z * cabinCameraMotion.tiltPerMeter, 0, -cabinOffset.x * cabinCameraMotion.tiltPerMeter,
+      ));
       cabinDirection.set(0, 0, 1)
         .applyAxisAngle(up, cameraYaw)
         .applyAxisAngle(cameraRight.set(Math.cos(cameraYaw), 0, -Math.sin(cameraYaw)), -cameraPitch * 0.6)
+        .applyQuaternion(cabinTilt)
         .applyQuaternion(car.chassis.quaternion);
-      cabinUp.set(0, 1, 0).applyQuaternion(car.chassis.quaternion);
+      cabinUp.set(0, 1, 0).applyQuaternion(cabinTilt).applyQuaternion(car.chassis.quaternion);
       camera.up.copy(cabinUp);
       camera.lookAt(desiredLookTarget.copy(camera.position).add(cabinDirection));
       previousTravel.copy(travelVelocity);
@@ -133,7 +193,7 @@ export function createDrivingCamera(camera: THREE.PerspectiveCamera, car: Awaite
       else camera.position.lerp(desiredCamera, 1 - Math.exp(-tune.cameraPositionResponse * dt));
       camera.position.y = Math.max(camera.position.y, terrain.heightAt(camera.position.x, camera.position.z) + 1);
       desiredLookTarget.copy(car.chassis.position).addScaledVector(velocity, 0.18);
-      desiredLookTarget.y += 0.65;
+      desiredLookTarget.y = car.chassis.position.y + 0.65;
       if (cornerCamera) {
         let nearest = 0;
         let distance = Infinity;

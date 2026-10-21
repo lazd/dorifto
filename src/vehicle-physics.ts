@@ -210,6 +210,7 @@ export function createVehiclePhysics({
   }));
   const fixedStep = 1 / 120;
   const velocity = new THREE.Vector3();
+  const linearVelocity = new THREE.Vector3();
   const previousVelocity = new THREE.Vector3();
   const currentVelocity = new THREE.Vector3();
   const visualState = (object: THREE.Object3D) => ({
@@ -311,7 +312,7 @@ export function createVehiclePhysics({
     previousVelocity.copy(currentVelocity);
     syncVisuals();
     const linear = body.getLinearVelocity();
-    currentVelocity.set(linear.x(), 0, linear.z());
+    currentVelocity.set(linear.x(), linear.y(), linear.z());
     for (const state of visualStates) {
       state.position.copy(state.object.position);
       state.rotation.copy(state.object.quaternion);
@@ -606,7 +607,8 @@ export function createVehiclePhysics({
       state.object.position.lerpVectors(state.previousPosition, state.position, alpha);
       state.object.quaternion.slerpQuaternions(state.previousRotation, state.rotation, alpha);
     }
-    velocity.lerpVectors(previousVelocity, currentVelocity, alpha);
+    linearVelocity.lerpVectors(previousVelocity, currentVelocity, alpha);
+    velocity.copy(linearVelocity).setY(0);
     return velocity;
   }
 
@@ -648,6 +650,7 @@ export function createVehiclePhysics({
     get steering() { return steering; },
     get reversing() { return reversing; },
     get spawnBrakeHeld() { return spawnBrakeHeld; },
+    get linearVelocity() { return linearVelocity; },
     get brakestand() { return brakestand; },
   };
 }

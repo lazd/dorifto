@@ -142,7 +142,7 @@ export async function loadCar() {
   const sideMarkers = emissive(/^Fenderlight(LEFT|RIGHT)_/, 0xff8800);
   const rearCornerMarkers = emissive(/^(Cornerglass|Cornerlightbulb)_/, 0xff1008);
   const frontPosition = emissive(/^BulbsPos_/, 0xfff3dc);
-  const projectors = emissive(/^(Projectorglass|BulbHL)_/, 0xfff3dc);
+  const projectors = emissive(/^(Projectorglass|BulbHL)_/, 0xffe8c8);
 
   function rearSpot(box: THREE.Box3, color: number) {
     const light = new THREE.SpotLight(color, 0, 4, Math.PI / 5, 0.9, 2);
@@ -217,7 +217,7 @@ export async function loadCar() {
 
   const headlights = sideBounds(/^Projectorglass_/).map((box) => {
     const lamp = box.getCenter(new THREE.Vector3());
-    const light = new THREE.SpotLight(0xfff3dc, 1100, 65, Math.PI / 7, 0.55, 1.2);
+    const light = new THREE.SpotLight(0xffe8c8, 800, 65, Math.PI / 7, 0.55, 1.2);
     light.name = "headlight-beam";
     light.position.set(lamp.x, lamp.y, meshBounds(/^hlglass_/).max.z + 0.05);
     light.target.position.set(lamp.x * 1.5, lamp.y - 1.1, light.position.z + 20);
@@ -235,7 +235,7 @@ export async function loadCar() {
     setHazards(hazardsActive);
     setIntensity(rearCornerMarkers, enabled ? 1.5 : 0);
     setIntensity(frontPosition, enabled ? 2 : 0);
-    setIntensity(projectors, enabled ? 3 : 0);
+    setIntensity(projectors, enabled ? 2.4 : 0);
     for (const light of headlights) light.visible = enabled;
     for (const light of underglow) light.visible = underglowEnabled;
   }

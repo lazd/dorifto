@@ -114,7 +114,12 @@ test('replaces real Ammo worlds while reusing car assets and heightfields and fr
       assert.ok(car.chassis.position.y >= i);
       current.step();
       current.captureVisuals();
-      current.interpolate(0.5);
+      const planarVelocity = current.interpolate(0.5);
+      assert.equal(planarVelocity.y, 0);
+      assert.equal(planarVelocity.x, current.linearVelocity.x);
+      assert.equal(planarVelocity.z, current.linearVelocity.z);
+      assert.ok(Number.isFinite(current.linearVelocity.y));
+      if (i === 0) assert.notEqual(current.linearVelocity.y, 0);
       assert.ok(car.chassis.position.toArray().every(Number.isFinite));
       assert.equal(heightfields.size, Math.min(i + 1, 2));
       const worldDestructions = destroyed.get(Ammo.btDiscreteDynamicsWorld);

@@ -35,6 +35,7 @@ async function start() {
   gameState.update({
     driveMode: requestedMode, cameraStyle: requestedCamera,
     minimapOrientation: requestedMinimap,
+    cabinHeadMotion: readToggle('head-motion'),
     showCones: readToggle('cones'), showGrass: readToggle('grass'),
   });
   const settingsUrl = new URL(location.href);
@@ -319,7 +320,7 @@ async function start() {
     const { engine, reversing, spawnBrakeHeld, wheelContacts, burnout } = physics;
     audio.update({ drivetrain: engine, tires: physics.tireSounds });
     const cameraState = gameState.getState();
-    drivingCamera.update(dt, velocity, cameraState.driveMode, cameraState.cameraStyle, reversing);
+    drivingCamera.update(dt, physics.linearVelocity, cameraState.driveMode, cameraState.cameraStyle, reversing, cameraState.cabinHeadMotion);
     lighting.update(car.chassis.position, controls.mapView ? camera.far : undefined);
     forward.set(0, 0, 1).applyQuaternion(car.chassis.quaternion);
     forward.y = 0;

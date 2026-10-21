@@ -5,6 +5,7 @@ import { createServer } from 'vite';
 
 let server;
 let createDrivingCamera;
+let cabinCameraMotion;
 let courses;
 let courseRoute;
 let generateCustomCourse;
@@ -15,7 +16,7 @@ before(async () => {
     server: { middlewareMode: true, hmr: false, ws: false, watch: null },
     appType: 'custom',
   });
-  ({ createDrivingCamera } = await server.ssrLoadModule('/src/camera.ts'));
+  ({ createDrivingCamera, cabinCameraMotion } = await server.ssrLoadModule('/src/camera.ts'));
   ({ courses, courseRoute } = await server.ssrLoadModule('/src/courses.ts'));
   ({ generateCustomCourse, defaultCourseWeights } = await server.ssrLoadModule('/src/course-generation.ts'));
 });
@@ -107,4 +108,150 @@ test('map view fits a 5 km course within the clipping planes on a portrait displ
   controls.mapView = false;
   driving.update(1 / 60, new THREE.Vector3(), 'grip', 'classic', false);
   assert.equal(camera.far, 1500);
+});
+
+function cabinRig(rotation = new THREE.Quaternion()) {
+  let mirrorAims = 0;
+  const car = { chassis: new THREE.Group(), aimMirrors() { mirrorAims++; } };
+  car.chassis.position.set(20, 2, 10);
+  car.chassis.quaternion.copy(rotation);
+  const controls = { mapView: false, cameraX: 0, cameraY: 0, lookBehind: false };
+  const camera = new THREE.PerspectiveCamera(55, 16 / 9, 0.1, 1500);
+  const driving = createDrivingCamera(camera, car, controls, courses[0], { heightAt: () => 0 });
+  const eye = new THREE.Vector3(-0.38, 0.43, -0.25);
+  const velocity = new THREE.Vector3();
+  driving.reset(0);
+  const update = (dt, acceleration = new THREE.Vector3(), style = 'cabin') => {
+    velocity.addScaledVector(acceleration, dt);
+    car.chassis.position.addScaledVector(velocity, dt);
+    driving.update(dt, velocity, 'drift', style, false);
+  };
+  const offset = () => camera.position.clone().sub(car.chassis.position)
+    .applyQuaternion(car.chassis.quaternion.clone().invert()).sub(eye);
+  update(1 / 60);
+  return { camera, car, controls, driving, eye, velocity, update, offset, mirrorAims: () => mirrorAims };
+}
+
+test('cabin offsets oppose measured acceleration on all three car-local axes, including a tilted car', () => {
+  for (const rotation of [
+    new THREE.Quaternion(),
+    new THREE.Quaternion().setFromEuler(new THREE.Euler(-0.35, 1.2, 0.25)),
+  ]) {
+    for (const [axis, movement] of [
+      ['x', cabinCameraMotion.lateralMovement],
+      ['y', cabinCameraMotion.verticalMovement],
+      ['z', cabinCameraMotion.longitudinalMovement],
+    ]) {
+      for (const sign of [-1, 1]) {
+        const rig = cabinRig(rotation);
+        const localAcceleration = new THREE.Vector3();
+        localAcceleration[axis] = sign * 9.81;
+        const acceleration = localAcceleration.applyQuaternion(rotation);
+        for (let i = 0; i < 60; i++) rig.update(1 / 60, acceleration);
+        const expected = new THREE.Vector3();
+        expected[axis] = -sign * movement;
+        assert.ok(rig.offset().distanceTo(expected) < 1e-6, `${axis}, ${sign}: ${rig.offset().toArray()}`);
+        const direction = rig.camera.getWorldDirection(new THREE.Vector3())
+          .applyQuaternion(rotation.clone().invert());
+        if (axis === 'z') assert.equal(Math.sign(direction.y), sign);
+        assert.equal(rig.mirrorAims(), 1);
+      }
+    }
+  }
+});
+
+test('cabin motion is consistent at different and varying frame rates', () => {
+  const offsets = [];
+  const rotations = [];
+  for (const steps of [[1 / 30], [1 / 60], [1 / 144], [1 / 48, 1 / 90, 1 / 35, 1 / 144]]) {
+    const rig = cabinRig();
+    const acceleration = new THREE.Vector3(5, -3, 7);
+    let elapsed = 0;
+    let frame = 0;
+    while (elapsed < 1 - 1e-9) {
+      const dt = Math.min(steps[frame++ % steps.length], 1 - elapsed);
+      rig.update(dt, acceleration);
+      elapsed += dt;
+    }
+    offsets.push(rig.offset());
+    rotations.push(rig.camera.quaternion.clone());
+  }
+  for (let i = 1; i < offsets.length; i++) {
+    assert.ok(offsets[i].distanceTo(offsets[0]) < 1e-8);
+    assert.ok(rotations[i].angleTo(rotations[0]) < 1e-7);
+  }
+});
+
+test('cabin motion is bounded during impacts and settles at constant velocity without re-aiming mirrors', () => {
+  const rig = cabinRig();
+  const limits = new THREE.Vector3(
+    cabinCameraMotion.lateralMovement, cabinCameraMotion.verticalMovement, cabinCameraMotion.longitudinalMovement,
+  ).multiplyScalar(cabinCameraMotion.maxGForce);
+  const steps = [1 / 144, 1 / 30, 0.05, 0.5];
+  for (let i = 0; i < 120; i++) {
+    const dt = steps[i % steps.length];
+    const direction = i % 2 ? -1 : 1;
+    rig.velocity.addScalar(direction * 10000);
+    rig.update(dt);
+    const offset = rig.offset();
+    for (const axis of ['x', 'y', 'z']) assert.ok(Math.abs(offset[axis]) <= limits[axis] + 1e-8);
+    assert.ok(rig.camera.quaternion.toArray().every(Number.isFinite));
+  }
+  for (let i = 0; i < 180; i++) rig.update(1 / 60);
+  assert.ok(rig.offset().length() < 1e-8);
+  assert.equal(rig.mirrorAims(), 1);
+  rig.driving.setCabinEye(rig.eye.clone().add(new THREE.Vector3(0, 0.01, 0)));
+  assert.equal(rig.mirrorAims(), 2);
+  for (let i = 0; i < 60; i++) rig.update(1 / 60, new THREE.Vector3(9.81, 0, 0));
+  assert.equal(rig.mirrorAims(), 2);
+});
+
+test('initialization and resets do not interpret existing speed or teleports as head acceleration', () => {
+  const rig = cabinRig();
+  for (let i = 0; i < 60; i++) rig.update(1 / 60, new THREE.Vector3(9.81, 9.81, 9.81));
+  assert.ok(rig.offset().length() > 0.02);
+  rig.car.chassis.position.set(-500, 50, 250);
+  rig.velocity.set(40, -5, -20);
+  rig.driving.reset(0);
+  rig.update(1 / 60);
+  assert.ok(rig.offset().length() < 1e-8);
+  rig.update(0);
+  assert.ok(rig.offset().length() < 1e-8);
+  for (let i = 0; i < 60; i++) rig.update(1 / 60);
+  assert.ok(rig.offset().length() < 1e-8);
+});
+
+test('head motion continues through map view and preserves manual look controls', () => {
+  const rig = cabinRig();
+  const reference = cabinRig();
+  const acceleration = new THREE.Vector3(-4, 2, 6);
+  rig.controls.mapView = true;
+  for (let i = 0; i < 60; i++) {
+    rig.update(1 / 60, acceleration);
+    reference.update(1 / 60, acceleration);
+  }
+  rig.controls.mapView = false;
+  rig.update(1 / 60, acceleration);
+  reference.update(1 / 60, acceleration);
+  assert.ok(rig.camera.position.distanceTo(reference.camera.position) < 1e-8);
+  assert.ok(rig.camera.quaternion.angleTo(reference.camera.quaternion) < 1e-7);
+  rig.controls.lookBehind = true;
+  for (let i = 0; i < 60; i++) rig.update(1 / 60, acceleration);
+  assert.ok(rig.camera.getWorldDirection(new THREE.Vector3()).z < -0.99);
+  assert.equal(rig.mirrorAims(), 1);
+});
+
+test('vertical camera velocity does not change either chase camera framing', () => {
+  for (const style of ['classic', 'corner']) {
+    const rig = cabinRig();
+    const reference = cabinRig();
+    rig.velocity.set(4, 12, 10);
+    reference.velocity.set(4, 0, 10);
+    for (let i = 0; i < 60; i++) {
+      rig.driving.update(1 / 60, rig.velocity, 'drift', style, false);
+      reference.driving.update(1 / 60, reference.velocity, 'drift', style, false);
+    }
+    assert.ok(rig.camera.position.distanceTo(reference.camera.position) < 1e-8);
+    assert.ok(rig.camera.quaternion.angleTo(reference.camera.quaternion) < 1e-7);
+  }
 });
