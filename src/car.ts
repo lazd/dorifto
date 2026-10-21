@@ -16,7 +16,12 @@ const SPEEDO_DEG_PER_KMH = 1.338;
 const TACH_DEG_PER_RPM = 0.02759;
 const BOOST_DEG_PER_MMHG = 0.0523;
 // The boost needle's hub is hidden behind the speedometer face, above the sub-dial.
-const DOOR_MIRROR_OUTBOARD_DEG = 2;
+// Mirror adjustment as seen from the driver's eye. The car is right-hand drive, so the
+// driver's door mirror is on the -X side.
+const DRIVER_MIRROR_OUTBOARD_DEG = 2;
+const PASSENGER_MIRROR_OUTBOARD_DEG = -2;
+// Positive tilts the rear-view mirror's view upward.
+const REAR_VIEW_MIRROR_TILT_DEG = -1;
 const TEMP_NORMAL_DEG = 30;
 const FUEL_FULL_DEG = 57;
 const BOOST_PIVOT = new THREE.Vector3(-0.3258, 0.2205, 0.4106);
@@ -314,12 +319,25 @@ export async function loadCar() {
         }
       };
       mirrors.push(mirror);
-      // Interior mirror looks straight back; door mirrors are set slightly outboard
-      // so the car's flank only just shows at their inner edge.
-      const outboard = interior
-        ? 0
-        : Math.sign(mirrorCenter.x) * Math.sin(THREE.MathUtils.degToRad(DOOR_MIRROR_OUTBOARD_DEG));
-      const sightLine = new THREE.Vector3(outboard, 0, -1).normalize();
+      // Sight line the driver sees in each mirror: straight back (tilted) for the interior
+      // mirror, angled outboard for the door mirrors.
+      const degrees = THREE.MathUtils.degToRad;
+      const sightLine = interior
+        ? new THREE.Vector3(
+            0,
+            Math.sin(degrees(REAR_VIEW_MIRROR_TILT_DEG)),
+            -Math.cos(degrees(REAR_VIEW_MIRROR_TILT_DEG)),
+          )
+        : new THREE.Vector3(
+            Math.sign(mirrorCenter.x) *
+              Math.sin(
+                degrees(
+                  mirrorCenter.x < 0 ? DRIVER_MIRROR_OUTBOARD_DEG : PASSENGER_MIRROR_OUTBOARD_DEG,
+                ),
+              ),
+            0,
+            -1,
+          ).normalize();
       mirrorMounts.push({ mirror, center: mirrorCenter, normal, orientation, sightLine });
       chassis.add(mirror);
     }

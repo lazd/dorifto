@@ -250,8 +250,10 @@ The inner rectangular high-beam sections remain tinted and unlit; only the
 outer low-beam sections glow and project light.
 The door mirrors and interior rear-view mirror use live planar reflections.
 Their glass is aimed from the cabin camera's eye point, the way a driver would
-set them: the interior mirror looks straight back, and the door mirrors look
-12° outboard. `setCabinEye()` in `src/camera.ts` moves the head and re-aims all
+set them. `DRIVER_MIRROR_OUTBOARD_DEG` and `PASSENGER_MIRROR_OUTBOARD_DEG` in
+`src/car.ts` set how far each door mirror looks outboard, and
+`REAR_VIEW_MIRROR_TILT_DEG` tilts the interior mirror's view up (positive) or
+down. `setCabinEye()` in `src/camera.ts` moves the head and re-aims all
 three mirrors. The interior mirror's whole housing swivels on its ball joint.
 Window tint only renders when looking in from outside, so the cabin view is
 clear, and the on-screen tachometer is hidden in cabin view in favor of the
