@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type AmmoFactory from 'ammojs-typed';
 import type { loadCar } from './car';
-import type { createCourse } from './course';
+import { coneDimensions, type createCourse } from './course';
 import type { courseSpawn } from './courses';
 import type { DrivingControls } from './controls';
 import type { VehicleAudio } from './audio';
@@ -75,8 +75,27 @@ export function createVehiclePhysics({
   const coneStarts = cones.map((cone) => cone.position.clone());
   const coneRotations = cones.map((cone) => cone.quaternion.clone());
   const coneResetTransform = new Ammo.btTransform();
+  coneResetTransform.setIdentity();
+  const coneShape = new Ammo.btCompoundShape();
+  const coneBodyShape = new Ammo.btConvexHullShape();
+  const { height, bottomRadius, topRadius, baseWidth, baseHeight, centerOfMassHeight } = coneDimensions;
+  for (const [y, radius] of [[baseHeight - centerOfMassHeight, bottomRadius], [height - centerOfMassHeight, topRadius]]) {
+    for (let i = 0; i < 24; i++) {
+      const angle = i / 24 * Math.PI * 2;
+      vector.setValue(Math.cos(angle) * radius, y, Math.sin(angle) * radius);
+      coneBodyShape.addPoint(vector, true);
+    }
+  }
+  coneBodyShape.setMargin(0.005);
+  coneShape.addChildShape(coneResetTransform, coneBodyShape);
+  vector.setValue(baseWidth / 2, baseHeight / 2, baseWidth / 2);
+  const coneBaseShape = new Ammo.btBoxShape(vector);
+  coneBaseShape.setMargin(0.005);
+  vector.setValue(0, baseHeight / 2 - centerOfMassHeight, 0);
+  coneResetTransform.setOrigin(vector);
+  coneShape.addChildShape(coneResetTransform, coneBaseShape);
   const coneBodies = cones.map((mesh) => {
-    const body = rigidBody(3, new Ammo.btConeShape(0.23, 0.7), mesh.position);
+    const body = rigidBody(3, coneShape, mesh.position);
     const transform = body.getWorldTransform();
     const rotation = new Ammo.btQuaternion(mesh.quaternion.x, mesh.quaternion.y, mesh.quaternion.z, mesh.quaternion.w);
     transform.setRotation(rotation);
@@ -89,6 +108,7 @@ export function createVehiclePhysics({
     body.setDamping(0.08, 0.12);
     body.setCcdMotionThreshold(0.1);
     body.setCcdSweptSphereRadius(0.12);
+    body.setActivationState(2);
     return body;
   });
   const chassisShape = new Ammo.btConvexHullShape();
@@ -279,7 +299,8 @@ export function createVehiclePhysics({
       cone.setLinearVelocity(vector);
       cone.setAngularVelocity(vector);
       cone.clearForces();
-      cone.activate(true);
+      // Placed props start asleep; collisions still wake them normally.
+      cone.setActivationState(2);
       world.updateSingleAabb(cone);
     });
     body.setCenterOfMassTransform(resetTransform);

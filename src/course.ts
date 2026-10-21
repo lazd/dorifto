@@ -4,18 +4,41 @@ import { courseRoute, courseTurns, startDistance } from './courses';
 import { surfaceMaterial } from './surfaces';
 import { CourseTerrain } from './terrain';
 
+export const coneDimensions = {
+  height: 0.595,
+  bottomRadius: 0.1955,
+  topRadius: 0.03825,
+  baseWidth: 0.476,
+  baseHeight: 0.051,
+  centerOfMassHeight: 0.09,
+};
+
 export function createCourse(scene: THREE.Scene, definition: CourseDefinition) {
   const route = courseRoute(definition);
   const terrain = new CourseTerrain(definition);
   scene.add(terrain.mesh);
-  const coneGeometry = new THREE.ConeGeometry(0.23, 0.7, 24);
+  const { height, bottomRadius, topRadius, baseWidth, baseHeight, centerOfMassHeight } = coneDimensions;
+  const originOffset = height / 2 - centerOfMassHeight;
+  const bodyHeight = height - baseHeight;
+  const coneGeometry = new THREE.CylinderGeometry(topRadius, bottomRadius, bodyHeight, 24);
+  coneGeometry.translate(0, baseHeight / 2 + originOffset, 0);
+  const baseGeometry = new THREE.BoxGeometry(baseWidth, baseHeight, baseWidth);
+  const baseMaterial = new THREE.MeshStandardMaterial({ color: 0x242424, roughness: 0.95 });
   const orange = new THREE.MeshStandardMaterial({ color: 0xf07424, roughness: 0.65 });
   const stripeMaterial = new THREE.MeshPhysicalMaterial({
     color: 0xffffff, roughness: 0.22, metalness: 0,
     clearcoat: 1, clearcoatRoughness: 0.12,
   });
   // Match the cone's taper exactly; a slight radius offset avoids z-fighting.
-  const stripeGeometry = new THREE.CylinderGeometry(0.078, 0.124, 0.14, 24, 1, true);
+  const radiusAt = (y: number) => THREE.MathUtils.lerp(
+    bottomRadius, topRadius, (y + height / 2 - baseHeight) / bodyHeight,
+  ) + 0.001;
+  const stripeHeight = height * 0.2;
+  const stripeCenter = height / 14;
+  const stripeGeometry = new THREE.CylinderGeometry(
+    radiusAt(stripeCenter + stripeHeight / 2), radiusAt(stripeCenter - stripeHeight / 2),
+    stripeHeight, 24, 1, true,
+  );
   const cones: THREE.Mesh[] = [];
   const length = route.getLength();
   const gates = Math.ceil(length / (definition.coneSpacing ?? 6));
@@ -30,12 +53,27 @@ export function createCourse(scene: THREE.Scene, definition: CourseDefinition) {
       cone.position.copy(center).addScaledVector(across, side * (definition.width / 2 + 0.53));
       const normal = terrain.normalAt(cone.position.x, cone.position.z);
       cone.position.y = terrain.heightAt(cone.position.x, cone.position.z);
-      cone.position.addScaledVector(normal, 0.35);
+      cone.position.addScaledVector(normal, centerOfMassHeight);
       cone.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), normal);
+      // Clear the whole square footprint, not just its center on curved ground.
+      let clearance = 0;
+      const support = new THREE.Vector3();
+      for (const x of [-baseWidth / 2, 0, baseWidth / 2]) {
+        for (const z of [-baseWidth / 2, 0, baseWidth / 2]) {
+          support.set(x, -centerOfMassHeight, z).applyQuaternion(cone.quaternion).add(cone.position);
+          clearance = Math.max(clearance, terrain.heightAt(support.x, support.z) - support.y);
+        }
+      }
+      cone.position.y += clearance + 0.005;
       cone.castShadow = true;
       cone.receiveShadow = true;
+      const base = new THREE.Mesh(baseGeometry, baseMaterial);
+      base.position.y = baseHeight / 2 - centerOfMassHeight;
+      base.castShadow = true;
+      base.receiveShadow = true;
+      cone.add(base);
       const stripe = new THREE.Mesh(stripeGeometry, stripeMaterial);
-      stripe.position.y = 0.05;
+      stripe.position.y = stripeCenter + originOffset;
       stripe.receiveShadow = true;
       cone.add(stripe);
       scene.add(cone);

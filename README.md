@@ -136,7 +136,10 @@ The chase camera smooths both its position and look target, with a gradual
 transition to following travel direction at low speed. Reset snaps the camera
 and interpolation history together.
 Ammo handles suspension and collisions using a compact convex chassis envelope
-covering the roof, rear hatch and spoiler
+and traffic cones with square rubber bases and flat-topped tapered bodies.
+Cone rendering and compound collision shapes share dimensions in `src/course.ts`.
+The chassis envelope
+covers the roof, rear hatch and spoiler
 for rollover contacts, while retaining the original underbody clearance.
 Chassis pitch/yaw/roll inertia is 2400/2600/700 kg m^2 rather than that of a thin
 underbody box. Each axle has a 12,000 N/m anti-roll bar, capped at 40% of the
