@@ -21,8 +21,6 @@ const sliders: {
     hint: 'Higher builds front cornering force at smaller slip angles; it does not raise peak grip.' },
   { key: 'rearStiffness', label: 'Rear cornering stiffness', min: 25000, max: 80000, step: 1000,
     hint: 'Higher builds rear cornering force sooner and can reduce initial rotation.' },
-  { key: 'rearSlidingGrip', label: 'Rear sliding grip retained', min: 0.4, max: 1, step: 0.01,
-    hint: 'Higher retains more traction after breakaway, making slides less slippery but resisting wheelspin.' },
 ];
 
 export function createDrivingTuning(fieldset: HTMLFieldSetElement, resetButton: HTMLButtonElement, store: Store<GameState>) {
@@ -64,7 +62,7 @@ export function createDrivingTuning(fieldset: HTMLFieldSetElement, resetButton: 
         : slider.key === 'steeringExpo' ? `${Math.round(value * 100)}%`
         : slider.key === 'steeringRate' ? `${(value * 180 / Math.PI).toFixed(0)} deg/s`
         : slider.key.endsWith('Stiffness') ? `${(value / 1000).toFixed(0)} kN/rad`
-        : slider.key === 'rearSlidingGrip' ? `${Math.round(value * 100)}%` : `${value.toFixed(2)}x`;
+        : `${value.toFixed(2)}x`;
       input.setAttribute('aria-valuetext', output.value);
     };
     input.addEventListener('input', () => {

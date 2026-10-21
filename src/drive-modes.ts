@@ -8,8 +8,6 @@ const handling = {
   rearStiffness: 48000,
   frontGrip: 1,
   rearGrip: 1,
-  frontSlidingGrip: 0.95,
-  rearSlidingGrip: 0.95,
 };
 
 export const driveModes = {

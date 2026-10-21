@@ -176,10 +176,12 @@ simplified tire model preserves cornering authority under wheelspin instead of
 letting unbounded longitudinal demand crowd out virtually all lateral force.
 It is a game-oriented approximation, not a calibrated real-tire model.
 Throttle redirects the available rear traction toward
-propulsion rather than applying a scripted shove. Combined slip beyond the grip
-peak progressively reduces friction to 95% of peak at both axles in both modes.
-This represents
-sliding rubber instead of holding peak traction at unlimited wheelspin. Drift's
+propulsion rather than applying a scripted shove. A rounded friction-circle
+boundary shares the load-dependent force budget between both axes:
+`scale = (1 + (combinedDemand / capacity)^8)^(-1/8)`.
+There is no separate slip-triggered sliding-grip reduction or breakaway state.
+The rounded boundary slightly softens force near full utilization; it does not
+increase peak grip or guarantee a stable drift. Drift's
 torque reserve can overcome rear sliding resistance even while the car is moving
 backward, spinning the tires forward before the chassis changes direction.
 During a brakestand, the foot brake holds the front wheels while releasing the
@@ -257,15 +259,15 @@ Reset clears all lap times. Reloading or changing courses also starts a new sess
 Click **Tuning** in the bottom toolbar to open a dialog and adjust the selected mode live without
 resetting the car. Sliders control steering angle (showing low/high-speed limits
 in degrees), independent front/rear peak-grip multipliers, front/rear cornering
-stiffness, and rear sliding grip retained after breakaway. Steering adjustment
+stiffness. Steering adjustment
 scales both speed-dependent limits together. Higher stiffness builds force sooner
 but does not raise peak traction. For a rear end that breaks loose too quickly,
-try increasing rear peak grip and rear sliding grip retained first.
+try increasing rear peak grip first.
 Both modes have independent settings, including an **Engine horsepower** slider
 (100–1,000 crank hp). Horsepower scales the engine's power ceiling and torque curve
 together, retaining each mode's engine characteristics. Defaults are approximately
 342 hp for Grip and 483 hp for Drift; driveline losses still apply.
-**Restore defaults** resets all nine sliders
+**Restore defaults** resets all eight sliders
 for the active mode only. Car reset and mode changes retain tuning for the current
 page; reloading restores defaults. Focused sliders use arrow keys for adjustment,
 not steering. Keyboard and controller driving inputs are disabled while the dialog

@@ -421,12 +421,9 @@ export function createVehiclePhysics({
         const driveDemand = capacity * Math.tanh(slipRatio * 8);
         const lateral = capacity * Math.tanh(lateralDemand / Math.max(capacity, 1));
         const combined = Math.hypot(driveDemand, lateral);
-        // Sliding rubber has less grip than the peak, allowing genuine
-        // wheelspin instead of holding maximum traction at unlimited slip.
-        const combinedSlip = Math.hypot(slipRatio / 0.12, tire.slipAngle / 0.16);
-        const minimumGrip = rear ? tireTune.rearSlidingGrip : tune.frontSlidingGrip;
-        const slidingGrip = 1 - (1 - minimumGrip) * THREE.MathUtils.smoothstep(combinedSlip, 1, 4);
-        const scale = (combined > capacity ? capacity / combined : 1) * slidingGrip;
+        // Round the friction-circle boundary without a separate breakaway drop.
+        const utilization = combined / Math.max(capacity, 1);
+        const scale = 1 / (1 + utilization ** 8) ** (1 / 8);
         const fx = driveDemand * scale;
         const fy = lateral * scale;
         const torque = (rear ? engineTorque + (i === 2 ? differential : -differential) : 0) - fx * car.radii[i];

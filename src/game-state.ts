@@ -18,7 +18,6 @@ export function defaultTuning(mode: DriveMode) {
     rearGrip: preset.rearGrip,
     frontStiffness: preset.frontStiffness,
     rearStiffness: preset.rearStiffness,
-    rearSlidingGrip: preset.rearSlidingGrip,
     steeringScale: preset.steeringScale,
     steeringExpo: preset.steeringExpo,
     steeringRate: preset.steeringRate,
