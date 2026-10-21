@@ -244,7 +244,10 @@ export function bindGameUI(store: Store<GameState>, reportError: (error: unknown
   focus();
   const sound = element<HTMLSelectElement>("#sound");
   const soundStatus = bindText("#sound-status");
+  const telemetryPanel = element(".telemetry");
   store.subscribe((state) => {
+    // The cabin camera shows the car's own working gauges instead.
+    telemetryPanel.hidden = state.cameraStyle === "cabin";
     const t = state.telemetry;
     const mph = String(Math.round(Math.abs(t.speed) / 0.44704));
     speed(mph);

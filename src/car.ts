@@ -61,6 +61,14 @@ export async function loadCar() {
   tune(/rotors(front|rear)_0$/, { metalness: 0.8, roughness: 0.45 });
   tune(/_(Chrome|LightChrome|Interiorchrome)_0$/, { metalness: 1, roughness: 0.12 });
   tune(/_(Windows|Headlightsglass|Headlight|LightsGlass|FogGlass)_0$/, { metalness: 0, roughness: 0.04 });
+  // The tinted glass is two shells (outer normals face out, inner face in). Draw both
+  // only from outside, so the tint shows on the car but the cabin view is clear.
+  for (const [pattern, side] of [[/^Windows_Windows_0$/, THREE.FrontSide], [/^WindowIn_WindowsIn_0$/, THREE.BackSide]] as const) {
+    const [glass] = named(pattern);
+    if (!glass) throw new Error(`Missing ${pattern} in the car model.`);
+    glass.material = glass.material.clone();
+    glass.material.side = side;
+  }
 
   function emissive(pattern: RegExp, color: number, useMap = false) {
     const materials: THREE.MeshStandardMaterial[] = [];
@@ -200,7 +208,7 @@ export async function loadCar() {
   // Replace the flat mirror-glass mesh with live planar reflections.
   const mirrors: Reflector[] = [];
   const mirrorMounts: { mirror: Reflector; center: THREE.Vector3; normal: THREE.Vector3;
-    orientation: THREE.Quaternion; sightLine: THREE.Vector3 }[] = [];
+    orientation: THREE.Quaternion; sightLine: THREE.Vector3; housing?: THREE.Group }[] = [];
   for (const mesh of named(/^Mirrorglass_/)) {
     const geometry = mesh.geometry.clone().applyMatrix4(mesh.matrixWorld);
     const positions = geometry.getAttribute('position');
@@ -276,14 +284,56 @@ export async function loadCar() {
 
   // Pivot each glass in its housing so that a ray from the driver's eye reflects
   // along the mirror's sight line (eye is in chassis space).
+  // The interior mirror housing (and dimmer tab) are baked into large shared interior
+  // meshes; cut those triangles into a group that swivels on the stem's ball joint.
+  const housing = new THREE.Group();
+  housing.position.set(0, 0.55, 0.05);
+  const housingParts: [RegExp, (point: THREE.Vector3) => boolean][] = [
+    [/^intmain_Leather_0$/, (v) => Math.abs(v.x) < 0.11 && v.y > 0.48 && v.y < 0.56 && v.z > 0 && v.z < 0.09],
+    [/^Plastic_PlasticInterior_0$/, (v) => Math.abs(v.x) < 0.02 && v.y > 0.47 && v.y < 0.515 && v.z > 0.04 && v.z < 0.07],
+  ];
+  for (const [pattern, inside] of housingParts) {
+    const [mesh] = named(pattern);
+    if (!mesh) throw new Error(`Missing ${pattern} in the car model.`);
+    const geometry = mesh.geometry.clone();
+    const positions = geometry.getAttribute('position');
+    const index = geometry.getIndex();
+    const vertex = new THREE.Vector3();
+    const kept: number[] = [];
+    const moved: number[] = [];
+    for (let i = 0; i < (index?.count ?? positions.count); i += 3) {
+      const triangle = [0, 1, 2].map((j) => index ? index.getX(i + j) : i + j);
+      const inHousing = triangle.every((v) => inside(vertex.fromBufferAttribute(positions, v).applyMatrix4(mesh.matrixWorld)));
+      (inHousing ? moved : kept).push(...triangle);
+    }
+    if (!moved.length) throw new Error(`Missing interior mirror housing in ${pattern}.`);
+    geometry.setIndex(kept);
+    mesh.geometry = geometry;
+    const part = geometry.clone().applyMatrix4(mesh.matrixWorld);
+    part.setIndex(moved);
+    part.translate(-housing.position.x, -housing.position.y, -housing.position.z);
+    housing.add(new THREE.Mesh(part, mesh.material));
+  }
+  chassis.add(housing);
+  const interiorMount = mirrorMounts.find(({ center }) => Math.abs(center.x) < 0.5)!;
+  interiorMount.housing = housing;
+  housing.add(interiorMount.mirror);
+
   const toEye = new THREE.Vector3();
   const aimedNormal = new THREE.Vector3();
   const tilt = new THREE.Quaternion();
   function aimMirrors(eye: THREE.Vector3) {
-    for (const { mirror, center, normal, orientation, sightLine } of mirrorMounts) {
+    for (const { mirror, center, normal, orientation, sightLine, housing } of mirrorMounts) {
       toEye.subVectors(eye, center).normalize();
       aimedNormal.addVectors(toEye, sightLine).normalize();
       tilt.setFromUnitVectors(normal, aimedNormal);
+      if (housing) {
+        // The glass is fixed in the housing; the whole housing swivels on its joint.
+        housing.quaternion.copy(tilt);
+        mirror.quaternion.copy(orientation);
+        mirror.position.copy(center).sub(housing.position).addScaledVector(normal, 0.002);
+        continue;
+      }
       mirror.quaternion.multiplyQuaternions(tilt, orientation);
       mirror.position.copy(center).addScaledVector(aimedNormal, 0.002);
     }

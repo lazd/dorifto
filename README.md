@@ -248,8 +248,14 @@ Headlights retain the original non-glowing covers at half their original tint
 opacity over their warm-white low-beam inserts; window tint is unchanged.
 The inner rectangular high-beam sections remain tinted and unlit; only the
 outer low-beam sections glow and project light.
-Side-view mirror glass uses live planar
-reflections. The cones are lightweight dynamic physics objects: hit them to send
+The door mirrors and interior rear-view mirror use live planar reflections.
+Their glass is aimed from the cabin camera's eye point, the way a driver would
+set them: the interior mirror looks straight back, and the door mirrors look
+12° outboard. `setCabinEye()` in `src/camera.ts` moves the head and re-aims all
+three mirrors. The interior mirror's whole housing swivels on its ball joint.
+Window tint only renders when looking in from outside, so the cabin view is
+clear, and the on-screen tachometer is hidden in cabin view in favor of the
+car's working gauges. The cones are lightweight dynamic physics objects: hit them to send
 them sliding and tumbling. Reset restores the car and all cones to their starting
 positions and clears smoke and tire marks.
 The autocross loop starts straight ahead through a checkered line, then follows
@@ -576,10 +582,11 @@ deployment beneath a subdirectory.
 ## Model attribution
 
 This work is based on
-["Nissan Fairlady 300ZX (Z32) 1989"](https://sketchfab.com/3d-models/nissan-fairlady-300zx-z32-1989-8c04336a4ed84f6f836760db8256f9f0)
-by [Lexyc16](https://sketchfab.com/Lexyc16), licensed under
-[CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/).
-**The supplied model is non-commercial.** See
-[the original model license](models/nissan_fairlady_300zx_z32_1989/license.txt).
-The demo rescales/recenters the model and separates its existing wheel geometry
-for animation, with red paint and black rim materials.
+["nissan_300zx"](https://sketchfab.com/3d-models/nissan-300zx-88be494c18134b1ca820f776d5144164)
+by [MattDoesBlender](https://sketchfab.com/MattDoesBlender), licensed under
+[CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/).
+**The supplied model is non-commercial, and modified versions must use the same
+license.** See [the original model license](models/nissan_300zx/license.txt).
+The demo rescales/recenters the model, separates its wheels, brake hubs, steering
+wheel, gauge needles and interior mirror housing for animation, removes the sun
+visors and front plate, and repaints it with red paint and black rims.

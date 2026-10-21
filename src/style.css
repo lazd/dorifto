@@ -65,7 +65,8 @@ h1 span {
   max-width: 90vw;
   text-align: center;
 }
-#status[hidden] {
+#status[hidden],
+.telemetry[hidden] {
   display: none;
 }
 #status.error {
