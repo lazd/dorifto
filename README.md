@@ -20,7 +20,23 @@ Ammo objects stay outside the store.
 `src/drift-tuning.ts` binds tuning inputs to profile updates. UI events update the
 store or invoke explicit actions (reset/sound). Only changed display values are
 written to the DOM. Input polling and audio report state rather than owning UI
-elements. `src/main.ts` wires these pieces together and owns rendering/physics.
+elements.
+
+## Runtime modules
+
+- `src/main.ts`: app startup, module wiring, input events, fixed-step scheduling,
+  telemetry publication, and rendering.
+- `src/camera.ts`: cabin and chase cameras, controller look, course look-ahead,
+  camera smoothing, and reset framing.
+- `src/lighting.ts`: sky, environment, time-of-day presets, and following shadows.
+- `src/vehicle-physics.ts`: Ammo world, terrain/cone collision bodies, suspension,
+  tire forces, vehicle reset, and interpolated vehicle/cone poses.
+- `src/tire-effects.ts`: skid marks, tire smoke/dust, and smoke depth capture.
+- `src/drive-modes.ts`: Grip/Drift handling and camera presets.
+- `src/drivetrain.ts`: engine, clutch, fixed gear ratios, and automatic shifting.
+
+Each runtime module owns its working state; the entry point coordinates updates
+without sharing its local variables with the camera, physics, or effects.
 
 ## Run
 
@@ -483,8 +499,6 @@ Deploy the entire directory, including the car assets. Vite uses `models/` as
 its public asset directory, preserving the glTF's relative binary and texture
 URLs and copying the model license alongside them. Relative URLs support
 deployment beneath a subdirectory.
-
-`gindex.html` is an unused historical prototype, not part of the app.
 
 ## Model attribution
 
