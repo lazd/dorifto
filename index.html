@@ -9,16 +9,63 @@
   <body>
     <div id="app"></div>
     <div id="status" role="status">Starting physics & loading the Z32…</div>
-    <aside class="lap-timing" aria-label="Lap timing">
-      <span id="lap-number">CROSS START TO BEGIN</span>
-      <strong id="lap-current">--:--.---</strong>
-      <div><span>LAST</span><span id="lap-last">--:--.---</span></div>
-      <div><span>BEST</span><span id="lap-best">--:--.---</span></div>
-      <div><span>CONES HIT</span><span id="lap-cones">0</span></div>
-      <div><span>LAST LAP CONES</span><span id="lap-last-cones">--</span></div>
+    <aside class="course-hud" aria-label="Course map and options">
+      <button
+        id="minimap"
+        class="minimap"
+        type="button"
+        aria-label="Toggle course options"
+        aria-controls="course-menu"
+        aria-expanded="false"
+      >
+        <span id="course-name">Loading course...</span>
+        <span class="minimap-stats">
+          <span class="minimap-lap" role="group" aria-label="Current lap">
+            <strong id="lap-number">--</strong>
+            <span>LAP</span>
+          </span>
+          <span class="minimap-timing" role="group" aria-label="Lap timing">
+            <strong id="lap-current" aria-label="Current lap time">--:--.---</strong>
+            <span class="minimap-best"
+              ><span>BEST</span
+              ><span id="lap-best" aria-label="Best lap time">--:--.---</span></span
+            >
+          </span>
+        </span>
+      </button>
+      <div id="course-menu" hidden>
+        <div id="course-options" class="course-options">
+          <label
+            >Course
+            <select id="course" aria-label="Course" disabled></select
+          ></label>
+          <label class="course-direction">
+            <input id="reverse-course" type="checkbox" disabled /> Reverse course
+          </label>
+          <button
+            id="custom-course"
+            type="button"
+            aria-haspopup="dialog"
+            aria-controls="custom-course-dialog"
+            disabled
+          >
+            <kbd>Custom course</kbd>
+          </button>
+          <button id="random-course" type="button" title="Generate a new course" disabled>
+            <kbd>Random course</kbd>
+          </button>
+        </div>
+      </div>
     </aside>
     <aside class="telemetry" aria-label="Driving information">
-      <div id="tachometer" role="meter" aria-label="Engine RPM" aria-valuemin="0" aria-valuemax="8000" aria-valuenow="850">
+      <div
+        id="tachometer"
+        role="meter"
+        aria-label="Engine RPM"
+        aria-valuemin="0"
+        aria-valuemax="8000"
+        aria-valuenow="850"
+      >
         <svg class="tach-dial" viewBox="0 0 280 280" aria-hidden="true"></svg>
       </div>
       <div class="tach-center">
@@ -28,9 +75,11 @@
           <svg id="speed-led" viewBox="0 0 124 64" aria-hidden="true"></svg>
         </div>
         <span class="speed-unit">MPH</span>
-        <div class="gear-display"><span>GEAR</span><strong id="gear">1</strong></div>
+        <div class="gear-display">
+          <strong id="gear">1</strong>
+          <div class="gear-label">GEAR</div>
+        </div>
       </div>
-      <span id="engine-state">850 RPM</span>
     </aside>
     <dialog id="drift-tuning" class="slider-dialog" aria-labelledby="drift-tuning-title">
       <form method="dialog" class="dialog-close">
@@ -57,42 +106,53 @@
       </form>
       <h2 id="custom-course-title" tabindex="-1" autofocus>Custom course</h2>
       <p>
-        Choose a course length and independent preferences from 0 (avoid) to 1 (strongly favor).
-        The preferences do not need to add up to 1. Changes apply only when you generate.
+        Choose a course length and independent preferences from 0 (avoid) to 1 (strongly favor). The
+        preferences do not need to add up to 1. Changes apply only when you generate.
       </p>
       <fieldset id="custom-course-sliders">
         <legend>Generation preferences</legend>
       </fieldset>
       <p>
-        Elevation 0 is completely flat. Closed circuits still need return bends.
-        Course length targets 1–5 km, within 5%. Tight corners include switchbacks.
-        All layouts keep safe road clearance and at least a 22 m turn radius.
+        Elevation 0 is completely flat. Closed circuits still need return bends. Course length
+        targets 1–5 km, within 5%. Tight corners include switchbacks. All layouts keep safe road
+        clearance and at least a 22 m turn radius.
       </p>
       <p id="custom-course-status" role="status"></p>
       <p id="custom-course-error" role="alert"></p>
       <div class="dialog-actions">
         <button id="custom-course-reset" type="button"><kbd>Restore defaults</kbd></button>
-        <button id="custom-course-generate" type="button" disabled><kbd>Generate course</kbd></button>
+        <button id="custom-course-generate" type="button" disabled>
+          <kbd>Generate course</kbd>
+        </button>
       </div>
     </dialog>
-    <footer>
+    <header>
       <div class="controls">
-        <label>Course <select id="course" aria-label="Course" disabled></select></label>
-        <label class="course-direction"><input id="reverse-course" type="checkbox" disabled /> Reverse course</label>
-        <button id="random-course" type="button" title="Generate a new course" disabled><kbd>Random course</kbd></button>
-        <button id="custom-course" type="button" aria-haspopup="dialog" aria-controls="custom-course-dialog" disabled><kbd>Custom course</kbd></button>
-        <button id="settings" type="button" aria-haspopup="dialog" aria-controls="settings-dialog"><kbd>Settings</kbd></button>
-        <button id="tuning" type="button" aria-haspopup="dialog" aria-controls="drift-tuning"><kbd>Tuning</kbd></button>
-        <button id="help" type="button" aria-haspopup="dialog"><kbd>Help</kbd></button>
+        <button id="settings" type="button" aria-haspopup="dialog" aria-controls="settings-dialog">
+          <kbd>⚙️</kbd>
+        </button>
+        <button id="tuning" type="button" aria-haspopup="dialog" aria-controls="drift-tuning">
+          <kbd>🛠️</kbd>
+        </button>
+        <button id="help" type="button" aria-haspopup="dialog"><kbd>❓</kbd></button>
       </div>
+    </header>
+    <footer>
       <p class="credit">
         “<a
           href="https://sketchfab.com/3d-models/nissan-300zx-88be494c18134b1ca820f776d5144164"
           target="_blank"
           rel="noreferrer"
           >nissan_300zx</a
-        >” by <a href="https://sketchfab.com/MattDoesBlender" target="_blank" rel="noreferrer">MattDoesBlender</a> ·
-        <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noreferrer"
+        >” by
+        <a href="https://sketchfab.com/MattDoesBlender" target="_blank" rel="noreferrer"
+          >MattDoesBlender</a
+        >
+        ·
+        <a
+          href="https://creativecommons.org/licenses/by-nc-sa/4.0/"
+          target="_blank"
+          rel="noreferrer"
           >CC BY-NC-SA 4.0</a
         >
         · Non-commercial demo
@@ -104,7 +164,8 @@
       </form>
       <h2 id="settings-title" tabindex="-1" autofocus>Settings</h2>
       <div class="settings-controls">
-        <label>Sound
+        <label
+          >Sound
           <select id="sound">
             <option value="on" selected>On</option>
             <option value="off">Off</option>
@@ -132,6 +193,13 @@
             <option value="corner">Corner-aware chase</option>
             <option value="classic">Classic chase</option>
             <option value="cabin">In-cabin</option>
+          </select></label
+        >
+        <label
+          >Map orientation
+          <select id="minimap-orientation">
+            <option value="north-up">North up</option>
+            <option value="heading-up">Follow heading</option>
           </select></label
         >
         <label
@@ -176,7 +244,10 @@
         <dt><kbd>M</kbd></dt>
         <dd>Toggle bird's-eye map view</dd>
       </dl>
-      <h3>Controller</h3>
+      <h3>
+        Controller
+        <div id="controller-status" role="status"></div>
+      </h3>
       <dl>
         <dt>R2 / RT</dt>
         <dd>Accelerate</dd>
@@ -201,16 +272,6 @@
         <dt>Start / Menu / Options</dt>
         <dd>Reset</dd>
       </dl>
-      <p id="controller-status" role="status">Controller: connect and press a button</p>
-      <p>
-        Press the accelerator to release the initial brake hold. Driving inputs are disabled while
-        Help, Settings, tuning, or Custom course is open; the simulation continues.
-      </p>
-      <p>
-        Sound defaults to On and starts after a click or keypress. Use Settings to
-        turn it off; that choice is kept in the URL as <code>?sound=off</code>.
-        Sound continues when the window loses focus.
-      </p>
     </dialog>
     <script type="module" src="/src/main.ts"></script>
   </body>

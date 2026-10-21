@@ -12,6 +12,10 @@ export function isTimeOfDay(value: string): value is GameState['timeOfDay'] {
   return value === 'noon' || value === 'sunset' || value === 'night';
 }
 
+export function isMinimapOrientation(value: string): value is GameState['minimapOrientation'] {
+  return value === 'north-up' || value === 'heading-up';
+}
+
 export function defaultTuning(mode: DriveMode) {
   const preset = driveModes[mode];
   return {
@@ -31,11 +35,13 @@ export interface GameState {
   driveMode: DriveMode;
   profiles: Readonly<Record<DriveMode, DrivingTuning>>;
   cameraStyle: 'corner' | 'classic' | 'cabin';
+  minimapOrientation: 'north-up' | 'heading-up';
   timeOfDay: 'noon' | 'sunset' | 'night';
   helpOpen: boolean;
   tuningOpen: boolean;
   settingsOpen: boolean;
   customCourseOpen: boolean;
+  courseMenuOpen: boolean;
   courseWeights: CourseGenerationWeights;
   courseReverse: boolean;
   showCones: boolean;
@@ -57,7 +63,8 @@ export function createGameState() {
     driveMode: 'drift',
     profiles: { drift: defaultTuning('drift'), grip: defaultTuning('grip') },
     cameraStyle: 'corner', timeOfDay: 'noon', helpOpen: false, tuningOpen: false, settingsOpen: false,
-    customCourseOpen: false, courseWeights: { ...defaultCourseWeights },
+    minimapOrientation: 'north-up',
+    customCourseOpen: false, courseMenuOpen: false, courseWeights: { ...defaultCourseWeights },
     courseReverse: false, showCones: true, showGrass: true,
     focused: true, controllerStatus: '',
     sound: { running: false, muted: false, failed: false, error: null },

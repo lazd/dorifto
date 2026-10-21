@@ -22,6 +22,7 @@ a {
   -webkit-tap-highlight-color: transparent;
 }
 .title,
+header,
 footer,
 .telemetry {
   position: fixed;
@@ -78,41 +79,137 @@ h1 span {
   top: 28px;
   width: 260px;
   height: 260px;
+  transform: scale(0.75);
+  transform-origin: top left;
   border: 1px solid #9ee8d533;
   border-radius: 50%;
   background: radial-gradient(circle at 50% 42%, #18272ef2, #0a131aeb 72%);
-  box-shadow: inset 0 0 0 5px #0a131a88, inset 0 0 0 6px #9ee8d511, 0 8px 28px #0004;
+  box-shadow:
+    inset 0 0 0 5px #0a131a88,
+    inset 0 0 0 6px #9ee8d511,
+    0 8px 28px #0004;
   pointer-events: none;
   font-variant-numeric: tabular-nums;
 }
-.lap-timing {
+.course-hud {
   position: fixed;
-  z-index: 1;
+  z-index: 2;
   top: 28px;
-  right: 32px;
-  padding: 14px 18px;
-  background: #10191fc9;
-  border-left: 2px solid #9ee8d5;
-  font-variant-numeric: tabular-nums;
-  pointer-events: none;
+  right: 28px;
+  width: 180px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: calc(100dvh - 56px);
+  overflow-y: auto;
+  scrollbar-width: thin;
 }
-.lap-timing > span {
-  color: #9ee8d5;
-  font-size: 10px;
-  letter-spacing: 0.1em;
+#course-menu {
+  flex-shrink: 0;
 }
-.lap-timing > strong {
+.minimap:focus-visible {
+  outline: 2px solid #9ee8d5;
+  outline-offset: -2px;
+}
+#course-name {
+  order: 2;
+  flex-shrink: 0;
+  min-width: 0;
+  padding: 0 12px 10px;
+  font-size: 11px;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.course-options {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid #9ee8d533;
+  border-radius: 6px;
+  background: #10191fee;
+  font-size: 12px;
+}
+.course-options select {
   display: block;
-  margin: 6px 0 10px;
-  font-size: 26px;
-  font-weight: 500;
+  width: 100%;
+  min-width: 0;
+  margin: 6px 0 0;
 }
-.lap-timing div {
+.course-options kbd {
+  display: block;
+  margin-right: 0;
+  padding: 8px;
+}
+.minimap {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  gap: 4px;
+  width: 100%;
+  height: 220px;
+  padding: 0;
+  border: 1px solid #9ee8d533;
+  border-radius: 8px;
+  background: #10191fc9;
+}
+.minimap > svg {
+  display: block;
+  order: 1;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  height: auto;
+}
+.minimap-stats {
   display: flex;
   justify-content: space-between;
-  gap: 22px;
-  margin-top: 5px;
-  font-size: 11px;
+  flex-shrink: 0;
+  gap: 8px;
+  padding: 8px 12px 0;
+}
+.minimap-pad {
+  fill: #9ee8d51a;
+}
+.minimap-road {
+  fill: none;
+  stroke: #9ee8d580;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.minimap-start {
+  fill: none;
+  stroke: #eef6f5;
+  stroke-width: 2;
+}
+.minimap-marker {
+  fill: #ffc56e;
+  stroke: #10191f;
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+}
+.minimap-lap,
+.minimap-timing {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  color: #9ee8d5;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.minimap-timing {
+  text-align: right;
+}
+.minimap-lap > strong,
+.minimap-timing > strong {
+  display: block;
+  color: #eef6f5;
+  font-size: 20px;
+  font-weight: 500;
+}
+.minimap-best {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
 }
 .tach-dial {
   display: block;
@@ -181,22 +278,20 @@ h1 span {
 }
 .gear-display {
   display: flex;
+  flex-direction: column;
   align-items: center;
   gap: 8px;
-  margin-top: 3px;
-}
-.gear-display strong {
+  margin-top: 10px;
   color: #c5ffed;
-  font: 500 22px / 1 ui-monospace, monospace;
+  font:
+    500 32px / 1 ui-monospace,
+    monospace;
 }
-#engine-state {
-  position: absolute;
-  bottom: 20px;
-  left: 0;
-  width: 100%;
-  text-align: center;
+.gear-label {
   color: #aebfbd;
-  font: 10px ui-monospace, monospace;
+  font:
+    10px ui-monospace,
+    monospace;
   letter-spacing: 0.08em;
 }
 .visually-hidden {
@@ -211,13 +306,73 @@ h1 span {
   .telemetry {
     top: 12px;
     left: 12px;
-    transform: scale(0.7);
-    transform-origin: top left;
+    transform: scale(0.6);
   }
-  .lap-timing {
+}
+@media (max-width: 800px), (max-height: 600px) {
+  .course-hud {
     top: 12px;
     right: 12px;
+    width: 160px;
+    max-height: calc(100dvh - 24px);
   }
+  .minimap {
+    height: 200px;
+  }
+}
+@media (max-width: 380px) {
+  .telemetry {
+    transform: scale(0.5);
+  }
+  .course-hud {
+    width: 148px;
+  }
+  .minimap {
+    height: 188px;
+  }
+}
+.chase-view .telemetry {
+  top: auto;
+  bottom: 28px;
+  transform-origin: bottom left;
+}
+.chase-view .course-hud {
+  top: auto;
+  bottom: 28px;
+  flex-direction: column-reverse;
+}
+.chase-view .minimap > svg {
+  order: 0;
+}
+.chase-view #course-name {
+  order: -1;
+  padding: 10px 12px 0;
+}
+.chase-view .minimap-stats {
+  order: 1;
+  padding: 0 12px 8px;
+}
+@media (max-width: 800px), (max-height: 600px) {
+  .chase-view .telemetry,
+  .chase-view .course-hud,
+  .chase-view header {
+    bottom: 12px;
+  }
+}
+@media (max-width: 460px) {
+  .chase-view .telemetry,
+  .chase-view .course-hud {
+    bottom: 60px;
+  }
+  .chase-view .course-hud {
+    max-height: calc(100dvh - 72px);
+  }
+}
+header {
+  left: 0;
+  right: 0;
+  top: 0;
+  padding: 20px;
 }
 footer {
   left: 0;
@@ -225,17 +380,25 @@ footer {
   bottom: 0;
   padding: 20px 32px 12px;
   background: linear-gradient(transparent, #10191fe8);
+  opacity: 1;
+  transition: opacity 0.6s ease;
+}
+footer.loaded:not(:hover):not(:focus-within) {
+  opacity: 0;
+  transition-delay: 5s;
+}
+@media (prefers-reduced-motion: reduce) {
+  footer {
+    transition-duration: 0s;
+  }
 }
 .controls {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  gap: 12px 22px;
+  align-items: flex-end;
+  gap: 12px;
   font-size: 12px;
   color: #d2dedc;
-}
-.controls > span {
-  white-space: nowrap;
 }
 .course-direction {
   display: inline-flex;
@@ -304,6 +467,8 @@ dialog h2 {
   margin-top: 0;
 }
 dialog h3 {
+  display: flex;
+  justify-content: space-between;
   color: #9ee8d5;
   font-size: 15px;
 }
@@ -423,4 +588,9 @@ dialog h2 {
 }
 #custom-course-error {
   color: #ffb8a8;
+}
+
+#controller-status {
+  font-weight: normal;
+  font-size: 12px;
 }

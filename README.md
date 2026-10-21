@@ -7,16 +7,32 @@ runtime CDN dependencies.
 ## UI and game state
 
 The toolbar's **Settings** button opens sound, drive mode, time of day, camera
-style, cones, and grass tufts controls in a modal dialog. Changes apply immediately. Close with **Close**,
+style, map orientation, cones, and grass tufts controls in a modal dialog. Changes apply immediately. Close with **Close**,
 Escape, or a backdrop click; driving inputs are disabled while it is open.
 Turning **Cones** off (`?cones=off`) hides them and removes their physics bodies;
 **Grass tufts** off (`?grass=off`) hides the decorative blades. Both help
 performance on long imported tracks, which carry hundreds of cones.
-Course selection stays in the toolbar. Reset uses keyboard **R** or the controller's
+Chase views place the Settings/Tuning/Help buttons at the bottom center and the
+tachometer and minimap in the bottom corners, with course selection above the map
+and the lap number and times below the map drawing. Expanding the course disclosure
+grows the panel upward while the minimap stays anchored at the bottom. Cabin view
+keeps the panel at the top, expands course selection below the minimap, and places
+the lap number and times above the map drawing.
+The course name is inside the minimap: at the bottom in cabin view and at the top
+in chase views, without a separate picker caption. Click or tap the minimap (including its name)
+to expand course selection, **Reverse course**, **Custom course**, and **Random course**.
+The disclosure also works with Enter/Space; close it with another tap, Escape, or an
+outside click. Driving inputs are disabled while it is open.
+Choosing a course, reversing it, or starting random/custom course generation closes
+the disclosure immediately. Opening the custom-course dialog also closes it.
+The footer fades out five seconds after loading completes. Hovering over it or
+focusing one of its links reveals it again; it stays visible during loading or errors.
+Reset uses keyboard **R** or the controller's
 Start/Menu/Options button rather than a toolbar button.
 Settings, Tuning, Help, and Custom course share one dialog lifecycle in `src/ui.ts`: open at the
 top, close with the upper-right ×, Escape, or an outside click, and restore focus
-to the opening button. Clicking or dragging controls inside does not dismiss them.
+to the opening button (the minimap for Custom course). Clicking or dragging controls
+inside does not dismiss them.
 
 The dependency-free observable store in `src/store.ts` exposes `getState()`,
 `update(patch)`, and `subscribe(listener)` (returning an unsubscribe function).
@@ -34,10 +50,19 @@ store or invoke explicit actions (reset/sound). Only changed display values are
 written to the DOM. Input polling and audio report state rather than owning UI
 elements.
 
-The HUD uses a segmented circular 0–8,000 RPM tachometer with amber high-RPM
+The HUD uses a compact segmented circular 0–8,000 RPM tachometer with amber high-RPM
 segments, a redline tied to the drivetrain, and a red limiter indication.
 A seven-segment LED-style MPH speedometer sits in the center with a gear readout
 below it. Driving-state messages (brakes held, sliding, burnout, etc.) are not shown.
+A persistent minimap shows the current lap number on the left
+(`--` before crossing the start line) and the current lap time on the right
+with the best time directly underneath, including in cabin view. There is
+no separate lap timing panel. It shows the complete course, a white start/finish line, and an amber arrow
+for the car's live position and heading. It follows course changes automatically;
+**Settings > Map orientation** selects **North up** (default, `?minimap=north-up`)
+or **Follow heading** (`?minimap=heading-up`). Follow heading rotates the course
+so the car always points up, fitting the entire course at any angle. The lap
+times stay upright. The choice is retained in the URL across reloads and course changes.
 
 ## Runtime modules
 
@@ -45,6 +70,7 @@ below it. Driving-state messages (brakes held, sliding, burnout, etc.) are not s
   telemetry publication, and rendering.
 - `src/camera.ts`: cabin and chase cameras, controller look, course look-ahead,
   camera smoothing, and reset framing.
+- `src/minimap.ts`: top-down course outline and live position/heading HUD.
 - `src/lighting.ts`: sky, environment, time-of-day presets, and following shadows.
 - `src/vehicle-physics.ts`: Ammo world, terrain/cone collision bodies, suspension,
   tire forces, vehicle reset, and interpolated vehicle/cone poses.
@@ -411,7 +437,7 @@ preserved when switching courses or generating a random layout. Noon is the defa
 
 ## Courses
 
-The toolbar's **Reverse course** checkbox drives any named, random, or custom
+The minimap disclosure's **Reverse course** checkbox drives any named, random, or custom
 layout in the opposite direction. Use `?reverse=1` in a course URL to open it
 reversed; omit the parameter (or use `reverse=0`) for the normal direction.
 `reverse=true`, `reverse=false`, and a bare `reverse` flag are also supported.

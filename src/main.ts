@@ -8,11 +8,12 @@ import { generateCustomCourse, readCourseWeights, writeCourseWeights, type Cours
 import { isDriveMode } from './drive-modes';
 import { LapTimer } from './laps';
 import { VehicleAudio } from './audio';
-import { createGameState, isCameraStyle, isTimeOfDay } from './game-state';
+import { createGameState, isCameraStyle, isMinimapOrientation, isTimeOfDay } from './game-state';
 import { bindGameUI, bindGameActions, bindCoursePicker, element } from './ui';
 import { createDrivingCamera } from './camera';
 import { createLighting } from './lighting';
 import { createTireEffects } from './tire-effects';
+import { createMinimap } from './minimap';
 import { createPhysicsResources, createVehiclePhysics } from './vehicle-physics';
 import './style.css';
 
@@ -24,6 +25,8 @@ async function start() {
   if (!isCameraStyle(requestedCamera)) throw new Error(`Unknown camera style: ${requestedCamera}`);
   const requestedMode = new URL(location.href).searchParams.get('mode') ?? 'drift';
   if (!isDriveMode(requestedMode)) throw new Error(`Unknown drive mode: ${requestedMode}`);
+  const requestedMinimap = new URL(location.href).searchParams.get('minimap') ?? 'north-up';
+  if (!isMinimapOrientation(requestedMinimap)) throw new Error(`Unknown map orientation: ${requestedMinimap}`);
   const readToggle = (name: string) => {
     const value = new URL(location.href).searchParams.get(name) ?? 'on';
     if (value !== 'on' && value !== 'off') throw new Error(`Invalid ${name} option: ${value}`);
@@ -31,6 +34,7 @@ async function start() {
   };
   gameState.update({
     driveMode: requestedMode, cameraStyle: requestedCamera,
+    minimapOrientation: requestedMinimap,
     showCones: readToggle('cones'), showGrass: readToggle('grass'),
   });
   const settingsUrl = new URL(location.href);
@@ -100,7 +104,7 @@ async function start() {
   }, new URL(location.href).searchParams.get('sound') === 'off');
   let dialogOpen = false;
   gameState.subscribe((state) => {
-    const open = state.helpOpen || state.tuningOpen || state.settingsOpen || state.customCourseOpen;
+    const open = state.helpOpen || state.tuningOpen || state.settingsOpen || state.customCourseOpen || state.courseMenuOpen;
     if (open === dialogOpen) return;
     dialogOpen = open;
     controls.clear();
@@ -135,6 +139,7 @@ async function start() {
 
   let activeDefinition = definition;
   let { course, terrain, spawn, laps, physics, drivingCamera } = createCourseSession({ ...definition, reverse: requestedReverse });
+  const minimap = createMinimap(element('#minimap'), definition);
   const { fixedStep } = physics;
   gameState.subscribe(({ showCones, showGrass }) => {
     physics.setConesEnabled(showCones);
@@ -161,6 +166,7 @@ async function start() {
       await new Promise<void>((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
       const nextDefinition = build();
       const next = createCourseSession({ ...nextDefinition, reverse });
+      minimap.setCourse(nextDefinition);
       const previousPhysics = physics;
       const previousCourse = course;
       ({ course, terrain, spawn, laps, physics, drivingCamera } = next);
@@ -318,6 +324,7 @@ async function start() {
     forward.set(0, 0, 1).applyQuaternion(car.chassis.quaternion);
     forward.y = 0;
     forward.normalize();
+    minimap.update(car.chassis.position, forward, cameraState.minimapOrientation);
     // Manifold pressure: closed-throttle vacuum through to full turbo boost.
     const manifoldMmHg = THREE.MathUtils.lerp(-550, 0, engine.load) * (1 - engine.boost) + 650 * engine.boost;
     car.setGauges(Math.abs(forward.dot(velocity)) * 3.6, engine.rpm, manifoldMmHg);
