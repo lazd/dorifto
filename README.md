@@ -109,8 +109,8 @@ tires reduces their cornering grip. Pure lateral demand is smoothly bounded
 before the combined friction-circle limit, so extreme drift angles do not
 crowd out drive force. Throttle redirects the available rear traction toward
 propulsion rather than applying a scripted shove. Combined slip beyond the grip
-peak progressively reduces rear friction to 83% of peak in Drift, versus 78%
-in Grip; front tires retain the 78% sliding floor in both modes. This represents
+peak progressively reduces rear friction to 83% of peak in Drift, versus 95%
+in Grip; front tires retain 78% in Drift and 90% in Grip. This represents
 sliding rubber instead of holding peak traction at unlimited wheelspin. Drift's
 torque reserve can overcome rear sliding resistance even while the car is moving
 backward, spinning the tires forward before the chassis changes direction.
@@ -118,7 +118,7 @@ During a brakestand, the foot brake holds the front wheels while releasing the
 rear brakes, allowing the driven tires to spin.
 Drift's front stiffness is
 52,000 N/rad with a 45% front grip allowance (2.1025 effective friction coefficient)
-for stronger turn-in; Grip retains its previous front/rear tire tuning.
+for stronger turn-in; Grip uses the same model with its own tire parameters.
 Hold Z and either steering arrow from a stop
 for donuts; release throttle and unwind/counter-steer to recover traction.
 The red Z32 has black wheels, no front license plate (the rear plate is retained),
@@ -202,12 +202,13 @@ not steering. Controller driving remains available while the panel is open.
 
 Drift defaults to **60% controller steering expo**, blending linear and cubic
 response after the stick deadzone. This softens fine adjustments near center
-while preserving full lock at full stick; keyboard, camera axes and Grip retain
+while preserving full lock at full stick; keyboard and camera axes retain
 their previous input response. **Steering rate** defaults to 126 degrees/second
 (2.2 rad/s), limiting how quickly the wheels move toward lock in addition to
 existing smoothing. Counter-steering and unwinding can move 60% faster to catch
-slides. The rate limit covers manual and assisted Drift steering, including
-keyboard input. Both controls are adjustable live in Drift tuning.
+slides. Both modes use this expo and rate-limited steering implementation,
+including keyboard and assisted steering. Both controls are adjustable live in Drift tuning;
+Grip uses the same 60% expo and 126 degrees/second preset.
 
 **Counter-steering assist** is enabled by default and can be toggled live in
 the tuning panel. During forward slides it progressively steers toward the
@@ -215,7 +216,8 @@ front axle's actual velocity (including rotation of the chassis), with up to
 0.22 radians of driver-controlled cornering angle. It uses the selected steering
 lock and existing steering smoothing, fades out near walking speed and small
 slip angles, and does not assist reverse/backward travel. Disabling it restores
-fully manual steering. Grip is unaffected. This is steering assistance only:
+fully manual Drift steering. Grip enables the same assist through its preset.
+This is steering assistance only:
 it does not add drive force, apply yaw torque, or follow the course centerline.
 
 Throttle's forward "push" during a slide is ordinary longitudinal rear-tire force:
@@ -235,11 +237,14 @@ stays more closely aligned with the car's heading and responds faster through
 turns, while retaining smooth interpolation and the controller camera controls.
 Grip recenters quickly after releasing the camera stick or look-behind, with
 faster heading/position response; Drift retains its slower camera return.
-Grip uses 26-to-11-degree steering lock, a 400 Nm / 255 kW engine envelope,
-a 1.5 tire friction coefficient, 52,000 N/rad rear stiffness, and slip-based traction
-control to preserve cornering grip under throttle. Traction control reduces
-engine torque, not steering or yaw; it is bypassed for intentional brakestands
-and handbrake use. Both modes support keyboard, analog gamepad, and reverse.
+Grip and Drift share the steering, assist, drivetrain, combined-slip tire and
+force-application implementation; differences are parameter presets, not separate
+handling paths. Grip uses 37-to-23-degree steering lock, a 400 Nm / 255 kW engine envelope,
+a 1.8 base friction coefficient with 1.2x grip at both axles (2.16 effective),
+62,000/68,000 N/rad front/rear stiffness. Neither mode has traction control:
+wheelspin does not cut throttle or engine torque. Grip comes from tire parameters
+and lower engine output; normal gear-shift, rev-limiter and speed-limit cuts
+still apply. Both modes support keyboard, analog gamepad, and reverse.
 The selected mode is carried in `?mode=grip` or `?mode=drift` and preserved when
 switching courses. Tune values are defined in `src/drive-modes.ts`.
 

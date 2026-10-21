@@ -2,13 +2,13 @@ import { driveModes } from './drive-modes';
 
 const defaults = {
   frontGrip: driveModes.drift.frontGrip,
-  rearGrip: 1,
+  rearGrip: driveModes.drift.rearGrip,
   frontStiffness: driveModes.drift.frontStiffness,
   rearStiffness: driveModes.drift.rearStiffness,
   rearSlidingGrip: driveModes.drift.rearSlidingGrip,
-  steeringScale: 0.93,
-  steeringExpo: 0.6,
-  steeringRate: 2.2,
+  steeringScale: driveModes.drift.steeringScale,
+  steeringExpo: driveModes.drift.steeringExpo,
+  steeringRate: driveModes.drift.steeringRate,
 };
 
 type DriftTuning = { [Key in keyof typeof defaults]: number };
@@ -35,7 +35,7 @@ const sliders: {
 ];
 
 export function createDriftTuning(fieldset: HTMLFieldSetElement, resetButton: HTMLButtonElement) {
-  const tuning: DriftTuning & { steeringAssist: boolean } = { ...defaults, steeringAssist: true };
+  const tuning: DriftTuning & { steeringAssist: boolean } = { ...defaults, steeringAssist: driveModes.drift.steeringAssist };
   const refresh: (() => void)[] = [];
   const assistLabel = document.createElement('label');
   assistLabel.className = 'assist-toggle';
@@ -95,7 +95,7 @@ export function createDriftTuning(fieldset: HTMLFieldSetElement, resetButton: HT
   }
   resetButton.addEventListener('click', () => {
     Object.assign(tuning, defaults);
-    tuning.steeringAssist = assist.checked = true;
+    tuning.steeringAssist = assist.checked = driveModes.drift.steeringAssist;
     refresh.forEach((sync) => sync());
     resetButton.blur();
   });

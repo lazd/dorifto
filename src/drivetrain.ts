@@ -16,7 +16,6 @@ export interface DrivetrainInput {
   wheelSpeed: number;
   sliding: boolean;
   handbrake: boolean;
-  traction: number;
   speedLimited: boolean;
   peakTorque: number;
   peakPower: number;
@@ -93,7 +92,7 @@ export class Drivetrain {
     if (state.rpm >= 7200) state.limiterCut = true;
     else if (state.rpm <= 6850) state.limiterCut = false;
     const firing = !state.limiterCut && this.shiftTime === 0 && !input.speedLimited;
-    const load = firing ? input.throttle * input.traction : 0;
+    const load = firing ? input.throttle : 0;
     const boostTarget = input.throttle * smoothstep(state.rpm, 1700, 4500);
     state.boost += (boostTarget - state.boost) * (1 - Math.exp(-dt * (boostTarget > state.boost ? 2 : 10)));
     const torqueCurve = (0.65 + 0.35 * smoothstep(state.rpm, 1000, 4000))
