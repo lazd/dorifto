@@ -7,6 +7,8 @@ let server;
 let createDrivingCamera;
 let courses;
 let courseRoute;
+let generateCustomCourse;
+let defaultCourseWeights;
 
 before(async () => {
   server = await createServer({
@@ -15,6 +17,7 @@ before(async () => {
   });
   ({ createDrivingCamera } = await server.ssrLoadModule('/src/camera.ts'));
   ({ courses, courseRoute } = await server.ssrLoadModule('/src/courses.ts'));
+  ({ generateCustomCourse, defaultCourseWeights } = await server.ssrLoadModule('/src/course-generation.ts'));
 });
 
 after(async () => {
@@ -42,6 +45,7 @@ for (const style of ['corner', 'classic', 'cabin']) {
       assert.ok(camera.position.distanceTo(reference.position) < 1e-8);
       assert.ok(camera.quaternion.angleTo(reference.quaternion) < 1e-7);
       assert.equal(camera.near, reference.near);
+      assert.equal(camera.far, reference.far);
     };
     driving.reset(0);
     referenceDriving.reset(0);
@@ -67,6 +71,7 @@ for (const style of ['corner', 'classic', 'cabin']) {
       car.chassis.position.z += 1;
       update();
     }
+
     controls.mapView = false;
     update();
     assertDrivingPose();
@@ -82,3 +87,24 @@ for (const style of ['corner', 'classic', 'cabin']) {
     assertDrivingPose();
   });
 }
+
+test('map view fits a 5 km course within the clipping planes on a portrait display', () => {
+  const definition = generateCustomCourse(123, { ...defaultCourseWeights, length: 5000 });
+  const terrain = { heightAt: () => 0 };
+  const car = { chassis: new THREE.Group(), aimMirrors() {} };
+  const controls = { mapView: true, cameraX: 0, cameraY: 0, lookBehind: false };
+  const camera = new THREE.PerspectiveCamera(55, 9 / 16, 0.1, 1500);
+  const driving = createDrivingCamera(camera, car, controls, definition, terrain);
+  driving.reset(0);
+  driving.update(1 / 60, new THREE.Vector3(), 'grip', 'classic', false);
+  camera.updateMatrixWorld();
+  assert.ok(camera.far > 1500);
+  for (const point of courseRoute(definition).getSpacedPoints(256)) {
+    const projected = point.project(camera);
+    assert.ok(Math.abs(projected.x) < 1 && Math.abs(projected.y) < 1);
+    assert.ok(projected.z > -1 && projected.z < 1);
+  }
+  controls.mapView = false;
+  driving.update(1 / 60, new THREE.Vector3(), 'grip', 'classic', false);
+  assert.equal(camera.far, 1500);
+});

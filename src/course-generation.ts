@@ -3,25 +3,25 @@ import { courseHasClearance, courseRoute, createCourseRandom, type CourseDefinit
 import { terrainBaseHeight } from './terrain-profile';
 
 export const courseGenerationFields = [
-  { key: 'elevation', label: 'Elevation change', description: 'Flat pavement to rolling climbs and descents.' },
-  { key: 'straightaways', label: 'Straightaways', description: 'Longer uninterrupted acceleration zones.' },
-  { key: 'tightCorners', label: 'Tight corners', description: 'More sharp bends, with radii around 28-44 m.' },
-  { key: 'sweepingCorners', label: 'Sweeping corners', description: 'More broad, flowing bends around 80-115 m radius.' },
-  { key: 'hairpins', label: 'Hairpins', description: 'More tight 180-degree switchbacks.' },
-  { key: 'chicanes', label: 'Chicanes', description: 'More closely linked left-right transitions.' },
+  { key: 'length', label: 'Course length', min: 1000, max: 5000, step: 100, description: 'Target lap distance, from 1 to 5 km.' },
+  { key: 'elevation', label: 'Elevation change', min: 0, max: 1, step: 0.01, description: 'Flat pavement to rolling climbs and descents.' },
+  { key: 'straightaways', label: 'Straightaways', min: 0, max: 1, step: 0.01, description: 'Longer uninterrupted acceleration zones.' },
+  { key: 'tightCorners', label: 'Tight corners', min: 0, max: 1, step: 0.01, description: 'More sharp bends and tight switchbacks, around 28-40 m radius.' },
+  { key: 'sweepingCorners', label: 'Sweeping corners', min: 0, max: 1, step: 0.01, description: 'More broad, flowing bends around 95-135 m radius.' },
+  { key: 'chicanes', label: 'Chicanes', min: 0, max: 1, step: 0.01, description: 'More closely linked left-right transitions.' },
 ] as const;
 
 export type CourseGenerationWeights = Readonly<Record<typeof courseGenerationFields[number]['key'], number>>;
 
 export const defaultCourseWeights: CourseGenerationWeights = {
-  elevation: 0.5, straightaways: 0.5, tightCorners: 0.35,
-  sweepingCorners: 0.7, hairpins: 0.2, chicanes: 0.35,
+  length: 2000, elevation: 0.5, straightaways: 0.5, tightCorners: 0.35,
+  sweepingCorners: 0.7, chicanes: 0.35,
 };
 
 export function validateCourseWeights(weights: CourseGenerationWeights) {
-  for (const { key, label } of courseGenerationFields) {
-    if (!Number.isFinite(weights[key]) || weights[key] < 0 || weights[key] > 1) {
-      throw new Error(`${label} weight must be a number between 0 and 1`);
+  for (const { key, label, min, max } of courseGenerationFields) {
+    if (!Number.isFinite(weights[key]) || weights[key] < min || weights[key] > max) {
+      throw new Error(`${label} must be a number between ${min} and ${max}${key === 'length' ? ' metres' : ''}`);
     }
   }
 }
@@ -41,6 +41,7 @@ export function readCourseWeights(parameters: URLSearchParams): CourseGeneration
 
 export function writeCourseWeights(parameters: URLSearchParams, weights?: CourseGenerationWeights) {
   if (weights) validateCourseWeights(weights);
+  parameters.delete('hairpins');
   for (const { key } of courseGenerationFields) {
     if (weights) parameters.set(key, String(weights[key]));
     else parameters.delete(key);
@@ -50,51 +51,99 @@ export function writeCourseWeights(parameters: URLSearchParams, weights?: Course
 interface Feature {
   radius: number;
   angle: number;
-  repeats: number;
   span: number;
+  sign: number;
 }
 
 export function generateCustomCourse(seed: number, weights: CourseGenerationWeights): CourseDefinition {
   const random = createCourseRandom(seed);
   validateCourseWeights(weights);
-  for (let attempt = 0; attempt < 64; attempt++) {
+  for (let attempt = 0; attempt < 256; attempt++) {
     const features: Feature[] = [];
-    function addFeatures(weight: number, radius: number, angle: number, repeats = 1) {
-      const count = Math.floor(weight * 2 + random());
+    function addFeatures(weight: number, frequency: number, radius: number, angle: number) {
+      const count = Math.floor(weight * weights.length / frequency + random());
       for (let i = 0; i < count; i++) {
         const r = radius + (random() - 0.5) * 4;
         const a = THREE.MathUtils.degToRad(angle);
-        features.push({ radius: r, angle: a, repeats, span: 4 * r * Math.sin(a) * repeats });
+        features.push({ radius: r, angle: a, span: 4 * r * Math.sin(a), sign: random() < 0.5 ? -1 : 1 });
       }
     }
-    addFeatures(weights.tightCorners, 44 - 16 * weights.tightCorners, 50 + 15 * weights.tightCorners);
-    addFeatures(weights.sweepingCorners, 80 + 30 * weights.sweepingCorners, 20 + 15 * weights.sweepingCorners);
-    addFeatures(weights.hairpins, 34 - 7 * weights.hairpins, 90);
-    addFeatures(weights.chicanes, 50 - 16 * weights.chicanes, 30 + 15 * weights.chicanes, 2);
-    for (let i = features.length - 1; i > 0; i--) {
-      const j = Math.floor(random() * (i + 1));
-      [features[i], features[j]] = [features[j], features[i]];
+    addFeatures(weights.tightCorners, 2400, 36 - 7 * weights.tightCorners, 55 + 35 * weights.tightCorners);
+    addFeatures(weights.chicanes, 900, 42 - 10 * weights.chicanes, 25 + 12 * weights.chicanes);
+
+    const count = 7 + Math.floor(random() * 4) + Math.floor((weights.length - 1000) / 1600);
+    const stretch = 0.8 + random() * 0.5;
+    const notches = new Set<number>();
+    const notchCount = 1 + Math.floor(random() * Math.min(3, Math.floor(count / 3)));
+    for (let i = 0; i < notchCount; i++) {
+      const available = Array.from({ length: count }, (_, index) => index).filter((index) =>
+        ![index, (index + 1) % count, (index + count - 1) % count].some((neighbor) => notches.has(neighbor)));
+      notches.add(available[Math.floor(random() * available.length)]);
     }
-    const sides: Feature[][] = [[], []];
-    const spans = [0, 0];
-    for (const feature of features) {
-      const side = spans[0] <= spans[1] ? 0 : 1;
-      sides[side].push(feature);
-      spans[side] += feature.span;
+    const vertices = Array.from({ length: count }, (_, i) => {
+      const angle = (i + (random() - 0.5) * 0.3) * Math.PI * 2 / count;
+      const radius = (0.85 + random() * 0.35) * (notches.has(i) ? 0.22 + random() * 0.13 : 1);
+      return new THREE.Vector2(Math.cos(angle) * radius * stretch, Math.sin(angle) * radius / stretch);
+    });
+    const corners = vertices.map((vertex, i) => {
+      const incoming = vertex.clone().sub(vertices[(i + count - 1) % count]).normalize();
+      const outgoing = vertices[(i + 1) % count].clone().sub(vertex).normalize();
+      const angle = Math.atan2(incoming.cross(outgoing), incoming.dot(outgoing));
+      const tight = random() < weights.tightCorners * 0.75;
+      const sweeping = random() < weights.sweepingCorners * 0.65;
+      const radius = tight ? 29 + random() * 10
+        : (sweeping ? 95 + random() * 40 : 65 + random() * 20) * (1 - 0.2 * weights.straightaways);
+      return { incoming, outgoing, angle, radius, minimum: tight ? 29 : Math.min(radius, 55),
+        trim: radius * Math.tan(Math.abs(angle) / 2) };
+    });
+    const perimeter = vertices.reduce((total, vertex, i) => total + vertex.distanceTo(vertices[(i + 1) % count]), 0);
+    const extra = features.reduce((total, feature) => total + 4 * feature.radius * feature.angle - feature.span, 0);
+    // Fixed-radius fillets and features leave perimeter scale as the only unknown.
+    const layoutScale = () => (weights.length - extra - corners.reduce((total, corner) =>
+      total + Math.abs(corner.angle) * corner.radius - 2 * corner.trim, 0)) / perimeter;
+    let scale = layoutScale();
+    // Short layouts may need smaller connecting fillets to keep adjacent corners apart.
+    for (let pass = 0; pass < 8; pass++) {
+      for (let i = 0; i < count; i++) {
+        const corner = corners[i];
+        const available = Math.min(vertices[i].distanceTo(vertices[(i + count - 1) % count]),
+          vertices[i].distanceTo(vertices[(i + 1) % count])) * scale * 0.45;
+        corner.radius = Math.max(corner.minimum, Math.min(corner.radius, available / Math.tan(Math.abs(corner.angle) / 2)));
+        corner.trim = corner.radius * Math.tan(Math.abs(corner.angle) / 2);
+      }
+      scale = layoutScale();
     }
-    const gap = (6 + 50 * weights.straightaways) * (0.9 + random() * 0.2);
-    const span = Math.max(
-      (180 + 200 * weights.straightaways) * (0.9 + random() * 0.2),
-      ...spans.map((length, i) => length + gap * (sides[i].length + 1)),
-    );
-    const returnRadius = (70 + 25 * weights.sweepingCorners - 10 * weights.tightCorners)
-      * (0.95 + random() * 0.1);
-    const points: [number, number][] = [[-span / 2, returnRadius]];
-    let x = -span / 2;
-    let z = returnRadius;
-    let heading = 0;
+    vertices.forEach((vertex) => vertex.multiplyScalar(scale));
+    const edges = vertices.map((vertex, i) => ({
+      length: vertex.distanceTo(vertices[(i + 1) % count]) - corners[i].trim - corners[(i + 1) % count].trim,
+      features: [] as Feature[],
+    }));
+    if (edges.some((edge) => edge.length < 8) || corners.some((corner) => Math.abs(corner.angle) > 2.7)) continue;
+    let fits = true;
+    for (const feature of features.sort((a, b) => b.span - a.span)) {
+      const available = edges.filter((edge) =>
+        edge.length - edge.features.reduce((total, item) => total + item.span + 12, 0) > feature.span + 24);
+      if (available.length === 0) {
+        fits = false;
+        break;
+      }
+      available[Math.floor(random() * available.length)].features.push(feature);
+    }
+    if (!fits) continue;
+
+    const start = vertices[0].clone().sub(corners[0].incoming.clone().multiplyScalar(corners[0].trim));
+    const points: [number, number][] = [[start.x, start.y]];
+    let x = start.x;
+    let z = start.y;
+    let heading = Math.atan2(corners[0].incoming.y, corners[0].incoming.x);
+    let startIndex = 0;
+    let longestStraight = 0;
     function line(length: number) {
       const steps = Math.ceil(length / 8);
+      if (length > longestStraight) {
+        longestStraight = length;
+        startIndex = points.length - 1 + Math.floor(steps / 2);
+      }
       const startX = x;
       const startZ = z;
       for (let i = 1; i <= steps; i++) {
@@ -116,31 +165,31 @@ export function generateCustomCourse(seed: number, weights: CourseGenerationWeig
       }
       heading += angle;
     }
-    for (let side = 0; side < 2; side++) {
-      const spacing = (span - spans[side]) / (sides[side].length + 1);
+    for (let i = 0; i < count; i++) {
+      arc(corners[i].angle, corners[i].radius);
+      const edge = edges[i];
+      const spacing = (edge.length - edge.features.reduce((total, feature) => total + feature.span, 0))
+        / (edge.features.length + 1);
       line(spacing);
-      for (const feature of sides[side]) {
-        // Opposite arcs return to the leg's heading without crossing the infield.
-        for (let i = 0; i < feature.repeats; i++) {
-          arc(feature.angle, feature.radius);
-          arc(-2 * feature.angle, feature.radius);
-          arc(feature.angle, feature.radius);
-        }
+      for (const feature of edge.features) {
+        arc(feature.sign * feature.angle, feature.radius);
+        arc(-2 * feature.sign * feature.angle, feature.radius);
+        arc(feature.sign * feature.angle, feature.radius);
         line(spacing);
       }
-      arc(-Math.PI, returnRadius);
     }
     points.pop();
     const rotation = random() * Math.PI * 2;
     const mirror = random() < 0.5 ? -1 : 1;
     const definition: CourseDefinition = {
       id: 'custom', name: `Custom Circuit (${seed})`, width: 17.5,
-      points: points.map(([px, pz]) => [
+      points: [...points.slice(startIndex), ...points.slice(0, startIndex)].map(([px, pz]) => [
         mirror * (px * Math.cos(rotation) - pz * Math.sin(rotation)),
         px * Math.sin(rotation) + pz * Math.cos(rotation),
       ]),
     };
     const route = courseRoute(definition);
+    if (Math.abs(route.getLength() / weights.length - 1) > 0.05) continue;
     const samples = route.getSpacedPoints(Math.ceil(route.getLength() / 0.5)).slice(0, -1);
     let minHeight = Infinity;
     let maxHeight = -Infinity;

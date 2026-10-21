@@ -242,16 +242,16 @@ function bindCourseWeights(store: Store<GameState>) {
   const fieldset = element<HTMLFieldSetElement>("#custom-course-sliders");
   let weights = store.getState().courseWeights;
   const refresh: (() => void)[] = [];
-  for (const { key, label: text, description } of courseGenerationFields) {
+  for (const { key, label: text, description, min, max, step } of courseGenerationFields) {
     const label = document.createElement("label");
     const title = document.createElement("span");
     const output = document.createElement("output");
     const input = document.createElement("input");
     const hint = document.createElement("small");
     input.type = "range";
-    input.min = "0";
-    input.max = "1";
-    input.step = "0.01";
+    input.min = String(min);
+    input.max = String(max);
+    input.step = String(step);
     input.id = `course-${key}`;
     label.htmlFor = output.htmlFor = input.id;
     title.id = `${input.id}-title`;
@@ -262,7 +262,7 @@ function bindCourseWeights(store: Store<GameState>) {
     input.setAttribute("aria-describedby", hint.id);
     const sync = () => {
       input.value = String(weights[key]);
-      output.value = weights[key].toFixed(2);
+      output.value = key === "length" ? `${(weights[key] / 1000).toFixed(1)} km` : weights[key].toFixed(2);
       input.setAttribute("aria-valuetext", output.value);
     };
     input.addEventListener("input", () => {
@@ -352,6 +352,21 @@ export function bindGameUI(store: Store<GameState>, reportError: (error: unknown
     (state) => state.timeOfDay,
     (timeOfDay) => ({ timeOfDay }),
     isTimeOfDay,
+  );
+  const isToggle = (value: string): value is "on" | "off" => value === "on" || value === "off";
+  select<"on" | "off">(
+    "#show-cones",
+    "cones",
+    (state) => (state.showCones ? "on" : "off"),
+    (value) => ({ showCones: value === "on" }),
+    isToggle,
+  );
+  select<"on" | "off">(
+    "#show-grass",
+    "grass",
+    (state) => (state.showGrass ? "on" : "off"),
+    (value) => ({ showGrass: value === "on" }),
+    isToggle,
   );
   const focus = () => store.update({ focused: document.hasFocus() && !document.hidden });
   window.addEventListener("focus", focus);

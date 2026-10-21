@@ -6,9 +6,12 @@ runtime CDN dependencies.
 
 ## UI and game state
 
-The toolbar's **Settings** button opens sound, drive mode, time of day, and camera
-style controls in a modal dialog. Changes apply immediately. Close with **Close**,
+The toolbar's **Settings** button opens sound, drive mode, time of day, camera
+style, cones, and grass tufts controls in a modal dialog. Changes apply immediately. Close with **Close**,
 Escape, or a backdrop click; driving inputs are disabled while it is open.
+Turning **Cones** off (`?cones=off`) hides them and removes their physics bodies;
+**Grass tufts** off (`?grass=off`) hides the decorative blades. Both help
+performance on long imported tracks, which carry hundreds of cones.
 Course selection stays in the toolbar. Reset uses keyboard **R** or the controller's
 Start/Menu/Options button rather than a toolbar button.
 Settings, Tuning, Help, and Custom course share one dialog lifecycle in `src/ui.ts`: open at the
@@ -85,6 +88,18 @@ keyboard or standard-mapped gamepad. Click the game if focus is in another windo
 
 Run `npm test` for course-generation, geometry, camera, and physics-lifecycle regression
 checks, including a multi-seed sweep. Run `npm run build` to type-check and build the app.
+
+## Importing real tracks
+
+`npm run import-track -- src/trackImports/*.json` converts recorded-lap track JSON
+into course files in `src/tracks/`, which appear automatically in the course picker.
+`featured_lap.points` (lat/lon) is projected to meters around the lap's centroid
+(north up, east right in the map view) and resampled every 8 m; a gap between the
+last fix and the start is bridged straight. `elevation.points` (`dist_frac`,
+`altitude_m`) becomes a smoothed road-height profile along the route, and the
+surrounding terrain is interpolated from nearby course heights. Tracks with no
+elevation data get a flat road. Options: `--width <m>` (default 15),
+`--spacing <m>` (default 8), and `--out-dir <dir>`.
 
 ## Controls
 
@@ -528,8 +543,9 @@ These are geometric limits, not an autopilot: slow down for the tighter bends.
 
 ### Custom generation
 
-**Custom course** opens a dialog with six independent sliders from **0 to 1**
-(0.01 steps), numeric readouts, and **Restore defaults**. Adjusting sliders does
+**Custom course** opens a dialog with a **1–5 km course length** slider (100 m
+steps), five independent preference sliders from **0 to 1** (0.01 steps),
+numeric readouts, and **Restore defaults**. Adjusting sliders does
 not change the current course. **Generate course** builds a new seeded layout in
 place, resets the driving session, and closes the dialog on success. Generation
 controls are disabled while building; a failure stays visible in the dialog so
@@ -539,25 +555,32 @@ while it is open, as with the other dialogs.
 
 The weights do not need to sum to one: 0 avoids a feature, while 1 strongly
 favors it. Intermediate corner weights vary the chance of including each
-feature as well as its shape. A closed circuit still needs return bends, and
+feature as well as its shape. A closed circuit still needs connecting bends, and
 connecting sections can remain straight even with a zero straightaway preference.
-More features and longer straightaways increase lap length rather than shrinking
-corners to fit a fixed distance.
+Length is a distance target, not a weight: the generator fits the feature mix
+within 5% of that target without shrinking corners below the safety limit.
+Short layouts may use smaller connecting bends to leave room for the requested features.
 
 | Preference | Default | Effect |
 | --- | --- | --- |
+| Course length | 2.0 km | Targets a lap between 1 and 5 km. |
 | Elevation change | 0.50 | Scales climbs, descents, and banking. Zero makes the entire terrain flat; one targets up to 20 m centerline relief, capped at 12% grade. |
 | Straightaways | 0.50 | Lengthens uninterrupted straights and the gaps between corner sequences. |
-| Tight corners | 0.35 | Adds sharp bends, typically around 28–44 m radius. |
-| Sweeping corners | 0.70 | Adds broad, flowing bends around 80–115 m radius. |
-| Hairpins | 0.20 | Adds tight 180-degree switchbacks. |
+| Tight corners | 0.35 | Adds sharp bends and tight switchbacks, typically around 28–40 m radius. This also controls hairpins; there is no separate hairpin preference. |
+| Sweeping corners | 0.70 | Adds broad, flowing bends around 95–135 m radius. |
 | Chicanes | 0.35 | Adds closely spaced, alternating left-right bends. |
 
-Custom layouts assemble tangent-connected straights and circular-arc features,
-rounded by the shared closed B-spline. They retain the 17.5 m road width and
+Custom layouts start from irregular polygons with randomized proportions and
+inward bends rather than two parallel sides and semicircular ends. Fixed-radius
+fillets round their corners; chicanes and switchbacks are distributed among
+available connecting sections, with turns in both directions. The shared closed
+B-spline smooths the tangent-connected straights and arcs.
+Layouts retain the 17.5 m road width and
 clearance checks, but allow centerline radii down to 22 m for tighter features.
-All six preferences and the seed are stored in the URL, for example
-`?course=custom&seed=123&elevation=0.5&straightaways=0.5&tightCorners=0.35&sweepingCorners=0.7&hairpins=0.2&chicanes=0.35`.
+Length (in metres), all five preferences, and the seed are stored in the URL, for example
+`?course=custom&seed=123&length=2000&elevation=0.5&straightaways=0.5&tightCorners=0.35&sweepingCorners=0.7&chicanes=0.35`.
+Old links without a length use 2 km; obsolete `hairpins` parameters are ignored
+and removed when a course URL is written. Existing custom seeds now use the new layouts.
 Reloading that link recreates the layout and slider values. Preferences remain
 available when reopening the dialog or switching courses within the same page.
 **Random course** still uses the existing Hillside-style generator; switching to

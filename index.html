@@ -57,15 +57,15 @@
       </form>
       <h2 id="custom-course-title" tabindex="-1" autofocus>Custom course</h2>
       <p>
-        Set independent preferences from 0 (avoid) to 1 (strongly favor).
-        They do not need to add up to 1. Changes apply only when you generate.
+        Choose a course length and independent preferences from 0 (avoid) to 1 (strongly favor).
+        The preferences do not need to add up to 1. Changes apply only when you generate.
       </p>
       <fieldset id="custom-course-sliders">
         <legend>Generation preferences</legend>
       </fieldset>
       <p>
         Elevation 0 is completely flat. Closed circuits still need return bends.
-        More features or longer straightaways can make a longer lap.
+        Course length targets 1–5 km, within 5%. Tight corners include switchbacks.
         All layouts keep safe road clearance and at least a 22 m turn radius.
       </p>
       <p id="custom-course-status" role="status"></p>
@@ -132,6 +132,20 @@
             <option value="corner">Corner-aware chase</option>
             <option value="classic">Classic chase</option>
             <option value="cabin">In-cabin</option>
+          </select></label
+        >
+        <label
+          >Cones
+          <select id="show-cones">
+            <option value="on">On</option>
+            <option value="off">Off</option>
+          </select></label
+        >
+        <label
+          >Grass tufts
+          <select id="show-grass">
+            <option value="on">On</option>
+            <option value="off">Off</option>
           </select></label
         >
       </div>

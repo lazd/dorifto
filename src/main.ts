@@ -24,7 +24,15 @@ async function start() {
   if (!isCameraStyle(requestedCamera)) throw new Error(`Unknown camera style: ${requestedCamera}`);
   const requestedMode = new URL(location.href).searchParams.get('mode') ?? 'drift';
   if (!isDriveMode(requestedMode)) throw new Error(`Unknown drive mode: ${requestedMode}`);
-  gameState.update({ driveMode: requestedMode, cameraStyle: requestedCamera });
+  const readToggle = (name: string) => {
+    const value = new URL(location.href).searchParams.get(name) ?? 'on';
+    if (value !== 'on' && value !== 'off') throw new Error(`Invalid ${name} option: ${value}`);
+    return value === 'on';
+  };
+  gameState.update({
+    driveMode: requestedMode, cameraStyle: requestedCamera,
+    showCones: readToggle('cones'), showGrass: readToggle('grass'),
+  });
   const settingsUrl = new URL(location.href);
   if (settingsUrl.searchParams.has('transmission')) {
     settingsUrl.searchParams.delete('transmission');
@@ -42,6 +50,7 @@ async function start() {
     if (value !== null && !/^\d{1,10}$/.test(value)) throw new Error(`Invalid course seed: ${value}`);
     seed = value === null ? crypto.getRandomValues(new Uint32Array(1))[0] : Number(value);
     courseUrl.searchParams.set('seed', String(seed));
+    if (requestedCourse === 'custom') writeCourseWeights(courseUrl.searchParams, requestedWeights);
     history.replaceState(null, '', courseUrl);
   }
   const definition = requestedCourse === 'custom' ? generateCustomCourse(seed, requestedWeights)
@@ -111,6 +120,9 @@ async function start() {
       const laps = new LapTimer(nextDefinition);
       physics = createVehiclePhysics({ Ammo, resources: physicsResources, car, course, spawn, controls, gameState, laps, audio });
       const drivingCamera = createDrivingCamera(camera, car, controls, nextDefinition, course.terrain);
+      const { showCones, showGrass } = gameState.getState();
+      physics.setConesEnabled(showCones);
+      course.terrain.grass.visible = showGrass;
       physics.reset();
       drivingCamera.reset(spawn.heading);
       return { course, terrain: course.terrain, spawn, laps, physics, drivingCamera };
@@ -124,6 +136,10 @@ async function start() {
   let activeDefinition = definition;
   let { course, terrain, spawn, laps, physics, drivingCamera } = createCourseSession({ ...definition, reverse: requestedReverse });
   const { fixedStep } = physics;
+  gameState.subscribe(({ showCones, showGrass }) => {
+    physics.setConesEnabled(showCones);
+    terrain.grass.visible = showGrass;
+  });
   const tireEffects = createTireEffects(scene, car, terrain, course.isAsphalt);
   const forward = new THREE.Vector3();
 
@@ -298,7 +314,7 @@ async function start() {
     audio.update({ drivetrain: engine, tires: physics.tireSounds });
     const cameraState = gameState.getState();
     drivingCamera.update(dt, velocity, cameraState.driveMode, cameraState.cameraStyle, reversing);
-    lighting.update(car.chassis.position);
+    lighting.update(car.chassis.position, controls.mapView ? camera.far : undefined);
     forward.set(0, 0, 1).applyQuaternion(car.chassis.quaternion);
     forward.y = 0;
     forward.normalize();

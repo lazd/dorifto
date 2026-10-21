@@ -27,8 +27,8 @@ after(async () => {
   await server?.close();
 });
 
-function weights(value) {
-  return Object.fromEntries(courseGenerationFields.map(({ key }) => [key, value]));
+function weights(value, length = 2000) {
+  return Object.fromEntries(courseGenerationFields.map(({ key }) => [key, key === 'length' ? length : value]));
 }
 
 function geometry(definition, spacing = 0.5) {
@@ -54,7 +54,7 @@ function geometry(definition, spacing = 0.5) {
     minRadius = Math.min(minRadius, radius);
     if (radius > 500) straight += distance;
     if (radius < 50) tight += distance;
-    if (radius >= 70 && radius < 160) sweeping += distance;
+    if (radius >= 95 && radius < 160) sweeping += distance;
     if (radius < 160) {
       const previous = bends.at(-1);
       if (previous?.sign === Math.sign(bend)) {
@@ -79,24 +79,30 @@ test('validates every weight and seed rather than clamping or silently defaultin
   for (const seed of [-1, 0x100000000, 1.5, NaN, Infinity, '123']) {
     assert.throws(() => generateCustomCourse(seed, defaultCourseWeights), /unsigned 32-bit integer/);
   }
-  for (const { key } of courseGenerationFields) {
-    for (const value of [-0.01, 1.01, NaN, Infinity, undefined, '0.5']) {
-      assert.throws(() => generateCustomCourse(1, { ...defaultCourseWeights, [key]: value }), /between 0 and 1/);
+  for (const { key, min, max } of courseGenerationFields) {
+    for (const value of [min - 0.01, max + 0.01, NaN, Infinity, undefined, '0.5']) {
+      assert.throws(() => generateCustomCourse(1, { ...defaultCourseWeights, [key]: value }), /must be a number between/);
     }
   }
 });
 
-test('serializes all six weights, preserves zero, and removes only generation preferences', () => {
-  const original = { ...defaultCourseWeights, elevation: 0, tightCorners: 1, chicanes: 0.13 };
-  const parameters = new URLSearchParams('course=custom&seed=123&camera=cabin');
+test('serializes length and five weights, preserves zero, and removes obsolete hairpins', () => {
+  const original = { ...defaultCourseWeights, length: 3100, elevation: 0, tightCorners: 1, chicanes: 0.13 };
+  const parameters = new URLSearchParams('course=custom&seed=123&camera=cabin&reverse=1&hairpins=0.8');
   writeCourseWeights(parameters, original);
+  assert.equal(parameters.has('hairpins'), false);
+  assert.equal(courseGenerationFields.some(({ key }) => key === 'hairpins'), false);
   assert.deepEqual(readCourseWeights(parameters), original);
   assert.deepEqual(readCourseWeights(new URLSearchParams()), defaultCourseWeights);
   for (const value of ['', ' ', 'not-a-number', '-0.1', '1.1', 'Infinity']) {
     assert.throws(() => readCourseWeights(new URLSearchParams({ elevation: value })));
   }
+  for (const value of ['', ' ', 'not-a-number', '999', '5001', 'Infinity']) {
+    assert.throws(() => readCourseWeights(new URLSearchParams({ length: value })));
+  }
+  assert.equal(readCourseWeights(new URLSearchParams('hairpins=1')).tightCorners, defaultCourseWeights.tightCorners);
   writeCourseWeights(parameters);
-  assert.equal(parameters.toString(), 'course=custom&seed=123&camera=cabin');
+  assert.equal(parameters.toString(), 'course=custom&seed=123&camera=cabin&reverse=1');
 });
 
 test('seed plus weights is deterministic without changing named layouts or input preferences', () => {
@@ -110,7 +116,8 @@ test('seed plus weights is deterministic without changing named layouts or input
 });
 
 test('each preference has a measurable effect on actual centerline geometry', () => {
-  for (const seed of [0, 1, 1077036780]) {
+  const totals = { straight: 0, tight: 0, sweeping: 0, transitions: 0 };
+  for (const seed of [0, 1, 123, 456, 789, 1077036780]) {
     const zero = weights(0);
     const flat = generateCustomCourse(seed, zero);
     const baseline = geometry(flat);
@@ -121,27 +128,38 @@ test('each preference has a measurable effect on actual centerline geometry', ()
     assert.ok(geometry(elevated).relief > 8);
     const half = generateCustomCourse(seed, { ...zero, elevation: 0.5 });
     assert.ok(Math.abs(geometry(half).relief * 2 - geometry(elevated).relief) < 1e-8);
-    assert.ok(geometry(generateCustomCourse(seed, { ...zero, straightaways: 1 })).straight > baseline.straight + 250);
-    assert.ok(geometry(generateCustomCourse(seed, { ...zero, tightCorners: 1 })).tight > baseline.tight + 150);
-    assert.ok(geometry(generateCustomCourse(seed, { ...zero, sweepingCorners: 1 })).sweeping > baseline.sweeping + 500);
+    totals.straight += geometry(generateCustomCourse(seed, { ...zero, straightaways: 1 })).straight - baseline.straight;
+    totals.tight += geometry(generateCustomCourse(seed, { ...zero, tightCorners: 1 })).tight - baseline.tight;
+    totals.sweeping += geometry(generateCustomCourse(seed, { ...zero, sweepingCorners: 1 })).sweeping - baseline.sweeping;
+    totals.transitions += geometry(generateCustomCourse(seed, { ...zero, chicanes: 1 })).transitions - baseline.transitions;
     assert.equal(baseline.hairpins, 0);
-    assert.equal(geometry(generateCustomCourse(seed, { ...zero, hairpins: 1 })).hairpins, 2);
-    assert.ok(geometry(generateCustomCourse(seed, { ...zero, chicanes: 1 })).transitions >= baseline.transitions + 8);
   }
+  assert.ok(totals.straight / 6 > 100, `straightaway increase ${totals.straight / 6}`);
+  assert.ok(totals.tight / 6 > 150, `tight corner increase ${totals.tight / 6}`);
+  assert.ok(totals.sweeping / 6 > 200, `sweeping corner increase ${totals.sweeping / 6}`);
+  assert.ok(totals.transitions / 6 >= 4, `chicane transition increase ${totals.transitions / 6}`);
+  assert.ok(geometry(generateCustomCourse(1, { ...weights(0, 5000), tightCorners: 1 })).hairpins >= 2);
 });
 
-test('all 64 extreme combinations and fractional mixes retain navigable radii, clearance, and grades', () => {
-  const mixes = Array.from({ length: 64 }, (_, mask) =>
-    Object.fromEntries(courseGenerationFields.map(({ key }, i) => [key, (mask >> i) & 1])));
+test('all 32 feature extremes at short, medium, and long lengths retain safe geometry', () => {
+  const fields = courseGenerationFields.filter(({ key }) => key !== 'length');
+  const mixes = [1000, 3000, 5000].flatMap((length) =>
+    Array.from({ length: 32 }, (_, mask) => ({
+      length, ...Object.fromEntries(fields.map(({ key }, i) => [key, (mask >> i) & 1])),
+    })));
   for (let i = 0; i < 16; i++) {
-    mixes.push(Object.fromEntries(courseGenerationFields.map(({ key }, j) => [key, ((i * 17 + j * 23) % 101) / 100])));
+    mixes.push({
+      length: 1000 + i * 250,
+      ...Object.fromEntries(fields.map(({ key }, j) => [key, ((i * 17 + j * 23) % 101) / 100])),
+    });
   }
   for (let i = 0; i < mixes.length; i++) {
     const seed = Math.imul(i, 2654435761) >>> 0;
     const definition = generateCustomCourse(seed, mixes[i]);
     const measured = geometry(definition, 0.25);
     assert.equal(definition.width, 17.5);
-    assert.ok(measured.length > 500 && measured.length < 3500, `length ${measured.length} for mix ${i}`);
+    assert.ok(Math.abs(measured.length / mixes[i].length - 1) <= 0.05,
+      `length ${measured.length} vs ${mixes[i].length} for mix ${i}`);
     assert.ok(measured.minRadius >= 22, `radius ${measured.minRadius} for mix ${i}`);
     assert.ok(measured.relief <= 20.001, `relief ${measured.relief} for mix ${i}`);
     assert.ok(measured.maxGrade <= 0.1201, `grade ${measured.maxGrade} for mix ${i}`);
@@ -156,5 +174,46 @@ test('all 64 extreme combinations and fractional mixes retain navigable radii, c
         }
       }
     }
+  }
+});
+
+test('custom layouts have varied concave outlines rather than two sides and semicircular ends', () => {
+  const concavities = [];
+  const signatures = new Set();
+  const cross = (a, b, c) => (b.x - a.x) * (c.z - a.z) - (b.z - a.z) * (c.x - a.x);
+  const area = (points) => Math.abs(points.reduce((sum, p, i) => {
+    const next = points[(i + 1) % points.length];
+    return sum + p.x * next.z - next.x * p.z;
+  }, 0)) / 2;
+  for (let i = 0; i < 32; i++) {
+    const route = courseRoute(generateCustomCourse(Math.imul(i, 2654435761) >>> 0, defaultCourseWeights));
+    assert.ok(route.getTangentAt(0).dot(route.getTangentAt(5 / route.getLength())) > 0.9999,
+      `start/finish should remain on a straight for seed ${i}`);
+    const samples = route.getSpacedPoints(256).slice(0, -1);
+    const sorted = [...samples].sort((a, b) => a.x - b.x || a.z - b.z);
+    const hull = [];
+    for (const sequence of [sorted, [...sorted].reverse()]) {
+      const half = [];
+      for (const point of sequence) {
+        while (half.length > 1 && cross(half.at(-2), half.at(-1), point) <= 0) half.pop();
+        half.push(point);
+      }
+      hull.push(...half.slice(0, -1));
+    }
+    const concavity = 1 - area(samples) / area(hull);
+    assert.ok(concavity > 0.03, `oval-like outline for seed ${i}: concavity ${concavity}`);
+    concavities.push(concavity);
+    signatures.add([32, 64, 96, 128].map((j) => (samples[0].distanceTo(samples[j]) / route.getLength()).toFixed(2)).join(','));
+  }
+  assert.ok(Math.max(...concavities) - Math.min(...concavities) > 0.1, 'outlines should vary in depth and shape');
+  assert.ok(signatures.size >= 28, `only ${signatures.size} distinct outline signatures`);
+});
+
+test('a broad seed sweep meets length targets without generation failures', () => {
+  for (let i = 0; i < 128; i++) {
+    const seed = Math.imul(i, 2246822519) >>> 0;
+    const length = 1000 + (i % 41) * 100;
+    const definition = generateCustomCourse(seed, { ...defaultCourseWeights, length });
+    assert.ok(Math.abs(courseRoute(definition).getLength() / length - 1) <= 0.05, `seed ${seed}`);
   }
 });

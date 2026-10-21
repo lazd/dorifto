@@ -32,7 +32,7 @@ after(async () => {
 
 function definitions() {
   return [...courses, generateCourse(839668520),
-    generateCustomCourse(1077036780, { ...defaultCourseWeights, tightCorners: 1, hairpins: 1 })];
+    generateCustomCourse(1077036780, { ...defaultCourseWeights, tightCorners: 1 })];
 }
 
 test('reads explicit reverse URL values and rejects invalid options', () => {
@@ -85,7 +85,7 @@ test('reverse spawn approaches the unchanged physical start line in the opposite
 });
 
 test('turn directions invert at the same physical bends and reverse warnings are generated', () => {
-  const definition = generateCustomCourse(1, { ...defaultCourseWeights, hairpins: 1, tightCorners: 1 });
+  const definition = generateCustomCourse(1, { ...defaultCourseWeights, tightCorners: 1 });
   const forward = courseRoute(definition);
   const backward = courseRoute({ ...definition, reverse: true });
   const bendAt = (route, t) => {

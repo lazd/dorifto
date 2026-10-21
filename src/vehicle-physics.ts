@@ -212,13 +212,32 @@ export function createVehiclePhysics({
   const velocity = new THREE.Vector3();
   const previousVelocity = new THREE.Vector3();
   const currentVelocity = new THREE.Vector3();
-  const visualStates = [car.chassis, ...car.wheels, ...car.hubs, ...cones].map((object) => ({
+  const visualState = (object: THREE.Object3D) => ({
     object,
     previousPosition: new THREE.Vector3(),
     position: new THREE.Vector3(),
     previousRotation: new THREE.Quaternion(),
     rotation: new THREE.Quaternion(),
-  }));
+  });
+  const carVisualStates = [car.chassis, ...car.wheels, ...car.hubs].map(visualState);
+  const coneVisualStates = cones.map(visualState);
+  let visualStates = [...carVisualStates, ...coneVisualStates];
+  let conesEnabled = true;
+  // Disabled cones leave the world entirely: no rendering, collisions, or per-frame sync.
+  function setConesEnabled(enabled: boolean) {
+    if (enabled === conesEnabled) return;
+    conesEnabled = enabled;
+    coneBodies.forEach((cone, i) => {
+      cones[i].visible = enabled;
+      if (enabled) world.addRigidBody(cone);
+      else world.removeRigidBody(cone);
+    });
+    visualStates = enabled ? [...carVisualStates, ...coneVisualStates] : carVisualStates;
+    if (enabled) {
+      resetCones();
+      captureVisuals(true);
+    }
+  }
   const wheelBasis = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI);
   const wheelContacts = [false, false, false, false];
   const physicsRotation = new THREE.Quaternion();
@@ -255,7 +274,7 @@ export function createVehiclePhysics({
   setCourseDirection(spawn, laps);
 
   function syncVisuals() {
-    cones.forEach((cone, i) => {
+    if (conesEnabled) cones.forEach((cone, i) => {
       const transform = coneBodies[i].getWorldTransform();
       const position = transform.getOrigin();
       const rotation = transform.getRotation();
@@ -304,22 +323,8 @@ export function createVehiclePhysics({
     if (snap) previousVelocity.copy(currentVelocity);
   }
 
-  function reset() {
-    drivetrain.reset();
-    for (const tire of tireSounds) tire.slip = tire.speed = tire.load = 0;
-    coneSoundCooldowns.clear();
-    spawnBrakeHeld = true;
-    brakestand = false;
-    car.setBraking(true);
-    car.setReversing(false);
-    car.setHazards(false);
-    offTrackTime = 0;
-    reversing = false;
-    steering = 0;
-    burnout = 0;
-    tireSpeeds.fill(0);
-    tireAngles.fill(0);
-    wheelContacts.fill(false);
+  function resetCones() {
+    if (!conesEnabled) return;
     coneBodies.forEach((cone, i) => {
       coneResetTransform.setIdentity();
       const start = coneStarts[i];
@@ -339,6 +344,25 @@ export function createVehiclePhysics({
       cone.setActivationState(2);
       world.updateSingleAabb(cone);
     });
+  }
+
+  function reset() {
+    drivetrain.reset();
+    for (const tire of tireSounds) tire.slip = tire.speed = tire.load = 0;
+    coneSoundCooldowns.clear();
+    spawnBrakeHeld = true;
+    brakestand = false;
+    car.setBraking(true);
+    car.setReversing(false);
+    car.setHazards(false);
+    offTrackTime = 0;
+    reversing = false;
+    steering = 0;
+    burnout = 0;
+    tireSpeeds.fill(0);
+    tireAngles.fill(0);
+    wheelContacts.fill(false);
+    resetCones();
     body.setCenterOfMassTransform(resetTransform);
     body.getMotionState().setWorldTransform(resetTransform);
     vector.setValue(0, 0, 0);
@@ -590,6 +614,8 @@ export function createVehiclePhysics({
   function dispose() {
     if (disposed) return;
     disposed = true;
+    // Bodies removed by the cone toggle must be back in the world to be removed below.
+    if (!conesEnabled) coneBodies.forEach((cone) => world.addRigidBody(cone));
     world.removeAction(vehicle);
     Ammo.destroy(vehicle);
     Ammo.destroy(raycaster);
@@ -616,7 +642,7 @@ export function createVehiclePhysics({
   }
 
   return {
-    step, reset, setCourseDirection, dispose, captureVisuals, interpolate, fixedStep, wheelContacts, tireSounds,
+    step, reset, setCourseDirection, setConesEnabled, dispose, captureVisuals, interpolate, fixedStep, wheelContacts, tireSounds,
     get engine() { return drivetrain.state; },
     get burnout() { return burnout; },
     get steering() { return steering; },

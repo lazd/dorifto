@@ -8,6 +8,7 @@ import type { loadCar } from './car';
 
 export function createDrivingCamera(camera: THREE.PerspectiveCamera, car: Awaited<ReturnType<typeof loadCar>>,
   controls: DrivingControls, definition: CourseDefinition, terrain: CourseTerrain) {
+  const drivingFar = camera.far;
   const cameraRoute = courseRoute(definition);
   const cameraRouteLength = cameraRoute.getLength();
   const cameraCourseWidth = definition.width;
@@ -168,12 +169,13 @@ export function createDrivingCamera(camera: THREE.PerspectiveCamera, car: Awaite
     previousCameraStyle = cameraStyle;
     mapShown = controls.mapView;
     if (mapShown) showMap();
-    else setNear(near);
+    else setClipping(near);
   }
 
-  function setNear(near: number) {
-    if (camera.near === near) return;
+  function setClipping(near: number, far = drivingFar) {
+    if (camera.near === near && camera.far === far) return;
     camera.near = near;
+    camera.far = far;
     camera.updateProjectionMatrix();
   }
 
@@ -189,7 +191,7 @@ export function createDrivingCamera(camera: THREE.PerspectiveCamera, car: Awaite
     camera.quaternion.copy(mapQuaternion);
     // A cabin-close near plane leaves too little depth precision from this high up,
     // and the ground z-fights through the road.
-    setNear(height * 0.05);
+    setClipping(height * 0.05, Math.max(drivingFar, height + mapSize.y + 100));
   }
 
   return { reset, update, setCabinEye };

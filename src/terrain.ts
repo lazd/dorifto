@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { courseRoute } from './courses';
+import { courseProfileHeight, courseRoute } from './courses';
 import type { CourseDefinition } from './courses';
 import { surfaceMaterial } from './surfaces';
 import { terrainBaseHeight } from './terrain-profile';
@@ -14,6 +14,7 @@ export class CourseTerrain {
   readonly minZ: number;
   readonly heights: Float32Array;
   readonly mesh: THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>;
+  readonly grass: THREE.InstancedMesh;
   readonly minHeight: number;
   readonly maxHeight: number;
   private readonly segments;
@@ -38,6 +39,9 @@ export class CourseTerrain {
       return { a, b, bank: -THREE.MathUtils.clamp(bend / 10 * 2.5, -0.065, 0.065) };
     });
     const bounds = new THREE.Box3().setFromPoints(this.segments.map((segment) => segment.a));
+    const profile = definition.elevation;
+    const surroundings = profile && profileSurroundings(this.segments.map(({ a }, i) =>
+      ({ x: a.x, z: a.z, height: courseProfileHeight(profile, i / count) })));
     if (this.padRadius !== undefined) {
       bounds.expandByPoint(new THREE.Vector3(-this.padRadius, 0, -this.padRadius));
       bounds.expandByPoint(new THREE.Vector3(this.padRadius, 0, this.padRadius));
@@ -78,9 +82,12 @@ export class CourseTerrain {
         const blend = THREE.MathUtils.smoothstep(near.distance, blendStart, blendEnd);
         // Elevation follows the centerline, not the hillside's cross-slope:
         // positive turns lower the inside (+across) and raise the outside.
-        const road = terrainBaseHeight(near.x, near.z) + near.bank * near.across;
+        const road = (profile ? courseProfileHeight(profile, near.fraction) : terrainBaseHeight(near.x, near.z))
+          + near.bank * near.across;
+        // Imported tracks settle into ground interpolated from nearby course heights.
+        const ground = surroundings ? surroundings(px, pz) + 0.35 * (hills - 12) : base + hills;
         const height = definition.flat ? 0
-          : THREE.MathUtils.lerp(road, base + hills, blend) * (definition.elevationScale ?? 1);
+          : THREE.MathUtils.lerp(road, ground, blend) * (definition.elevationScale ?? 1);
         const i = z * this.columns + x;
         roadDistances[i] = this.padRadius !== undefined ? Math.hypot(px, pz) - this.padRadius
           : near.distance - this.halfWidth;
@@ -272,6 +279,7 @@ export class CourseTerrain {
     });
     tufts.receiveShadow = true;
     this.mesh.add(tufts);
+    this.grass = tufts;
   }
 
   private nearest(x: number, z: number) {
@@ -280,6 +288,7 @@ export class CourseTerrain {
     let bank = 0;
     let centerX = x;
     let centerZ = z;
+    let fraction = 0;
     for (const i of this.buckets.get(`${Math.floor(x / 16)},${Math.floor(z / 16)}`) ?? []) {
       const segment = this.segments[i];
       const dx = segment.b.x - segment.a.x;
@@ -294,9 +303,10 @@ export class CourseTerrain {
         centerZ = segment.a.z + t * dz;
         across = (ox * dz - oz * dx) / Math.hypot(dx, dz);
         bank = THREE.MathUtils.lerp(segment.bank, this.segments[(i + 1) % this.segments.length].bank, t);
+        fraction = (i + t) / this.segments.length;
       }
     }
-    return { distance, across, bank, x: centerX, z: centerZ };
+    return { distance, across, bank, fraction, x: centerX, z: centerZ };
   }
 
   contains(x: number, z: number) {
@@ -391,4 +401,44 @@ export class CourseTerrain {
     geometry.computeVertexNormals();
     return geometry;
   }
+}
+
+/**
+ * Smooth inverse-distance interpolation of course heights on a coarse grid, so
+ * terrain away from an imported track follows its real elevation trend.
+ */
+function profileSurroundings(samples: { x: number; z: number; height: number }[]) {
+  const stride = Math.max(1, Math.round(samples.length / 400));
+  const sparse = samples.filter((_, i) => i % stride === 0);
+  const cell = 12;
+  const bounds = new THREE.Box2();
+  sparse.forEach(({ x, z }) => bounds.expandByPoint(new THREE.Vector2(x, z)));
+  bounds.expandByScalar(300);
+  const columns = Math.ceil((bounds.max.x - bounds.min.x) / cell) + 1;
+  const rows = Math.ceil((bounds.max.y - bounds.min.y) / cell) + 1;
+  const grid = new Float32Array(columns * rows);
+  for (let row = 0; row < rows; row++) {
+    for (let column = 0; column < columns; column++) {
+      const x = bounds.min.x + column * cell;
+      const z = bounds.min.y + row * cell;
+      let total = 0;
+      let weights = 0;
+      for (const sample of sparse) {
+        const weight = 1 / ((x - sample.x) ** 2 + (z - sample.z) ** 2 + 40 ** 2);
+        total += sample.height * weight;
+        weights += weight;
+      }
+      grid[row * columns + column] = total / weights;
+    }
+  }
+  return (x: number, z: number) => {
+    const gx = THREE.MathUtils.clamp((x - bounds.min.x) / cell, 0, columns - 1.000001);
+    const gz = THREE.MathUtils.clamp((z - bounds.min.y) / cell, 0, rows - 1.000001);
+    const ix = Math.floor(gx);
+    const iz = Math.floor(gz);
+    const i = iz * columns + ix;
+    const top = THREE.MathUtils.lerp(grid[i], grid[i + 1], gx - ix);
+    const bottom = THREE.MathUtils.lerp(grid[i + columns], grid[i + columns + 1], gx - ix);
+    return THREE.MathUtils.lerp(top, bottom, gz - iz);
+  };
 }

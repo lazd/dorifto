@@ -29,7 +29,9 @@ const daylight = {
 
 
 export function createLighting(scene: THREE.Scene, renderer: THREE.WebGLRenderer) {
-  const fog = new THREE.Fog(0x78b5ec, 220, 650);
+  const fogNear = 220;
+  const fogFar = 650;
+  const fog = new THREE.Fog(0x78b5ec, fogNear, fogFar);
   scene.fog = fog;
   const pmrem = new THREE.PMREMGenerator(renderer);
   const environment = new RoomEnvironment();
@@ -83,7 +85,10 @@ export function createLighting(scene: THREE.Scene, renderer: THREE.WebGLRenderer
 
   return {
     apply: applyTimeOfDay,
-    update(position: THREE.Vector3) {
+    /** `clearDistance` pushes fog beyond that range, e.g. so the map view sees the whole course. */
+    update(position: THREE.Vector3, clearDistance?: number) {
+      fog.near = clearDistance ?? fogNear;
+      fog.far = clearDistance === undefined ? fogFar : clearDistance * 2;
       sun.position.copy(position).add(shadowOffset);
       sun.target.position.copy(position);
     },
