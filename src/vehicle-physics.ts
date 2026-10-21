@@ -187,7 +187,7 @@ export function createVehiclePhysics({
   const velocity = new THREE.Vector3();
   const previousVelocity = new THREE.Vector3();
   const currentVelocity = new THREE.Vector3();
-  const visualStates = [car.chassis, ...car.wheels, ...cones].map((object) => ({
+  const visualStates = [car.chassis, ...car.wheels, ...car.hubs, ...cones].map((object) => ({
     object,
     previousPosition: new THREE.Vector3(),
     position: new THREE.Vector3(),
@@ -241,14 +241,17 @@ export function createVehiclePhysics({
     centerOfMassOffset.copy(centerOfMass).applyQuaternion(car.chassis.quaternion);
     car.chassis.position.sub(centerOfMassOffset);
     car.wheels.forEach((wheel, i) => {
-      vehicle.getWheelInfo(i).set_m_rotation(tireAngles[i]);
-      vehicle.updateWheelTransform(i, true);
-      const transform = vehicle.getWheelTransformWS(i);
-      const position = transform.getOrigin();
-      const rotation = transform.getRotation();
-      wheel.position.set(position.x(), position.y(), position.z());
-      wheel.quaternion.set(rotation.x(), rotation.y(), rotation.z(), rotation.w());
-      wheel.quaternion.multiply(wheelBasis);
+      // Non-rotating hub pose first, for the calipers, then the spinning wheel pose.
+      for (const [object, angle] of [[car.hubs[i], 0], [wheel, tireAngles[i]]] as const) {
+        vehicle.getWheelInfo(i).set_m_rotation(angle);
+        vehicle.updateWheelTransform(i, true);
+        const transform = vehicle.getWheelTransformWS(i);
+        const position = transform.getOrigin();
+        const rotation = transform.getRotation();
+        object.position.set(position.x(), position.y(), position.z());
+        object.quaternion.set(rotation.x(), rotation.y(), rotation.z(), rotation.w());
+        object.quaternion.multiply(wheelBasis);
+      }
     });
   }
 
@@ -558,6 +561,7 @@ export function createVehiclePhysics({
     step, reset, captureVisuals, interpolate, fixedStep, wheelContacts, tireSounds,
     get engine() { return drivetrain.state; },
     get burnout() { return burnout; },
+    get steering() { return steering; },
     get reversing() { return reversing; },
     get spawnBrakeHeld() { return spawnBrakeHeld; },
     get brakestand() { return brakestand; },

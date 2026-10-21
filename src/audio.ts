@@ -27,7 +27,9 @@ export class VehicleAudio {
   constructor(
     private readonly reportState: (state: { running: boolean; muted: boolean; failed: boolean }) => void,
     private readonly reportError: (error: unknown) => void,
+    startMuted = false,
   ) {
+    this.muted = startMuted;
     const unlock = () => this.activate();
     window.addEventListener('pointerdown', unlock);
     window.addEventListener('pointerup', unlock);
@@ -35,6 +37,7 @@ export class VehicleAudio {
     window.addEventListener('keyup', unlock);
     window.addEventListener('click', unlock);
     this.activate();
+    if (startMuted) this.publishState();
   }
 
   setMuted(muted: boolean) {

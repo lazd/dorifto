@@ -17,7 +17,12 @@ export function createDrivingCamera(camera: THREE.PerspectiveCamera, car: Awaite
   let cameraYaw = 0;
   let cameraPitch = 0;
   const cameraOrbit = new THREE.Vector3();
-  const cabinEye = new THREE.Vector3(-0.36, 0.55, -0.25);
+  const cabinEye = new THREE.Vector3();
+  function setCabinEye(eye: THREE.Vector3) {
+    cabinEye.copy(eye);
+    car.aimMirrors(cabinEye);
+  }
+  setCabinEye(new THREE.Vector3(-0.38, 0.43, -0.25));
   const cabinDirection = new THREE.Vector3();
   const cabinUp = new THREE.Vector3();
   let previousCameraStyle: GameState['cameraStyle'] | null = null;
@@ -145,5 +150,5 @@ export function createDrivingCamera(camera: THREE.PerspectiveCamera, car: Awaite
     previousCameraStyle = cameraStyle;
   }
 
-  return { reset, update };
+  return { reset, update, setCabinEye };
 }

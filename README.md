@@ -488,7 +488,8 @@ Audio is synthesized in real time with Web Audio and an AudioWorklet; no recorde
 sound assets or external audio services are used. Audio attempts to start immediately
 on initialization. If browser autoplay policy blocks it, a click or keypress retries
 the unlock; controller-only players may need to click the page once. The Sound
-dropdown in Settings defaults to On and selects On/Off explicitly.
+dropdown in Settings defaults to On and selects On/Off explicitly. Off is saved as
+`?sound=off`, so muted sound survives reloads and course changes.
 Audio is not muted on window blur, hidden tabs, or while dialogs are open.
 Browser autoplay and background-tab suspension policies still apply.
 

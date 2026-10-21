@@ -133,7 +133,14 @@ export function bindGameActions(actions: {
   clearInput: () => void;
 }) {
   const sound = element<HTMLSelectElement>("#sound");
-  sound.addEventListener("change", () => actions.sound(sound.value === "off"));
+  sound.addEventListener("change", () => {
+    const muted = sound.value === "off";
+    actions.sound(muted);
+    const url = new URL(location.href);
+    if (muted) url.searchParams.set("sound", "off");
+    else url.searchParams.delete("sound");
+    history.replaceState(null, "", url);
+  });
   element("#drift-tuning").addEventListener("focusin", actions.clearInput);
 }
 

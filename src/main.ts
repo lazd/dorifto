@@ -78,7 +78,7 @@ async function start() {
     car.setLighting(timeOfDay !== 'noon', timeOfDay === 'night');
   });
 
-  scene.add(car.chassis, ...car.wheels);
+  scene.add(car.chassis, ...car.wheels, ...car.hubs);
   const controls = new DrivingControls();
   const audio = new VehicleAudio((sound) => {
     gameState.update({ sound: { ...gameState.getState().sound, ...sound } });
@@ -87,7 +87,7 @@ async function start() {
     gameState.update({ sound: {
       ...gameState.getState().sound, error: error instanceof Error ? error.message : String(error),
     } });
-  });
+  }, new URL(location.href).searchParams.get('sound') === 'off');
   let dialogOpen = false;
   gameState.subscribe((state) => {
     const open = state.helpOpen || state.tuningOpen || state.settingsOpen;
@@ -201,6 +201,10 @@ async function start() {
     forward.set(0, 0, 1).applyQuaternion(car.chassis.quaternion);
     forward.y = 0;
     forward.normalize();
+    // Manifold pressure: closed-throttle vacuum through to full turbo boost.
+    const manifoldMmHg = THREE.MathUtils.lerp(-550, 0, engine.load) * (1 - engine.boost) + 650 * engine.boost;
+    car.setGauges(Math.abs(forward.dot(velocity)) * 3.6, engine.rpm, manifoldMmHg);
+    car.setSteering(physics.steering);
     const slip = speed > 3 ? 1 - Math.abs(forward.dot(velocity) / speed) : 0;
     const sliding = speed > 3 && (controls.handbrake || slip > 0.045);
     const burningOut = burnout > 0.1 && (wheelContacts[2] || wheelContacts[3]);
