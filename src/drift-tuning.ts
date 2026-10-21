@@ -10,7 +10,7 @@ const sliders: {
   { key: 'steeringExpo', label: 'Controller steering expo', min: 0, max: 1, step: 0.05,
     hint: 'Softens the stick near center without reducing full lock. 0% is linear; 100% is cubic. Keyboard and camera sticks are unchanged.' },
   { key: 'steeringRate', label: 'Steering rate', min: 0.8, max: 6, step: 0.1,
-    hint: 'Maximum turn-in speed. Lower is gentler; counter-steering and unwinding are 60% faster. Applies to keyboard, controller and assist.' },
+    hint: 'Maximum steering speed. Drift uses the same limit for turn-in, counter-steering and unwind; Grip allows 60% faster returns. Applies to keyboard, controller and assist.' },
   { key: 'steeringScale', label: 'Steering angle (low / high speed)', min: 0.4, max: 1.15, step: 0.01,
     hint: 'Higher allows more steering and counter-steer lock. Excessive lock can scrub the front tires.' },
   { key: 'frontGrip', label: 'Front peak grip', min: 0.7, max: 1.8, step: 0.05,
@@ -48,7 +48,7 @@ export function createDrivingTuning(fieldset: HTMLFieldSetElement, resetButton: 
   assist.setAttribute('aria-labelledby', assistTitle.id);
   const assistHint = document.createElement('small');
   assistHint.id = 'drift-steering-assist-hint';
-  assistHint.textContent = 'Helps front wheels follow their travel direction during forward slides and limits excessive turn-in scrub. Drift allows more cornering slip than Grip. No extra force or yaw assist.';
+  assistHint.textContent = 'Drift adds a small counter-steering correction that fades as you apply lock; your stick still controls wheel angle. Grip aligns toward front-wheel travel to limit scrub. No extra force or yaw assist.';
   assist.setAttribute('aria-describedby', assistHint.id);
   assist.addEventListener('change', () => update({ steeringAssist: assist.checked }));
   assistLabel.append(assist, assistTitle, assistHint);

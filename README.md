@@ -231,27 +231,43 @@ response after the stick deadzone. This softens fine adjustments near center
 while preserving full lock at full stick; keyboard and camera axes retain
 their previous input response. **Steering rate** defaults to 115 degrees/second
 (2 rad/s), limiting how quickly the wheels move toward lock in addition to
-existing smoothing. Counter-steering and unwinding can move 60% faster to catch
-slides. Both modes use this expo and rate-limited steering implementation,
+existing smoothing. Drift uses the same rate limit for turn-in, counter-steering,
+and unwinding rather than accelerating the catch/release by 60%. Its steering
+smoothing response is 6/s rather than 10/s (previously 16/s on reversal).
+Grip retains its existing 60%-faster return behavior. Both modes use this expo and rate-limited steering implementation,
 including keyboard and assisted steering. Both controls are adjustable live in either mode;
 Grip defaults to 60% expo and 126 degrees/second. Drift's steering scale defaults
 to 1.01 (69.4 degrees low-speed / 63.7 degrees high-speed lock), with assist enabled.
 
+Drift's lateral tire response models a short 0.3 m relaxation length, bounded
+to an 8–40 ms response time depending on wheel-plane road speed. Normalized
+lateral demand builds/releases progressively before combined-slip saturation;
+the current contact load and friction circle still bound the actual forces.
+Contact loss, car reset, and mode changes clear tire-response memory.
+Longitudinal tire response and engine torque are not smoothed or reduced.
+Grip keeps its previous instantaneous tire response.
+
 **Counter-steering assist** is enabled by default and can be toggled live in
-the tuning panel. During forward slides it progressively steers toward the
-front axle's actual velocity (including rotation of the chassis), with up to
-0.22 radians of driver-controlled cornering angle. It uses the selected steering
+the tuning panel. Drift keeps stick input as a wheel-angle request and adds
+35% of the front axle's travel angle (including chassis rotation), capped at
+0.22 radians (12.6 degrees). That correction fades linearly to zero at full stick,
+so the driver retains full manual lock and counter-steering authority.
+The correction is additive: it does not align the wheels to velocity or remap
+the stick into a front-tire slip request. It uses the selected steering
 lock and existing steering smoothing, fades out near walking speed and small
 slip angles, and does not assist reverse/backward travel. Disabling it restores
 fully manual steering in either mode.
 This is steering assistance only:
 it does not add drive force, apply yaw torque, or follow the course centerline.
-Grip also blends this assist in when the requested steering would exceed the
+In Drift, slide-assist engagement/release has an 80 ms exponential response. Driver
+steering remains subject to the normal angle/rate limits; disabling assist
+clears its blend memory. No yaw-rate stability controller is added.
+Grip retains its velocity-alignment assist and blends it in when requested steering would exceed the
 front axle's travel angle by more than 0.12 radians (about 7 degrees), targeting
 up to 0.12 radians of driver-controlled cornering slip. This reduces excessive
 front-tire scrub at speed rather than cutting engine torque. It fades out below
-6 m/s and leaves full manual lock below 2 m/s. Drift uses a wider 0.16-radian
-(about 9-degree) turn-in slip limit while retaining its full counter-steering lock.
+6 m/s and leaves full manual lock below 2 m/s. This scrub-protection remapping
+does not apply in Drift, where excessive manual lock can still scrub the fronts.
 The closer front/rear grip balance and higher sliding-grip retention make
 breakaway more progressive; full throttle and excessive steering can still spin
 the car. Unwind/counter-steer and reduce throttle to recover rear lateral grip.
@@ -324,6 +340,15 @@ The selection is saved in `?time=noon`, `?time=sunset`, or `?time=night` and
 preserved when switching courses or generating a random layout. Noon is the default.
 
 ## Courses
+
+**Drift Test Loop** (`?course=drift-test`) is a compact 14 m-wide handling circuit
+with gentle elevation and banking (35% of the normal terrain relief). Hills in
+the infield and runoff help distinguish the road's direction.
+Start with the roughly 65 m approach to repeat a consistent entry speed, hold a slide
+around the broad far-end sweeper, then use the linked opposite-direction bends
+on the return leg to practice transitions and recovery. Cones are spaced 7 m
+apart along each edge. Normal lap timing, cone counts, cameras, lighting, and
+drive-mode tuning work as on the other circuits.
 
 **Flat Skidpad** is a solid asphalt disk 500 m across, with a counter-clockwise
 reference route of approximately 50 m centerline radius and 62.5 m marked width.

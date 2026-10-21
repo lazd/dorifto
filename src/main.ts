@@ -6,7 +6,7 @@ import { TireSmoke } from './smoke';
 import { DrivingControls } from './controls';
 import { createCourse } from './course';
 import { courses, courseRoute, courseSpawn, generateCourse } from './courses';
-import { driveModes, isDriveMode, assistedSteeringAngle } from './drive-modes';
+import { driveModes, isDriveMode, assistedSteeringAngle, driftSteeringAngle } from './drive-modes';
 import { LapTimer } from './laps';
 import { VehicleAudio } from './audio';
 import { Drivetrain, wheelInertia, type DrivetrainInput } from './drivetrain';
@@ -293,6 +293,9 @@ async function start() {
   const up = new THREE.Vector3(0, 1, 0);
   const tireSpeeds = [0, 0, 0, 0];
   const tireAngles = [0, 0, 0, 0];
+  const tireLateralResponse = [0, 0, 0, 0];
+  const assistResponse = { blend: 0 };
+  let handlingMode = gameState.getState().driveMode;
   const drivetrain = new Drivetrain();
   const drivetrainInput: DrivetrainInput = {
     throttle: 0, reversing: false, wheelSpeed: 0, sliding: false, handbrake: false,
@@ -445,6 +448,8 @@ async function start() {
     slideCameraAmount = outsideOffset = cameraTurnRate = 0;
     previousTravel.set(0, 0, 0);
     steering = 0;
+    assistResponse.blend = 0;
+    tireLateralResponse.fill(0);
     accumulator = 0;
     burnout = 0;
     tireSpeeds.fill(0);
@@ -541,6 +546,11 @@ async function start() {
     const { driveMode, profiles } = gameState.getState();
     const tune = driveModes[driveMode];
     const tireTune = profiles[driveMode];
+    if (handlingMode !== driveMode) {
+      handlingMode = driveMode;
+      assistResponse.blend = 0;
+      tireLateralResponse.fill(0);
+    }
     const linear = body.getLinearVelocity();
     const angular = body.getAngularVelocity();
     const speed = Math.hypot(linear.x(), linear.z()) * 3.6;
@@ -561,14 +571,21 @@ async function start() {
       const vx = linear.x() + angular.y() * tireOffset.z - angular.z() * tireOffset.y;
       const vy = linear.y() + angular.z() * tireOffset.x - angular.x() * tireOffset.z;
       const vz = linear.z() + angular.x() * tireOffset.y - angular.y() * tireOffset.x;
-      targetSteering = assistedSteeringAngle(input, steeringLimit,
-        vx * tireForward.x + vy * tireForward.y + vz * tireForward.z,
-        vx * tireLateral.x + vy * tireLateral.y + vz * tireLateral.z, tune.steeringSlipLimit);
+      const axleForward = vx * tireForward.x + vy * tireForward.y + vz * tireForward.z;
+      const axleLateral = vx * tireLateral.x + vy * tireLateral.y + vz * tireLateral.z;
+      targetSteering = driveMode === 'drift'
+        ? driftSteeringAngle(input, steeringLimit, axleForward, axleLateral,
+          assistResponse, tune.steeringAssistResponse, fixedStep)
+        : assistedSteeringAngle(input, steeringLimit, axleForward, axleLateral, tune.steeringSlipLimit,
+          assistResponse, tune.steeringAssistResponse, fixedStep);
+    } else {
+      assistResponse.blend = 0;
     }
     const counterSteering = targetSteering !== 0 && Math.sign(targetSteering) !== Math.sign(steering);
-    const smoothedSteering = THREE.MathUtils.damp(steering, targetSteering, counterSteering ? 16 : 10, fixedStep);
+    const smoothedSteering = THREE.MathUtils.damp(steering, targetSteering,
+      tune.steeringResponse * (counterSteering ? tune.steeringReturnScale : 1), fixedStep);
     const unwinding = Math.abs(targetSteering) < Math.abs(steering);
-    const maxChange = tireTune.steeringRate * (counterSteering || unwinding ? 1.6 : 1) * fixedStep;
+    const maxChange = tireTune.steeringRate * (counterSteering || unwinding ? tune.steeringReturnScale : 1) * fixedStep;
     steering += THREE.MathUtils.clamp(smoothedSteering - steering, -maxChange, maxChange);
     const brakeAmount = spawnBrakeHeld ? 1 : reversing ? 0 : controls.brake;
     const braking = brakeAmount > 0;
@@ -678,7 +695,19 @@ async function start() {
         // Saturate both pure-slip demands before sharing the friction circle;
         // unbounded wheelspin demand would erase lateral force under throttle.
         const driveDemand = capacity * Math.tanh(slipRatio * 8);
-        const lateral = capacity * Math.tanh(lateralDemand / Math.max(capacity, 1));
+        const lateralTarget = Math.tanh(lateralDemand / Math.max(capacity, 1));
+        // Tire deformation builds over distance, with bounded response time at
+        // low speed. Store normalized demand so lost contact cannot retain force.
+        if (!wheelContacts[i] || capacity <= 0) tireLateralResponse[i] = 0;
+        else if (tune.tireRelaxationLength > 0) {
+          const responseTime = THREE.MathUtils.clamp(
+            tune.tireRelaxationLength / Math.max(Math.abs(along), 1), 0.008, 0.04,
+          );
+          tireLateralResponse[i] = THREE.MathUtils.damp(
+            tireLateralResponse[i], lateralTarget, 1 / responseTime, tireStep,
+          );
+        } else tireLateralResponse[i] = lateralTarget;
+        const lateral = capacity * tireLateralResponse[i];
         const combined = Math.hypot(driveDemand, lateral);
         // Sliding rubber has less grip than the peak, allowing genuine
         // wheelspin instead of holding maximum traction at unlimited slip.

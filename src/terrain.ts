@@ -72,7 +72,8 @@ export class CourseTerrain {
         // Elevation follows the centerline, not the hillside's cross-slope:
         // positive turns lower the inside (+across) and raise the outside.
         const road = this.baseHeight(near.x, near.z) + near.bank * near.across;
-        const height = definition.flat ? 0 : THREE.MathUtils.lerp(road, base + hills, blend);
+        const height = definition.flat ? 0
+          : THREE.MathUtils.lerp(road, base + hills, blend) * (definition.elevationScale ?? 1);
         const i = z * this.columns + x;
         this.heights[i] = height;
         min = Math.min(min, height);

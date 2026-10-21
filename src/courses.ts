@@ -8,6 +8,7 @@ export interface CourseDefinition {
   width: number;
   coneSpacing?: number;
   flat?: boolean;
+  elevationScale?: number;
   padRadius?: number;
   /** Ground-plane coordinates [x, z], ordered in the driving direction. */
   points: readonly (readonly [number, number])[];
@@ -157,6 +158,20 @@ export const courses: readonly CourseDefinition[] = [
       [0, 0], [0, 30], [-8, 60], [0, 90], [30, 115],
       [65, 110], [90, 80], [85, 45], [60, 25],
       [65, -10], [40, -35], [10, -25],
+    ],
+  },
+  {
+    id: 'drift-test',
+    name: 'Drift Test Loop',
+    width: 14,
+    coneSpacing: 7,
+    elevationScale: 0.35,
+    points: [
+      [0, 0], [0, 22.5], [0, 45], [0, 67.5],
+      [15, 101.25], [48.75, 120], [86.25, 112.5], [112.5, 86.25],
+      [120, 52.5], [101.25, 22.5], [75, 0], [75, -30],
+      [101.25, -56.25], [112.5, -86.25], [93.75, -116.25], [56.25, -131.25],
+      [18.75, -116.25], [0, -90], [0, -45],
     ],
   },
   {
