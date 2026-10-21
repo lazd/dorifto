@@ -22,7 +22,7 @@ keyboard or standard-mapped gamepad. Click the game if focus is in another windo
 | --- | --- |
 | Left / right arrows | Steer |
 | Z | Accelerate (rear-wheel drive) |
-| X | Brake all four wheels |
+| X (hold) | Brake, then reverse near a stop |
 | X + Z | Brakestand (front brakes hold, rear tires spin) |
 | Space | Lock the rear wheels / initiate a slide |
 | R or Reset | Reset the car, cones, smoke, and tire marks |
@@ -46,7 +46,8 @@ the keyboard controls. The first connected standard-mapped controller is used.
 
 Both triggers together retain brakestand behavior. LT alone brakes forward
 motion, then engages reverse only near a stop; release LT to leave reverse.
-Reverse is limited to 35 km/h. Keyboard X remains brake-only. Sticks use a
+Reverse is limited to 35 km/h. Keyboard X also brakes into reverse near a stop;
+release X to leave reverse, or press Z to switch to forward drive. Sticks use a
 rescaled deadzone to avoid drift, and trigger values control torque/brake force
 proportionally. Keyboard inputs remain available alongside the controller.
 Disconnecting releases controller inputs immediately, and losing focus releases
@@ -82,7 +83,8 @@ needed for ordinary acceleration.
 Longitudinal and lateral slip demands saturate together, so spinning the rear
 tires reduces their cornering grip. Hold Z and either steering arrow from a stop
 for donuts; release throttle and unwind/counter-steer to recover traction.
-The red Z32 has black wheels and a low chase camera. Hold Z from a stop for a
+The red Z32 has black wheels, no front license plate (the rear plate is retained),
+and a low chase camera. Hold Z from a stop for a
 rear-wheel burnout, with wheelspin, tire smoke, and skid marks. Grip returns as
 wheel speed matches road speed. The engine has a 240 km/h speed limiter.
 Burnout and drift marks are flat strips matching each rear tire's model width.
@@ -93,7 +95,30 @@ particle cuts and tracks drawing over the smoke. This extra pass runs only while
 puffs are alive and follows the drawing-buffer resolution on resize. Smoke is
 excluded from side-mirror reflection passes, whose camera depth differs.
 Silver headlight interiors contain warm-white projectors with real, shadow-casting
-spotlights illuminating the surface ahead. Side-view mirror glass uses live planar
+spotlights illuminating the surface ahead. The two rear brake lenses and spoiler
+brake strip glow red only
+while the foot brake is pressed (keyboard X or controller LT when braking).
+They stay unlit while coasting, engine braking, or using LT to reverse;
+bumper reflectors remain unchanged. Front and rear turn-signal lenses are clear
+instead of amber beneath their existing tinted covers.
+After the car's center is off the pavement for more than three continuous
+seconds, the front and rear turn signals flash amber together (0.4 seconds on,
+0.4 seconds off). Returning to pavement or resetting switches the hazards off
+and restarts the delay. Unlit signals retain their clear lenses and smoked covers.
+Rear brake and reverse covers have 35% smoked tint when off and become
+clear independently when their lamps are on; turn-signal covers stay tinted and
+window glass is unchanged. This keeps the unlit lenses subdued without washing
+their illuminated colors white.
+When braking, short-range shadow-casting red spotlights illuminate the ground
+and nearby objects behind all three brake lenses.
+All four clear lenses in the center rear panel glow warm white and cast a subtle
+white light only in reverse. Headlight inserts glow warm white behind their
+covers, with reduced beam intensity to avoid washing out the road.
+Headlights retain the original non-glowing covers at half their original tint
+opacity over their warm-white low-beam inserts; window tint is unchanged.
+The inner rectangular high-beam sections remain tinted and unlit; only the
+outer low-beam sections glow and project light.
+Side-view mirror glass uses live planar
 reflections. The cones are lightweight dynamic physics objects: hit them to send
 them sliding and tumbling. Reset restores the car and all cones to their starting
 positions and clears smoke and tire marks.

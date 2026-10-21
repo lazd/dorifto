@@ -54,7 +54,7 @@ export class DrivingControls {
     this.steer = keyboardSteer || -axis(0);
     this.throttle = Math.max(Number(this.keys.has('KeyZ')), trigger(7));
     this.brake = Math.max(Number(this.keys.has('KeyX')), trigger(6));
-    this.reverse = trigger(6);
+    this.reverse = this.brake;
     this.handbrake = this.keys.has('Space') || Boolean(pad?.buttons[5]?.pressed || pad?.buttons[2]?.pressed);
     this.cameraX = axis(2);
     this.cameraY = axis(3);

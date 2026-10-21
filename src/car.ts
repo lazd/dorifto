@@ -21,10 +21,28 @@ export async function loadCar() {
 
   const wheelMeshes: THREE.Mesh<THREE.BufferGeometry, THREE.Material>[] = [];
   const detailMeshes: THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>[] = [];
+  const rearLightMeshes: THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>[] = [];
+  const tintedMeshes: THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>[] = [];
   model.traverse((object) => {
     if (!(object instanceof THREE.Mesh)) return;
     object.castShadow = true;
     object.receiveShadow = true;
+    if (!Array.isArray(object.material)
+      && (object.material.name === 'numberplate.001' || object.material.name === 'plastic.003')) {
+      const positions = object.geometry.getAttribute('position');
+      const index = object.geometry.getIndex();
+      const rear: number[] = [];
+      const point = new THREE.Vector3();
+      for (let i = 0; i < (index?.count ?? positions.count); i += 3) {
+        const triangle = [0, 1, 2].map((j) => index ? index.getX(i + j) : i + j);
+        let z = 0;
+        for (const v of triangle) z += point.fromBufferAttribute(positions, v).applyMatrix4(object.matrixWorld).z;
+        if (z < 0) rear.push(...triangle);
+      }
+      object.geometry = object.geometry.clone();
+      object.geometry.setIndex(rear);
+      object.geometry.computeBoundingSphere();
+    }
     const materials = Array.isArray(object.material) ? object.material : [object.material];
     for (const material of materials) {
       if (!(material instanceof THREE.MeshStandardMaterial)) continue;
@@ -45,17 +63,221 @@ export async function loadCar() {
     if (object.material instanceof THREE.MeshStandardMaterial && object.material.name === 'Material.005') {
       detailMeshes.push(object);
     }
+    if (object.material instanceof THREE.MeshStandardMaterial && object.material.name === 'Material.011') {
+      rearLightMeshes.push(object);
+    }
+    if (object.material instanceof THREE.MeshStandardMaterial && object.material.name === 'Material.003') {
+      tintedMeshes.push(object);
+    }
   });
+
+  const clearLensCover = new THREE.MeshPhysicalMaterial({
+    color: 0xffffff, transparent: true, opacity: 0.12, depthWrite: false,
+    roughness: 0.18, metalness: 0, specularIntensity: 0.15,
+    envMapIntensity: 0.15, side: THREE.DoubleSide,
+  });
+  const coverMaterials = [clearLensCover.clone(), clearLensCover.clone(), clearLensCover.clone()];
+  function setCoverLit(material: THREE.MeshPhysicalMaterial, lit: boolean) {
+    material.color.set(lit ? 0xffffff : 0x101216);
+    material.opacity = lit ? 0.06 : 0.35;
+  }
+  coverMaterials.forEach((material) => setCoverLit(material, false));
+  const lensSamples: { center: THREE.Vector3; group: number }[] = [];
+  for (const mesh of rearLightMeshes) {
+    const positions = mesh.geometry.getAttribute('position');
+    const uv = mesh.geometry.getAttribute('uv');
+    const index = mesh.geometry.getIndex();
+    for (let i = 0; i < (index?.count ?? positions.count); i += 3) {
+      const center = new THREE.Vector3();
+      let u = 0;
+      for (let j = 0; j < 3; j++) {
+        const v = index ? index.getX(i + j) : i + j;
+        center.add(new THREE.Vector3().fromBufferAttribute(positions, v));
+        u += uv.getX(v) / 3;
+      }
+      center.divideScalar(3);
+      if (center.y > 4.8 && center.z > 1.7) {
+        lensSamples.push({ center: center.applyMatrix4(mesh.matrixWorld), group: u < 1 / 3 ? 2 : u < 2 / 3 ? 1 : 0 });
+      }
+    }
+  }
+  if (!lensSamples.length) throw new Error('Missing rear lens geometry for cover tint.');
+  for (const mesh of tintedMeshes) {
+    const positions = mesh.geometry.getAttribute('position');
+    const index = mesh.geometry.getIndex();
+    const glass: number[] = [];
+    const covers: number[][] = [[], [], [], []];
+    const headlightTint = mesh.material.clone();
+    headlightTint.opacity *= 0.5;
+    const point = new THREE.Vector3();
+    for (let i = 0; i < (index?.count ?? positions.count); i += 3) {
+      const triangle = [0, 1, 2].map((j) => index ? index.getX(i + j) : i + j);
+      const center = new THREE.Vector3();
+      for (const v of triangle) center.add(point.fromBufferAttribute(positions, v));
+      center.divideScalar(3);
+      // Separate lamp covers from the shared black window-glass material.
+      if (center.y < -3.9) {
+        covers[3].push(...triangle);
+      } else if (center.y > 4.8 && center.z > 1.7) {
+        center.applyMatrix4(mesh.matrixWorld);
+        let nearest = lensSamples[0];
+        for (const sample of lensSamples) {
+          if (sample.center.distanceToSquared(center) < nearest.center.distanceToSquared(center)) nearest = sample;
+        }
+        covers[nearest.group].push(...triangle);
+      } else glass.push(...triangle);
+    }
+    if (!covers.some((indices) => indices.length)) continue;
+    covers.forEach((indices, group) => {
+      if (!indices.length) return;
+      const geometry = mesh.geometry.clone();
+      geometry.setIndex(indices);
+      geometry.applyMatrix4(mesh.matrixWorld);
+      geometry.computeBoundingSphere();
+      const cover = new THREE.Mesh(geometry, group === 3 ? headlightTint : coverMaterials[group]);
+      cover.name = group === 3 ? 'headlight-covers' : `rear-light-cover-${group}`;
+      chassis.add(cover);
+    });
+    mesh.geometry = mesh.geometry.clone();
+    mesh.geometry.setIndex(glass);
+    mesh.geometry.computeBoundingSphere();
+  }
+
+  const brakeMaterials: { material: THREE.MeshStandardMaterial; restingColor: number }[] = [];
+  const brakeLights: THREE.SpotLight[] = [];
+  const signalMaterials: THREE.MeshStandardMaterial[] = [];
+  const reverseMaterials: THREE.MeshStandardMaterial[] = [];
+  const reverseLights: THREE.SpotLight[] = [];
+  const reverseCounts = [0, 0, 0, 0];
+  const brakeCounts = [0, 0, 0];
+  for (const mesh of rearLightMeshes) {
+    const positions = mesh.geometry.getAttribute('position');
+    const uv = mesh.geometry.getAttribute('uv');
+    const index = mesh.geometry.getIndex();
+    const parts: number[][] = [[], [], [], [], [], [], [], [], []];
+    const point = new THREE.Vector3();
+    for (let i = 0; i < (index?.count ?? positions.count); i += 3) {
+      const triangle = [0, 1, 2].map((j) => index ? index.getX(i + j) : i + j);
+      const center = new THREE.Vector3();
+      let u = 0;
+      for (const v of triangle) {
+        center.add(point.fromBufferAttribute(positions, v));
+        u += uv.getX(v);
+      }
+      center.divideScalar(3);
+      u /= 3;
+      // The atlas's middle third is red; exclude amber/clear lenses and bumper reflectors.
+      const brakeLens = u > 1 / 3 && u < 2 / 3 && center.y > 4.8 && center.z > 1.8;
+      const reverseLens = u < 1 / 3 && center.y > 4.8 && center.z > 1.8;
+      const part = u > 2 / 3 ? 8 : brakeLens ? center.z > 2.2 ? 3 : center.x < 0 ? 1 : 2
+        : reverseLens ? 4 + (center.x > 0 ? 2 : 0) + (center.z > 1.98 ? 1 : 0) : 0;
+      parts[part].push(...triangle);
+    }
+    mesh.geometry = mesh.geometry.clone();
+    mesh.geometry.setIndex(parts[0]);
+    mesh.geometry.computeBoundingSphere();
+    for (let part = 1; part < parts.length; part++) {
+      if (!parts[part].length) continue;
+      const geometry = mesh.geometry.clone();
+      geometry.setIndex(parts[part]);
+      geometry.applyMatrix4(mesh.matrixWorld);
+      geometry.computeBoundingSphere();
+      const material = mesh.material.clone();
+      if (part === 8) {
+        material.map = null;
+        material.color.set(0xdce1e6);
+        material.metalness = 0.15;
+        material.roughness = 0.25;
+        material.emissive.set(0x000000);
+        material.emissiveIntensity = 0;
+        material.toneMapped = false;
+        signalMaterials.push(material);
+        const lens = new THREE.Mesh(geometry, material);
+        lens.name = 'clear-turn-signal-lenses';
+        chassis.add(lens);
+        continue;
+      }
+      const reverse = part >= 4;
+      const restingColor = reverse ? 0xbfc6ca : part === 3 ? 0x65070b : 0xc52025;
+      material.color.set(restingColor);
+      material.metalness = 0;
+      material.roughness = 0.25;
+      material.emissive.set(reverse ? 0xfff6df : 0xff0000);
+      material.emissiveIntensity = 0;
+      material.toneMapped = false;
+      const lens = new THREE.Mesh(geometry, material);
+      lens.name = reverse ? `reverse-light-${part - 3}` : `brake-light-${part}`;
+      chassis.add(lens);
+      if (reverse) {
+        reverseMaterials.push(material);
+        reverseCounts[part - 4] += parts[part].length;
+      } else {
+        brakeMaterials.push({ material, restingColor });
+        brakeCounts[part - 1] += parts[part].length;
+      }
+      const bounds = new THREE.Box3();
+      for (const vertex of parts[part]) {
+        bounds.expandByPoint(point.fromBufferAttribute(geometry.getAttribute('position'), vertex));
+      }
+      const light = new THREE.SpotLight(reverse ? 0xfff6df : 0xff0000, 0, 6, Math.PI / 3, 0.8, 2);
+      light.position.copy(bounds.getCenter(new THREE.Vector3()));
+      light.position.z = bounds.min.z - 0.04;
+      light.target.position.set(light.position.x, -0.55, light.position.z - 2.5);
+      light.castShadow = true;
+      light.shadow.mapSize.set(256, 256);
+      light.shadow.camera.near = 0.03;
+      light.shadow.normalBias = 0.015;
+      light.visible = false;
+      chassis.add(light, light.target);
+      (reverse ? reverseLights : brakeLights).push(light);
+    }
+  }
+  if (brakeCounts.some((count) => count === 0)) throw new Error('Missing brake light lenses in the car model.');
+  if (reverseCounts.some((count) => count === 0)) throw new Error('Missing reverse light lenses in the car model.');
+  if (!signalMaterials.length) throw new Error('Missing turn signal lenses in the car model.');
+  function setHazards(illuminated: boolean) {
+    setCoverLit(coverMaterials[0], illuminated);
+    for (const material of signalMaterials) {
+      material.color.set(illuminated ? 0xff9900 : 0xdce1e6);
+      material.emissive.set(0xff8800);
+      material.emissiveIntensity = illuminated ? 1 : 0;
+    }
+  }
+  function setReversing(reversing: boolean) {
+    setCoverLit(coverMaterials[2], reversing);
+    for (const material of reverseMaterials) {
+      material.color.set(reversing ? 0xffffff : 0xbfc6ca);
+      material.emissiveIntensity = reversing ? 5 : 0;
+    }
+    for (const light of reverseLights) {
+      light.intensity = reversing ? 8 : 0;
+      light.visible = reversing;
+    }
+  }
+  function setBraking(braking: boolean) {
+    setCoverLit(coverMaterials[1], braking);
+    for (const { material, restingColor } of brakeMaterials) {
+      material.color.set(braking ? 0xff0000 : restingColor);
+      material.emissiveIntensity = braking ? 4 : 0;
+    }
+    for (const light of brakeLights) {
+      light.intensity = braking ? 16 : 0;
+      light.visible = braking;
+    }
+  }
 
   const mirrors: Reflector[] = [];
   const headlightBounds = [new THREE.Box3(), new THREE.Box3()];
   const silver = new THREE.MeshStandardMaterial({
     color: 0xdce1e6, metalness: 0.92, roughness: 0.18,
+    emissive: 0xfff3dc, emissiveIntensity: 0.7,
   });
+  const highBeamSilver = silver.clone();
+  highBeamSilver.emissiveIntensity = 0;
   for (const mesh of detailMeshes) {
     const positions = mesh.geometry.getAttribute('position');
     const index = mesh.geometry.getIndex();
-    const parts: number[][] = [[], [], [], []];
+    const parts: number[][] = [[], [], [], [], []];
     const point = new THREE.Vector3();
     for (let i = 0; i < (index?.count ?? positions.count); i += 3) {
       const triangle = [0, 1, 2].map((j) => index ? index.getX(i + j) : i + j);
@@ -63,7 +285,8 @@ export async function loadCar() {
       for (const v of triangle) center.add(point.fromBufferAttribute(positions, v));
       center.divideScalar(3);
       // These are the supplied OBJ's local axes, before its glTF axis conversion.
-      const part = center.y < -3.9 ? 1 : Math.abs(center.x) > 2.1 && center.y > -0.6 ? center.x < 0 ? 2 : 3 : 0;
+      const part = center.y < -3.9 ? Math.abs(center.x + 0.047) < 1.2 ? 4 : 1
+        : Math.abs(center.x) > 2.1 && center.y > -0.6 ? center.x < 0 ? 2 : 3 : 0;
       parts[part].push(...triangle);
     }
     mesh.geometry = mesh.geometry.clone();
@@ -80,8 +303,9 @@ export async function loadCar() {
         selected.expandByPoint(point);
         if (part === 1) headlightBounds[point.x < 0 ? 0 : 1].expandByPoint(point);
       }
-      if (part === 1) {
-        const insert = new THREE.Mesh(geometry, silver);
+      if (part === 1 || part === 4) {
+        const insert = new THREE.Mesh(geometry, part === 4 ? highBeamSilver : silver);
+        insert.name = part === 4 ? 'high-beam-inserts' : 'low-beam-inserts';
         insert.castShadow = true;
         chassis.add(insert);
       } else {
@@ -118,7 +342,7 @@ export async function loadCar() {
   for (const bounds of headlightBounds) {
     if (bounds.isEmpty()) throw new Error('Missing headlight inserts in the car model.');
     const center = bounds.getCenter(new THREE.Vector3());
-    const light = new THREE.SpotLight(0xfff3dc, 1800, 65, Math.PI / 7, 0.55, 1.2);
+    const light = new THREE.SpotLight(0xfff3dc, 1400, 65, Math.PI / 7, 0.55, 1.2);
     light.position.set(center.x, center.y, bounds.max.z + 0.12);
     light.target.position.set(center.x * 1.5, center.y - 1.1, light.position.z + 20);
     light.castShadow = true;
@@ -185,5 +409,5 @@ export async function loadCar() {
   wheels.forEach((wheel, i) => {
     for (const object of wheel.children) object.position.copy(centers[i]).negate();
   });
-  return { chassis, wheels, centers, radii, widths };
+  return { chassis, wheels, centers, radii, widths, setBraking, setReversing, setHazards };
 }

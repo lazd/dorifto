@@ -205,6 +205,7 @@ async function start() {
   let lastTime = 0;
   let burnout = 0;
   let reversing = false;
+  let offTrackTime = 0;
   let cameraYaw = 0;
   let cameraPitch = 0;
   const cameraOrbit = new THREE.Vector3();
@@ -324,6 +325,10 @@ async function start() {
 
   function reset() {
     controls.clear();
+    car.setBraking(false);
+    car.setReversing(false);
+    car.setHazards(false);
+    offTrackTime = 0;
     reversing = false;
     cameraYaw = cameraPitch = 0;
     steering = 0;
@@ -429,7 +434,7 @@ async function start() {
     const steeringLimit = THREE.MathUtils.lerp(tune.steeringLow, tune.steeringHigh, Math.min(speed / 140, 1));
     const counterSteering = input !== 0 && Math.sign(input) !== Math.sign(steering);
     steering = THREE.MathUtils.damp(steering, input * steeringLimit, counterSteering ? 16 : 10, fixedStep);
-    const brakeAmount = reversing ? Number(keys.has('KeyX')) : controls.brake;
+    const brakeAmount = reversing ? 0 : controls.brake;
     const braking = brakeAmount > 0;
     const handbrake = controls.handbrake;
     const throttle = reversing ? controls.reverse : controls.throttle;
@@ -533,6 +538,8 @@ async function start() {
     const lapOrigin = body.getWorldTransform().getOrigin();
     lapPosition.set(lapOrigin.x(), lapOrigin.y(), lapOrigin.z());
     laps.update(lapPosition, fixedStep);
+    offTrackTime = isAsphalt(lapPosition) ? 0 : offTrackTime + fixedStep;
+    car.setHazards(offTrackTime > 3 && (offTrackTime - 3) % 0.8 < 0.4);
     for (let i = 0; i < 4; i++) {
       wheelContacts[i] = vehicle.getWheelInfo(i).get_m_raycastInfo().get_m_isInContact();
     }
@@ -550,6 +557,8 @@ async function start() {
       accumulator -= fixedStep;
     }
     const alpha = accumulator / fixedStep;
+    car.setBraking(!reversing && controls.brake > 0);
+    car.setReversing(reversing);
     for (const state of visualStates) {
       state.object.position.lerpVectors(state.previousPosition, state.position, alpha);
       state.object.quaternion.slerpQuaternions(state.previousRotation, state.rotation, alpha);
