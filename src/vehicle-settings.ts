@@ -1,8 +1,9 @@
 export const vehicleSettings = {
-  massKg: 1450,
-  // Chassis-local meters: +X right, +Y up, +Z forward. Moving Z forward
-  // increases front axle load; moving Y down lowers the center of mass.
-  centerOfMass: { x: 0, y: 0, z: 0 },
+  massKg: 2900 * 0.45359237,
+  // Static front-axle share; COM Z is placed between the model's axle centers.
+  frontWeightFraction: 0.5,
+  // Chassis-local meters: +X right, +Y up. Moving Y down lowers the center of mass.
+  centerOfMass: { x: 0, y: 0 },
   inertiaKgM2: { pitch: 2400, yaw: 2600, roll: 700 },
   damping: { linear: 0.02, angular: 0.05 },
   collisionMarginM: 0.025,

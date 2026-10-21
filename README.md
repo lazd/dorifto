@@ -57,10 +57,11 @@ Each runtime module owns its working state; the entry point coordinates updates
 without sharing its local variables with the camera, physics, or effects.
 
 Edit `vehicleSettings` in `src/vehicle-settings.ts` and reload to change the
-vehicle's physical setup. Defaults preserve the existing behavior: 1,450 kg,
-zero COM offset, and 2,400/2,600/700 kg m^2 pitch/yaw/roll inertia.
-`centerOfMass` is in chassis-local meters (+X right, +Y up, +Z forward).
-Moving Z forward increases front weight distribution; lowering Y lowers the COM.
+vehicle's physical setup. Defaults are 2,900 lb (1,315 kg), 50/50 static
+front/rear weight distribution, and 2,400/2,600/700 kg m^2 pitch/yaw/roll inertia.
+`frontWeightFraction` places the COM longitudinally between the model's front and
+rear axle centers. `centerOfMass` sets the remaining chassis-local X/Y offset in
+meters (+X right, +Y up); lowering Y lowers the COM.
 Axle loads are calculated by the suspension, not by a separate weight-bias multiplier.
 Collision vertices, suspension mounts, force lever arms, reset, and rendered chassis
 positions all account for the COM offset. Inertia is specified independently; changing

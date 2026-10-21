@@ -30,8 +30,12 @@ export function createVehiclePhysics({
   const { cones, terrain, isAsphalt } = course;
   const settings = vehicleSettings;
   const { suspension } = settings;
+  const frontAxleZ = (car.centers[0].z + car.centers[1].z) / 2;
+  const rearAxleZ = (car.centers[2].z + car.centers[3].z) / 2;
   const centerOfMass = new THREE.Vector3(
-    settings.centerOfMass.x, settings.centerOfMass.y, settings.centerOfMass.z,
+    settings.centerOfMass.x,
+    settings.centerOfMass.y,
+    rearAxleZ + (frontAxleZ - rearAxleZ) * settings.frontWeightFraction,
   );
   const centerOfMassOffset = new THREE.Vector3();
   const lapPosition = new THREE.Vector3();
