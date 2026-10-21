@@ -213,7 +213,7 @@ async function start() {
         cones: laps.conesHit, lastCones: laps.lastCones,
         driving: spawnBrakeHeld ? 'brakes-held'
           : controls.handbrake ? 'handbrake'
-          : controls.brake > 0 && controls.throttle > 0 ? 'brakestand'
+          : physics.brakestand ? 'brakestand'
           : reversing ? 'reverse' : controls.brake > 0 ? 'braking'
           : burningOut ? 'burnout' : sliding ? 'sliding' : 'driving',
       },

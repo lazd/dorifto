@@ -19,7 +19,12 @@ export const vehicleSettings = {
     antiRollMaxLoadFraction: 0.4,
     lateralForceHeightFraction: 0.5,
   },
-  brakes: { frontTorqueNm: 1900, rearTorqueNm: 1300, handbrakeTorqueNm: 4500 },
+  brakes: {
+    frontTorqueNm: 1900,
+    rearTorqueNm: 1300,
+    handbrakeTorqueNm: 4500,
+    brakestandMaxSpeedKmh: 4,
+  },
   differential: { coupling: 8, maxTorqueNm: 250 },
   drag: {
     coefficient: 0.31,

@@ -6,15 +6,16 @@ const handling = {
   steeringRate: 2,
   frontStiffness: 45000,
   rearStiffness: 48000,
-  frontGrip: 1,
+  frontGrip: 1.05,
   rearGrip: 1,
 };
 
 export const driveModes = {
   drift: {
     ...handling,
-    steeringLow: 55 * Math.PI / 180,
-    steeringHigh: 45 * Math.PI / 180,
+    steeringRate: (160 * Math.PI) / 180,
+    steeringLow: (55 * Math.PI) / 180,
+    steeringHigh: (45 * Math.PI) / 180,
     friction: 1.25,
     engineTorque: 560,
     enginePower: 360000,
@@ -38,5 +39,5 @@ export const driveModes = {
 export type DriveMode = keyof typeof driveModes;
 
 export function isDriveMode(value: string): value is DriveMode {
-  return value === 'grip' || value === 'drift';
+  return value === "grip" || value === "drift";
 }

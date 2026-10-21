@@ -114,7 +114,7 @@ the keyboard controls. The first connected standard-mapped controller is used.
 | View / Select / Back | Cycle corner-aware chase, classic chase, in-cabin (once per press) |
 | Y / Triangle (north face button) | Toggle Grip / Drift mode (once per press) |
 
-Both triggers together retain brakestand behavior. LT alone brakes forward
+Both triggers together allow brakestand behavior only below 4 km/h. LT alone brakes forward
 motion, then engages reverse only near a stop; release LT to leave reverse.
 Reverse is limited to 35 km/h. Keyboard X also brakes into reverse near a stop;
 release X to leave reverse, or press Z to switch to forward drive. Sticks use a
@@ -184,8 +184,11 @@ The rounded boundary slightly softens force near full utilization; it does not
 increase peak grip or guarantee a stable drift. Drift's
 torque reserve can overcome rear sliding resistance even while the car is moving
 backward, spinning the tires forward before the chassis changes direction.
-During a brakestand, the foot brake holds the front wheels while releasing the
-rear brakes, allowing the driven tires to spin.
+Below 4 km/h (2.5 mph), throttle plus foot brake holds the front wheels while
+releasing the rear brakes for a brakestand. At or above that speed, the foot brake
+acts on all four wheels even with throttle overlap, including during drift
+transitions. The threshold is `vehicleSettings.brakes.brakestandMaxSpeedKmh`;
+it uses chassis speed, not driven-wheel speed, so stationary burnouts still work.
 Hold Z and either steering arrow from a stop
 for donuts; release throttle and unwind/counter-steer to recover traction.
 The red Z32 has black wheels, no front license plate (the rear plate is retained),
@@ -277,8 +280,9 @@ click. Focus returns to the tuning button.
 Both modes default to **60% controller steering expo**, blending linear and cubic
 response after the stick deadzone. This softens fine adjustments near center
 while preserving full lock at full stick; keyboard and camera axes retain
-their previous input response. **Steering rate** defaults to 115 degrees/second
-(2 rad/s), limiting how quickly the wheels move toward lock in addition to
+their previous input response. **Steering rate** defaults to 160 degrees/second
+in Drift (about 2.79 rad/s) and 115 degrees/second in Grip (2 rad/s),
+limiting how quickly the wheels move toward lock in addition to
 existing smoothing. Both modes use the same rate limit for turn-in,
 counter-steering, and unwind, with a 10/s smoothing response and a steering scale
 of 1 (55 degrees low-speed / 45 degrees high-speed lock in Drift,

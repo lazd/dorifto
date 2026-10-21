@@ -30,7 +30,10 @@ export class VehicleAudio {
   ) {
     const unlock = () => this.activate();
     window.addEventListener('pointerdown', unlock);
+    window.addEventListener('pointerup', unlock);
     window.addEventListener('keydown', unlock);
+    window.addEventListener('keyup', unlock);
+    window.addEventListener('click', unlock);
   }
 
   setMuted(muted: boolean) {
@@ -41,7 +44,23 @@ export class VehicleAudio {
   }
 
   private activate() {
-    if (this.starting || this.failed || (this.node && this.context?.state === 'running')) return;
+    if (this.failed || this.muted) return;
+    if (!this.context) {
+      this.context = new AudioContext();
+      this.context.addEventListener('statechange', () => this.publishState());
+    }
+    // A blocked resume can remain pending; never let it prevent a later
+    // user gesture from issuing another resume directly in that handler.
+    if (this.context.state !== 'running') {
+      void this.context.resume().then(() => {
+        this.setAudible(true);
+        this.publishState();
+      }).catch((error: unknown) => {
+        this.publishState();
+        this.reportError(error);
+      });
+    }
+    if (this.starting || this.node) return;
     this.starting = this.start().catch((error: unknown) => {
       this.muted = true;
       this.failed = true;
@@ -51,13 +70,8 @@ export class VehicleAudio {
   }
 
   private async start() {
-    if (!this.context) {
-      this.context = new AudioContext();
-      this.context.addEventListener('statechange', () => this.publishState());
-    }
     const context = this.context;
-    // Resume directly in the gesture handler before awaiting worklet loading.
-    const resumed = context.resume();
+    if (!context) throw new Error('Audio context must be created before loading sound.');
     if (!this.node) {
       await context.audioWorklet.addModule(processorUrl);
       const node = new AudioWorkletNode(context, 'vehicle-sound', {
@@ -100,7 +114,6 @@ export class VehicleAudio {
       this.node = node;
       this.master = master;
     }
-    await resumed;
     this.setAudible(true);
     this.publishState();
   }

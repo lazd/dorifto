@@ -144,6 +144,7 @@ export function createVehiclePhysics({
   let burnout = 0;
   let reversing = false;
   let spawnBrakeHeld = true;
+  let brakestand = false;
   let offTrackTime = 0;
   const tireSpeeds = [0, 0, 0, 0];
   const tireAngles = [0, 0, 0, 0];
@@ -252,6 +253,7 @@ export function createVehiclePhysics({
     for (const tire of tireSounds) tire.slip = tire.speed = tire.load = 0;
     coneSoundCooldowns.clear();
     spawnBrakeHeld = true;
+    brakestand = false;
     car.setBraking(true);
     car.setReversing(false);
     car.setHazards(false);
@@ -323,7 +325,7 @@ export function createVehiclePhysics({
     const braking = brakeAmount > 0;
     const handbrake = controls.handbrake;
     const throttle = reversing ? controls.reverse : controls.throttle;
-    const brakestand = throttle > 0 && braking && !reversing;
+    brakestand = throttle > 0 && braking && !reversing && speed < settings.brakes.brakestandMaxSpeedKmh;
     burnout = 0;
     for (const tire of tireSounds) tire.slip = tire.speed = tire.load = 0;
     for (const [cone, remaining] of coneSoundCooldowns) {
@@ -533,5 +535,6 @@ export function createVehiclePhysics({
     get burnout() { return burnout; },
     get reversing() { return reversing; },
     get spawnBrakeHeld() { return spawnBrakeHeld; },
+    get brakestand() { return brakestand; },
   };
 }
