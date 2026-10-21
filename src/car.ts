@@ -224,10 +224,10 @@ export async function loadCar() {
       for (const vertex of parts[part]) {
         bounds.expandByPoint(point.fromBufferAttribute(geometry.getAttribute('position'), vertex));
       }
-      const light = new THREE.SpotLight(reverse ? 0xfff6df : 0xff0000, 0, 6, Math.PI / 3, 0.8, 2);
+      const light = new THREE.SpotLight(reverse ? 0xfff6df : 0xff0000, 0, 4, Math.PI / 5, 0.9, 2);
       light.position.copy(bounds.getCenter(new THREE.Vector3()));
-      light.position.z = bounds.min.z - 0.04;
-      light.target.position.set(light.position.x, -0.55, light.position.z - 2.5);
+      light.position.z = bounds.min.z - 0.18;
+      light.target.position.set(light.position.x, light.position.y - 0.35, light.position.z - 2.5);
       light.castShadow = true;
       light.shadow.mapSize.set(256, 256);
       light.shadow.camera.near = 0.03;
@@ -264,7 +264,7 @@ export async function loadCar() {
       material.emissiveIntensity = reversing ? 5 : 0;
     }
     for (const light of reverseLights) {
-      light.intensity = reversing ? 8 : 0;
+      light.intensity = reversing ? 4 : 0;
       light.visible = reversing;
     }
   }
@@ -272,12 +272,13 @@ export async function loadCar() {
     brakingActive = braking;
     setCoverLit(coverMaterials[1], braking || headlightsOn);
     for (const { material, restingColor, running } of brakeMaterials) {
-      const lit = braking || (headlightsOn && running);
-      material.color.set(lit ? 0xff0000 : restingColor);
-      material.emissiveIntensity = braking ? 4 : headlightsOn && running ? 0.45 : 0;
+      const runningLit = headlightsOn && running;
+      material.color.set(braking ? 0xff0000 : runningLit ? 0xc52025 : restingColor);
+      material.emissive.set(braking ? 0xff0804 : 0xff0000);
+      material.emissiveIntensity = braking ? 6 : runningLit ? 0.4 : 0;
     }
     for (const light of brakeLights) {
-      light.intensity = braking ? 16 : 0;
+      light.intensity = braking ? 8 : 0;
       light.visible = braking;
     }
   }

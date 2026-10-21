@@ -18,6 +18,10 @@ keyboard or standard-mapped gamepad. Click the game if focus is in another windo
 
 ## Controls
 
+Click **Help** to open the keyboard/controller controls dialog; close it with
+Close or Escape. Driving inputs are disabled while the dialog is open, but the
+simulation continues. Settings and Reset remain in the main footer.
+
 | Key | Action |
 | --- | --- |
 | Left / right arrows | Steer |
@@ -43,6 +47,7 @@ the keyboard controls. The first connected standard-mapped controller is used.
 | R1 / RB or Xbox X (west face button) | Handbrake |
 | R3 (right-stick click, hold) | Look behind; release to return |
 | RT + LT | Brakestand |
+| Start / Menu / Options | Reset (once per press) |
 
 Both triggers together retain brakestand behavior. LT alone brakes forward
 motion, then engages reverse only near a stop; release LT to leave reverse.
@@ -76,7 +81,10 @@ speed, retaining enough range to counter-steer into a slide. Direction changes
 respond faster than initial turn-in. Unwind the steering as rotation stops to
 avoid snapping into an opposite slide.
 Drift tuning uses up to 2000 Nm of drive torque per rear wheel, limited to
-110 kW per wheel (220 kW total), with a 1.4 tire friction coefficient. Torque
+110 kW per wheel (220 kW total), with a 1.7 tire friction coefficient and
+58,000 N/rad rear cornering stiffness. The higher traction budget and stronger rear
+cornering response keep ordinary turns planted; hard turn-in or locking the rear
+wheels with the handbrake can still initiate a slide. Torque
 falls as wheel speed rises so launch wheelspin settles as the car accelerates.
 Smoke and burnout marks require substantial slip, not the small tire slip
 needed for ordinary acceleration.
@@ -115,6 +123,8 @@ window glass is unchanged. This keeps the unlit lenses subdued without washing
 their illuminated colors white.
 When braking, short-range shadow-casting red spotlights illuminate the ground
 and nearby objects behind all three brake lenses.
+Brake and reverse spill uses soft, narrow rearward beams with reduced intensity
+and a 4 m range to limit bumper highlights without dimming the illuminated lenses.
 All four clear lenses in the center rear panel glow warm white and cast a subtle
 white light only in reverse. Headlight inserts glow warm white behind their
 covers, with reduced beam intensity to avoid washing out the road.
@@ -150,8 +160,8 @@ Reset clears all lap times. Reloading or changing courses also starts a new sess
 
 The Drive mode selector switches handling live without resetting the course.
 Drift is the default, with full steering lock and wheelspin for power slides.
-Increased tire grip and rear cornering stiffness, plus slightly reduced launch
-torque, make it less eager to slide during ordinary cornering.
+Increased tire grip and rear cornering stiffness make it less eager to slide
+during ordinary cornering, without a scripted drift gate or yaw assistance.
 Its loose chase camera follows travel direction to show slides. Grip's camera
 stays more closely aligned with the car's heading and responds faster through
 turns, while retaining smooth interpolation and the controller camera controls.
@@ -165,6 +175,20 @@ and handbrake use. Both modes support keyboard, analog gamepad, and reverse.
 The selected mode is carried in `?mode=grip` or `?mode=drift` and preserved when
 switching courses. Tune values are defined in `src/drive-modes.ts`.
 
+## Camera style
+
+The live Camera style picker offers **Corner-aware chase** (default) and
+**Classic chase** (the original camera). Camera style is independent of drive mode.
+Corner-aware chase shifts gently outside the direction of motion's turn during
+slides, raises/pulls back slightly, and looks ahead along the course toward the
+exit. Off-course, low-speed, reverse, and manual camera input fade or suppress
+the assistance. Transitions are smoothed; counter-steering does not flip the offset.
+Classic chase keeps the original framing and motion. `?camera=corner` or
+`?camera=classic` persists the choice through reloads and course changes.
+Corner look-ahead projects continuously between route samples; filtered motion
+turn rate and a slower look-target response prevent small physics changes from
+jerking the view.
+
 ## Time of day
 
 The Time of day picker switches lighting live without resetting the car or lap.
@@ -174,7 +198,9 @@ sky with soft cool ambient moonlight to reveal the car and nearby hills;
 the car's headlights remain the main illumination on the road.
 Sky, fog, ambient illumination, reflections, and exposure change together.
 At Sunset and Night, headlights (beams and lens glow) switch on together with
-the running lights. At Noon they switch off. The two body brake lenses act as dim red running lights and brighten
+the running lights. At Noon they switch off. The two body brake lenses use a
+dark red base and low emission as running lights, with a pronounced jump to
+full red emission when braking so brake application stays visible at Sunset/Night. They brighten
 when braking; the spoiler strip remains brake-only. Front turn signals glow dim amber
 and brighten during hazard flashes; rear signals illuminate only for hazards.
 Side markers glow amber. Soft red

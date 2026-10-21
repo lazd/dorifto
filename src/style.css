@@ -35,6 +35,14 @@ select { margin-left: 6px; padding: 5px 8px; color: #eef6f5; background: #18272e
 button:hover kbd, button:focus-visible kbd { background: #397d70; }
 .credit { font-size: 10px; line-height: 1.5; color: #aebfbd; margin: 14px 0 0; }
 a { color: inherit; text-underline-offset: 2px; }
+dialog { width: min(560px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow: auto; padding: 24px; color: #eef6f5; background: #18272e; border: 1px solid #9ee8d566; border-radius: 10px; }
+dialog::backdrop { background: #000a; }
+dialog h2 { margin-top: 0; }
+dialog h3 { color: #9ee8d5; font-size: 15px; }
+dialog dl { display: grid; grid-template-columns: minmax(100px, 1fr) 2fr; gap: 10px 16px; font-size: 13px; align-items: center; }
+dialog dd { margin: 0; }
+dialog p { font-size: 12px; line-height: 1.5; color: #c1cfce; }
+dialog form { display: flex; justify-content: flex-end; margin-top: 20px; }
 @media (max-width: 640px) {
   .title { top: 18px; left: 18px; }
   .lap-timing { top: 100px; right: 16px; padding: 10px 12px; }

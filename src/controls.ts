@@ -8,6 +8,8 @@ export class DrivingControls {
   cameraX = 0;
   cameraY = 0;
   lookBehind = false;
+  resetRequested = false;
+  private resetHeld = false;
   private focused = document.hasFocus();
 
   constructor(private readonly controllerStatus: HTMLElement) {
@@ -27,9 +29,10 @@ export class DrivingControls {
     this.steer = this.throttle = this.brake = this.reverse = 0;
     this.cameraX = this.cameraY = 0;
     this.handbrake = this.lookBehind = false;
+    this.resetRequested = false;
   }
 
-  poll() {
+  poll(enabled = true) {
     const available = typeof navigator.getGamepads === 'function';
     const pads = available ? Array.from(navigator.getGamepads()) : [];
     const pad = pads.find((pad) => pad?.connected && pad.mapping === 'standard');
@@ -38,7 +41,10 @@ export class DrivingControls {
       : available ? 'Controller: connect and press a button'
       : 'Gamepad API unavailable. Keyboard controls still work.';
     if (this.controllerStatus.textContent !== message) this.controllerStatus.textContent = message;
-    if (!this.focused || document.hidden) {
+    const resetPressed = Boolean(pad?.buttons[9]?.pressed);
+    this.resetRequested = resetPressed && !this.resetHeld;
+    this.resetHeld = resetPressed;
+    if (!enabled || !this.focused || document.hidden) {
       this.clear();
       return;
     }

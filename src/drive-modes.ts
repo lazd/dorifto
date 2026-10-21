@@ -2,8 +2,8 @@ export const driveModes = {
   drift: {
     steeringLow: 0.95,
     steeringHigh: 0.8,
-    friction: 1.4,
-    rearStiffness: 48000,
+    friction: 1.7,
+    rearStiffness: 58000,
     frontStiffness: 38000,
     wheelTorque: 2000,
     wheelPower: 110000,

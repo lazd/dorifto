@@ -31,23 +31,42 @@
         <button id="random-course" type="button" title="Generate a new course (restarts demo)"><kbd>Random course</kbd></button>
         <label>Drive mode <select id="drive-mode"><option value="grip">Grip</option><option value="drift" selected>Drift</option></select></label>
         <label>Time of day <select id="time-of-day"><option value="noon">Noon</option><option value="sunset">Sunset</option><option value="night">Night</option></select></label>
-        <span><kbd>←</kbd><kbd>→</kbd> Steer</span>
-        <span><kbd>Z</kbd> Accelerate</span>
-        <span><kbd>X</kbd> Brake / Reverse</span>
-        <span><kbd>X</kbd>+<kbd>Z</kbd> Brakestand</span>
-        <span><kbd>Space</kbd> Handbrake</span>
+        <label>Camera style <select id="camera-style"><option value="corner">Corner-aware chase</option><option value="classic">Classic chase</option></select></label>
         <button id="reset" type="button"><kbd>R</kbd> Reset</button>
+        <button id="help" type="button" aria-haspopup="dialog"><kbd>Help</kbd></button>
       </div>
-      <p class="credit">
-        R2 / RT Gas · L2 / LT Brake / Reverse · Left stick Steer · Right stick Camera · R1 / RB or X Handbrake · R3 Look behind
-        <span id="controller-status" role="status">Controller: connect and press a button</span>
-      </p>
       <p class="credit">
         “<a href="https://sketchfab.com/3d-models/nissan-fairlady-300zx-z32-1989-8c04336a4ed84f6f836760db8256f9f0" target="_blank" rel="noreferrer">Nissan Fairlady 300ZX (Z32) 1989</a>”
         by <a href="https://sketchfab.com/Lexyc16" target="_blank" rel="noreferrer">Lexyc16</a>
         · <a href="https://creativecommons.org/licenses/by-nc/4.0/" target="_blank" rel="noreferrer">CC BY-NC 4.0</a> · Non-commercial demo
       </p>
     </footer>
+    <dialog id="help-dialog" aria-labelledby="help-title">
+      <h2 id="help-title">Driving controls</h2>
+      <h3>Keyboard</h3>
+      <dl>
+        <dt><kbd>←</kbd><kbd>→</kbd></dt><dd>Steer</dd>
+        <dt><kbd>Z</kbd></dt><dd>Accelerate</dd>
+        <dt><kbd>X</kbd></dt><dd>Brake; hold to reverse near a stop</dd>
+        <dt><kbd>X</kbd> + <kbd>Z</kbd></dt><dd>Brakestand</dd>
+        <dt><kbd>Space</kbd></dt><dd>Handbrake</dd>
+        <dt><kbd>R</kbd></dt><dd>Reset car, cones, effects, and lap timing</dd>
+      </dl>
+      <h3>Controller</h3>
+      <dl>
+        <dt>R2 / RT</dt><dd>Accelerate</dd>
+        <dt>L2 / LT</dt><dd>Brake; hold to reverse near a stop</dd>
+        <dt>RT + LT</dt><dd>Brakestand</dd>
+        <dt>Left stick</dt><dd>Steer</dd>
+        <dt>Right stick</dt><dd>Adjust camera</dd>
+        <dt>R1 / RB or X</dt><dd>Handbrake (X is the west face button)</dd>
+        <dt>R3 (hold)</dt><dd>Look behind</dd>
+        <dt>Start / Menu / Options</dt><dd>Reset</dd>
+      </dl>
+      <p id="controller-status" role="status">Controller: connect and press a button</p>
+      <p>Press the accelerator to release the initial brake hold. Driving inputs are disabled while Help is open; the simulation continues.</p>
+      <form method="dialog"><button type="submit" autofocus><kbd>Close</kbd></button></form>
+    </dialog>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
