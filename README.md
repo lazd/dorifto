@@ -67,7 +67,15 @@ transition to following travel direction at low speed. Reset snaps the camera
 and interpolation history together.
 Ammo handles suspension and collisions using a compact convex chassis envelope
 covering the roof, rear hatch and spoiler
-for rollover contacts, while retaining the original underbody clearance and inertia.
+for rollover contacts, while retaining the original underbody clearance.
+Chassis pitch/yaw/roll inertia is 2400/2600/700 kg m^2 rather than that of a thin
+underbody box. Each axle has a 12,000 N/m anti-roll bar, capped at 40% of the
+lighter wheel's suspension load and active only with both wheels grounded.
+Custom lateral tire forces use a suspension roll-center approximation halfway
+between contact height and center-of-mass height; longitudinal forces retain
+their full contact-point lever arm. This avoids excessive rollover torque during
+sideways grip recovery without locking the car upright or adding yaw assistance.
+The car remains free to roll in severe impacts or while airborne.
 A simplified combined-slip tire model handles road forces at each wheel's
 contact point. Tire forces depend on suspension
 load, lateral slip angle, and wheelspin, sharing a finite friction budget. Wheel
@@ -84,15 +92,21 @@ speed, retaining enough range to counter-steer into a slide. Direction changes
 respond faster than initial turn-in. Unwind the steering as rotation stops to
 avoid snapping into an opposite slide.
 Drift tuning uses up to 2000 Nm of drive torque per rear wheel, limited to
-110 kW per wheel (220 kW total), with a 1.7 tire friction coefficient and
-58,000 N/rad rear cornering stiffness. The higher traction budget and stronger rear
-cornering response keep ordinary turns planted; hard turn-in or locking the rear
-wheels with the handbrake can still initiate a slide. Torque
+110 kW per wheel (220 kW total), with a 1.45 rear tire friction coefficient and
+44,000 N/rad rear cornering stiffness. Stronger front cornering response and
+greater front grip bias turn-in toward rotation rather than front-end washout;
+throttle can break rear traction without requiring the handbrake. Torque
 falls as wheel speed rises so launch wheelspin settles as the car accelerates.
 Smoke and burnout marks require substantial slip, not the small tire slip
 needed for ordinary acceleration.
 Longitudinal and lateral slip demands saturate together, so spinning the rear
-tires reduces their cornering grip. Hold Z and either steering arrow from a stop
+tires reduces their cornering grip. Pure lateral demand is smoothly bounded
+before the combined friction-circle limit, so extreme drift angles do not
+crowd out drive force. Throttle redirects the available rear traction toward
+propulsion rather than applying a scripted shove. Drift's front stiffness is
+52,000 N/rad with a 30% front grip allowance (1.885 effective friction coefficient)
+for stronger turn-in; Grip is unchanged.
+Hold Z and either steering arrow from a stop
 for donuts; release throttle and unwind/counter-steer to recover traction.
 The red Z32 has black wheels, no front license plate (the rear plate is retained),
 and a low chase camera. Hold Z from a stop for a
@@ -163,8 +177,8 @@ Reset clears all lap times. Reloading or changing courses also starts a new sess
 
 The Drive mode selector switches handling live without resetting the course.
 Drift is the default, with full steering lock and wheelspin for power slides.
-Increased tire grip and rear cornering stiffness make it less eager to slide
-during ordinary cornering, without a scripted drift gate or yaw assistance.
+Its front-biased grip and cornering response let the rear break loose under
+throttle, without a scripted drift gate or yaw assistance.
 Its loose chase camera follows travel direction to show slides. Grip's camera
 stays more closely aligned with the car's heading and responds faster through
 turns, while retaining smooth interpolation and the controller camera controls.
@@ -298,14 +312,33 @@ button mutes/unmutes. Audio fades out on blur, hidden tabs, and while Help is op
 
 The four-stroke V6 voice combines combustion pulses, exhaust harmonics, and noise.
 A speed-driven five-speed automatic sound model uses gear ratios, shift hysteresis,
-an RPM drop/load cut on upshifts, and downshifts while slowing. Rear wheelspin can
-flare RPM without forcing premature upshifts. This is an audio drivetrain only:
+an RPM drop/load cut on upshifts, and downshifts while slowing. Engine RPM follows
+the greater of road-coupled and driven-wheel RPM, without attenuating the
+wheel-speed contribution. Rear overspeed starts a throttle-driven rev flare at
+6% slip and reaches full strength at 22%, gated by 2 m/s of excess tread speed
+to avoid flaring on tiny low-speed differences. Sustained wheelspin holds the gear.
+Full-throttle burnouts and powered slides with sufficient wheelspin reach
+a pulsed 11 Hz fuel-cut limiter with a small RPM bounce; recovering grip smoothly
+restores speed/gear coupling. A lateral slide alone does not trigger the limiter.
+The engine mixes deep two-bank/cycle components, saturated exhaust pulses and
+low-frequency body rather than emphasizing a thin high-frequency buzz.
+This is an audio drivetrain only:
 gearing does not alter existing physics or power delivery.
-Turbo boost spools with throttle/RPM and vents a short noise burst when lifting
-off or shifting under boost. Asphalt tire squeal follows actual contacting-wheel
+Turbo boost spools with throttle/RPM, with a breathy 3.2-4.6 kHz whistle made
+from narrow-band airflow noise and a lightly wavering tone rather than a dominant
+lower-pitched whine. It vents a short noise burst when lifting off or shifting
+under boost. Asphalt tire squeal follows actual contacting-wheel
 lateral/longitudinal slip (including burnouts and handbrake lockup), not steering
-input; dirt does not squeal. Tire squeal uses wavering stick-slip tones and harmonics with a small noise layer,
-rather than a continuous broadband hiss.
+input; dirt does not squeal. Tire squeal uses four independent stereo voices, each driven by its wheel's
+contact load and lateral/longitudinal sliding. Irregular friction excitation
+feeds three broad, non-harmonic resonances per tire, producing overlapping
+screeches rather than a single sine-wave whistle. Sliding speed and load vary
+the tuning and texture; unloaded, airborne and dirt tires do not squeal.
+A restrained pair of wavering, non-harmonic tones per wheel emerges as slip
+builds, so heavy sliding adds a recognizable squeal above the gentle scrub layer.
+This is a perceptual approximation, not a calibrated tire-acoustics simulation.
+The approach is informed by [Kröger and Moldenhauer, ISMA 2010:
+Influences on the vibration frequencies of tyre tread blocks](https://past.isma-isaac.be/downloads/isma2010/papers/isma2010_0480.pdf).
 Its quiet mix, progressive slip-volume curve, and 140 ms onset ease it in gently;
 an 80 ms release lets it fade promptly as traction returns.
 Car/cone contact impulses produce debounced hollow thuds, with harder hits louder.

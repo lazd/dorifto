@@ -286,8 +286,6 @@ async function start() {
     body.setCcdSweptSphereRadius(0.12);
     return body;
   });
-  vector.setValue(0.86, 0.23, 2.02);
-  const inertiaShape = new Ammo.btBoxShape(vector);
   const chassisShape = new Ammo.btConvexHullShape();
   for (let i = 0; i < car.collisionVertices.length; i++) {
     const point = car.collisionVertices[i];
@@ -296,11 +294,10 @@ async function start() {
   }
   chassisShape.setMargin(0.025);
   const body = rigidBody(1450, chassisShape, new THREE.Vector3(0, 0.8, 0));
-  // Keep the existing mass distribution/handling; only the collision envelope changes.
-  inertiaShape.calculateLocalInertia(1450, vector);
+  // Vehicle-scale pitch/yaw/roll inertia, not the thin underbody box's inertia.
+  vector.setValue(2400, 2600, 700);
   body.setMassProps(1450, vector);
   body.updateInertiaTensor();
-  Ammo.destroy(inertiaShape);
   const carPointer = Ammo.getPointer(body);
   const coneIds = new Map(coneBodies.map((cone, i) => [Ammo.getPointer(cone), i]));
   body.setActivationState(4);
@@ -335,7 +332,7 @@ async function start() {
     console.error('Vehicle audio unavailable:', error);
     soundButton.title = `Audio unavailable: ${error instanceof Error ? error.message : String(error)}. Reload to retry.`;
   });
-  let tireSqueal = 0;
+  const tireSounds = Array.from({ length: 4 }, () => ({ slip: 0, speed: 0, load: 0, roadSpeed: 0 }));
   const coneSoundCooldowns = new Map<number, number>();
   const helpDialog = element<HTMLDialogElement>('#help-dialog');
   element('#help').addEventListener('click', () => {
@@ -396,6 +393,8 @@ async function start() {
   const tireLateral = new THREE.Vector3();
   const tireNormal = new THREE.Vector3();
   const forceOffset = new Ammo.btVector3(0, 0, 0);
+  const suspensionUp = new THREE.Vector3();
+  const antiRollOffset = new THREE.Vector3();
   const resetTransform = new Ammo.btTransform();
   resetTransform.setIdentity();
   const spawnNormal = terrain.normalAt(spawn.position[0], spawn.position[1]);
@@ -495,7 +494,7 @@ async function start() {
   function reset() {
     controls.clear();
     audio.reset();
-    tireSqueal = 0;
+    for (const tire of tireSounds) tire.slip = tire.speed = tire.load = tire.roadSpeed = 0;
     coneSoundCooldowns.clear();
     spawnBrakeHeld = true;
     car.setBraking(true);
@@ -622,10 +621,30 @@ async function start() {
     const throttle = reversing ? controls.reverse : controls.throttle;
     const brakestand = throttle > 0 && braking && !reversing;
     burnout = 0;
-    tireSqueal = 0;
+    for (const tire of tireSounds) tire.slip = tire.speed = tire.load = 0;
     for (const [cone, remaining] of coneSoundCooldowns) {
       if (remaining <= fixedStep) coneSoundCooldowns.delete(cone);
       else coneSoundCooldowns.set(cone, remaining - fixedStep);
+    }
+    suspensionUp.set(0, 1, 0).applyQuaternion(physicsRotation);
+    for (const axle of [0, 2]) {
+      const left = vehicle.getWheelInfo(axle).get_m_raycastInfo();
+      const right = vehicle.getWheelInfo(axle + 1).get_m_raycastInfo();
+      // A bar transfers spring force, never pulls an airborne wheel toward the road.
+      if (!wheelContacts[axle] || !wheelContacts[axle + 1]) continue;
+      const leftLoad = Math.max(0, vehicle.getWheelInfo(axle).get_m_wheelsSuspensionForce());
+      const rightLoad = Math.max(0, vehicle.getWheelInfo(axle + 1).get_m_wheelsSuspensionForce());
+      const limit = Math.min(leftLoad, rightLoad) * 0.4;
+      const barForce = THREE.MathUtils.clamp(
+        (right.get_m_suspensionLength() - left.get_m_suspensionLength()) * 12000, -limit, limit,
+      );
+      for (let side = 0; side < 2; side++) {
+        antiRollOffset.copy(car.centers[axle + side]).applyQuaternion(physicsRotation);
+        const force = side === 0 ? barForce : -barForce;
+        vector.setValue(suspensionUp.x * force, suspensionUp.y * force, suspensionUp.z * force);
+        forceOffset.setValue(antiRollOffset.x, antiRollOffset.y, antiRollOffset.z);
+        body.applyForce(vector, forceOffset);
+      }
     }
     for (let i = 0; i < 4; i++) {
       const rear = i >= 2;
@@ -652,12 +671,13 @@ async function start() {
       const vy = linear.y() + angular.z() * tireOffset.x - angular.x() * tireOffset.z;
       const vz = linear.z() + angular.x() * tireOffset.y - angular.y() * tireOffset.x;
       const along = vx * tireForward.x + vy * tireForward.y + vz * tireForward.z;
+      tireSounds[i].roadSpeed = along;
       const across = vx * tireLateral.x + vy * tireLateral.y + vz * tireLateral.z;
       const slipAngle = Math.atan2(across, Math.max(Math.abs(along), 2));
       const load = wheelContacts[i] ? Math.max(0, wheel.get_m_wheelsSuspensionForce()) : 0;
       const staticGrip = braking && !rear ? 0.15 * brakeAmount * (1 - THREE.MathUtils.smoothstep(Math.abs(along), 0.2, 0.5)) : 0;
       const surfaceGrip = paved ? 1 : 0.65;
-      const capacity = load * (tune.friction + staticGrip) * surfaceGrip;
+      const capacity = load * (tune.friction * (rear ? 1 : tune.frontGrip) + staticGrip) * surfaceGrip;
       const lateralDemand = -(rear ? tune.rearStiffness : tune.frontStiffness) * slipAngle * surfaceGrip;
       const engineBraking = rear
         ? 500 * (1 - THREE.MathUtils.smoothstep(throttle, 0, 0.25))
@@ -677,12 +697,12 @@ async function start() {
           ? throttle * driveDirection * traction
             * Math.min(tune.wheelTorque, tune.wheelPower / Math.max(Math.abs(tireSpeeds[i]), 1)) : 0;
         const slipRatio = (tireSpeeds[i] * car.radii[i] - along) / Math.max(Math.abs(along), braking ? 0.5 : 4);
-        // Saturate the combined demand, not each axis independently: a tire
-        // spinning far above road speed must lose lateral authority.
+        // Bound pure lateral demand before combining slips: a large drift angle
+        // must not consume an unbounded share of the tire's drive-force budget.
         const driveDemand = capacity * slipRatio * 8;
-        const lateral = lateralDemand;
+        const lateral = capacity * Math.tanh(lateralDemand / Math.max(capacity, 1));
         const combined = Math.hypot(driveDemand, lateral);
-        const scale = combined > 0 ? capacity * Math.tanh(combined / Math.max(capacity, 1)) / combined : 1;
+        const scale = combined > capacity ? capacity / combined : 1;
         const fx = driveDemand * scale;
         const fy = lateral * scale;
         const differential = rear ? THREE.MathUtils.clamp((tireSpeeds[i === 2 ? 3 : 2] - tireSpeeds[i]) * 8, -250, 250) : 0;
@@ -701,18 +721,30 @@ async function start() {
             * THREE.MathUtils.smoothstep(Math.abs(across), 0.8, 4);
           const longitudinalSlip = THREE.MathUtils.smoothstep(slipRatio, 0.15, 0.65)
             * THREE.MathUtils.smoothstep(excessSpeed, 1, 5);
-          tireSqueal = Math.max(tireSqueal, lateralSlip, longitudinalSlip);
+          tireSounds[i].slip = Math.max(lateralSlip, longitudinalSlip);
+          tireSounds[i].speed = Math.hypot(across, excessSpeed);
+          tireSounds[i].load = load / (1450 * 9.81 / 4);
         }
         // Normal acceleration needs a small amount of slip, not tire smoke.
         if (rear) burnout = Math.max(burnout, THREE.MathUtils.smoothstep(slipRatio, 0.18, 0.65)
           * THREE.MathUtils.smoothstep(excessSpeed, 1, 4));
       }
       vector.setValue(
-        tireForward.x * longitudinalForce + tireLateral.x * lateralForce,
-        tireForward.y * longitudinalForce + tireLateral.y * lateralForce,
-        tireForward.z * longitudinalForce + tireLateral.z * lateralForce,
+        tireForward.x * longitudinalForce,
+        tireForward.y * longitudinalForce,
+        tireForward.z * longitudinalForce,
       );
       forceOffset.setValue(tireOffset.x, tireOffset.y, tireOffset.z);
+      body.applyForce(vector, forceOffset);
+      // Approximate suspension roll-center geometry for our custom lateral forces.
+      // Bullet's rollInfluence only affects its disabled built-in tire model.
+      const rollCenterOffset = -tireOffset.dot(suspensionUp) * 0.5;
+      forceOffset.setValue(
+        tireOffset.x + suspensionUp.x * rollCenterOffset,
+        tireOffset.y + suspensionUp.y * rollCenterOffset,
+        tireOffset.z + suspensionUp.z * rollCenterOffset,
+      );
+      vector.setValue(tireLateral.x * lateralForce, tireLateral.y * lateralForce, tireLateral.z * lateralForce);
       body.applyForce(vector, forceOffset);
     }
     const drag = 8 + 0.45 * Math.hypot(linear.x(), linear.z());
@@ -777,7 +809,8 @@ async function start() {
     audio.update(dt, {
       speed, throttle: reversing ? controls.reverse : controls.throttle, reversing,
       drivenWheelSpeed: (Math.abs(tireSpeeds[2]) + Math.abs(tireSpeeds[3])) / 2,
-      tireSlip: tireSqueal,
+      drivenRoadSpeed: (Math.abs(tireSounds[2].roadSpeed) + Math.abs(tireSounds[3].roadSpeed)) / 2,
+      tires: tireSounds,
     }, document.hasFocus() && !document.hidden && !helpDialog.open);
     forward.set(0, 0, 1).applyQuaternion(car.chassis.quaternion);
     forward.y = 0;

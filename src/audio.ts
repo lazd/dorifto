@@ -11,7 +11,14 @@ export interface VehicleSoundState {
   throttle: number;
   reversing: boolean;
   drivenWheelSpeed: number;
-  tireSlip: number;
+  drivenRoadSpeed: number;
+  tires: readonly TireSoundState[];
+}
+
+export interface TireSoundState {
+  slip: number;
+  speed: number;
+  load: number;
 }
 
 export class VehicleAudio {
@@ -28,6 +35,7 @@ export class VehicleAudio {
   private shiftCooldown = 0;
   private wasReversing = false;
   private failed = false;
+  private wheelspin = 0;
 
   constructor(private readonly button: HTMLButtonElement, private readonly reportError: (error: unknown) => void) {
     button.addEventListener('click', () => {
@@ -67,7 +75,7 @@ export class VehicleAudio {
     if (!this.node) {
       await context.audioWorklet.addModule(processorUrl);
       const node = new AudioWorkletNode(context, 'vehicle-sound', {
-        numberOfInputs: 0, numberOfOutputs: 4, outputChannelCount: [1, 1, 1, 1],
+        numberOfInputs: 0, numberOfOutputs: 4, outputChannelCount: [1, 1, 2, 1],
       });
       node.onprocessorerror = () => {
         this.failed = true;
@@ -88,9 +96,9 @@ export class VehicleAudio {
       rumbleFilter.frequency.value = 25;
       master.connect(rumbleFilter).connect(limiter).connect(context.destination);
       const channels: { type: BiquadFilterType; frequency: number; gain: number; q: number }[] = [
-        { type: 'lowpass', frequency: 2600, gain: 0.65, q: 0.7 },
+        { type: 'lowpass', frequency: 1500, gain: 0.65, q: 0.7 },
         { type: 'highpass', frequency: 1100, gain: 0.28, q: 0.7 },
-        { type: 'bandpass', frequency: 2000, gain: 0.28, q: 0.8 },
+        { type: 'lowpass', frequency: 4800, gain: 0.28, q: 0.7 },
         { type: 'lowpass', frequency: 950, gain: 0.9, q: 0.8 },
       ];
       channels.forEach((channel, i) => {
@@ -135,6 +143,7 @@ export class VehicleAudio {
     this.rpm = 850;
     this.boost = this.previousThrottle = this.shiftTime = this.shiftCooldown = 0;
     this.wasReversing = false;
+    this.wheelspin = 0;
     this.node?.port.postMessage({ reset: true });
   }
 
@@ -148,9 +157,13 @@ export class VehicleAudio {
       this.wasReversing = state.reversing;
     }
     const wheelRpm = Math.abs(state.speed) / (2 * Math.PI * 0.336) * 60;
+    const excessSpeed = Math.max(0, Math.abs(state.drivenWheelSpeed) * 0.336 - Math.abs(state.drivenRoadSpeed));
+    const driveSlip = excessSpeed / Math.max(Math.abs(state.drivenRoadSpeed), 4);
+    const spinTarget = clamp((driveSlip - 0.06) / 0.16) * clamp(excessSpeed / 2);
+    this.wheelspin = damp(this.wheelspin, spinTarget, spinTarget > this.wheelspin ? 8 : 5, dt);
     const roadRpm = wheelRpm * ratios[this.gear] * finalDrive;
     let shifted = false;
-    if (!state.reversing && this.shiftCooldown === 0) {
+    if (!state.reversing && this.shiftCooldown === 0 && this.wheelspin < 0.25) {
       if (roadRpm > 4800 + state.throttle * 1500 && this.gear < ratios.length - 1) {
         this.gear++;
         shifted = true;
@@ -165,8 +178,10 @@ export class VehicleAudio {
     }
     const ratio = state.reversing ? 3.369 : ratios[this.gear];
     const spinningRpm = Math.abs(state.drivenWheelSpeed) * 60 / (2 * Math.PI) * ratio * finalDrive;
-    const coupledRpm = Math.max(wheelRpm * ratio * finalDrive, spinningRpm * state.throttle);
-    const targetRpm = clamp(Math.max(850 + state.throttle * 1800, coupledRpm), 850, 7200);
+    const roadCoupledRpm = wheelRpm * ratio * finalDrive;
+    const coupledRpm = Math.max(roadCoupledRpm, spinningRpm);
+    const spinRevs = 850 + state.throttle * this.wheelspin * 6750;
+    const targetRpm = clamp(Math.max(850 + state.throttle * 1800, coupledRpm, spinRevs), 850, 7200);
     this.rpm = damp(this.rpm, targetRpm, this.shiftTime > 0 ? 18 : 9, dt);
     const load = state.throttle * (this.shiftTime > 0 ? 0.2 : 1);
     const boostTarget = load * clamp((this.rpm - 1800) / 3000);
@@ -176,8 +191,12 @@ export class VehicleAudio {
     this.previousThrottle = state.throttle;
     this.node?.port.postMessage({
       rpm: this.rpm, load, boost: this.boost, blow,
-      squeal: Math.pow(clamp(state.tireSlip), 1.6), slip: clamp(state.tireSlip),
-      cut: this.shiftTime > 0 || (this.rpm > 7050 && state.throttle > 0) ? 1 : 0,
+      tires: state.tires.map((tire) => ({
+        level: Math.pow(clamp(tire.slip), 1.6),
+        speed: clamp(tire.speed, 0, 50), load: clamp(tire.load, 0, 2),
+      })),
+      cut: this.shiftTime > 0 ? 1 : 0,
+      limiter: this.rpm > 6950 && state.throttle > 0.5 ? 1 : 0,
     });
   }
 }
