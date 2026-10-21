@@ -138,6 +138,8 @@ and interpolation history together.
 Ammo handles suspension and collisions using a compact convex chassis envelope
 and traffic cones with square rubber bases and flat-topped tapered bodies.
 Cone rendering and compound collision shapes share dimensions in `src/course.ts`.
+Cones use a low center of mass, clear their full base footprint on uneven ground,
+and start asleep on load/reset; impacts wake them normally.
 The chassis envelope
 covers the roof, rear hatch and spoiler
 for rollover contacts, while retaining the original underbody clearance.
@@ -399,6 +401,9 @@ Red-and-white painted curbs follow the inside of bends, within the paved shoulde
 They are flush painted runoff, not raised collision bumps.
 
 The 1.5 m terrain grid drives both rendering and Ammo heightfield collisions.
+Off-track height smoothing softens infield ridges without changing pavement or
+the immediate shoulder. The hillside blend completes within the route lookup's
+50 m range so its cutoff cannot leave a height seam.
 Pavement and markings are split along those same triangles to avoid clipping.
 Cones, spawn/reset orientation, tire forces, skid marks, smoke/dust and camera
 clearance all follow the elevated surface. `src/terrain.ts` owns the height and

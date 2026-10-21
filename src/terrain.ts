@@ -58,6 +58,7 @@ export class CourseTerrain {
     const positions: number[] = [];
     const uvs: number[] = [];
     const colors: number[] = [];
+    const smoothingWeights = new Float32Array(this.heights.length);
     let min = Infinity;
     let max = -Infinity;
     for (let z = 0; z < this.rows; z++) {
@@ -68,7 +69,9 @@ export class CourseTerrain {
         const base = this.baseHeight(px, pz);
         const hills = 12 + 9 * Math.sin(px / 48 + 0.6) * Math.cos(pz / 61)
           + 5 * Math.sin((px - pz) / 83);
-        const blend = THREE.MathUtils.smoothstep(near.distance, this.halfWidth + 3, this.halfWidth + 48);
+        const blendStart = Math.min(this.halfWidth + 3, 48);
+        const blendEnd = Math.min(this.halfWidth + 48, 50);
+        const blend = THREE.MathUtils.smoothstep(near.distance, blendStart, blendEnd);
         // Elevation follows the centerline, not the hillside's cross-slope:
         // positive turns lower the inside (+across) and raise the outside.
         const road = this.baseHeight(near.x, near.z) + near.bank * near.across;
@@ -76,6 +79,7 @@ export class CourseTerrain {
           : THREE.MathUtils.lerp(road, base + hills, blend) * (definition.elevationScale ?? 1);
         const i = z * this.columns + x;
         this.heights[i] = height;
+        smoothingWeights[i] = THREE.MathUtils.smoothstep(near.distance, this.halfWidth + 3, this.halfWidth + 18);
         min = Math.min(min, height);
         max = Math.max(max, height);
         positions.push(px, this.heights[i], pz);
@@ -83,6 +87,28 @@ export class CourseTerrain {
         const shade = 0.92 + 0.08 * Math.sin(px / 17) * Math.cos(pz / 23);
         colors.push(shade, shade * 0.98, shade * 0.91);
       }
+    }
+    // Smooth infield seams without changing pavement or its immediate shoulder.
+    const smoothed = new Float32Array(this.heights.length);
+    for (let pass = 0; pass < 12 && !definition.flat; pass++) {
+      smoothed.set(this.heights);
+      for (let z = 1; z < this.rows - 1; z++) {
+        for (let x = 1; x < this.columns - 1; x++) {
+          const i = z * this.columns + x;
+          const average = (this.heights[i] * 4
+            + this.heights[i - 1] + this.heights[i + 1]
+            + this.heights[i - this.columns] + this.heights[i + this.columns]) / 8;
+          smoothed[i] = THREE.MathUtils.lerp(this.heights[i], average, smoothingWeights[i]);
+        }
+      }
+      this.heights.set(smoothed);
+    }
+    min = Infinity;
+    max = -Infinity;
+    for (let i = 0; i < this.heights.length; i++) {
+      positions[i * 3 + 1] = this.heights[i];
+      min = Math.min(min, this.heights[i]);
+      max = Math.max(max, this.heights[i]);
     }
     // Bullet needs a nonzero vertical range even for an entirely flat heightfield.
     this.minHeight = min === max ? min - 0.01 : min;

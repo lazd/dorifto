@@ -50,7 +50,8 @@ export function createCourse(scene: THREE.Scene, definition: CourseDefinition) {
     across.set(tangent.z, 0, -tangent.x).normalize();
     for (const side of [-1, 1]) {
       const cone = new THREE.Mesh(coneGeometry, orange);
-      cone.position.copy(center).addScaledVector(across, side * (definition.width / 2 + 0.53));
+      const coneOffset = definition.width / 2 + 0.8 + baseWidth / Math.SQRT2 + 0.1;
+      cone.position.copy(center).addScaledVector(across, side * coneOffset);
       const normal = terrain.normalAt(cone.position.x, cone.position.z);
       cone.position.y = terrain.heightAt(cone.position.x, cone.position.z);
       cone.position.addScaledVector(normal, centerOfMassHeight);
