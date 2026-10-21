@@ -24,6 +24,11 @@ async function start() {
   const requestedMode = new URL(location.href).searchParams.get('mode') ?? 'drift';
   if (!isDriveMode(requestedMode)) throw new Error(`Unknown drive mode: ${requestedMode}`);
   gameState.update({ driveMode: requestedMode, cameraStyle: requestedCamera });
+  const settingsUrl = new URL(location.href);
+  if (settingsUrl.searchParams.has('transmission')) {
+    settingsUrl.searchParams.delete('transmission');
+    history.replaceState(null, '', settingsUrl);
+  }
   const courseUrl = new URL(location.href);
   const requestedCourse = courseUrl.searchParams.get('course');
   let seed = 0;

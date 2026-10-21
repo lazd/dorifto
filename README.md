@@ -42,7 +42,9 @@ elements.
   tire forces, vehicle reset, and interpolated vehicle/cone poses.
 - `src/tire-effects.ts`: skid marks, tire smoke/dust, and smoke depth capture.
 - `src/drive-modes.ts`: Grip/Drift handling and camera presets.
-- `src/drivetrain.ts`: engine, clutch, fixed gear ratios, and automatic shifting.
+- `src/drivetrain.ts`: engine and clutch integration, applying transmission decisions.
+- `src/transmission.ts`: fixed gear ratios, final drive,
+  reverse ratio, Sport throttle mapping, shared redline, and RPM-based gear decisions.
 
 Each runtime module owns its working state; the entry point coordinates updates
 without sharing its local variables with the camera, physics, or effects.
@@ -443,34 +445,36 @@ The four-stroke V6 voice combines combustion pulses, exhaust harmonics, and nois
 It reads RPM, combustion load, boost, gear shifts and limiter cuts directly from
 the physical drivetrain; there is no independent audio gearbox or synthetic
 slip-to-RPM target. Six fixed forward ratios, a 3.692 final drive and 3.369
-reverse ratio do not depend on horsepower. Forward ratios are calculated once
-from the model's average driven-wheel radius to reach 7,200 RPM at these speeds
-with a locked clutch and no wheelspin:
+reverse ratio do not depend on horsepower or wheel radius. Forward ratios are
+specified directly in `src/transmission.ts`:
 
-| Gear | Redline speed |
+| Gear | Ratio |
 | --- | --- |
-| 1 | 46 mph |
-| 2 | 65 mph |
-| 3 | 94 mph |
-| 4 | 137 mph |
-| 5 | 171 mph |
-| 6 | 217 mph |
+| 1 | 2.97 |
+| 2 | 2.10 |
+| 3 | 1.46 |
+| 4 | 1.00 |
+| 5 | 0.80 |
+| 6 | 0.63 |
 
-These are gearing targets, not guaranteed attainable speeds at every power setting.
-Automatic shifts use chassis forward road speed converted to rolling-wheel RPM,
-not engine free-revving or driven-wheel spin. At full throttle, upshifts occur at
-the road-speed equivalent of 6,800 RPM; light-throttle shifts start at 4,800 RPM.
-This leaves headroom for normal driven-tire slip so the engine's rev limiter
-does not prevent road speed from reaching the upshift threshold. The redline
-speeds above still describe the fixed ratios at 7,200 RPM, not shift speeds.
-First gear short-shifts at a road-speed equivalent of 4,500 RPM (28.75 mph)
-after one continuous second above 2 m/s under heavy throttle. Lifting, stopping,
-reverse or handbraking clears that launch timer. This lets the car build speed
-before selecting second, rather than spending the launch on the rev limiter.
-Other gears keep their normal shift schedule. No wheelspin-based torque cut is used.
-Downshift thresholds are 2,800 RPM under heavy throttle or 1,800 RPM otherwise,
-with lower-gear safety and shift cooldown. There is no slide/after-slide gear hold;
-the handbrake temporarily suspends shifting and opens the clutch.
+The transmission always uses Sport behavior in both Grip and Drift; there is no
+transmission selector. The TCU uses actual engine RPM: upshifts at 7,200 RPM and
+downshifts below 4,000 RPM to keep the engine in its useful power range.
+The shared `redlineRpm` constant in `src/transmission.ts` controls the upshift
+threshold and rev limiter.
+Sport applies the square root of pedal input (50% pedal gives about 71% throttle).
+This mapping affects combustion and boost, not just the audio.
+After a pedal reduction, upshifts are held until the driver increases the pedal
+again. Downshifts remain available while lifting or coasting for engine braking
+and corner exit; each shift still respects the cooldown and over-rev protection.
+The previous road-RPM shift schedule and launch timer are removed.
+Shifts take 0.22 seconds with a 0.65-second cooldown. An upshift requires enough
+road speed for at least 4,000 rolling RPM in the next gear,
+preventing stationary wheelspin from cycling through all six gears
+and avoiding an immediate downshift after wheelspin settles. Downshifts are blocked when driven
+wheel speed would produce 6,000 RPM or more in the lower gear.
+The handbrake suspends shifting and opens the clutch; reverse bypasses the TCU.
+There is no traction-control torque cut or target-speed-based gearing.
 Clutch capacity scales with peak engine torque so increasing horsepower does not
 overwhelm a fixed 560 Nm clutch. The clutch still slips during launch and opens
 during shifts; wheelspin can still raise engine RPM above road-speed RPM.

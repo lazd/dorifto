@@ -136,7 +136,7 @@ export function createVehiclePhysics({
   const tireSpeeds = [0, 0, 0, 0];
   const tireAngles = [0, 0, 0, 0];
   const drivenWheelRadius = (car.radii[2] + car.radii[3]) / 2;
-  const drivetrain = new Drivetrain(drivenWheelRadius);
+  const drivetrain = new Drivetrain();
   const drivetrainInput: DrivetrainInput = {
     throttle: 0, reversing: false, wheelSpeed: 0, roadWheelSpeed: 0, handbrake: false,
     speedLimited: false, peakTorque: 0, peakPower: 0,
