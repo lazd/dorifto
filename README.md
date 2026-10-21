@@ -31,6 +31,11 @@ store or invoke explicit actions (reset/sound). Only changed display values are
 written to the DOM. Input polling and audio report state rather than owning UI
 elements.
 
+The HUD uses a segmented circular 0–8,000 RPM tachometer with amber high-RPM
+segments, a redline tied to the drivetrain, and a red limiter indication.
+A seven-segment LED-style MPH speedometer sits in the center with a gear readout
+below it. Driving-state messages (brakes held, sliding, burnout, etc.) are not shown.
+
 ## Runtime modules
 
 - `src/main.ts`: app startup, module wiring, input events, fixed-step scheduling,

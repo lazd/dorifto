@@ -18,9 +18,19 @@
       <div><span>LAST LAP CONES</span><span id="lap-last-cones">--</span></div>
     </aside>
     <aside class="telemetry" aria-label="Driving information">
-      <div><strong id="speed">0</strong><span>MPH</span></div>
-      <span id="engine-state">1 / 850 RPM</span>
-      <span id="state">READY</span>
+      <div id="tachometer" role="meter" aria-label="Engine RPM" aria-valuemin="0" aria-valuemax="8000" aria-valuenow="850">
+        <svg class="tach-dial" viewBox="0 0 280 280" aria-hidden="true"></svg>
+      </div>
+      <div class="tach-center">
+        <div class="tach-label">RPM × 1000</div>
+        <div class="speed-display">
+          <span id="speed" class="visually-hidden">0</span>
+          <svg id="speed-led" viewBox="0 0 124 64" aria-hidden="true"></svg>
+        </div>
+        <span class="speed-unit">MPH</span>
+        <div class="gear-display"><span>GEAR</span><strong id="gear">1</strong></div>
+      </div>
+      <span id="engine-state">850 RPM</span>
     </aside>
     <dialog id="drift-tuning" aria-labelledby="drift-tuning-title">
       <form method="dialog" class="dialog-close">
