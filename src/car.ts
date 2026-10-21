@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { Reflector } from 'three/addons/objects/Reflector.js';
+import { RectAreaLightUniformsLib } from 'three/addons/lights/RectAreaLightUniformsLib.js';
 
 const WHEEL_MATERIALS = new Set([
   'Material.004', 'brake_disc1', 'brake_disc', 'nothing.', 'rubber.001',
@@ -143,9 +144,10 @@ export async function loadCar() {
     mesh.geometry.computeBoundingSphere();
   }
 
-  const brakeMaterials: { material: THREE.MeshStandardMaterial; restingColor: number }[] = [];
+  const brakeMaterials: { material: THREE.MeshStandardMaterial; restingColor: number; running: boolean }[] = [];
   const brakeLights: THREE.SpotLight[] = [];
-  const signalMaterials: THREE.MeshStandardMaterial[] = [];
+  const signalMaterials: { material: THREE.MeshStandardMaterial; front: boolean }[] = [];
+  const markerMaterials: THREE.MeshStandardMaterial[] = [];
   const reverseMaterials: THREE.MeshStandardMaterial[] = [];
   const reverseLights: THREE.SpotLight[] = [];
   const reverseCounts = [0, 0, 0, 0];
@@ -154,7 +156,7 @@ export async function loadCar() {
     const positions = mesh.geometry.getAttribute('position');
     const uv = mesh.geometry.getAttribute('uv');
     const index = mesh.geometry.getIndex();
-    const parts: number[][] = [[], [], [], [], [], [], [], [], []];
+    const parts: number[][] = [[], [], [], [], [], [], [], [], [], [], []];
     const point = new THREE.Vector3();
     for (let i = 0; i < (index?.count ?? positions.count); i += 3) {
       const triangle = [0, 1, 2].map((j) => index ? index.getX(i + j) : i + j);
@@ -169,7 +171,8 @@ export async function loadCar() {
       // The atlas's middle third is red; exclude amber/clear lenses and bumper reflectors.
       const brakeLens = u > 1 / 3 && u < 2 / 3 && center.y > 4.8 && center.z > 1.8;
       const reverseLens = u < 1 / 3 && center.y > 4.8 && center.z > 1.8;
-      const part = u > 2 / 3 ? 8 : brakeLens ? center.z > 2.2 ? 3 : center.x < 0 ? 1 : 2
+      const sideMarker = u < 1 / 3 && center.y > -3 && center.y < 0;
+      const part = sideMarker ? 9 : u > 2 / 3 ? center.y < 0 ? 10 : 8 : brakeLens ? center.z > 2.2 ? 3 : center.x < 0 ? 1 : 2
         : reverseLens ? 4 + (center.x > 0 ? 2 : 0) + (center.z > 1.98 ? 1 : 0) : 0;
       parts[part].push(...triangle);
     }
@@ -183,7 +186,7 @@ export async function loadCar() {
       geometry.applyMatrix4(mesh.matrixWorld);
       geometry.computeBoundingSphere();
       const material = mesh.material.clone();
-      if (part === 8) {
+      if (part >= 8) {
         material.map = null;
         material.color.set(0xdce1e6);
         material.metalness = 0.15;
@@ -191,9 +194,11 @@ export async function loadCar() {
         material.emissive.set(0x000000);
         material.emissiveIntensity = 0;
         material.toneMapped = false;
-        signalMaterials.push(material);
+        if (part === 9) markerMaterials.push(material);
+        else signalMaterials.push({ material, front: part === 10 });
         const lens = new THREE.Mesh(geometry, material);
-        lens.name = 'clear-turn-signal-lenses';
+        lens.name = part === 9 ? 'side-marker-lenses'
+          : part === 10 ? 'front-turn-signal-lenses' : 'rear-turn-signal-lenses';
         chassis.add(lens);
         continue;
       }
@@ -212,7 +217,7 @@ export async function loadCar() {
         reverseMaterials.push(material);
         reverseCounts[part - 4] += parts[part].length;
       } else {
-        brakeMaterials.push({ material, restingColor });
+        brakeMaterials.push({ material, restingColor, running: part !== 3 });
         brakeCounts[part - 1] += parts[part].length;
       }
       const bounds = new THREE.Box3();
@@ -235,12 +240,19 @@ export async function loadCar() {
   if (brakeCounts.some((count) => count === 0)) throw new Error('Missing brake light lenses in the car model.');
   if (reverseCounts.some((count) => count === 0)) throw new Error('Missing reverse light lenses in the car model.');
   if (!signalMaterials.length) throw new Error('Missing turn signal lenses in the car model.');
+  if (!markerMaterials.length) throw new Error('Missing side marker lenses in the car model.');
+  let nightLighting = false;
+  let brakingActive = false;
+  let hazardsActive = false;
   function setHazards(illuminated: boolean) {
+    hazardsActive = illuminated;
     setCoverLit(coverMaterials[0], illuminated);
-    for (const material of signalMaterials) {
-      material.color.set(illuminated ? 0xff9900 : 0xdce1e6);
+    for (const { material, front } of signalMaterials) {
+      const running = nightLighting && front;
+      const lit = illuminated || running;
+      material.color.set(lit ? 0xff9900 : 0xdce1e6);
       material.emissive.set(0xff8800);
-      material.emissiveIntensity = illuminated ? 1 : 0;
+      material.emissiveIntensity = illuminated ? 1 : running ? 0.25 : 0;
     }
   }
   function setReversing(reversing: boolean) {
@@ -255,15 +267,46 @@ export async function loadCar() {
     }
   }
   function setBraking(braking: boolean) {
-    setCoverLit(coverMaterials[1], braking);
-    for (const { material, restingColor } of brakeMaterials) {
-      material.color.set(braking ? 0xff0000 : restingColor);
-      material.emissiveIntensity = braking ? 4 : 0;
+    brakingActive = braking;
+    setCoverLit(coverMaterials[1], braking || nightLighting);
+    for (const { material, restingColor, running } of brakeMaterials) {
+      const lit = braking || (nightLighting && running);
+      material.color.set(lit ? 0xff0000 : restingColor);
+      material.emissiveIntensity = braking ? 4 : nightLighting && running ? 0.45 : 0;
     }
     for (const light of brakeLights) {
       light.intensity = braking ? 16 : 0;
       light.visible = braking;
     }
+  }
+
+  RectAreaLightUniformsLib.init();
+  const underglow: THREE.RectAreaLight[] = [];
+  const lightStrips = [
+    { x: -0.76, z: 0, width: 0.08, length: 1.6 },
+    { x: 0.76, z: 0, width: 0.08, length: 1.6 },
+    { x: 0, z: 1.95, width: 1.5, length: 0.08 },
+    { x: 0, z: -1.95, width: 1.5, length: 0.08 },
+  ];
+  for (const strip of lightStrips) {
+    const light = new THREE.RectAreaLight(0xff1824, 18, strip.width, strip.length);
+    light.name = 'red-underglow';
+    light.position.set(strip.x, -0.25, strip.z);
+    light.rotation.x = -Math.PI / 2;
+    light.visible = false;
+    chassis.add(light);
+    underglow.push(light);
+  }
+  function setNightLighting(enabled: boolean) {
+    nightLighting = enabled;
+    setBraking(brakingActive);
+    setHazards(hazardsActive);
+    for (const material of markerMaterials) {
+      material.color.set(enabled ? 0xff9900 : 0xdce1e6);
+      material.emissive.set(0xff8800);
+      material.emissiveIntensity = enabled ? 0.4 : 0;
+    }
+    for (const light of underglow) light.visible = enabled;
   }
 
   const mirrors: Reflector[] = [];
@@ -409,5 +452,5 @@ export async function loadCar() {
   wheels.forEach((wheel, i) => {
     for (const object of wheel.children) object.position.copy(centers[i]).negate();
   });
-  return { chassis, wheels, centers, radii, widths, setBraking, setReversing, setHazards };
+  return { chassis, wheels, centers, radii, widths, setBraking, setReversing, setHazards, setNightLighting };
 }

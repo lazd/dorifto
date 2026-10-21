@@ -71,7 +71,7 @@ Engine braking uses the same tire traction budget as cornering and road braking.
 There is no drift latch, target angle, yaw assist, or extra
 forward force. Counter-steer and modulate Z to balance a slide; lift off to let
 wheelspin settle and regain lateral grip. Steering can transfer the slide either way.
-Front steering lock ranges from 37 degrees at low speed to 29 degrees at high
+Drift's front steering lock ranges from 54 degrees at low speed to 46 degrees at high
 speed, retaining enough range to counter-steer into a slide. Direction changes
 respond faster than initial turn-in. Unwind the steering as rotation stops to
 avoid snapping into an opposite slide.
@@ -161,6 +161,25 @@ engine torque, not steering or yaw; it is bypassed for intentional brakestands
 and handbrake use. Both modes support keyboard, analog gamepad, and reverse.
 The selected mode is carried in `?mode=grip` or `?mode=drift` and preserved when
 switching courses. Tune values are defined in `src/drive-modes.ts`.
+
+## Time of day
+
+The Time of day picker switches lighting live without resetting the car or lap.
+Noon has a blue sky and neutral daylight. Sunset uses a warm horizon, golden
+directional light, and a low sun angle for long shadows. Night uses a dark blue
+sky with soft cool ambient moonlight to reveal the car and nearby hills;
+the car's headlights remain the main illumination on the road.
+Sky, fog, ambient illumination, reflections, and exposure change together.
+At night, the two body brake lenses act as dim red running lights and brighten
+when braking; the spoiler strip remains brake-only. Front turn signals glow dim amber
+and brighten during hazard flashes; rear signals illuminate only for hazards.
+Side markers glow amber. Soft red
+underglow uses downward-facing area-light strips beneath the side rails (between
+the wheel wells) and front/rear bumpers for an even pool of light, without visible
+point sources. These night lights switch off
+in Noon/Sunset, while headlights and reverse lights retain their existing behavior.
+The selection is saved in `?time=noon`, `?time=sunset`, or `?time=night` and
+preserved when switching courses or generating a random layout. Noon is the default.
 
 ## Courses
 

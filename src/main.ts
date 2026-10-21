@@ -20,6 +20,35 @@ const status = element('#status');
 const speedDisplay = element('#speed');
 const stateDisplay = element('#state');
 
+const daylight = {
+  noon: {
+    sky: '#78b5ec', horizon: '#b6d7ee', ground: '#656052',
+    ambient: '#d9edff', ambientIntensity: 0.65, environmentIntensity: 0.65,
+    sun: '#ffefd4', sunIntensity: 2.4, sunOffset: [-20, 35, -12],
+    exposure: 0.95,
+  },
+  sunset: {
+    sky: '#647ca6', horizon: '#f3b074', ground: '#654035',
+    ambient: '#ffd3ab', ambientIntensity: 0.45, environmentIntensity: 0.28,
+    sun: '#ffb45e', sunIntensity: 3.2, sunOffset: [-42, 12, -20],
+    exposure: 0.95,
+  },
+  night: {
+    sky: '#030914', horizon: '#101d35', ground: '#080b13',
+    ambient: '#a8bde3', ambientIntensity: 0.35, environmentIntensity: 0.08,
+    sun: '#9fbfff', sunIntensity: 0.22, sunOffset: [-20, 35, -12],
+    exposure: 0.85,
+  },
+} satisfies Record<string, {
+  sky: string; horizon: string; ground: string; ambient: string;
+  ambientIntensity: number; environmentIntensity: number;
+  sun: string; sunIntensity: number; sunOffset: [number, number, number]; exposure: number;
+}>;
+
+function isTimeOfDay(value: string): value is keyof typeof daylight {
+  return Object.hasOwn(daylight, value);
+}
+
 async function start() {
   const modeSelect = element<HTMLSelectElement>('#drive-mode');
   const requestedMode = new URL(location.href).searchParams.get('mode') ?? 'drift';
@@ -88,24 +117,23 @@ async function start() {
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFShadowMap;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 0.95;
   element('#app').append(renderer.domElement);
   renderer.domElement.setAttribute('aria-label', '3D driving playground');
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x78b5ec);
-  scene.fog = new THREE.Fog(0x78b5ec, 220, 650);
+  const fog = new THREE.Fog(0x78b5ec, 220, 650);
+  scene.fog = fog;
   const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 1500);
   camera.layers.enable(1);
   const pmrem = new THREE.PMREMGenerator(renderer);
   const environment = new RoomEnvironment();
   scene.environment = pmrem.fromScene(environment, 0.04).texture;
-  scene.environmentIntensity = 0.65;
   environment.dispose();
   pmrem.dispose();
-  scene.add(new THREE.HemisphereLight(0xd9edff, 0x656052, 0.65));
-  const sun = new THREE.DirectionalLight(0xffefd4, 2.4);
-  sun.position.set(-20, 35, -12);
+  const ambient = new THREE.HemisphereLight();
+  scene.add(ambient);
+  const sun = new THREE.DirectionalLight();
+  const shadowOffset = new THREE.Vector3();
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
   sun.shadow.camera.left = sun.shadow.camera.bottom = -24;
@@ -114,10 +142,66 @@ async function start() {
   sun.shadow.normalBias = 0.035;
   scene.add(sun, sun.target);
 
+  const skyCanvas = document.createElement('canvas');
+  skyCanvas.width = 16;
+  skyCanvas.height = 256;
+  const skyContext = skyCanvas.getContext('2d');
+  if (!skyContext) throw new Error('Unable to create sky texture');
+  let sky: THREE.CanvasTexture | undefined;
+  const timeSelect = element<HTMLSelectElement>('#time-of-day');
+  const requestedTime = new URL(location.href).searchParams.get('time') ?? 'noon';
+  if (!isTimeOfDay(requestedTime)) throw new Error(`Unknown time of day: ${requestedTime}`);
+  const applyTimeOfDay = (time: keyof typeof daylight) => {
+    const preset = daylight[time];
+    const gradient = skyContext.createLinearGradient(0, 0, 0, skyCanvas.height);
+    gradient.addColorStop(0, preset.sky);
+    gradient.addColorStop(0.5, preset.horizon);
+    gradient.addColorStop(1, preset.ground);
+    skyContext.fillStyle = gradient;
+    skyContext.fillRect(0, 0, skyCanvas.width, skyCanvas.height);
+    // Replacing the texture invalidates Three's cached equirectangular conversion.
+    const previousSky = sky;
+    sky = new THREE.CanvasTexture(skyCanvas);
+    sky.colorSpace = THREE.SRGBColorSpace;
+    sky.mapping = THREE.EquirectangularReflectionMapping;
+    scene.background = sky;
+    previousSky?.dispose();
+    fog.color.set(preset.horizon);
+    ambient.color.set(preset.ambient);
+    ambient.groundColor.set(preset.ground);
+    ambient.intensity = preset.ambientIntensity;
+    scene.environmentIntensity = preset.environmentIntensity;
+    sun.color.set(preset.sun);
+    sun.intensity = preset.sunIntensity;
+    shadowOffset.fromArray(preset.sunOffset);
+    sun.position.copy(sun.target.position).add(shadowOffset);
+    renderer.toneMappingExposure = preset.exposure;
+    timeSelect.value = time;
+  };
+  applyTimeOfDay(requestedTime);
   const { cones, terrain, isAsphalt } = createCourse(scene, definition);
 
   // The upstream Emscripten factory writes to `this`; ESM calls have no receiver.
   const [Ammo, car] = await Promise.all([AmmoFactory.call({}), loadCar()]);
+  // The picker may change while the model is loading.
+  const selectedTime = timeSelect.value;
+  if (!isTimeOfDay(selectedTime)) throw new Error(`Unknown time of day: ${selectedTime}`);
+  applyTimeOfDay(selectedTime);
+  car.setNightLighting(selectedTime === 'night');
+  timeSelect.addEventListener('change', () => {
+    const value = timeSelect.value;
+    if (!isTimeOfDay(value)) {
+      showError(new Error(`Unknown time of day: ${value}`));
+      return;
+    }
+    applyTimeOfDay(value);
+    car.setNightLighting(value === 'night');
+    const url = new URL(location.href);
+    url.searchParams.set('time', value);
+    history.replaceState(null, '', url);
+    timeSelect.blur();
+  });
+
   scene.add(car.chassis, ...car.wheels);
   const configuration = new Ammo.btDefaultCollisionConfiguration();
   const dispatcher = new Ammo.btCollisionDispatcher(configuration);
@@ -240,7 +324,6 @@ async function start() {
     previousRotation: new THREE.Quaternion(),
     rotation: new THREE.Quaternion(),
   }));
-  const shadowOffset = new THREE.Vector3(-20, 35, -12);
   const wheelBasis = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI);
   const wheelContacts = [false, false, false, false];
   const physicsRotation = new THREE.Quaternion();
