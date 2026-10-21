@@ -470,8 +470,9 @@ coordinates to maintain. `generateCourse` uses the same definition and renderer.
 ## Sound
 
 Audio is synthesized in real time with Web Audio and an AudioWorklet; no recorded
-sound assets or external audio services are used. A click or keypress unlocks
-browser audio; controller-only players must click the page once. The Sound
+sound assets or external audio services are used. Audio attempts to start immediately
+on initialization. If browser autoplay policy blocks it, a click or keypress retries
+the unlock; controller-only players may need to click the page once. The Sound
 dropdown in Settings defaults to On and selects On/Off explicitly.
 Audio is not muted on window blur, hidden tabs, or while dialogs are open.
 Browser autoplay and background-tab suspension policies still apply.

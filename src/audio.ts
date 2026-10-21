@@ -34,6 +34,7 @@ export class VehicleAudio {
     window.addEventListener('keydown', unlock);
     window.addEventListener('keyup', unlock);
     window.addEventListener('click', unlock);
+    this.activate();
   }
 
   setMuted(muted: boolean) {
