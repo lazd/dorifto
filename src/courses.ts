@@ -136,6 +136,8 @@ export function generateCourse(seed: number): CourseDefinition {
   throw new Error(`Unable to generate a navigable course for seed ${seed}`);
 }
 
+const hillsideBase = generateCourse(1077036780);
+
 export const courses: readonly CourseDefinition[] = [
   {
     id: 'autocross',
@@ -172,6 +174,18 @@ export const courses: readonly CourseDefinition[] = [
       [120, 52.5], [101.25, 22.5], [75, 0], [75, -30],
       [101.25, -56.25], [112.5, -86.25], [93.75, -116.25], [56.25, -131.25],
       [18.75, -116.25], [0, -90], [0, -45],
+    ],
+  },
+  {
+    ...hillsideBase,
+    id: 'hillside',
+    name: 'Hillside Circuit',
+    points: [
+      ...hillsideBase.points.slice(0, 11),
+      [-100, -30], [-145, -45], [-190, -40], [-245, -45],
+      [-275, -80], [-275, -130], [-250, -175], [-200, -190],
+      [-155, -175], [-115, -140], [-70, -115], [-25, -95],
+      ...hillsideBase.points.slice(16),
     ],
   },
   {

@@ -391,6 +391,14 @@ preserved when switching courses or generating a random layout. Noon is the defa
 
 ## Courses
 
+**Hillside Circuit** (`?course=hillside`) extends random seed **1077036780**
+into a roughly 982 m lap, about twice the original 511 m. It keeps the original
+eastern and northern sweepers and replaces the southwest section with a longer
+loop and linked left-hand transitions. The tightest centerline radius remains
+about 38 m, with the same 17.5 m road width, rolling terrain, and corner banking
+as the original. Select it from the Course picker; the original random seed and
+random-course generator are unchanged.
+
 **Drift Test Loop** (`?course=drift-test`) is a compact 14 m-wide handling circuit
 with gentle elevation and banking (35% of the normal terrain relief). Hills in
 the infield and runoff help distinguish the road's direction.
