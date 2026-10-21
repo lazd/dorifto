@@ -54,9 +54,10 @@ export function createDrivingCamera(camera: THREE.PerspectiveCamera, car: Awaite
   const mapUp = new THREE.Vector3(0, 0, 1);
   const chasePosition = new THREE.Vector3();
   const chaseQuaternion = new THREE.Quaternion();
-  let mapBlend = 0;
+  let mapShown = false;
 
   function reset(heading: number) {
+    mapShown = false;
     cameraYaw = cameraPitch = 0;
     slideCameraAmount = outsideOffset = cameraTurnRate = 0;
     previousTravel.set(0, 0, 0);
@@ -69,8 +70,8 @@ export function createDrivingCamera(camera: THREE.PerspectiveCamera, car: Awaite
 
   function update(dt: number, velocity: THREE.Vector3, driveMode: DriveMode,
     cameraStyle: GameState['cameraStyle'], reversing: boolean) {
-    if (mapBlend > 0) {
-      // Resume the driving camera from where it was, not from the blended map pose.
+    if (mapShown) {
+      // Resume the driving camera from its saved pose, not from the map.
       camera.position.copy(chasePosition);
       camera.quaternion.copy(chaseQuaternion);
     }
@@ -165,9 +166,8 @@ export function createDrivingCamera(camera: THREE.PerspectiveCamera, car: Awaite
       camera.lookAt(lookTarget);
     }
     previousCameraStyle = cameraStyle;
-    mapBlend = THREE.MathUtils.damp(mapBlend, controls.mapView ? 1 : 0, 6, dt);
-    if (mapBlend < 0.001) mapBlend = 0;
-    if (mapBlend > 0) showMap(mapBlend, near);
+    mapShown = controls.mapView;
+    if (mapShown) showMap();
     else setNear(near);
   }
 
@@ -177,7 +177,7 @@ export function createDrivingCamera(camera: THREE.PerspectiveCamera, car: Awaite
     camera.updateProjectionMatrix();
   }
 
-  function showMap(blend: number, near: number) {
+  function showMap() {
     chasePosition.copy(camera.position);
     chaseQuaternion.copy(camera.quaternion);
     const halfHeight = Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2);
@@ -185,11 +185,11 @@ export function createDrivingCamera(camera: THREE.PerspectiveCamera, car: Awaite
     mapPosition.set(mapCenter.x, mapBounds.max.y + height, mapCenter.z);
     mapMatrix.lookAt(mapPosition, mapCenter, mapUp);
     mapQuaternion.setFromRotationMatrix(mapMatrix);
-    camera.position.lerp(mapPosition, blend);
-    camera.quaternion.slerp(mapQuaternion, blend);
+    camera.position.copy(mapPosition);
+    camera.quaternion.copy(mapQuaternion);
     // A cabin-close near plane leaves too little depth precision from this high up,
     // and the ground z-fights through the road.
-    setNear(THREE.MathUtils.lerp(near, height * 0.05, blend ** 2));
+    setNear(height * 0.05);
   }
 
   return { reset, update, setCabinEye };

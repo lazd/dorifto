@@ -3,7 +3,8 @@ import AmmoFactory from 'ammojs-typed';
 import { loadCar } from './car';
 import { DrivingControls } from './controls';
 import { createCourse } from './course';
-import { courses, courseSpawn, generateCourse } from './courses';
+import { courses, courseSpawn, generateCourse, readCourseReverse, type CourseDefinition } from './courses';
+import { generateCustomCourse, readCourseWeights, writeCourseWeights, type CourseGenerationWeights } from './course-generation';
 import { isDriveMode } from './drive-modes';
 import { LapTimer } from './laps';
 import { VehicleAudio } from './audio';
@@ -12,7 +13,7 @@ import { bindGameUI, bindGameActions, bindCoursePicker, element } from './ui';
 import { createDrivingCamera } from './camera';
 import { createLighting } from './lighting';
 import { createTireEffects } from './tire-effects';
-import { createVehiclePhysics } from './vehicle-physics';
+import { createPhysicsResources, createVehiclePhysics } from './vehicle-physics';
 import './style.css';
 
 const gameState = createGameState();
@@ -31,20 +32,22 @@ async function start() {
   }
   const courseUrl = new URL(location.href);
   const requestedCourse = courseUrl.searchParams.get('course');
+  const requestedReverse = readCourseReverse(courseUrl.searchParams);
+  const requestedWeights = requestedCourse === 'custom' ? readCourseWeights(courseUrl.searchParams)
+    : gameState.getState().courseWeights;
+  gameState.update({ courseWeights: requestedWeights, courseReverse: requestedReverse });
   let seed = 0;
-  if (requestedCourse === 'random') {
+  if (requestedCourse === 'random' || requestedCourse === 'custom') {
     const value = courseUrl.searchParams.get('seed');
     if (value !== null && !/^\d{1,10}$/.test(value)) throw new Error(`Invalid course seed: ${value}`);
     seed = value === null ? crypto.getRandomValues(new Uint32Array(1))[0] : Number(value);
     courseUrl.searchParams.set('seed', String(seed));
     history.replaceState(null, '', courseUrl);
   }
-  const definition = requestedCourse === 'random' ? generateCourse(seed)
+  const definition = requestedCourse === 'custom' ? generateCustomCourse(seed, requestedWeights)
+    : requestedCourse === 'random' ? generateCourse(seed)
     : requestedCourse ? courses.find((course) => course.id === requestedCourse) : courses[0];
   if (!definition) throw new Error(`Unknown course: ${requestedCourse}`);
-  const spawn = courseSpawn(definition);
-  const laps = new LapTimer(definition);
-  bindCoursePicker(courses, definition);
   const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
   renderer.setSize(innerWidth, innerHeight);
@@ -62,8 +65,6 @@ async function start() {
   if (!isTimeOfDay(requestedTime)) throw new Error(`Unknown time of day: ${requestedTime}`);
   gameState.update({ timeOfDay: requestedTime });
   lighting.apply(requestedTime);
-  const course = createCourse(scene, definition);
-  const { terrain } = course;
   // The upstream Emscripten factory writes to `this`; ESM calls have no receiver.
   const [Ammo, car] = await Promise.all([AmmoFactory.call({}), loadCar()]);
   // The picker may change while the model is loading.
@@ -90,7 +91,7 @@ async function start() {
   }, new URL(location.href).searchParams.get('sound') === 'off');
   let dialogOpen = false;
   gameState.subscribe((state) => {
-    const open = state.helpOpen || state.tuningOpen || state.settingsOpen;
+    const open = state.helpOpen || state.tuningOpen || state.settingsOpen || state.customCourseOpen;
     if (open === dialogOpen) return;
     dialogOpen = open;
     controls.clear();
@@ -99,9 +100,30 @@ async function start() {
   const controlKeys = new Set(['ArrowLeft', 'ArrowRight', 'KeyX', 'KeyZ', 'Space', 'KeyR', 'KeyC', 'KeyD', 'KeyM']);
   let accumulator = 0;
   let lastTime = 0;
-  const physics = createVehiclePhysics({ Ammo, car, course, spawn, controls, gameState, laps, audio });
+  let changingCourse = false;
+  const physicsResources = createPhysicsResources(Ammo);
+
+  function createCourseSession(nextDefinition: CourseDefinition) {
+    const course = createCourse(scene, nextDefinition);
+    let physics: ReturnType<typeof createVehiclePhysics> | undefined;
+    try {
+      const spawn = courseSpawn(nextDefinition);
+      const laps = new LapTimer(nextDefinition);
+      physics = createVehiclePhysics({ Ammo, resources: physicsResources, car, course, spawn, controls, gameState, laps, audio });
+      const drivingCamera = createDrivingCamera(camera, car, controls, nextDefinition, course.terrain);
+      physics.reset();
+      drivingCamera.reset(spawn.heading);
+      return { course, terrain: course.terrain, spawn, laps, physics, drivingCamera };
+    } catch (error) {
+      physics?.dispose();
+      course.dispose();
+      throw error;
+    }
+  }
+
+  let activeDefinition = definition;
+  let { course, terrain, spawn, laps, physics, drivingCamera } = createCourseSession({ ...definition, reverse: requestedReverse });
   const { fixedStep } = physics;
-  const drivingCamera = createDrivingCamera(camera, car, controls, definition, terrain);
   const tireEffects = createTireEffects(scene, car, terrain, course.isAsphalt);
   const forward = new THREE.Vector3();
 
@@ -113,6 +135,67 @@ async function start() {
     drivingCamera.reset(spawn.heading);
     tireEffects.reset();
   }
+
+  async function loadCourse(build: () => CourseDefinition, updateUrl: (url: URL) => void, reverse: boolean) {
+    changingCourse = true;
+    controls.clear();
+    audio.reset();
+    gameState.update({ status: { visible: true, error: false, message: 'Building course…' } });
+    try {
+      await new Promise<void>((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
+      const nextDefinition = build();
+      const next = createCourseSession({ ...nextDefinition, reverse });
+      const previousPhysics = physics;
+      const previousCourse = course;
+      ({ course, terrain, spawn, laps, physics, drivingCamera } = next);
+      tireEffects.setCourse(terrain, course.isAsphalt);
+      previousPhysics.dispose();
+      previousCourse.dispose();
+      const url = new URL(location.href);
+      updateUrl(url);
+      if (reverse) url.searchParams.set('reverse', '1');
+      else url.searchParams.delete('reverse');
+      history.replaceState(null, '', url);
+      activeDefinition = nextDefinition;
+      gameState.update({ courseReverse: reverse, status: { visible: false, error: false, message: '' } });
+      return nextDefinition;
+    } catch (error) {
+      physics.captureVisuals(true);
+      drivingCamera.reset(spawn.heading);
+      throw error;
+    } finally {
+      accumulator = lastTime = 0;
+      changingCourse = false;
+    }
+  }
+
+  function changeCourse(id: string, seed?: number, weights?: CourseGenerationWeights) {
+    const customWeights = weights ?? gameState.getState().courseWeights;
+    return loadCourse(() => {
+      const nextDefinition = id === 'custom' && seed !== undefined ? generateCustomCourse(seed, customWeights)
+        : id === 'random' && seed !== undefined ? generateCourse(seed)
+        : courses.find((course) => course.id === id);
+      if (!nextDefinition) throw new Error(`Unknown course: ${id}`);
+      return nextDefinition;
+    }, (url) => {
+      url.searchParams.set('course', id);
+      if ((id === 'random' || id === 'custom') && seed !== undefined) url.searchParams.set('seed', String(seed));
+      else url.searchParams.delete('seed');
+      writeCourseWeights(url.searchParams, id === 'custom' ? customWeights : undefined);
+    }, gameState.getState().courseReverse);
+  }
+
+  async function changeCourseDirection(reverse: boolean) {
+    await loadCourse(() => activeDefinition, () => {}, reverse);
+  }
+
+  bindCoursePicker(courses, definition, changeCourse, changeCourseDirection, (error) => {
+    console.error('Unable to change course:', error);
+    gameState.update({ status: {
+      visible: true, error: true,
+      message: `Unable to change course: ${error instanceof Error ? error.message : String(error)}`,
+    } });
+  }, gameState);
 
   function cycleCamera() {
     const styles = ['corner', 'classic', 'cabin'] as const;
@@ -180,6 +263,7 @@ async function start() {
   });
 
   function frame(time: number) {
+    if (changingCourse) return;
     const { driveMode, profiles } = gameState.getState();
     controls.poll(!dialogOpen, profiles[driveMode].steeringExpo);
     if (controls.driveModeRequested) toggleDriveMode();

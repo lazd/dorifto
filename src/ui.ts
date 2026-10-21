@@ -4,6 +4,7 @@ import { redlineRpm } from "./drivetrain";
 import { isCameraStyle, isTimeOfDay, type GameState } from "./game-state";
 import { formatLapTime } from "./laps";
 import type { Store } from "./store";
+import { courseGenerationFields, defaultCourseWeights, validateCourseWeights, type CourseGenerationWeights } from "./course-generation";
 
 export function element<T extends HTMLElement>(selector: string): T {
   const found = document.querySelector<T>(selector);
@@ -22,12 +23,17 @@ function bindDialog(
   store: Store<GameState>,
   trigger: string,
   selector: string,
-  key: "helpOpen" | "settingsOpen" | "tuningOpen",
+  key: "helpOpen" | "settingsOpen" | "tuningOpen" | "customCourseOpen",
 ) {
   const dialog = element<HTMLDialogElement>(selector);
   let displayedOpen = dialog.open;
   const close = () => store.update({ [key]: false });
   element(trigger).addEventListener("click", () => store.update({ [key]: true }));
+  dialog.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    event.preventDefault();
+    close();
+  });
   dialog.addEventListener("cancel", (event) => {
     event.preventDefault();
     close();
@@ -147,27 +153,135 @@ export function bindGameActions(actions: {
 export function bindCoursePicker(
   options: readonly { id: string; name: string }[],
   selected: { id: string; name: string },
+  changeCourse: (id: string, seed?: number, weights?: CourseGenerationWeights) => Promise<{ id: string; name: string }>,
+  changeDirection: (reverse: boolean) => Promise<void>,
+  reportError: (error: unknown) => void,
+  store: Store<GameState>,
 ) {
   const input = element<HTMLSelectElement>("#course");
+  const button = element<HTMLButtonElement>("#random-course");
+  const reverse = element<HTMLInputElement>("#reverse-course");
+  const customButton = element<HTMLButtonElement>("#custom-course");
+  const generateButton = element<HTMLButtonElement>("#custom-course-generate");
+  const resetButton = element<HTMLButtonElement>("#custom-course-reset");
+  const fieldset = element<HTMLFieldSetElement>("#custom-course-sliders");
+  const customStatus = bindText("#custom-course-status");
+  const customError = bindText("#custom-course-error");
   for (const course of options) input.add(new Option(course.name, course.id));
-  input.add(new Option(selected.id === "random" ? selected.name : "Random Circuit", "random"));
+  const randomOption = new Option(selected.id === "random" ? selected.name : "Random Circuit", "random");
+  input.add(randomOption);
+  const customOption = new Option(selected.id === "custom" ? selected.name : "Custom Circuit", "custom");
+  input.add(customOption);
   input.value = selected.id;
-  const randomCourse = () => {
-    const url = new URL(location.href);
-    url.searchParams.set("course", "random");
-    url.searchParams.set("seed", String(crypto.getRandomValues(new Uint32Array(1))[0]));
-    location.assign(url.href);
+  const setBusy = (busy: boolean) => {
+    input.disabled = button.disabled = reverse.disabled = customButton.disabled = generateButton.disabled = resetButton.disabled = fieldset.disabled = busy;
   };
-  element("#random-course").addEventListener("click", randomCourse);
-  input.addEventListener("change", () => {
-    if (input.value === "random") {
-      randomCourse();
+  setBusy(false);
+  reverse.checked = store.getState().courseReverse;
+  let changing = false;
+  const selectCourse = async (id: string) => {
+    if (changing) return;
+    changing = true;
+    setBusy(true);
+    customError("");
+    let closeCustom = false;
+    try {
+      const generated = id === "random" || id === "custom";
+      const weights = id === "custom" ? store.getState().courseWeights : undefined;
+      if (weights) validateCourseWeights(weights);
+      if (id === "custom") customStatus("Generating course…");
+      selected = await changeCourse(id, generated ? crypto.getRandomValues(new Uint32Array(1))[0] : undefined, weights);
+      randomOption.text = selected.id === "random" ? selected.name : "Random Circuit";
+      customOption.text = selected.id === "custom" ? selected.name : "Custom Circuit";
+      closeCustom = id === "custom";
+    } catch (error) {
+      reportError(error);
+      if (store.getState().customCourseOpen) {
+        customError(error instanceof Error ? error.message : String(error));
+      }
+    } finally {
+      input.value = selected.id;
+      setBusy(false);
+      customStatus("");
+      changing = false;
+      if (closeCustom) store.update({ customCourseOpen: false });
+    }
+  };
+  button.addEventListener("click", () => { void selectCourse("random"); });
+  generateButton.addEventListener("click", () => { void selectCourse("custom"); });
+  async function reverseCourse() {
+    if (changing) {
+      reverse.checked = store.getState().courseReverse;
       return;
     }
-    const url = new URL(location.href);
-    url.searchParams.set("course", input.value);
-    url.searchParams.delete("seed");
-    location.assign(url.href);
+    changing = true;
+    setBusy(true);
+    try {
+      await changeDirection(reverse.checked);
+    } catch (error) {
+      reportError(error);
+    } finally {
+      reverse.checked = store.getState().courseReverse;
+      setBusy(false);
+      changing = false;
+    }
+  }
+  reverse.addEventListener("change", () => { void reverseCourse(); });
+  input.addEventListener("change", () => {
+    if (input.value === "custom") {
+      input.value = selected.id;
+      customError("");
+      store.update({ customCourseOpen: true });
+      return;
+    }
+    void selectCourse(input.value);
+  });
+}
+
+function bindCourseWeights(store: Store<GameState>) {
+  const fieldset = element<HTMLFieldSetElement>("#custom-course-sliders");
+  let weights = store.getState().courseWeights;
+  const refresh: (() => void)[] = [];
+  for (const { key, label: text, description } of courseGenerationFields) {
+    const label = document.createElement("label");
+    const title = document.createElement("span");
+    const output = document.createElement("output");
+    const input = document.createElement("input");
+    const hint = document.createElement("small");
+    input.type = "range";
+    input.min = "0";
+    input.max = "1";
+    input.step = "0.01";
+    input.id = `course-${key}`;
+    label.htmlFor = output.htmlFor = input.id;
+    title.id = `${input.id}-title`;
+    title.textContent = text;
+    hint.id = `${input.id}-hint`;
+    hint.textContent = description;
+    input.setAttribute("aria-labelledby", title.id);
+    input.setAttribute("aria-describedby", hint.id);
+    const sync = () => {
+      input.value = String(weights[key]);
+      output.value = weights[key].toFixed(2);
+      input.setAttribute("aria-valuetext", output.value);
+    };
+    input.addEventListener("input", () => {
+      const next = { ...store.getState().courseWeights, [key]: input.valueAsNumber };
+      validateCourseWeights(next);
+      store.update({ courseWeights: next });
+    });
+    refresh.push(sync);
+    sync();
+    label.append(title, output, input, hint);
+    fieldset.append(label);
+  }
+  element("#custom-course-reset").addEventListener("click", () => {
+    store.update({ courseWeights: { ...defaultCourseWeights } });
+  });
+  store.subscribe((state) => {
+    if (state.courseWeights === weights) return;
+    weights = state.courseWeights;
+    refresh.forEach((sync) => sync());
   });
 }
 
@@ -190,6 +304,8 @@ export function bindGameUI(store: Store<GameState>, reportError: (error: unknown
   bindDialog(store, "#tuning", "#drift-tuning", "tuningOpen");
   bindDialog(store, "#settings", "#settings-dialog", "settingsOpen");
   bindDialog(store, "#help", "#help-dialog", "helpOpen");
+  bindCourseWeights(store);
+  bindDialog(store, "#custom-course", "#custom-course-dialog", "customCourseOpen");
 
   function select<Value extends string>(
     selector: string,

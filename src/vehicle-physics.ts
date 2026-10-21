@@ -15,6 +15,7 @@ import { vehicleSettings } from './vehicle-settings';
 
 interface VehiclePhysicsOptions {
   Ammo: typeof AmmoFactory;
+  resources: ReturnType<typeof createPhysicsResources>;
   car: Awaited<ReturnType<typeof loadCar>>;
   course: ReturnType<typeof createCourse>;
   spawn: ReturnType<typeof courseSpawn>;
@@ -24,8 +25,31 @@ interface VehiclePhysicsOptions {
   audio: VehicleAudio;
 }
 
+export function createPhysicsResources(Ammo: typeof AmmoFactory) {
+  const buffers: { pointer: number; capacity: number; used: boolean }[] = [];
+  // This Ammo build exposes neither _free nor a vehicle-tuning destructor.
+  // Reuse tuning and power-of-two buffers instead of leaking one per course.
+  return {
+    vehicleTuning: new Ammo.btVehicleTuning(),
+    acquireHeightfield(heights: Float32Array) {
+      let buffer = buffers.find((buffer) => !buffer.used && buffer.capacity >= heights.byteLength);
+      if (!buffer) {
+        const capacity = 2 ** Math.ceil(Math.log2(heights.byteLength));
+        const pointer = Ammo._malloc(capacity);
+        if (!pointer) throw new Error('Unable to allocate course heightfield');
+        buffer = { pointer, capacity, used: false };
+        buffers.push(buffer);
+      }
+      buffer.used = true;
+      Ammo.HEAPF32.set(heights, buffer.pointer / 4);
+      const allocated = buffer;
+      return { pointer: buffer.pointer, release() { allocated.used = false; } };
+    },
+  };
+}
+
 export function createVehiclePhysics({
-  Ammo, car, course, spawn, controls, gameState, laps, audio,
+  Ammo, resources, car, course, spawn, controls, gameState, laps, audio,
 }: VehiclePhysicsOptions) {
   const { cones, terrain, isAsphalt } = course;
   const settings = vehicleSettings;
@@ -46,6 +70,7 @@ export function createVehiclePhysics({
   const world = new Ammo.btDiscreteDynamicsWorld(dispatcher, broadphase, solver, configuration);
   const vector = new Ammo.btVector3(0, -9.81, 0);
   world.setGravity(vector);
+  const rigidBodies: { body: AmmoFactory.btRigidBody; motion: AmmoFactory.btDefaultMotionState }[] = [];
 
   function rigidBody(mass: number, shape: AmmoFactory.btCollisionShape, position: THREE.Vector3) {
     const transform = new Ammo.btTransform();
@@ -58,15 +83,15 @@ export function createVehiclePhysics({
     const info = new Ammo.btRigidBodyConstructionInfo(mass, motion, shape, vector);
     const body = new Ammo.btRigidBody(info);
     world.addRigidBody(body);
+    rigidBodies.push({ body, motion });
     Ammo.destroy(info);
     Ammo.destroy(transform);
     return body;
   }
 
-  const heightData = Ammo._malloc(terrain.heights.byteLength);
-  Ammo.HEAPF32.set(terrain.heights, heightData / 4);
+  const heightData = resources.acquireHeightfield(terrain.heights);
   const groundShape = new Ammo.btHeightfieldTerrainShape(
-    terrain.columns, terrain.rows, heightData, 1, terrain.minHeight, terrain.maxHeight, 1, Ammo.PHY_FLOAT, false,
+    terrain.columns, terrain.rows, heightData.pointer, 1, terrain.minHeight, terrain.maxHeight, 1, Ammo.PHY_FLOAT, false,
   );
   vector.setValue(terrain.spacing, 1, terrain.spacing);
   groundShape.setLocalScaling(vector);
@@ -132,7 +157,7 @@ export function createVehiclePhysics({
   const coneIds = new Map(coneBodies.map((cone, i) => [Ammo.getPointer(cone), i]));
   body.setActivationState(4);
   body.setDamping(settings.damping.linear, settings.damping.angular);
-  const tuning = new Ammo.btVehicleTuning();
+  const tuning = resources.vehicleTuning;
   const raycaster = new Ammo.btDefaultVehicleRaycaster(world);
   const vehicle = new Ammo.btRaycastVehicle(tuning, body, raycaster);
   vehicle.setCoordinateSystem(0, 1, 2);
@@ -557,8 +582,37 @@ export function createVehiclePhysics({
     return velocity;
   }
 
+  let disposed = false;
+  function dispose() {
+    if (disposed) return;
+    disposed = true;
+    world.removeAction(vehicle);
+    Ammo.destroy(vehicle);
+    Ammo.destroy(raycaster);
+    for (const { body, motion } of rigidBodies) {
+      world.removeRigidBody(body);
+      Ammo.destroy(body);
+      Ammo.destroy(motion);
+    }
+    Ammo.destroy(coneShape);
+    Ammo.destroy(coneBodyShape);
+    Ammo.destroy(coneBaseShape);
+    Ammo.destroy(chassisShape);
+    Ammo.destroy(groundShape);
+    heightData.release();
+    Ammo.destroy(coneResetTransform);
+    Ammo.destroy(resetTransform);
+    Ammo.destroy(forceOffset);
+    Ammo.destroy(vector);
+    Ammo.destroy(world);
+    Ammo.destroy(solver);
+    Ammo.destroy(broadphase);
+    Ammo.destroy(dispatcher);
+    Ammo.destroy(configuration);
+  }
+
   return {
-    step, reset, captureVisuals, interpolate, fixedStep, wheelContacts, tireSounds,
+    step, reset, dispose, captureVisuals, interpolate, fixedStep, wheelContacts, tireSounds,
     get engine() { return drivetrain.state; },
     get burnout() { return burnout; },
     get steering() { return steering; },

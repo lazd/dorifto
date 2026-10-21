@@ -237,6 +237,15 @@ footer {
 .controls > span {
   white-space: nowrap;
 }
+.course-direction {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.course-direction input {
+  margin: 0;
+  accent-color: #9ee8d5;
+}
 kbd {
   display: inline-block;
   padding: 5px 7px;
@@ -349,51 +358,53 @@ dialog h2 {
   align-items: center;
   gap: 12px;
 }
-#sound-status:empty {
+#sound-status:empty,
+#custom-course-status:empty,
+#custom-course-error:empty {
   display: none;
 }
-#drift-tuning {
+.slider-dialog {
   font-size: 12px;
 }
-#drift-tuning p {
+.slider-dialog p {
   font-size: 11px;
   line-height: 1.5;
   color: #c1cfce;
 }
-#drift-tuning fieldset {
+.slider-dialog fieldset {
   margin: 12px 0;
   padding: 0;
   border: 0;
   min-width: 0;
 }
-#drift-tuning legend {
+.slider-dialog legend {
   margin-bottom: 12px;
   font-weight: 600;
 }
-#drift-tuning label {
+.slider-dialog label {
   display: grid;
   grid-template-columns: 1fr auto;
   gap: 5px 8px;
   margin-bottom: 14px;
 }
-#drift-tuning output {
+.slider-dialog output {
   color: #9ee8d5;
   font-variant-numeric: tabular-nums;
 }
-#drift-tuning input,
-#drift-tuning small {
+.slider-dialog input,
+.slider-dialog small {
   grid-column: 1 / -1;
 }
-#drift-tuning input {
+.slider-dialog input {
   width: 100%;
   margin: 3px 0;
   accent-color: #9ee8d5;
 }
-#drift-tuning small {
+.slider-dialog small {
   color: #aebfbd;
   line-height: 1.4;
 }
-#drift-tuning fieldset:disabled {
+.slider-dialog fieldset:disabled {
   opacity: 0.5;
 }
 #drift-tuning .assist-toggle {
@@ -403,4 +414,13 @@ dialog h2 {
 #drift-tuning .assist-toggle input {
   grid-column: 1;
   width: auto;
+}
+.dialog-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 20px;
+}
+#custom-course-error {
+  color: #ffb8a8;
 }

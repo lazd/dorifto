@@ -102,5 +102,11 @@ export function createTireEffects(scene: THREE.Scene, car: Awaited<ReturnType<ty
       (x, z) => terrain.heightAt(x, z));
   }
 
-  return { reset, update, captureDepth: smoke.captureDepth.bind(smoke) };
+  function setCourse(nextTerrain: CourseTerrain, nextIsAsphalt: (position: THREE.Vector3) => boolean) {
+    terrain = nextTerrain;
+    isAsphalt = nextIsAsphalt;
+    reset();
+  }
+
+  return { reset, setCourse, update, captureDepth: smoke.captureDepth.bind(smoke) };
 }

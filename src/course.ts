@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { CourseDefinition } from './courses';
-import { courseRoute, courseTurns, startDistance } from './courses';
+import { courseRoute, courseStartDistance, courseTurns } from './courses';
 import { surfaceMaterial } from './surfaces';
 import { CourseTerrain } from './terrain';
 
@@ -14,6 +14,40 @@ export const coneDimensions = {
 };
 
 export function createCourse(scene: THREE.Scene, definition: CourseDefinition) {
+  const group = new THREE.Group();
+  group.name = 'course';
+  function dispose() {
+    group.removeFromParent();
+    const geometries = new Set<THREE.BufferGeometry>();
+    const materials = new Set<THREE.Material>();
+    const textures = new Set<THREE.Texture>();
+    group.traverse((object) => {
+      if (!(object instanceof THREE.Mesh)) return;
+      geometries.add(object.geometry);
+      for (const material of Array.isArray(object.material) ? object.material : [object.material]) {
+        materials.add(material);
+        for (const value of Object.values(material)) {
+          if (value instanceof THREE.Texture) textures.add(value);
+        }
+      }
+      if (object instanceof THREE.InstancedMesh) object.dispose();
+    });
+    geometries.forEach((geometry) => geometry.dispose());
+    materials.forEach((material) => material.dispose());
+    textures.forEach((texture) => texture.dispose());
+    group.clear();
+  }
+  try {
+    const course = buildCourse(group, definition);
+    scene.add(group);
+    return { ...course, dispose };
+  } catch (error) {
+    dispose();
+    throw error;
+  }
+}
+
+function buildCourse(scene: THREE.Group, definition: CourseDefinition) {
   const route = courseRoute(definition);
   const terrain = new CourseTerrain(definition);
   scene.add(terrain.mesh);
@@ -139,6 +173,7 @@ export function createCourse(scene: THREE.Scene, definition: CourseDefinition) {
   for (const side of [-1, 1]) ribbon(side * definition.width / 2, 0.16, 0.016, white);
   const columns = Math.ceil(definition.width / 0.5);
   const tileWidth = definition.width / columns;
+  const startDistance = courseStartDistance(definition, length);
   const start = route.getPointAt(startDistance / length);
   const startTangent = route.getTangentAt(startDistance / length);
   across.set(startTangent.z, 0, -startTangent.x).normalize();
@@ -150,7 +185,7 @@ export function createCourse(scene: THREE.Scene, definition: CourseDefinition) {
       tile.rotation.set(-Math.PI / 2, 0, Math.atan2(startTangent.x, startTangent.z));
       tile.position.copy(start)
         .addScaledVector(across, -definition.width / 2 + (column + 0.5) * tileWidth)
-        .addScaledVector(startTangent, row * 0.5).setY(0.02);
+        .addScaledVector(startTangent, (definition.reverse ? row - 1 : row) * 0.5).setY(0.02);
       tile.updateMatrix();
       const geometry = tile.geometry.clone().applyMatrix4(tile.matrix);
       tile.geometry.dispose();

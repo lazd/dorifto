@@ -11,7 +11,7 @@ let terrainBaseHeight;
 
 before(async () => {
   server = await createServer({
-    server: { middlewareMode: true, hmr: false, watch: null },
+    server: { middlewareMode: true, hmr: false, ws: false, watch: null },
     appType: 'custom',
   });
   ({ courses, courseRoute, courseSpawn, generateCourse } = await server.ssrLoadModule('/src/courses.ts'));

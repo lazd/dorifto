@@ -24,7 +24,8 @@ export class CourseTerrain {
   constructor(definition: CourseDefinition) {
     this.halfWidth = definition.width / 2 + 0.8;
     this.padRadius = definition.padRadius;
-    const route = courseRoute(definition);
+    // Driving direction must not change the heightfield or its banking.
+    const route = courseRoute({ ...definition, reverse: false });
     const length = route.getLength();
     const count = Math.ceil(length);
     this.segments = Array.from({ length: count }, (_, i) => {

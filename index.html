@@ -32,7 +32,7 @@
       </div>
       <span id="engine-state">850 RPM</span>
     </aside>
-    <dialog id="drift-tuning" aria-labelledby="drift-tuning-title">
+    <dialog id="drift-tuning" class="slider-dialog" aria-labelledby="drift-tuning-title">
       <form method="dialog" class="dialog-close">
         <button type="submit" aria-label="Close" title="Close">×</button>
       </form>
@@ -51,10 +51,36 @@
         defaults resets only this mode. Car reset keeps your tuning; reloading restores defaults.
       </p>
     </dialog>
+    <dialog id="custom-course-dialog" class="slider-dialog" aria-labelledby="custom-course-title">
+      <form method="dialog" class="dialog-close">
+        <button type="submit" aria-label="Close" title="Close">×</button>
+      </form>
+      <h2 id="custom-course-title" tabindex="-1" autofocus>Custom course</h2>
+      <p>
+        Set independent preferences from 0 (avoid) to 1 (strongly favor).
+        They do not need to add up to 1. Changes apply only when you generate.
+      </p>
+      <fieldset id="custom-course-sliders">
+        <legend>Generation preferences</legend>
+      </fieldset>
+      <p>
+        Elevation 0 is completely flat. Closed circuits still need return bends.
+        More features or longer straightaways can make a longer lap.
+        All layouts keep safe road clearance and at least a 22 m turn radius.
+      </p>
+      <p id="custom-course-status" role="status"></p>
+      <p id="custom-course-error" role="alert"></p>
+      <div class="dialog-actions">
+        <button id="custom-course-reset" type="button"><kbd>Restore defaults</kbd></button>
+        <button id="custom-course-generate" type="button" disabled><kbd>Generate course</kbd></button>
+      </div>
+    </dialog>
     <footer>
       <div class="controls">
-        <label>Course <select id="course" aria-label="Course (restarts demo)"></select></label>
-        <button id="random-course" type="button" title="Generate a new course (restarts demo)"><kbd>Random course</kbd></button>
+        <label>Course <select id="course" aria-label="Course" disabled></select></label>
+        <label class="course-direction"><input id="reverse-course" type="checkbox" disabled /> Reverse course</label>
+        <button id="random-course" type="button" title="Generate a new course" disabled><kbd>Random course</kbd></button>
+        <button id="custom-course" type="button" aria-haspopup="dialog" aria-controls="custom-course-dialog" disabled><kbd>Custom course</kbd></button>
         <button id="settings" type="button" aria-haspopup="dialog" aria-controls="settings-dialog"><kbd>Settings</kbd></button>
         <button id="tuning" type="button" aria-haspopup="dialog" aria-controls="drift-tuning"><kbd>Tuning</kbd></button>
         <button id="help" type="button" aria-haspopup="dialog"><kbd>Help</kbd></button>
@@ -164,7 +190,7 @@
       <p id="controller-status" role="status">Controller: connect and press a button</p>
       <p>
         Press the accelerator to release the initial brake hold. Driving inputs are disabled while
-        Help, Settings, or tuning is open; the simulation continues.
+        Help, Settings, tuning, or Custom course is open; the simulation continues.
       </p>
       <p>
         Sound defaults to On and starts after a click or keypress. Use Settings to

@@ -1,5 +1,6 @@
 import { driveModes, type DriveMode } from './drive-modes';
 import { createStore } from './store';
+import { defaultCourseWeights, type CourseGenerationWeights } from './course-generation';
 
 export const wattsPerHorsepower = 745.699872;
 
@@ -34,6 +35,9 @@ export interface GameState {
   helpOpen: boolean;
   tuningOpen: boolean;
   settingsOpen: boolean;
+  customCourseOpen: boolean;
+  courseWeights: CourseGenerationWeights;
+  courseReverse: boolean;
   focused: boolean;
   controllerStatus: string;
   sound: Readonly<{ running: boolean; muted: boolean; failed: boolean; error: string | null }>;
@@ -51,6 +55,8 @@ export function createGameState() {
     driveMode: 'drift',
     profiles: { drift: defaultTuning('drift'), grip: defaultTuning('grip') },
     cameraStyle: 'corner', timeOfDay: 'noon', helpOpen: false, tuningOpen: false, settingsOpen: false,
+    customCourseOpen: false, courseWeights: { ...defaultCourseWeights },
+    courseReverse: false,
     focused: true, controllerStatus: '',
     sound: { running: false, muted: false, failed: false, error: null },
     status: { message: 'Loading car and physics...', error: false, visible: true },

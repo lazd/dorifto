@@ -11,7 +11,7 @@ style controls in a modal dialog. Changes apply immediately. Close with **Close*
 Escape, or a backdrop click; driving inputs are disabled while it is open.
 Course selection stays in the toolbar. Reset uses keyboard **R** or the controller's
 Start/Menu/Options button rather than a toolbar button.
-Settings, Tuning, and Help share one dialog lifecycle in `src/ui.ts`: open at the
+Settings, Tuning, Help, and Custom course share one dialog lifecycle in `src/ui.ts`: open at the
 top, close with the upper-right ×, Escape, or an outside click, and restore focus
 to the opening button. Clicking or dragging controls inside does not dismiss them.
 
@@ -83,8 +83,8 @@ npm run dev
 Vite opens the game in your browser. Use a desktop browser with WebGL2 and a
 keyboard or standard-mapped gamepad. Click the game if focus is in another window.
 
-Run `npm test` for deterministic course-generation and geometry regression checks,
-including a multi-seed sweep. Run `npm run build` to type-check and build the app.
+Run `npm test` for course-generation, geometry, camera, and physics-lifecycle regression
+checks, including a multi-seed sweep. Run `npm run build` to type-check and build the app.
 
 ## Controls
 
@@ -103,6 +103,8 @@ simulation continues. Settings remains in the main footer.
 | C | Cycle corner-aware chase, classic chase, in-cabin (once per press) |
 | D | Toggle Grip / Drift mode (once per press) |
 | M | Toggle the bird's-eye map view of the whole course |
+
+Map view switches instantly in both directions, without an animated camera flight.
 
 ### Gamepad
 
@@ -394,6 +396,19 @@ preserved when switching courses or generating a random layout. Noon is the defa
 
 ## Courses
 
+The toolbar's **Reverse course** checkbox drives any named, random, or custom
+layout in the opposite direction. Use `?reverse=1` in a course URL to open it
+reversed; omit the parameter (or use `reverse=0`) for the normal direction.
+`reverse=true`, `reverse=false`, and a bare `reverse` flag are also supported.
+Changing direction resets the driving session in place without reloading, keeping
+the same layout, seed, custom generation parameters, and settings. The preference
+also carries over when selecting or generating another course.
+
+Both directions use the same pavement, terrain, banking, and physical start/finish
+location. Reversed spawn places the car on the other approach to the line, facing
+the new driving direction. Lap gates, turn arrows, and camera look-ahead follow
+that direction; lap timing still requires a complete forward lap.
+
 **Hillside Circuit** (`?course=hillside`) extends random seed **1077036780**
 into a roughly 982 m lap, about twice the original 511 m. It keeps the original
 eastern and northern sweepers and replaces the southwest section with a longer
@@ -455,8 +470,14 @@ After releasing the hold, ordinary braking/reverse and lift-off behavior resume.
 ### Layouts
 
 Use the Course selector to load Autocross Playground (15 m wide) or Sweeper
-Circuit (17.5 m wide). Switching courses restarts the demo for a clean physics world,
-cones, and tire marks. The selection is encoded in `?course=autocross` or
+Circuit (17.5 m wide). Switching courses replaces the track in place without
+reloading the page or car assets. It resets the car, physics world, lap timing,
+cones, smoke, and tire marks while retaining tuning, sound, camera, drive mode,
+and time-of-day settings. Replaced track graphics and physics bodies are freed;
+native heightfield buffers are pooled and reused because this Ammo build does not
+export a working memory-free function.
+Course controls are disabled during loading, and failures appear in the status
+message without navigating away. The selection is encoded in `?course=autocross` or
 `?course=sweeper`, so links can open a particular course.
 
 The driving corridor is textured asphalt with an 80 cm paved shoulder; everything
@@ -487,8 +508,9 @@ Cone bases sit 22 cm outside the outer edge of each white boundary line.
 Bent left/right warning arrows appear about 12 m before hard-turn entry,
 not periodically along the course; nearby warnings are merged.
 
-**Random course** generates a new closed circuit and restarts the demo, retaining
-your drive mode. Its seed is saved in `?course=random&seed=12345` so the same link
+**Random course** generates and loads a new closed circuit in place, retaining
+your settings and tuning without reloading the game.
+Its seed is saved in `?course=random&seed=12345` so the same link
 recreates the same layout with the current generator. The generator smoothly warps,
 stretches, rotates, and mirrors Hillside Circuit's lobed outline, targeting
 975–1,075 m laps with a 17.5 m road width. It rejects layouts with centerline
@@ -501,6 +523,43 @@ between their marked road edges, with an extra sampling margin.
 Existing random seed links now use this generator and therefore produce new layouts;
 the named Hillside Circuit stays fixed.
 These are geometric limits, not an autopilot: slow down for the tighter bends.
+
+### Custom generation
+
+**Custom course** opens a dialog with six independent sliders from **0 to 1**
+(0.01 steps), numeric readouts, and **Restore defaults**. Adjusting sliders does
+not change the current course. **Generate course** builds a new seeded layout in
+place, resets the driving session, and closes the dialog on success. Generation
+controls are disabled while building; a failure stays visible in the dialog so
+you can adjust the mix or retry. Escape, the upper-right close button, or a
+backdrop click closes the dialog without generating. Driving inputs are disabled
+while it is open, as with the other dialogs.
+
+The weights do not need to sum to one: 0 avoids a feature, while 1 strongly
+favors it. Intermediate corner weights vary the chance of including each
+feature as well as its shape. A closed circuit still needs return bends, and
+connecting sections can remain straight even with a zero straightaway preference.
+More features and longer straightaways increase lap length rather than shrinking
+corners to fit a fixed distance.
+
+| Preference | Default | Effect |
+| --- | --- | --- |
+| Elevation change | 0.50 | Scales climbs, descents, and banking. Zero makes the entire terrain flat; one targets up to 20 m centerline relief, capped at 12% grade. |
+| Straightaways | 0.50 | Lengthens uninterrupted straights and the gaps between corner sequences. |
+| Tight corners | 0.35 | Adds sharp bends, typically around 28–44 m radius. |
+| Sweeping corners | 0.70 | Adds broad, flowing bends around 80–115 m radius. |
+| Hairpins | 0.20 | Adds tight 180-degree switchbacks. |
+| Chicanes | 0.35 | Adds closely spaced, alternating left-right bends. |
+
+Custom layouts assemble tangent-connected straights and circular-arc features,
+rounded by the shared closed B-spline. They retain the 17.5 m road width and
+clearance checks, but allow centerline radii down to 22 m for tighter features.
+All six preferences and the seed are stored in the URL, for example
+`?course=custom&seed=123&elevation=0.5&straightaways=0.5&tightCorners=0.35&sweepingCorners=0.7&hairpins=0.2&chicanes=0.35`.
+Reloading that link recreates the layout and slider values. Preferences remain
+available when reopening the dialog or switching courses within the same page.
+**Random course** still uses the existing Hillside-style generator; switching to
+a random or named course removes custom weights from its URL.
 
 Course data lives in `src/courses.ts`: add a `CourseDefinition` with a unique ID,
 name, corridor width, and ordered `[x, z]` centerline markers in driving order.

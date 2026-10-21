@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { courseRoute, startDistance } from './courses';
+import { courseRoute, courseStartDistance } from './courses';
 import type { CourseDefinition } from './courses';
 
 export class LapTimer {
@@ -20,6 +20,7 @@ export class LapTimer {
   constructor(definition: CourseDefinition) {
     const route = courseRoute(definition);
     const length = route.getLength();
+    const startDistance = courseStartDistance(definition, length);
     this.halfWidth = definition.width / 2 + 0.8;
     this.gates = Array.from({ length: 16 }, (_, i) => {
       const t = ((startDistance + i * length / 16) % length) / length;

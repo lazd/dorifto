@@ -11,17 +11,18 @@ export interface CourseDefinition {
   flat?: boolean;
   elevationScale?: number;
   padRadius?: number;
+  reverse?: boolean;
   /** Ground-plane coordinates [x, z], ordered in the driving direction. */
   points: readonly (readonly [number, number])[];
 }
 
 class CourseCurve extends THREE.Curve<THREE.Vector3> {
-  constructor(private readonly markers: CourseDefinition['points']) {
+  constructor(private readonly markers: CourseDefinition['points'], private readonly reverse = false) {
     super();
   }
 
   getPoint(t: number, target = new THREE.Vector3()) {
-    const scaled = THREE.MathUtils.euclideanModulo(t, 1) * this.markers.length;
+    const scaled = THREE.MathUtils.euclideanModulo(this.reverse ? -t : t, 1) * this.markers.length;
     const index = Math.floor(scaled);
     const u = scaled - index;
     const v = 1 - u;
@@ -43,7 +44,7 @@ class CourseCurve extends THREE.Curve<THREE.Vector3> {
 
 export function courseRoute(definition: CourseDefinition) {
   // A periodic cubic B-spline rounds marker corners instead of overshooting them.
-  const route = new CourseCurve(definition.points);
+  const route = new CourseCurve(definition.points, definition.reverse);
   route.arcLengthDivisions = Math.max(1000, definition.points.length * 100);
   return route;
 }
@@ -79,11 +80,37 @@ export function courseTurns(route: THREE.Curve<THREE.Vector3>) {
   return turns.sort((a, b) => a.distance - b.distance);
 }
 
+export function courseStartDistance(definition: CourseDefinition, length: number) {
+  return definition.reverse ? length - startDistance : startDistance;
+}
+
+export function readCourseReverse(parameters: URLSearchParams) {
+  const value = parameters.get('reverse');
+  if (value === null || value === '0' || value === 'false') return false;
+  if (value === '' || value === '1' || value === 'true') return true;
+  throw new Error(`Invalid reverse course option: ${value}`);
+}
+
 export function courseSpawn(definition: CourseDefinition) {
   const route = courseRoute(definition);
-  const position = route.getPointAt(0);
-  const tangent = route.getTangentAt(0);
+  // Spawn on the approach side of the same physical start line in either direction.
+  const t = definition.reverse ? 1 - 2 * startDistance / route.getLength() : 0;
+  const position = route.getPointAt(t);
+  const tangent = route.getTangentAt(t);
   return { position: [position.x, position.z] as const, heading: Math.atan2(tangent.x, tangent.z) };
+}
+
+export function courseHasClearance(route: THREE.Curve<THREE.Vector3>, width: number) {
+  const length = route.getLength();
+  const samples = route.getSpacedPoints(Math.ceil(length / 2)).slice(0, -1);
+  const spacing = length / samples.length;
+  for (let i = 0; i < samples.length; i++) {
+    for (let j = i + 1; j < samples.length; j++) {
+      const separation = Math.min(j - i, samples.length - (j - i)) * spacing;
+      if (separation > width * 2 && samples[i].distanceTo(samples[j]) < width + 10) return false;
+    }
+  }
+  return true;
 }
 
 // Fixed markers preserve the named course independently of random generation.
@@ -100,17 +127,21 @@ const hillsidePoints: CourseDefinition['points'] = [
   [70.2405650712074, -48.89419930583218], [78.21984842673713, -24.350131429050233],
 ];
 
-export function generateCourse(seed: number): CourseDefinition {
+export function createCourseRandom(seed: number) {
   if (!Number.isInteger(seed) || seed < 0 || seed > 0xffffffff) {
     throw new Error('Course seed must be an unsigned 32-bit integer');
   }
   let state = seed;
-  const random = () => {
+  return () => {
     state = (state + 0x6d2b79f5) | 0;
     let value = Math.imul(state ^ state >>> 15, 1 | state);
     value ^= value + Math.imul(value ^ value >>> 7, 61 | value);
     return ((value ^ value >>> 14) >>> 0) / 4294967296;
   };
+}
+
+export function generateCourse(seed: number): CourseDefinition {
+  const random = createCourseRandom(seed);
   for (let attempt = 0; attempt < 256; attempt++) {
     const stretchX = 0.9 + random() * 0.2;
     const stretchZ = 0.9 + random() * 0.2;
@@ -166,17 +197,7 @@ export function generateCourse(seed: number): CourseDefinition {
     radii.sort((a, b) => a - b);
     const medianRadius = radii[Math.floor(radii.length / 2)];
     if (medianRadius < 60 || medianRadius > 110) continue;
-    const clearanceSamples = route.getSpacedPoints(Math.ceil(length / 2)).slice(0, -1);
-    const spacing = length / clearanceSamples.length;
-    for (let i = 0; i < clearanceSamples.length && navigable; i++) {
-      for (let j = i + 1; j < clearanceSamples.length && navigable; j++) {
-        const separation = Math.min(j - i, clearanceSamples.length - (j - i)) * spacing;
-        if (separation > definition.width * 2 && clearanceSamples[i].distanceTo(clearanceSamples[j]) < definition.width + 10) {
-          navigable = false;
-        }
-      }
-    }
-    if (navigable) return definition;
+    if (courseHasClearance(route, definition.width)) return definition;
   }
   throw new Error(`Unable to generate a navigable course for seed ${seed}`);
 }
