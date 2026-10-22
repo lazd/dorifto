@@ -1,16 +1,15 @@
 const STICK_DEADZONE = 0.0;
 const TRIGGER_DEADZONE = 0.0;
 
-type LightingRequest = "press" | "tap" | "hold";
+type LightingRequest = 'press' | 'tap' | 'hold';
 
 export function updateVehicleLights(
   state: { headlights: boolean; fogLights: boolean; headlightsAtPress: boolean },
   request: LightingRequest,
 ) {
-  if (request === "press")
+  if (request === 'press')
     return { ...state, headlights: true, headlightsAtPress: state.headlights };
-  if (request === "hold")
-    return { ...state, headlights: true, fogLights: !state.fogLights };
+  if (request === 'hold') return { ...state, headlights: true, fogLights: !state.fogLights };
   return {
     ...state,
     headlights: !state.headlightsAtPress,
@@ -41,7 +40,7 @@ export class DrivingControls {
   recordRequested = false;
   previousLapRequested = false;
   nextLapRequested = false;
-  controllerStatus = "";
+  controllerStatus = '';
   private recordHeld = false;
   private previousLapHeld = false;
   private nextLapHeld = false;
@@ -64,21 +63,21 @@ export class DrivingControls {
   private focused = document.hasFocus();
 
   private setCursorHidden(hidden: boolean) {
-    document.documentElement.style.cursor = hidden ? "none" : "";
-    document.body.style.cursor = hidden ? "none" : "";
+    document.documentElement.style.cursor = hidden ? 'none' : '';
+    document.body.style.cursor = hidden ? 'none' : '';
   }
 
   constructor() {
-    window.addEventListener("mousemove", () => this.setCursorHidden(false));
-    window.addEventListener("mousedown", () => this.setCursorHidden(false));
-    window.addEventListener("blur", () => {
+    window.addEventListener('mousemove', () => this.setCursorHidden(false));
+    window.addEventListener('mousedown', () => this.setCursorHidden(false));
+    window.addEventListener('blur', () => {
       this.focused = false;
       this.clear();
     });
-    window.addEventListener("focus", () => {
+    window.addEventListener('focus', () => {
       this.focused = true;
     });
-    document.addEventListener("visibilitychange", () => {
+    document.addEventListener('visibilitychange', () => {
       this.focused = !document.hidden && document.hasFocus();
       this.clear();
     });
@@ -111,16 +110,16 @@ export class DrivingControls {
   }
 
   poll(enabled = true, steeringExpo = 0, dismissError?: () => boolean) {
-    const available = typeof navigator.getGamepads === "function";
+    const available = typeof navigator.getGamepads === 'function';
     const pads = available ? Array.from(navigator.getGamepads()) : [];
-    const pad = pads.find((pad) => pad?.connected && pad.mapping === "standard");
+    const pad = pads.find((pad) => pad?.connected && pad.mapping === 'standard');
     const message = pad
-      ? "✅ Connected"
+      ? '✅ Connected'
       : pads.some((pad) => pad?.connected)
-        ? "🛑 Controller unsupported"
+        ? '🛑 Controller unsupported'
         : available
-          ? "⏳ Waiting for controller"
-          : "🛑 Gamepad API unavailable";
+          ? '⏳ Waiting for controller'
+          : '🛑 Gamepad API unavailable';
     this.controllerStatus = message;
     const resetPressed = Boolean(pad?.buttons[9]?.pressed);
     this.resetRequested = resetPressed && !this.resetHeld;
@@ -162,14 +161,14 @@ export class DrivingControls {
       const value = Math.max(0, Math.min(1, pad?.buttons[index]?.value ?? 0));
       return Math.max(0, (value - TRIGGER_DEADZONE) / (1 - TRIGGER_DEADZONE));
     };
-    const keyboardSteer = Number(this.keys.has("ArrowLeft")) - Number(this.keys.has("ArrowRight"));
+    const keyboardSteer = Number(this.keys.has('ArrowLeft')) - Number(this.keys.has('ArrowRight'));
     const stick = -axis(0);
     this.steer = keyboardSteer || stick * (1 - steeringExpo) + stick ** 3 * steeringExpo;
-    this.throttle = Math.max(Number(this.keys.has("KeyZ")), trigger(7));
-    this.brake = Math.max(Number(this.keys.has("KeyX")), trigger(6));
+    this.throttle = Math.max(Number(this.keys.has('KeyZ')), trigger(7));
+    this.brake = Math.max(Number(this.keys.has('KeyX')), trigger(6));
     this.reverse = this.brake;
-    this.handbrake = this.keys.has("Space") || Boolean(pad?.buttons[5]?.pressed);
-    const highBeamPressed = this.keys.has("KeyF") || Boolean(pad?.buttons[4]?.pressed);
+    this.handbrake = this.keys.has('Space') || Boolean(pad?.buttons[5]?.pressed);
+    const highBeamPressed = this.keys.has('KeyF') || Boolean(pad?.buttons[4]?.pressed);
     const now = performance.now();
     if (highBeamPressed) {
       this.highBeamPressedAt ??= now;
@@ -182,19 +181,22 @@ export class DrivingControls {
       this.highBeamToggled = false;
     }
     this.highBeams = this.highBeamsLatched || (highBeamPressed && !this.highBeamToggled);
-    const headlightsPressed = this.keys.has("KeyH") || Boolean(pad?.buttons[2]?.pressed);
+    const headlightsPressed = this.keys.has('KeyH') || Boolean(pad?.buttons[2]?.pressed);
     this.lightingRequested = null;
     if (headlightsPressed) {
-      if (this.headlightsPressedAt === null) this.lightingRequested = "press";
+      if (this.headlightsPressedAt === null) this.lightingRequested = 'press';
       this.headlightsPressedAt ??= now;
       if (!this.lightingHoldTriggered && now - this.headlightsPressedAt >= 1000) {
-        this.lightingRequested = "hold";
+        this.lightingRequested = 'hold';
         this.lightingHoldTriggered = true;
       }
     } else {
-      if (this.headlightsPressedAt !== null && !this.lightingHoldTriggered &&
-        !(this.headlightsGamepadHeld && !pad)) {
-        this.lightingRequested = "tap";
+      if (
+        this.headlightsPressedAt !== null &&
+        !this.lightingHoldTriggered &&
+        !(this.headlightsGamepadHeld && !pad)
+      ) {
+        this.lightingRequested = 'tap';
       }
       this.headlightsPressedAt = null;
       this.lightingHoldTriggered = false;
@@ -204,8 +206,8 @@ export class DrivingControls {
     this.cameraY = axis(3);
     this.mapZoom = this.mapView ? axis(1) : 0;
     this.lookBehind = Boolean(pad?.buttons[11]?.pressed);
-    const signalDirection = !this.mapView && Math.abs(this.cameraX) >= 0.5
-      ? Math.sign(this.cameraX) : 0;
+    const signalDirection =
+      !this.mapView && Math.abs(this.cameraX) >= 0.5 ? Math.sign(this.cameraX) : 0;
     if (signalDirection !== this.signalHoldDirection) {
       this.signalHoldDirection = signalDirection;
       this.signalHeldAt = now;

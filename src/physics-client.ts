@@ -9,9 +9,19 @@ import type { Store } from './store';
 import type { RunRecording } from './lap-recording';
 import { idleRpm } from './drivetrain';
 import {
-  createPhysicsInit, emptyLapState, physicsStep, poseStride, replayData, snapshotStride, vehiclePoseCount,
-  type PhysicsCommand, type PhysicsInput, type PhysicsRecord, type PhysicsResponse,
-  type PhysicsSnapshot, type PhysicsTelemetry,
+  createPhysicsInit,
+  emptyLapState,
+  physicsStep,
+  poseStride,
+  replayData,
+  snapshotStride,
+  vehiclePoseCount,
+  type PhysicsCommand,
+  type PhysicsInput,
+  type PhysicsRecord,
+  type PhysicsResponse,
+  type PhysicsSnapshot,
+  type PhysicsTelemetry,
 } from './physics-messages';
 
 interface PhysicsClientOptions {
@@ -26,11 +36,23 @@ interface PhysicsClientOptions {
 }
 
 export function createPhysicsClient({
-  car, course, definition, controls, configurationState, audio, lights, onError,
+  car,
+  course,
+  definition,
+  controls,
+  configurationState,
+  audio,
+  lights,
+  onError,
 }: PhysicsClientOptions) {
   const worker = new Worker(new URL('./physics-worker.ts', import.meta.url), { type: 'module' });
-  const objects = [car.chassis, ...car.wheels, ...car.hubs, ...course.cones,
-    ...course.turnSignGroups.flatMap((group) => group.children)];
+  const objects = [
+    car.chassis,
+    ...car.wheels,
+    ...car.hubs,
+    ...course.cones,
+    ...course.turnSignGroups.flatMap((group) => group.children),
+  ];
   const previous = new Float32Array(objects.length * poseStride);
   const current = new Float32Array(previous.length);
   const laps = emptyLapState();
@@ -41,12 +63,27 @@ export function createPhysicsClient({
   const position = new THREE.Vector3();
   const quaternion = new THREE.Quaternion();
   let telemetry: PhysicsTelemetry = {
-    engine: { rpm: idleRpm, gear: 1, throttle: 0, load: 0, boost: 0, shifting: false, limiterCut: false },
-    steering: 0, burnout: 0, brakestand: false, reversing: false, spawnBrakeHeld: true,
-    braking: true, hazards: false, hazardsEnabled: false,
+    engine: {
+      rpm: idleRpm,
+      gear: 1,
+      throttle: 0,
+      load: 0,
+      boost: 0,
+      shifting: false,
+      limiterCut: false,
+    },
+    steering: 0,
+    burnout: 0,
+    brakestand: false,
+    reversing: false,
+    spawnBrakeHeld: true,
+    braking: true,
+    hazards: false,
+    hazardsEnabled: false,
     wheelContacts: [false, false, false, false],
     tireSounds: Array.from({ length: 4 }, () => ({ slip: 0, speed: 0, load: 0 })),
-    velocity: [0, 0, 0], previousVelocity: [0, 0, 0],
+    velocity: [0, 0, 0],
+    previousVelocity: [0, 0, 0],
   };
   let revision = 0;
   let pendingResponses = 0;
@@ -62,14 +99,20 @@ export function createPhysicsClient({
   const recycled: ArrayBuffer[] = [];
   let resolveReady: () => void;
   let rejectReady: (error: Error) => void;
-  const ready = new Promise<void>((resolve, reject) => { resolveReady = resolve; rejectReady = reject; });
+  const ready = new Promise<void>((resolve, reject) => {
+    resolveReady = resolve;
+    rejectReady = reject;
+  });
 
   function input(): PhysicsInput {
     const { driveMode, profiles, coneMode } = configurationState.getState();
     return {
       controls: {
-        throttle: controls.throttle, brake: controls.brake, reverse: controls.reverse,
-        steer: controls.steer, handbrake: controls.handbrake,
+        throttle: controls.throttle,
+        brake: controls.brake,
+        reverse: controls.reverse,
+        steer: controls.steer,
+        handbrake: controls.handbrake,
       },
       configuration: { driveMode, profiles, coneMode },
       signs: course.turnSignGroups.map((group) => group.visible),
@@ -181,7 +224,9 @@ export function createPhysicsClient({
   }
 
   return {
-    ready, laps, fixedStep: physicsStep,
+    ready,
+    laps,
+    fixedStep: physicsStep,
     advance(dt: number) {
       if (disposed || failed) return;
       pendingTime = Math.min(pendingTime + dt, 0.05);
@@ -197,7 +242,14 @@ export function createPhysicsClient({
     },
     reset() {
       invalidate();
-      telemetry = { ...telemetry, spawnBrakeHeld: true, reversing: false, braking: true, hazards: false, hazardsEnabled: false };
+      telemetry = {
+        ...telemetry,
+        spawnBrakeHeld: true,
+        reversing: false,
+        braking: true,
+        hazards: false,
+        hazardsEnabled: false,
+      };
       car.setBraking(true);
       car.setReversing(false);
       car.setHazards(false);
@@ -219,11 +271,15 @@ export function createPhysicsClient({
       send({ type: 'snap', input: input() });
     },
     interpolate,
-    interpolateReplay() { interpolate(interpolationAlpha(), true); },
+    interpolateReplay() {
+      interpolate(interpolationAlpha(), true);
+    },
     interpolationAlpha,
     setCones(enabled: boolean, onlyCorners = false) {
       const corners = new Set(course.cornerCones);
-      course.cones.forEach((cone) => { cone.visible = enabled && (!onlyCorners || corners.has(cone)); });
+      course.cones.forEach((cone) => {
+        cone.visible = enabled && (!onlyCorners || corners.has(cone));
+      });
     },
     dispose() {
       disposed = true;
@@ -231,16 +287,38 @@ export function createPhysicsClient({
       recycled.length = 0;
       records = [];
     },
-    get engine() { return telemetry.engine; },
-    get burnout() { return telemetry.burnout; },
-    get steering() { return telemetry.steering; },
-    get reversing() { return telemetry.reversing; },
-    get spawnBrakeHeld() { return telemetry.spawnBrakeHeld; },
-    get linearVelocity() { return linearVelocity; },
-    get brakestand() { return telemetry.brakestand; },
-    get wheelContacts() { return telemetry.wheelContacts; },
-    get tireSounds() { return telemetry.tireSounds; },
-    get replayTime() { return replayTime; },
-    get resetting() { return resetting; },
+    get engine() {
+      return telemetry.engine;
+    },
+    get burnout() {
+      return telemetry.burnout;
+    },
+    get steering() {
+      return telemetry.steering;
+    },
+    get reversing() {
+      return telemetry.reversing;
+    },
+    get spawnBrakeHeld() {
+      return telemetry.spawnBrakeHeld;
+    },
+    get linearVelocity() {
+      return linearVelocity;
+    },
+    get brakestand() {
+      return telemetry.brakestand;
+    },
+    get wheelContacts() {
+      return telemetry.wheelContacts;
+    },
+    get tireSounds() {
+      return telemetry.tireSounds;
+    },
+    get replayTime() {
+      return replayTime;
+    },
+    get resetting() {
+      return resetting;
+    },
   };
 }

@@ -9,7 +9,9 @@ import { fileURLToPath } from 'node:url';
 const earthRadius = 6371008.8;
 const defaults = { width: 15, spacing: 8, elevationSpacing: 5, elevationSmoothing: 15 };
 const elevationEndpoint = 'https://epqs.nationalmap.gov/v1/json';
-const elevationCacheDir = fileURLToPath(new URL('../src/trackImports/elevation-cache/', import.meta.url));
+const elevationCacheDir = fileURLToPath(
+  new URL('../src/trackImports/elevation-cache/', import.meta.url),
+);
 
 /** Evenly resamples a closed polyline; the closing segment bridges any gap at the start line. */
 function resampleLoop(points, spacing) {
@@ -24,7 +26,7 @@ function resampleLoop(points, spacing) {
   const result = [];
   let segment = 0;
   for (let i = 0; i < count; i++) {
-    const target = i / count * length;
+    const target = (i / count) * length;
     while (distances[segment + 1] < target) segment++;
     const [ax, az] = points[segment];
     const [bx, bz] = points[(segment + 1) % points.length];
@@ -61,10 +63,11 @@ function smoothElevationSeam(heights, spacing) {
     const t = offset / span;
     const t2 = t * t;
     const t3 = t2 * t;
-    heights[(start + offset) % count] = (2 * t3 - 3 * t2 + 1) * startHeight
-      + (t3 - 2 * t2 + t) * span * startSlope
-      + (-2 * t3 + 3 * t2) * endHeight
-      + (t3 - t2) * span * endSlope;
+    heights[(start + offset) % count] =
+      (2 * t3 - 3 * t2 + 1) * startHeight +
+      (t3 - 2 * t2 + t) * span * startSlope +
+      (-2 * t3 + 3 * t2) * endHeight +
+      (t3 - t2) * span * endSlope;
   }
 }
 
@@ -73,28 +76,38 @@ const round = (value, digits) => Number(value.toFixed(digits));
 function projectLap(data) {
   const lap = data.featured_lap?.points;
   if (!data.slug) throw new Error('Track JSON is missing slug');
-  if (!Array.isArray(lap) || lap.length < 8) throw new Error(`${data.slug}: featured_lap.points is missing`);
+  if (!Array.isArray(lap) || lap.length < 8)
+    throw new Error(`${data.slug}: featured_lap.points is missing`);
   const lat0 = lap.reduce((sum, point) => sum + point.lat, 0) / lap.length;
   const lon0 = lap.reduce((sum, point) => sum + point.lon, 0) / lap.length;
-  const cosLat = Math.cos(lat0 * Math.PI / 180);
+  const cosLat = Math.cos((lat0 * Math.PI) / 180);
   // Local equirectangular projection. The map view shows +Z at the top with +X on
   // the left, so north -> +Z and east -> -X keeps the layout unmirrored, north up.
   const projected = lap.map(({ lat, lon }) => [
-    -(lon - lon0) * Math.PI / 180 * earthRadius * cosLat,
-    (lat - lat0) * Math.PI / 180 * earthRadius,
+    ((-(lon - lon0) * Math.PI) / 180) * earthRadius * cosLat,
+    (((lat - lat0) * Math.PI) / 180) * earthRadius,
   ]);
   // Drop duplicate fixes and a trailing point that repeats the start.
-  const unique = projected.filter((point, i) => i === 0
-    || Math.hypot(point[0] - projected[i - 1][0], point[1] - projected[i - 1][1]) > 0.05);
+  const unique = projected.filter(
+    (point, i) =>
+      i === 0 || Math.hypot(point[0] - projected[i - 1][0], point[1] - projected[i - 1][1]) > 0.05,
+  );
   const last = unique[unique.length - 1];
   if (Math.hypot(last[0] - unique[0][0], last[1] - unique[0][1]) < 0.5) unique.pop();
   return { unique, lat0, lon0, cosLat };
 }
 
-export async function fetchMissingElevation(data, { cacheDir = elevationCacheDir, fetch = globalThis.fetch } = {}) {
+export async function fetchMissingElevation(
+  data,
+  { cacheDir = elevationCacheDir, fetch = globalThis.fetch } = {},
+) {
   if (data.elevation?.points?.length) {
-    if (data.elevation.points.length < 2 || !data.elevation.points.every((point) =>
-      Number.isFinite(point.altitude_m) && Number.isFinite(point.dist_frac))) {
+    if (
+      data.elevation.points.length < 2 ||
+      !data.elevation.points.every(
+        (point) => Number.isFinite(point.altitude_m) && Number.isFinite(point.dist_frac),
+      )
+    ) {
       throw new Error(`${data.slug}: supplied elevation profile is invalid`);
     }
     return data;
@@ -103,11 +116,15 @@ export async function fetchMissingElevation(data, { cacheDir = elevationCacheDir
   const { unique, lat0, lon0, cosLat } = projectLap(data);
   const { points } = resampleLoop(unique, 10);
   const coordinates = points.map(([x, z]) => ({
-    lat: lat0 + z / earthRadius * 180 / Math.PI,
-    lon: lon0 - x / (earthRadius * cosLat) * 180 / Math.PI,
+    lat: lat0 + ((z / earthRadius) * 180) / Math.PI,
+    lon: lon0 - ((x / (earthRadius * cosLat)) * 180) / Math.PI,
   }));
-  if (coordinates.some(({ lat, lon }) => !Number.isFinite(lat) || !Number.isFinite(lon)
-    || Math.abs(lat) > 90 || Math.abs(lon) > 180)) {
+  if (
+    coordinates.some(
+      ({ lat, lon }) =>
+        !Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180,
+    )
+  ) {
     throw new Error(`${data.slug}: invalid GPS coordinates`);
   }
   const coordinatesHash = createHash('sha256').update(JSON.stringify(coordinates)).digest('hex');
@@ -120,10 +137,15 @@ export async function fetchMissingElevation(data, { cacheDir = elevationCacheDir
   }
   let elevation;
   if (cached?.coordinatesHash === coordinatesHash) {
-    if (cached.source !== 'USGS 3DEP' || !Array.isArray(cached.points)
-      || cached.points.length !== coordinates.length
-      || !cached.points.every((point, i) => Number.isFinite(point.altitude_m)
-        && point.dist_frac === i / coordinates.length)) {
+    if (
+      cached.source !== 'USGS 3DEP' ||
+      !Array.isArray(cached.points) ||
+      cached.points.length !== coordinates.length ||
+      !cached.points.every(
+        (point, i) =>
+          Number.isFinite(point.altitude_m) && point.dist_frac === i / coordinates.length,
+      )
+    ) {
       throw new Error(`${data.slug}: invalid elevation cache ${cacheFile}`);
     }
     elevation = cached;
@@ -133,23 +155,41 @@ export async function fetchMissingElevation(data, { cacheDir = elevationCacheDir
     const profile = [];
     // Limit concurrent requests to avoid overwhelming the public service.
     for (let start = 0; start < coordinates.length; start += 4) {
-      profile.push(...await Promise.all(coordinates.slice(start, start + 4).map(async ({ lat, lon }, offset) => {
-        const url = new URL(elevationEndpoint);
-        url.search = new URLSearchParams({
-          x: String(lon), y: String(lat), wkid: '4326', units: 'Meters', includeDate: 'false',
-        });
-        const response = await fetch(url, { signal: AbortSignal.timeout(30000) });
-        if (!response.ok) throw new Error(`${data.slug}: USGS elevation request failed: HTTP ${response.status}`);
-        const result = await response.json();
-        const altitude = typeof result.value === 'string' && result.value.trim() !== ''
-          ? Number(result.value) : result.value;
-        if (!Number.isFinite(altitude) || altitude <= -100000) {
-          throw new Error(`${data.slug}: USGS returned no valid elevation at ${lat}, ${lon}`);
-        }
-        return { dist_frac: (start + offset) / coordinates.length, altitude_m: altitude };
-      })));
+      profile.push(
+        ...(await Promise.all(
+          coordinates.slice(start, start + 4).map(async ({ lat, lon }, offset) => {
+            const url = new URL(elevationEndpoint);
+            url.search = new URLSearchParams({
+              x: String(lon),
+              y: String(lat),
+              wkid: '4326',
+              units: 'Meters',
+              includeDate: 'false',
+            });
+            const response = await fetch(url, { signal: AbortSignal.timeout(30000) });
+            if (!response.ok)
+              throw new Error(
+                `${data.slug}: USGS elevation request failed: HTTP ${response.status}`,
+              );
+            const result = await response.json();
+            const altitude =
+              typeof result.value === 'string' && result.value.trim() !== ''
+                ? Number(result.value)
+                : result.value;
+            if (!Number.isFinite(altitude) || altitude <= -100000) {
+              throw new Error(`${data.slug}: USGS returned no valid elevation at ${lat}, ${lon}`);
+            }
+            return { dist_frac: (start + offset) / coordinates.length, altitude_m: altitude };
+          }),
+        )),
+      );
     }
-    elevation = { source: 'USGS 3DEP', endpoint: elevationEndpoint, coordinatesHash, points: profile };
+    elevation = {
+      source: 'USGS 3DEP',
+      endpoint: elevationEndpoint,
+      coordinatesHash,
+      points: profile,
+    };
     await mkdir(cacheDir, { recursive: true });
     await writeFile(cacheFile, `${JSON.stringify(elevation)}\n`);
   }
@@ -161,8 +201,9 @@ export function convertTrack(data, options = {}) {
   const { unique } = projectLap(data);
   const { points, length } = resampleLoop(unique, settings.spacing);
 
-  const profile = data.elevation?.points?.filter((point) => Number.isFinite(point.altitude_m)
-    && Number.isFinite(point.dist_frac)).sort((a, b) => a.dist_frac - b.dist_frac);
+  const profile = data.elevation?.points
+    ?.filter((point) => Number.isFinite(point.altitude_m) && Number.isFinite(point.dist_frac))
+    .sort((a, b) => a.dist_frac - b.dist_frac);
   let elevation = [0];
   if (profile?.length >= 2) {
     const count = Math.max(8, Math.round(length / settings.elevationSpacing));
@@ -220,7 +261,9 @@ function parseArguments(argv) {
 async function main() {
   const { help, inputs, options, outDir } = parseArguments(process.argv.slice(2));
   if (help || !inputs.length) {
-    console.log('Usage: npm run import-track -- <track.json...> [--out-dir src/tracks] [--width 15] [--spacing 8]');
+    console.log(
+      'Usage: npm run import-track -- <track.json...> [--out-dir src/tracks] [--width 15] [--spacing 8]',
+    );
     if (!help) process.exitCode = 1;
     return;
   }
@@ -231,8 +274,12 @@ async function main() {
     const output = path.join(outDir, `${course.id}.json`);
     await writeFile(output, `${JSON.stringify(course)}\n`);
     const heights = course.elevation;
-    console.log(`${input} -> ${output}: ${course.points.length} points, `
-      + (heights.length > 1 ? `${Math.max(...heights).toFixed(1)} m elevation range` : 'no elevation data (flat road)'));
+    console.log(
+      `${input} -> ${output}: ${course.points.length} points, ` +
+        (heights.length > 1
+          ? `${Math.max(...heights).toFixed(1)} m elevation range`
+          : 'no elevation data (flat road)'),
+    );
   }
 }
 

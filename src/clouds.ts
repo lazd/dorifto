@@ -9,8 +9,8 @@ interface CloudPalette {
 
 function hash(x: number, y: number) {
   let value = Math.imul(x, 374761393) ^ Math.imul(y, 668265263);
-  value = Math.imul(value ^ value >>> 13, 1274126177);
-  return ((value ^ value >>> 16) >>> 0) / 4294967295;
+  value = Math.imul(value ^ (value >>> 13), 1274126177);
+  return ((value ^ (value >>> 16)) >>> 0) / 4294967295;
 }
 
 function noise(x: number, y: number) {
@@ -51,11 +51,12 @@ export function createCloudLayer(width: number, height: number) {
     const horizonFade = MathUtils.smoothstep(up, 0.025, 0.12);
     for (let x = 0; x < width; x++) {
       // Project onto a cloud layer above the viewer: distant clouds flatten toward the horizon.
-      const px = radius * Math.cos(longitude[x]) / (up + 0.18);
-      const pz = radius * Math.sin(longitude[x]) / (up + 0.18);
+      const px = (radius * Math.cos(longitude[x])) / (up + 0.18);
+      const pz = (radius * Math.sin(longitude[x])) / (up + 0.18);
       const billowNoise = fractalNoise(px * 2.6, pz * 2.6);
       const billows = MathUtils.smoothstep(billowNoise, 0.46, 0.64);
-      const wisps = MathUtils.smoothstep(fractalNoise(px * 0.9 + 23, pz * 7 - 11), 0.58, 0.72) * 0.3;
+      const wisps =
+        MathUtils.smoothstep(fractalNoise(px * 0.9 + 23, pz * 7 - 11), 0.58, 0.72) * 0.3;
       coverage[y * width + x] = Math.max(billows, wisps) * horizonFade;
       detail[y * width + x] = billowNoise;
       const banks = fractalNoise(px * 1.1 + 11, pz * 1.3 - 7) * 0.7 + billowNoise * 0.3;
@@ -77,24 +78,37 @@ export function createCloudLayer(width: number, height: number) {
       for (let x = 0; x < width; x++) {
         const density = (sunset ? sunsetCoverage : coverage)[y * width + x];
         if (density === 0) continue;
-        const sunFacing = Math.max(0, radius * Math.cos(longitude[x]) * sun.x
-          + up * sun.y + radius * Math.sin(longitude[x]) * sun.z);
+        const sunFacing = Math.max(
+          0,
+          radius * Math.cos(longitude[x]) * sun.x +
+            up * sun.y +
+            radius * Math.sin(longitude[x]) * sun.z,
+        );
         const sunward = sunFacing ** (sunset ? 2 : 4);
         const edgeLight = sunset ? 0 : (1 - density) ** 2 * sunward;
         const variation = detail[y * width + x] - 0.5;
         const lowCloud = 1 - MathUtils.smoothstep(up, 0.08, 0.55);
         const illumination = sunset
-          ? MathUtils.clamp(0.03 + lowCloud * (0.3 + sunward * 0.7)
-            + variation * 0.6 - density * 0.18, 0, 1)
+          ? MathUtils.clamp(
+              0.03 + lowCloud * (0.3 + sunward * 0.7) + variation * 0.6 - density * 0.18,
+              0,
+              1,
+            )
           : MathUtils.clamp(0.25 + sunward * 0.5 + edgeLight * 0.2 + up * 0.08, 0, 1);
         // Low sunlight warms the undersides, not a narrow band around every silhouette.
         const glow = sunset
-          ? MathUtils.smoothstep(sunFacing, 0.4, 0.99) * lowCloud * 0.7
-            * MathUtils.smoothstep(density, 0.05, 0.55) : 0;
+          ? MathUtils.smoothstep(sunFacing, 0.4, 0.99) *
+            lowCloud *
+            0.7 *
+            MathUtils.smoothstep(density, 0.05, 0.55)
+          : 0;
         const index = (y * width + x) * 4;
-        pixels[index] = MathUtils.lerp(MathUtils.lerp(shade.r, light.r, illumination), sunColor.r, glow) * 255;
-        pixels[index + 1] = MathUtils.lerp(MathUtils.lerp(shade.g, light.g, illumination), sunColor.g, glow) * 255;
-        pixels[index + 2] = MathUtils.lerp(MathUtils.lerp(shade.b, light.b, illumination), sunColor.b, glow) * 255;
+        pixels[index] =
+          MathUtils.lerp(MathUtils.lerp(shade.r, light.r, illumination), sunColor.r, glow) * 255;
+        pixels[index + 1] =
+          MathUtils.lerp(MathUtils.lerp(shade.g, light.g, illumination), sunColor.g, glow) * 255;
+        pixels[index + 2] =
+          MathUtils.lerp(MathUtils.lerp(shade.b, light.b, illumination), sunColor.b, glow) * 255;
         pixels[index + 3] = density * 235;
       }
     }

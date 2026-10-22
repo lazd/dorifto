@@ -41,26 +41,44 @@ export function createPhysicsInit(
   },
   configuration: PhysicsConfiguration,
 ): PhysicsInit {
-  const pose = (object: { position: THREE.Vector3; quaternion: THREE.Quaternion }): PoseData =>
-    ({ position: object.position.toArray(), quaternion: object.quaternion.toArray() });
+  const pose = (object: { position: THREE.Vector3; quaternion: THREE.Quaternion }): PoseData => ({
+    position: object.position.toArray(),
+    quaternion: object.quaternion.toArray(),
+  });
   return {
-    definition, terrain: course.terrain.physicsData(),
+    definition,
+    terrain: course.terrain.physicsData(),
     car: {
-      centers: car.centers.map((center) => center.toArray()), radii: car.radii,
+      centers: car.centers.map((center) => center.toArray()),
+      radii: car.radii,
       collisionVertices: car.collisionVertices.map((point) => point.toArray()),
     },
     cones: course.cones.map(pose),
     cornerCones: course.cornerCones.map((cone) => course.cones.indexOf(cone)),
-    signGroups: course.turnSignGroups.map((group) => ({ visible: group.visible, poses: group.children.map(pose) })),
+    signGroups: course.turnSignGroups.map((group) => ({
+      visible: group.visible,
+      poses: group.children.map(pose),
+    })),
     configuration,
   };
 }
 
-export type LapState = Pick<LapTimer, 'lap' | 'current' | 'last' | 'best' | 'lastCones'
-  | 'elapsedTime' | 'lapStartedAt' | 'conesHit'>;
+export type LapState = Pick<
+  LapTimer,
+  'lap' | 'current' | 'last' | 'best' | 'lastCones' | 'elapsedTime' | 'lapStartedAt' | 'conesHit'
+>;
 
 export function emptyLapState(): LapState {
-  return { lap: 0, current: 0, last: null, best: null, lastCones: null, elapsedTime: 0, lapStartedAt: 0, conesHit: 0 };
+  return {
+    lap: 0,
+    current: 0,
+    last: null,
+    best: null,
+    lastCones: null,
+    elapsedTime: 0,
+    lapStartedAt: 0,
+    conesHit: 0,
+  };
 }
 
 export interface PhysicsInput {
@@ -107,7 +125,9 @@ export interface ReplayData {
 export function replayData(recording: RunRecording): ReplayData {
   return {
     data: recording.data.slice(0, recording.count * frameStride),
-    count: recording.count, firstTime: recording.firstTime, interval: recording.interval,
+    count: recording.count,
+    firstTime: recording.firstTime,
+    interval: recording.interval,
   };
 }
 
@@ -115,7 +135,12 @@ export type PhysicsCommand =
   | { type: 'init'; data: PhysicsInit }
   | { type: 'advance'; dt: number; input: PhysicsInput; recycled: ArrayBuffer[] }
   | { type: 'reset'; input: PhysicsInput }
-  | { type: 'direction'; spawn: ReturnType<typeof courseSpawn>; definition: CourseDefinition; input: PhysicsInput }
+  | {
+      type: 'direction';
+      spawn: ReturnType<typeof courseSpawn>;
+      definition: CourseDefinition;
+      input: PhysicsInput;
+    }
   | { type: 'replay'; recording: ReplayData; time: number; input: PhysicsInput }
   | { type: 'snap'; input: PhysicsInput };
 
@@ -134,4 +159,6 @@ export interface PhysicsSnapshot {
   impacts: { type: 'cone' | 'sign'; impulse: number }[];
 }
 
-export type PhysicsResponse = PhysicsSnapshot | { type: 'error'; revision: number; message: string; stack?: string };
+export type PhysicsResponse =
+  | PhysicsSnapshot
+  | { type: 'error'; revision: number; message: string; stack?: string };

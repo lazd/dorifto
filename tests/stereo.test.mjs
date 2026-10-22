@@ -17,7 +17,9 @@ before(async () => {
     await server.ssrLoadModule('/src/stereo.ts'));
 });
 
-after(async () => { await server?.close(); });
+after(async () => {
+  await server?.close();
+});
 
 function fixture(t, muted = false) {
   let audio;
@@ -31,10 +33,18 @@ function fixture(t, muted = false) {
       this.paused = false;
       return this.playError ? Promise.reject(this.playError) : Promise.resolve();
     }
-    pause() { this.paused = true; }
-    removeAttribute(name) { delete this[name]; }
-    setAttribute(name, value) { this.attributes.set(name, value); }
-    getAttribute(name) { return this.attributes.get(name) ?? null; }
+    pause() {
+      this.paused = true;
+    }
+    removeAttribute(name) {
+      delete this[name];
+    }
+    setAttribute(name, value) {
+      this.attributes.set(name, value);
+    }
+    getAttribute(name) {
+      return this.attributes.get(name) ?? null;
+    }
     load() {}
     constructor() {
       super();
@@ -66,7 +76,11 @@ function fixture(t, muted = false) {
   });
   const power = [];
   const errors = [];
-  const stereo = new CarStereo((value) => power.push(value), (error) => errors.push(error), muted);
+  const stereo = new CarStereo(
+    (value) => power.push(value),
+    (error) => errors.push(error),
+    muted,
+  );
   return { stereo, audio, power, errors, window, KeyboardEvent: FakeKeyboardEvent };
 }
 

@@ -12,8 +12,14 @@ export interface TuningPreset {
 export const tuningPresetsStorageKey = 'dorifto:tuning-presets';
 
 const tuningKeys: (keyof DrivingTuning)[] = [
-  'horsepower', 'steeringExpo', 'steeringRate', 'steeringScale',
-  'frontGrip', 'rearGrip', 'frontStiffness', 'rearStiffness',
+  'horsepower',
+  'steeringExpo',
+  'steeringRate',
+  'steeringScale',
+  'frontGrip',
+  'rearGrip',
+  'frontStiffness',
+  'rearStiffness',
 ];
 
 export function nextTuningPresetId(mode: DriveMode, presets: readonly TuningPreset[]) {
@@ -25,8 +31,11 @@ export function nextTuningPresetId(mode: DriveMode, presets: readonly TuningPres
 }
 
 export function nextCustomPresetName(mode: DriveMode, presets: readonly TuningPreset[]) {
-  const names = new Set(presets.filter((preset) => preset.mode === mode)
-    .map((preset) => preset.name.toLocaleLowerCase()));
+  const names = new Set(
+    presets
+      .filter((preset) => preset.mode === mode)
+      .map((preset) => preset.name.toLocaleLowerCase()),
+  );
   const base = 'Custom Preset';
   if (!names.has(base.toLocaleLowerCase())) return base;
   for (let suffix = 2; ; suffix++) {
@@ -38,18 +47,25 @@ export function nextCustomPresetName(mode: DriveMode, presets: readonly TuningPr
 function isTuning(value: unknown): value is DrivingTuning {
   if (typeof value !== 'object' || value === null) return false;
   const tuning = value as Record<string, unknown>;
-  return Object.keys(tuning).length === tuningKeys.length
-    && tuningKeys.every((key) => typeof tuning[key] === 'number' && Number.isFinite(tuning[key]));
+  return (
+    Object.keys(tuning).length === tuningKeys.length &&
+    tuningKeys.every((key) => typeof tuning[key] === 'number' && Number.isFinite(tuning[key]))
+  );
 }
 
 function isTuningPreset(value: unknown): value is TuningPreset {
   if (typeof value !== 'object' || value === null) return false;
   const preset = value as Record<string, unknown>;
-  return typeof preset.id === 'string' && preset.id.length > 0
-    && typeof preset.name === 'string' && preset.name.trim().length > 0
-    && typeof preset.mode === 'string' && isDriveMode(preset.mode)
-    && (preset.readonly === undefined || typeof preset.readonly === 'boolean')
-    && isTuning(preset.tuning);
+  return (
+    typeof preset.id === 'string' &&
+    preset.id.length > 0 &&
+    typeof preset.name === 'string' &&
+    preset.name.trim().length > 0 &&
+    typeof preset.mode === 'string' &&
+    isDriveMode(preset.mode) &&
+    (preset.readonly === undefined || typeof preset.readonly === 'boolean') &&
+    isTuning(preset.tuning)
+  );
 }
 
 export function loadTuningPresets(
@@ -76,7 +92,12 @@ export function loadTuningPresets(
   return [...builtIns, ...presets.map((preset) => ({ ...preset, tuning: { ...preset.tuning } }))];
 }
 
-export function persistTuningPresets(storage: Pick<Storage, 'setItem'>, presets: readonly TuningPreset[]) {
-  storage.setItem(tuningPresetsStorageKey,
-    JSON.stringify(presets.filter((preset) => !preset.readonly)));
+export function persistTuningPresets(
+  storage: Pick<Storage, 'setItem'>,
+  presets: readonly TuningPreset[],
+) {
+  storage.setItem(
+    tuningPresetsStorageKey,
+    JSON.stringify(presets.filter((preset) => !preset.readonly)),
+  );
 }

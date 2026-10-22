@@ -8,9 +8,15 @@ let recording;
 
 class MemoryStorage {
   map = new Map();
-  getItem(key) { return this.map.has(key) ? this.map.get(key) : null; }
-  setItem(key, value) { this.map.set(key, String(value)); }
-  removeItem(key) { this.map.delete(key); }
+  getItem(key) {
+    return this.map.has(key) ? this.map.get(key) : null;
+  }
+  setItem(key, value) {
+    this.map.set(key, String(value));
+  }
+  removeItem(key) {
+    this.map.delete(key);
+  }
 }
 
 before(async () => {
@@ -35,7 +41,15 @@ function frameAt(t) {
     wheel.quaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), i < 2 ? 0.1 : 0);
     wheel.spin = t * 40;
   });
-  Object.assign(frame, { rpm: 3000 + t * 100, gear: 3, throttle: 0.5, load: 0.4, boost: 0.2, steering: -0.12, braking: t > 1 });
+  Object.assign(frame, {
+    rpm: 3000 + t * 100,
+    gear: 3,
+    throttle: 0.5,
+    load: 0.4,
+    boost: 0.2,
+    steering: -0.12,
+    braking: t > 1,
+  });
   frame.contacts[2] = true;
   frame.tires[3].slip = 0.6;
   return frame;
@@ -67,7 +81,13 @@ test('interpolates recorded frames between samples', () => {
 test('reports HUD lap timing and fastest lap from a run', () => {
   const run = sampleRun();
   assert.equal(run.bestLap, 1);
-  assert.deepEqual(run.timingAt(0.5), { lap: 1, current: 0.5, last: null, best: null, lastCones: null });
+  assert.deepEqual(run.timingAt(0.5), {
+    lap: 1,
+    current: 0.5,
+    last: null,
+    best: null,
+    lastCones: null,
+  });
   const later = run.timingAt(2);
   assert.equal(later.lap, 3);
   assert.ok(Math.abs(later.current - 0.2) < 1e-9);
@@ -84,7 +104,9 @@ test('all light states round-trip independently of each other and all four wheel
   for (const headlights of [null, false, true]) {
     frame.headlights = headlights;
     for (let flags = 0; flags < 16; flags++) {
-      lights.forEach((light, i) => { frame[light] = Boolean(flags & (1 << i)); });
+      lights.forEach((light, i) => {
+        frame[light] = Boolean(flags & (1 << i));
+      });
       run.push(frame);
     }
   }
@@ -103,23 +125,43 @@ test('replay lap controls show completed time, fastest ties, launch and partial 
   const run = sampleRun();
   run.lapStarts[0] = 0.1;
   assert.deepEqual(run.replayLapAt(0), {
-    lap: 0, time: null, fastest: false, previous: null, next: 0.1,
+    lap: 0,
+    time: null,
+    fastest: false,
+    previous: null,
+    next: 0.1,
   });
   assert.deepEqual(run.replayLapAt(0.5), {
-    lap: 1, time: 1, fastest: false, previous: null, next: 1,
+    lap: 1,
+    time: 1,
+    fastest: false,
+    previous: null,
+    next: 1,
   });
   assert.deepEqual(run.replayLapAt(1), {
-    lap: 2, time: 0.8, fastest: true, previous: 0.1, next: 1.8,
+    lap: 2,
+    time: 0.8,
+    fastest: true,
+    previous: 0.1,
+    next: 1.8,
   });
   assert.deepEqual(run.replayLapAt(2), {
-    lap: 3, time: null, fastest: false, previous: 1, next: null,
+    lap: 3,
+    time: null,
+    fastest: false,
+    previous: 1,
+    next: null,
   });
   run.lapTimes[0] = 0.8;
   assert.equal(run.replayLapAt(0.5).fastest, true);
   assert.equal(run.replayLapAt(1.5).fastest, true);
   const empty = new recording.RunRecording();
   assert.deepEqual(empty.replayLapAt(0), {
-    lap: 0, time: null, fastest: false, previous: null, next: null,
+    lap: 0,
+    time: null,
+    fastest: false,
+    previous: null,
+    next: null,
   });
 });
 
@@ -154,7 +196,11 @@ test('persists only faster record laps, independently from runs and course direc
   assert.equal(await recording.saveRecordLap('map', slow, storage), true);
   assert.equal(await recording.saveRecordLap('map', fast, storage), true);
   assert.equal(await recording.saveRecordLap('map', slow, storage), false);
-  assert.equal(await recording.saveRecordLap('map', fast, storage), false, 'ties preserve the holder');
+  assert.equal(
+    await recording.saveRecordLap('map', fast, storage),
+    false,
+    'ties preserve the holder',
+  );
   const saved = await recording.saveRun('map', run, storage);
   recording.deleteRun('map', saved.id, storage);
   const loaded = await recording.loadRecordLap('map', storage);
@@ -184,21 +230,51 @@ test('concurrent record writes cannot replace a faster lap with a slower lap', a
 test('record storage failures and malformed records are surfaced', async () => {
   const storage = new MemoryStorage();
   const lap = sampleRun().extractLap(1);
-  await assert.rejects(recording.saveRecordLap('map', new recording.RunRecording(), storage), /Invalid record lap/);
+  await assert.rejects(
+    recording.saveRecordLap('map', new recording.RunRecording(), storage),
+    /Invalid record lap/,
+  );
   storage.setItem('dorifto.record.v1:map', '{"time":-1}');
   await assert.rejects(recording.loadRecordLap('map', storage), /Corrupt record lap/);
   storage.removeItem('dorifto.record.v1:map');
-  storage.setItem = () => { throw new Error('Storage full'); };
+  storage.setItem = () => {
+    throw new Error('Storage full');
+  };
   await assert.rejects(recording.saveRecordLap('map', lap, storage), /Storage full/);
 });
 
 test('round-trips runs through compressed storage per course and direction', async () => {
   const storage = new MemoryStorage();
   const run = sampleRun();
-  const key = recording.replayStorageKey({ id: 'x', name: 'X', width: 10, points: [[0, 0], [10, 0], [5, 5]] });
-  assert.notEqual(key, recording.replayStorageKey({ id: 'x', name: 'X', width: 10, points: [[0, 0], [10, 0], [5, 5]], reverse: true }));
+  const key = recording.replayStorageKey({
+    id: 'x',
+    name: 'X',
+    width: 10,
+    points: [
+      [0, 0],
+      [10, 0],
+      [5, 5],
+    ],
+  });
+  assert.notEqual(
+    key,
+    recording.replayStorageKey({
+      id: 'x',
+      name: 'X',
+      width: 10,
+      points: [
+        [0, 0],
+        [10, 0],
+        [5, 5],
+      ],
+      reverse: true,
+    }),
+  );
   const saved = await recording.saveRun(key, run, storage);
-  assert.deepEqual(recording.listSavedRuns(key, storage).map((entry) => entry.id), [saved.id]);
+  assert.deepEqual(
+    recording.listSavedRuns(key, storage).map((entry) => entry.id),
+    [saved.id],
+  );
   assert.deepEqual(saved.laps, [1, 0.8]);
   const loaded = await recording.loadRun(key, saved.id, storage);
   assert.equal(loaded.count, run.count);
@@ -224,10 +300,18 @@ test('poses a car from a frame, including hub and spinning wheel', () => {
   const hubs = [0, 1, 2, 3].map(() => new THREE.Object3D());
   recording.applyCarPose(frame, chassis, wheels, hubs);
   const captured = recording.createReplayFrame();
-  recording.captureCarPose(captured, chassis, hubs, frame.wheels.map((wheel) => wheel.spin));
+  recording.captureCarPose(
+    captured,
+    chassis,
+    hubs,
+    frame.wheels.map((wheel) => wheel.spin),
+  );
   frame.wheels.forEach((wheel, i) => {
     assert.ok(wheel.position.distanceTo(captured.wheels[i].position) < 1e-6);
     assert.ok(wheel.quaternion.angleTo(captured.wheels[i].quaternion) < 1e-4);
-    assert.ok(hubs[i].quaternion.angleTo(wheels[i].quaternion) > 0.1, 'wheels spin relative to hubs');
+    assert.ok(
+      hubs[i].quaternion.angleTo(wheels[i].quaternion) > 0.1,
+      'wheels spin relative to hubs',
+    );
   });
 });

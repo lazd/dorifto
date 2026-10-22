@@ -27,7 +27,7 @@ after(async () => {
 
 function checkPlacements(route) {
   const length = route.getLength();
-  const wrap = (value) => (value % length + length) % length;
+  const wrap = (value) => ((value % length) + length) % length;
   const turns = courseTurns(route);
   const placements = courseTurnSignPlacements(route);
   let offset = 0;
@@ -38,10 +38,15 @@ function checkPlacements(route) {
     const count = Math.max(2, Math.ceil(span / 8)) + 1;
     const signs = placements.slice(offset, offset + count);
     assert.equal(signs.length, count);
-    assert.ok(route.getPointAt(signs[0].distance / length)
-      .distanceTo(route.getPointAt(wrap(start) / length)) < 1e-6);
-    assert.ok(Math.abs(wrap(turn.apexDistance - signs.at(-1).distance) - 6) < 1e-6,
-      'last sign stops 6 m before the apex');
+    assert.ok(
+      route
+        .getPointAt(signs[0].distance / length)
+        .distanceTo(route.getPointAt(wrap(start) / length)) < 1e-6,
+    );
+    assert.ok(
+      Math.abs(wrap(turn.apexDistance - signs.at(-1).distance) - 6) < 1e-6,
+      'last sign stops 6 m before the apex',
+    );
     signs.forEach((sign, index) => {
       assert.equal(sign.direction, turn.direction);
       assert.ok(sign.distance >= 0 && sign.distance < length);
@@ -86,7 +91,7 @@ test('off has no signs, few has three entry signs, and many reaches the turn exi
     for (const reverse of [false, true]) {
       const route = courseRoute({ ...definition, reverse });
       const length = route.getLength();
-      const wrap = (value) => (value % length + length) % length;
+      const wrap = (value) => ((value % length) + length) % length;
       const turns = courseTurns(route);
       assert.deepEqual(courseTurnSignPlacements(route, 'off'), []);
       const few = courseTurnSignPlacements(route, 'few');
@@ -103,8 +108,10 @@ test('off has no signs, few has three entry signs, and many reaches the turn exi
         const span = wrap(turn.exitDistance - (turn.distance - 6));
         const count = Math.max(2, Math.ceil(span / 8)) + 1;
         const signs = many.slice(cursor, cursor + count);
-        assert.ok(Math.abs(signs.at(-1).distance - turn.exitDistance) < 1e-6,
-          'many continues through the entire bend');
+        assert.ok(
+          Math.abs(signs.at(-1).distance - turn.exitDistance) < 1e-6,
+          'many continues through the entire bend',
+        );
         signs.forEach((sign, index) => {
           assert.equal(sign.direction, turn.direction);
           if (index) assert.ok(wrap(sign.distance - signs[index - 1].distance) <= 8 + 1e-6);
@@ -127,37 +134,55 @@ test('sign runs wrap across the start line without stopping or circling the trac
     getPoint(t, target = new THREE.Vector3()) {
       return target.copy(original.getPointAt((t + shift) % 1));
     }
-    getPointAt(t, target) { return this.getPoint(t, target); }
-    getTangentAt(t) { return original.getTangentAt((t + shift) % 1); }
-    getLength() { return length; }
+    getPointAt(t, target) {
+      return this.getPoint(t, target);
+    }
+    getTangentAt(t) {
+      return original.getTangentAt((t + shift) % 1);
+    }
+    getLength() {
+      return length;
+    }
   }
   const route = new ShiftedRoute();
   const { placements } = checkPlacements(route);
-  assert.ok(placements.some((sign, index) => index > 0
-    && placements[index - 1].distance > length - 15 && sign.distance < 15),
-  'a turn sign run crosses the route seam');
+  assert.ok(
+    placements.some(
+      (sign, index) =>
+        index > 0 && placements[index - 1].distance > length - 15 && sign.distance < 15,
+    ),
+    'a turn sign run crosses the route seam',
+  );
 });
 
 test('blind crests warn of gentle bends in both directions and across the route seam', () => {
   const radius = 150;
   const length = 2 * Math.PI * radius;
   class GentleCircle extends THREE.Curve {
-    constructor(reverse) { super(); this.reverse = reverse; }
+    constructor(reverse) {
+      super();
+      this.reverse = reverse;
+    }
     getPoint(t, target = new THREE.Vector3()) {
       const angle = (this.reverse ? -t : t) * 2 * Math.PI;
       return target.set(Math.cos(angle) * radius, 0, Math.sin(angle) * radius);
     }
-    getPointAt(t, target) { return this.getPoint(t, target); }
+    getPointAt(t, target) {
+      return this.getPoint(t, target);
+    }
     getTangentAt(t) {
       const angle = (this.reverse ? -t : t) * 2 * Math.PI;
-      return new THREE.Vector3(-Math.sin(angle), 0, Math.cos(angle))
-        .multiplyScalar(this.reverse ? -1 : 1);
+      return new THREE.Vector3(-Math.sin(angle), 0, Math.cos(angle)).multiplyScalar(
+        this.reverse ? -1 : 1,
+      );
     }
-    getLength() { return length; }
+    getLength() {
+      return length;
+    }
   }
   for (const crestDistance of [0, 180]) {
     const heightAt = (x, z) => {
-      const distance = ((Math.atan2(z, x) * radius - crestDistance) % length + length) % length;
+      const distance = (((Math.atan2(z, x) * radius - crestDistance) % length) + length) % length;
       const gap = Math.min(distance, length - distance);
       return 4 * Math.exp(-((gap / 18) ** 2));
     };
@@ -178,9 +203,16 @@ test('blind crests warn of gentle bends in both directions and across the route 
         });
       }
       assert.deepEqual(courseTurnSignPlacements(route, 'off', heightAt), []);
-      assert.deepEqual(courseCrestWarnings(route, () => 0), [], 'flat roads add no warnings');
-      assert.deepEqual(courseCrestWarnings(route, (x, z) => heightAt(x, z) * 0.01), [],
-        'small elevation ripples are not blind crests');
+      assert.deepEqual(
+        courseCrestWarnings(route, () => 0),
+        [],
+        'flat roads add no warnings',
+      );
+      assert.deepEqual(
+        courseCrestWarnings(route, (x, z) => heightAt(x, z) * 0.01),
+        [],
+        'small elevation ripples are not blind crests',
+      );
     }
     assert.equal(directions[0], -directions[1], 'chevrons invert for reverse driving');
   }
@@ -188,12 +220,20 @@ test('blind crests warn of gentle bends in both directions and across the route 
 
 test('straight blind crests do not invent a turn direction', () => {
   class StraightRoute extends THREE.Curve {
-    getPointAt(t) { return new THREE.Vector3(t * 300, 0, 0); }
-    getTangentAt() { return new THREE.Vector3(1, 0, 0); }
-    getLength() { return 300; }
+    getPointAt(t) {
+      return new THREE.Vector3(t * 300, 0, 0);
+    }
+    getTangentAt() {
+      return new THREE.Vector3(1, 0, 0);
+    }
+    getLength() {
+      return 300;
+    }
   }
-  assert.deepEqual(courseCrestWarnings(new StraightRoute(),
-    (x) => 4 * Math.exp(-(((x - 150) / 18) ** 2))), []);
+  assert.deepEqual(
+    courseCrestWarnings(new StraightRoute(), (x) => 4 * Math.exp(-(((x - 150) / 18) ** 2))),
+    [],
+  );
 });
 
 test('Sonoma broad blind crests receive directional warnings in both directions', async () => {
@@ -206,7 +246,10 @@ test('Sonoma broad blind crests receive directional warnings in both directions'
     let distance = Infinity;
     samples.forEach((point, index) => {
       const gap = (point.x - x) ** 2 + (point.z - z) ** 2;
-      if (gap < distance) { distance = gap; closest = index; }
+      if (gap < distance) {
+        distance = gap;
+        closest = index;
+      }
     });
     return courseProfileHeight(definition.elevation, closest / (samples.length - 1));
   };
@@ -218,11 +261,14 @@ test('Sonoma broad blind crests receive directional warnings in both directions'
       const signs = courseTurnSignPlacements(route, mode, heightAt);
       for (const warning of warnings) {
         const length = route.getLength();
-        const nearest = Math.min(...signs.filter((sign) => sign.direction === warning.direction)
-          .map((sign) => {
-            const gap = Math.abs(sign.distance - warning.distance);
-            return Math.min(gap, length - gap);
-          }));
+        const nearest = Math.min(
+          ...signs
+            .filter((sign) => sign.direction === warning.direction)
+            .map((sign) => {
+              const gap = Math.abs(sign.distance - warning.distance);
+              return Math.min(gap, length - gap);
+            }),
+        );
         assert.ok(nearest <= 5, 'enabled density has a chevron at or near the blind crest');
       }
     }

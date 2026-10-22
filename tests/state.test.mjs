@@ -17,7 +17,9 @@ before(async () => {
   ({ createGameState } = await server.ssrLoadModule('/src/game-state.ts'));
 });
 
-after(async () => { await server?.close(); });
+after(async () => {
+  await server?.close();
+});
 
 test('configuration and game snapshots and notifications are completely independent', () => {
   const configuration = createConfigurationState();
@@ -25,8 +27,12 @@ test('configuration and game snapshots and notifications are completely independ
   const initialConfiguration = configuration.getState();
   let configurationUpdates = 0;
   let gameUpdates = 0;
-  configuration.subscribe(() => { configurationUpdates++; });
-  game.subscribe(() => { gameUpdates++; });
+  configuration.subscribe(() => {
+    configurationUpdates++;
+  });
+  game.subscribe(() => {
+    gameUpdates++;
+  });
 
   for (let frame = 0; frame < 1000; frame++) {
     game.update({
@@ -44,7 +50,10 @@ test('configuration and game snapshots and notifications are completely independ
 
   const lastGame = game.getState();
   configuration.update({
-    driveMode: 'grip', stereoStation: 'scrtagnt', coneMode: 'off', muted: true,
+    driveMode: 'grip',
+    stereoStation: 'scrtagnt',
+    coneMode: 'off',
+    muted: true,
   });
   assert.equal(configurationUpdates, 2, 'one notification per changed configuration batch');
   assert.equal(game.getState(), lastGame);
@@ -69,9 +78,13 @@ test('each configuration subscription runs only when its settings actually chang
     drift: { ...original.profiles.drift, horsepower: 600 },
   };
   const changes = {
-    stereoStation: 'scrtagnt', driveMode: 'grip', profiles,
+    stereoStation: 'scrtagnt',
+    driveMode: 'grip',
+    profiles,
     selectedTuningPresets: { ...original.selectedTuningPresets, drift: null },
-    coneMode: 'off', muted: true, cameraStyle: 'cabin',
+    coneMode: 'off',
+    muted: true,
+    cameraStyle: 'cabin',
   };
   for (const [key, value] of Object.entries(changes)) {
     configuration.update({ [key]: value });
@@ -89,7 +102,9 @@ test('field subscriptions support batches, immutable snapshots, no-ops, and unsu
   const snapshots = [];
   let unfiltered = 0;
   const unsubscribe = store.subscribe((state) => snapshots.push(state), ['a', 'b']);
-  store.subscribe(() => { unfiltered++; });
+  store.subscribe(() => {
+    unfiltered++;
+  });
   store.update({ c: 4 });
   assert.equal(snapshots.length, 1);
   store.update({ a: 1, c: 5 });

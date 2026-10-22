@@ -260,6 +260,12 @@ keyboard or standard-mapped gamepad. Click the game if focus is in another windo
 Run `npm test` for course-generation, geometry, camera, and physics-lifecycle regression
 checks, including a multi-seed sweep. Run `npm run build` to type-check and build the app.
 
+Code is linted with [oxlint](https://oxc.rs/docs/guide/usage/linter) and formatted with
+[oxfmt](https://oxc.rs/docs/guide/usage/formatter) (`.oxlintrc.json`, `.oxfmtrc.json`).
+`npm install` points Git at `.githooks/`, whose pre-commit hook runs both on staged
+files through lint-staged. Run `npm run lint`, `npm run format`, or `npm run format:check`
+manually. The oxc VS Code extension reads the same config for format-on-save.
+
 ## Importing real tracks
 
 `npm run import-track -- src/trackImports/*.json` converts recorded-lap track JSON
@@ -305,8 +311,8 @@ simulation continues. Settings remains in the main footer.
 | X (hold)            | Brake, then reverse near a stop                                    |
 | X + Z               | Brakestand (front brakes hold, rear tires spin)                    |
 | Space               | Lock the rear wheels / initiate a slide                            |
-| F                   | Flash high beams; hold 1 second to toggle high beams on/off         |
-| H                   | Tap to toggle headlights; hold 1 second to toggle fog lights        |
+| F                   | Flash high beams; hold 1 second to toggle high beams on/off        |
+| H                   | Tap to toggle headlights; hold 1 second to toggle fog lights       |
 | R                   | Reset the car, cones, smoke, and tire marks                        |
 | C                   | Cycle corner-aware chase, classic chase, in-cabin (once per press) |
 | D                   | Toggle Grip / Drift mode (once per press)                          |
@@ -323,26 +329,26 @@ The native Gamepad API requires localhost or HTTPS; browser/OS support determine
 which controllers expose the `standard` mapping. Connection status appears below
 the keyboard controls. The first connected standard-mapped controller is used.
 
-| Controller input                     | Action                                                             |
-| ------------------------------------ | ------------------------------------------------------------------ |
-| R2 / RT                              | Analog accelerator                                                 |
-| L2 / LT                              | Analog brake; reverse near a stop                                  |
-| Left stick horizontal                | Analog steering                                                    |
-| Left stick vertical (map view)       | Up: zoom in; down: zoom out                                        |
-| Right stick                          | Camera orbit/height; pan up/down/left/right in map view            |
-| Right stick left / right (hold 1 s)  | Corresponding turn signal flashes four times; camera still pans (not in map view) |
-| R1 / RB                              | Handbrake                                                          |
-| X / Square (west face button)        | Tap to toggle headlights; hold 1 second to toggle fog lights        |
-| L1 / LB                              | Flash high beams; hold 1 second to toggle high beams on/off         |
-| R3 (right-stick click, hold)         | Look behind; move right stick to pan; release to return            |
-| B / Circle (east face button)        | Dismiss a nonfatal error; otherwise toggle the bird's-eye map view (once per press) |
-| RT + LT                              | Brakestand                                                         |
-| Start / Menu / Options               | Reset (once per press)                                             |
-| View / Select / Back                 | Cycle corner-aware chase, classic chase, in-cabin (once per press) |
-| Y / Triangle (north face button)     | Toggle Grip / Drift mode (once per press)                          |
-| D-pad Down                           | Cycle Noon / Sunset / Night (once per press)                       |
-| D-pad Up                             | Stop recording and replay, or play saved laps before the start line |
-| D-pad Left / Right                   | Stereo previous / next (including Off); previous / next lap during replay |
+| Controller input                    | Action                                                                              |
+| ----------------------------------- | ----------------------------------------------------------------------------------- |
+| R2 / RT                             | Analog accelerator                                                                  |
+| L2 / LT                             | Analog brake; reverse near a stop                                                   |
+| Left stick horizontal               | Analog steering                                                                     |
+| Left stick vertical (map view)      | Up: zoom in; down: zoom out                                                         |
+| Right stick                         | Camera orbit/height; pan up/down/left/right in map view                             |
+| Right stick left / right (hold 1 s) | Corresponding turn signal flashes four times; camera still pans (not in map view)   |
+| R1 / RB                             | Handbrake                                                                           |
+| X / Square (west face button)       | Tap to toggle headlights; hold 1 second to toggle fog lights                        |
+| L1 / LB                             | Flash high beams; hold 1 second to toggle high beams on/off                         |
+| R3 (right-stick click, hold)        | Look behind; move right stick to pan; release to return                             |
+| B / Circle (east face button)       | Dismiss a nonfatal error; otherwise toggle the bird's-eye map view (once per press) |
+| RT + LT                             | Brakestand                                                                          |
+| Start / Menu / Options              | Reset (once per press)                                                              |
+| View / Select / Back                | Cycle corner-aware chase, classic chase, in-cabin (once per press)                  |
+| Y / Triangle (north face button)    | Toggle Grip / Drift mode (once per press)                                           |
+| D-pad Down                          | Cycle Noon / Sunset / Night (once per press)                                        |
+| D-pad Up                            | Stop recording and replay, or play saved laps before the start line                 |
+| D-pad Left / Right                  | Stereo previous / next (including Off); previous / next lap during replay           |
 
 Both triggers together allow brakestand behavior only below 4 km/h. LT alone brakes forward
 motion, then engages reverse only near a stop; release LT to leave reverse.
@@ -936,15 +942,15 @@ Length is a distance target, not a weight: the generator fits the feature mix
 within 5% of that target without shrinking corners below the safety limit.
 Short layouts use somewhat smaller sweepers and kinks to leave room for straights.
 
-| Preference       | Default | Effect                                                                                                                                         |
-| ---------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| Course length    | 2.0 km  | Targets a lap between 1 and 5 km.                                                                                                              |
-| Elevation change | 0.50    | Scales climbs and descents independently of banking. Zero flattens the centerline; one targets up to 20 m centerline relief, capped at 12% grade. |
+| Preference       | Default | Effect                                                                                                                                                                 |
+| ---------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Course length    | 2.0 km  | Targets a lap between 1 and 5 km.                                                                                                                                      |
+| Elevation change | 0.50    | Scales climbs and descents independently of banking. Zero flattens the centerline; one targets up to 20 m centerline relief, capped at 12% grade.                      |
 | Turn banking     | 0.10    | Scales inward corner banking independently of elevation. Zero removes banking; one allows up to 33°. Set both elevation and banking to zero for entirely flat terrain. |
-| Straightaways    | 0.50    | Lengthens the main straight and the straights between corner complexes, with fewer complexes per lap.                                          |
-| Tight corners    | 0.35    | Adds 90° corners and 155–185° hairpins, typically around 25–40 m radius. This also controls hairpins; there is no separate hairpin preference. |
-| Sweeping corners | 0.70    | Adds broad, flowing bends around 95–140 m radius, plus more high-speed kinks.                                                                  |
-| Chicanes         | 0.35    | Adds tight left-right chicanes and longer two- or three-bend esses.                                                                            |
+| Straightaways    | 0.50    | Lengthens the main straight and the straights between corner complexes, with fewer complexes per lap.                                                                  |
+| Tight corners    | 0.35    | Adds 90° corners and 155–185° hairpins, typically around 25–40 m radius. This also controls hairpins; there is no separate hairpin preference.                         |
+| Sweeping corners | 0.70    | Adds broad, flowing bends around 95–140 m radius, plus more high-speed kinks.                                                                                          |
+| Chicanes         | 0.35    | Adds tight left-right chicanes and longer two- or three-bend esses.                                                                                                    |
 
 Banking changes the terrain cross-slope, not the layout, and is retained in custom
 course links and saved courses. Sweeper Loop sets `bankingScale: 3` in its course

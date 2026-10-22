@@ -37,16 +37,18 @@ export class CourseTerrain {
       const before = route.getTangentAt(THREE.MathUtils.euclideanModulo(t - 5 / length, 1));
       const after = route.getTangentAt((t + 5 / length) % 1);
       const bend = Math.atan2(before.z * after.x - before.x * after.z, before.dot(after));
-      return { a, b, bank: -THREE.MathUtils.clamp(bend / 10 * 2.5, -0.065, 0.065) };
+      return { a, b, bank: -THREE.MathUtils.clamp((bend / 10) * 2.5, -0.065, 0.065) };
     });
     if (definition.elevation || definition.bankingScale !== undefined) {
       // Generated corners need gradual roll-in/out, especially at high banking.
       // Keep the existing 50 m GPS filter for imported elevation profiles.
       const generatedBanking = !definition.elevation && definition.bankingScale !== undefined;
       const bankRadius = Math.max(1, Math.round((generatedBanking ? 75 : 25) / (length / count)));
-      const weights = Array.from({ length: bankRadius * 2 + 1 }, (_, i) => generatedBanking
-        ? (1 - ((i - bankRadius) / bankRadius) ** 2) ** 3
-        : bankRadius + 1 - Math.abs(i - bankRadius));
+      const weights = Array.from({ length: bankRadius * 2 + 1 }, (_, i) =>
+        generatedBanking
+          ? (1 - ((i - bankRadius) / bankRadius) ** 2) ** 3
+          : bankRadius + 1 - Math.abs(i - bankRadius),
+      );
       const banks = this.segments.map(({ bank }) => bank);
       this.segments.forEach((segment, i) => {
         let weightedBank = 0;
@@ -61,8 +63,15 @@ export class CourseTerrain {
     }
     const bounds = new THREE.Box3().setFromPoints(this.segments.map((segment) => segment.a));
     const profile = definition.elevation;
-    const surroundings = profile && profileSurroundings(this.segments.map(({ a }, i) =>
-      ({ x: a.x, z: a.z, height: courseProfileHeight(profile, i / count) })));
+    const surroundings =
+      profile &&
+      profileSurroundings(
+        this.segments.map(({ a }, i) => ({
+          x: a.x,
+          z: a.z,
+          height: courseProfileHeight(profile, i / count),
+        })),
+      );
     if (this.padRadius !== undefined) {
       bounds.expandByPoint(new THREE.Vector3(-this.padRadius, 0, -this.padRadius));
       bounds.expandByPoint(new THREE.Vector3(this.padRadius, 0, this.padRadius));
@@ -89,24 +98,35 @@ export class CourseTerrain {
         const pz = this.minZ + z * this.spacing;
         const near = this.nearest(px, pz);
         const base = terrainBaseHeight(px, pz);
-        const hills = 12 + 9 * Math.sin(px / 48 + 0.6) * Math.cos(pz / 61)
-          + 5 * Math.sin((px - pz) / 83);
+        const hills =
+          12 + 9 * Math.sin(px / 48 + 0.6) * Math.cos(pz / 61) + 5 * Math.sin((px - pz) / 83);
         const blendStart = Math.min(this.halfWidth + 3, 48);
         const blendEnd = Math.min(this.halfWidth + 48, 50);
         const blend = THREE.MathUtils.smoothstep(near.distance, blendStart, blendEnd);
         // Elevation follows the centerline, not the hillside's cross-slope:
         // positive turns lower the inside (+across) and raise the outside.
-        const road = (profile ? courseProfileHeight(profile, near.fraction) : terrainBaseHeight(near.x, near.z))
-          * elevationScale + near.bank * near.across * bankingScale;
+        const road =
+          (profile
+            ? courseProfileHeight(profile, near.fraction)
+            : terrainBaseHeight(near.x, near.z)) *
+            elevationScale +
+          near.bank * near.across * bankingScale;
         // Imported tracks settle into ground interpolated from nearby course heights.
         const ground = surroundings ? surroundings(px, pz) + 0.35 * (hills - 12) : base + hills;
-        const height = definition.flat ? 0
+        const height = definition.flat
+          ? 0
           : THREE.MathUtils.lerp(road, ground * elevationScale, blend);
         const i = z * this.columns + x;
-        roadDistances[i] = this.padRadius !== undefined ? Math.hypot(px, pz) - this.padRadius
-          : near.distance - this.halfWidth;
+        roadDistances[i] =
+          this.padRadius !== undefined
+            ? Math.hypot(px, pz) - this.padRadius
+            : near.distance - this.halfWidth;
         this.heights[i] = height;
-        smoothingWeights[i] = THREE.MathUtils.smoothstep(near.distance, this.halfWidth + 3, this.halfWidth + 18);
+        smoothingWeights[i] = THREE.MathUtils.smoothstep(
+          near.distance,
+          this.halfWidth + 3,
+          this.halfWidth + 18,
+        );
         min = Math.min(min, height);
         max = Math.max(max, height);
         positions.push(px, this.heights[i], pz);
@@ -122,9 +142,13 @@ export class CourseTerrain {
       for (let z = 1; z < this.rows - 1; z++) {
         for (let x = 1; x < this.columns - 1; x++) {
           const i = z * this.columns + x;
-          const average = (this.heights[i] * 4
-            + this.heights[i - 1] + this.heights[i + 1]
-            + this.heights[i - this.columns] + this.heights[i + this.columns]) / 8;
+          const average =
+            (this.heights[i] * 4 +
+              this.heights[i - 1] +
+              this.heights[i + 1] +
+              this.heights[i - this.columns] +
+              this.heights[i + this.columns]) /
+            8;
           smoothed[i] = THREE.MathUtils.lerp(this.heights[i], average, smoothingWeights[i]);
         }
       }
@@ -142,10 +166,12 @@ export class CourseTerrain {
       const right = Math.min(x + 1, this.columns - 1);
       const back = Math.max(z - 1, 0);
       const front = Math.min(z + 1, this.rows - 1);
-      const dx = (this.heights[z * this.columns + right] - this.heights[z * this.columns + left])
-        / ((right - left) * this.spacing);
-      const dz = (this.heights[front * this.columns + x] - this.heights[back * this.columns + x])
-        / ((front - back) * this.spacing);
+      const dx =
+        (this.heights[z * this.columns + right] - this.heights[z * this.columns + left]) /
+        ((right - left) * this.spacing);
+      const dz =
+        (this.heights[front * this.columns + x] - this.heights[back * this.columns + x]) /
+        ((front - back) * this.spacing);
       const slope = Math.atan(Math.hypot(dx, dz));
       vegetation.push(roadDistances[i], slope);
     }
@@ -174,11 +200,16 @@ export class CourseTerrain {
     material.onBeforeCompile = (shader) => {
       shader.uniforms.grassMap = { value: grassMap };
       shader.uniforms.grassNormalMap = { value: grassNormalMap };
-      shader.vertexShader = shader.vertexShader.replace('#include <common>',
-        '#include <common>\nattribute vec2 vegetation;\nvarying vec2 vVegetation;')
+      shader.vertexShader = shader.vertexShader
+        .replace(
+          '#include <common>',
+          '#include <common>\nattribute vec2 vegetation;\nvarying vec2 vVegetation;',
+        )
         .replace('#include <begin_vertex>', '#include <begin_vertex>\nvVegetation = vegetation;');
-      shader.fragmentShader = shader.fragmentShader.replace('#include <common>',
-        `#include <common>
+      shader.fragmentShader = shader.fragmentShader
+        .replace(
+          '#include <common>',
+          `#include <common>
         uniform sampler2D grassMap;
         uniform sampler2D grassNormalMap;
         varying vec2 vVegetation;
@@ -193,8 +224,11 @@ export class CourseTerrain {
             dot(cell + vec2(1.0), vec2(127.1, 311.7))
           )) * 43758.5453);
           return mix(mix(h.x, h.y, f.x), mix(h.z, h.w, f.x), f.y);
-        }`)
-        .replace('#include <map_fragment>', `
+        }`,
+        )
+        .replace(
+          '#include <map_fragment>',
+          `
           #ifdef USE_MAP
             vec4 gravelColor = texture2D(map, vMapUv);
             vec4 grassColor = texture2D(grassMap, vMapUv * 2.0);
@@ -207,11 +241,15 @@ export class CourseTerrain {
             grassColor.rgb *= mix(vec3(0.88, 0.92, 0.82), vec3(1.08, 1.04, 0.94), patches);
             diffuseColor *= mix(gravelColor, grassColor, coverage);
           #endif
-        `)
-        .replace('#include <normal_fragment_maps>', THREE.ShaderChunk.normal_fragment_maps.replaceAll(
-          'texture2D( normalMap, vNormalMapUv )',
-          'mix(texture2D(normalMap, vNormalMapUv), texture2D(grassNormalMap, vNormalMapUv * 2.0), coverage)',
-        ));
+        `,
+        )
+        .replace(
+          '#include <normal_fragment_maps>',
+          THREE.ShaderChunk.normal_fragment_maps.replaceAll(
+            'texture2D( normalMap, vNormalMapUv )',
+            'mix(texture2D(normalMap, vNormalMapUv), texture2D(grassNormalMap, vNormalMapUv * 2.0), coverage)',
+          ),
+        );
     };
     material.customProgramCacheKey = () => 'slope-vegetation-patches';
     material.addEventListener('dispose', () => {
@@ -226,46 +264,63 @@ export class CourseTerrain {
     this.mesh.castShadow = true;
     this.mesh.receiveShadow = true;
     const bladeGeometry = new THREE.BufferGeometry();
-    bladeGeometry.setAttribute('position', new THREE.Float32BufferAttribute([
-      -0.025, 0, 0, 0.025, 0, 0, 0.035, 0.22, 0.025,
-      0, 0, -0.025, 0, 0, 0.025, -0.025, 0.18, 0.03,
-    ], 3));
+    bladeGeometry.setAttribute(
+      'position',
+      new THREE.Float32BufferAttribute(
+        [
+          -0.025, 0, 0, 0.025, 0, 0, 0.035, 0.22, 0.025, 0, 0, -0.025, 0, 0, 0.025, -0.025, 0.18,
+          0.03,
+        ],
+        3,
+      ),
+    );
     bladeGeometry.computeVertexNormals();
     const bladeMaterial = new THREE.MeshStandardMaterial({
-      color: 0xffffff, roughness: 1, side: THREE.DoubleSide,
+      color: 0xffffff,
+      roughness: 1,
+      side: THREE.DoubleSide,
     });
     // Keep upright blades from flaring under headlights or grazing sunset light.
     bladeMaterial.onBeforeCompile = (shader) => {
       shader.fragmentShader = shader.fragmentShader.replace(
         '#include <lights_fragment_begin>',
-        THREE.ShaderChunk.lights_fragment_begin.replace(
-          'getSpotLightInfo( spotLight, geometryPosition, directLight );',
-          'getSpotLightInfo( spotLight, geometryPosition, directLight );\ndirectLight.color *= 0.05;',
-        ).replace(
-          'getDirectionalLightInfo( directionalLight, directLight );',
-          `getDirectionalLightInfo( directionalLight, directLight );
+        THREE.ShaderChunk.lights_fragment_begin
+          .replace(
+            'getSpotLightInfo( spotLight, geometryPosition, directLight );',
+            'getSpotLightInfo( spotLight, geometryPosition, directLight );\ndirectLight.color *= 0.05;',
+          )
+          .replace(
+            'getDirectionalLightInfo( directionalLight, directLight );',
+            `getDirectionalLightInfo( directionalLight, directLight );
           directLight.color *= mix(0.12, 1.0, smoothstep(0.12, 0.5,
             dot(directionalLight.direction, normalize(mat3(viewMatrix) * vec3(0.0, 1.0, 0.0)))));`,
-        ),
+          ),
       );
     };
     bladeMaterial.customProgramCacheKey = () => 'grass-soft-low-angle-lights';
     let grassSeed = 18473;
     const random = () => {
       grassSeed = (grassSeed + 0x6d2b79f5) | 0;
-      let value = Math.imul(grassSeed ^ grassSeed >>> 15, 1 | grassSeed);
-      value ^= value + Math.imul(value ^ value >>> 7, 61 | value);
-      return ((value ^ value >>> 14) >>> 0) / 4294967296;
+      let value = Math.imul(grassSeed ^ (grassSeed >>> 15), 1 | grassSeed);
+      value ^= value + Math.imul(value ^ (value >>> 7), 61 | value);
+      return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
     };
     const placements: { x: number; z: number; blades: number }[] = [];
     for (let z = 1; z < this.rows - 1; z++) {
       for (let x = 1; x < this.columns - 1; x++) {
         const i = z * this.columns + x;
-        if (roadDistances[i] > 3.4 && roadDistances[i] < 10 && vegetation[i * 2 + 1] < 0.6 && random() < 0.44) {
+        if (
+          roadDistances[i] > 3.4 &&
+          roadDistances[i] < 10 &&
+          vegetation[i * 2 + 1] < 0.6 &&
+          random() < 0.44
+        ) {
           const px = this.minX + (x + random() - 0.5) * this.spacing;
           const pz = this.minZ + (z + random() - 0.5) * this.spacing;
-          const distance = this.padRadius !== undefined ? Math.hypot(px, pz) - this.padRadius
-            : this.nearest(px, pz).distance - this.halfWidth;
+          const distance =
+            this.padRadius !== undefined
+              ? Math.hypot(px, pz) - this.padRadius
+              : this.nearest(px, pz).distance - this.halfWidth;
           if (distance > 3.4 && distance < 10) {
             placements.push({ x: px, z: pz, blades: 3 + Math.floor(random() * 6) });
           }
@@ -273,7 +328,9 @@ export class CourseTerrain {
       }
     }
     const tufts = new THREE.InstancedMesh(
-      bladeGeometry, bladeMaterial, placements.reduce((count, tuft) => count + tuft.blades, 0),
+      bladeGeometry,
+      bladeMaterial,
+      placements.reduce((count, tuft) => count + tuft.blades, 0),
     );
     const transform = new THREE.Object3D();
     const bladeColor = new THREE.Color();
@@ -307,9 +364,12 @@ export class CourseTerrain {
   }
 
   contains(x: number, z: number) {
-    return x >= this.minX && z >= this.minZ
-      && x < this.minX + (this.columns - 1) * this.spacing
-      && z < this.minZ + (this.rows - 1) * this.spacing;
+    return (
+      x >= this.minX &&
+      z >= this.minZ &&
+      x < this.minX + (this.columns - 1) * this.spacing &&
+      z < this.minZ + (this.rows - 1) * this.spacing
+    );
   }
 
   heightAt(x: number, z: number) {
@@ -325,8 +385,32 @@ export class CourseTerrain {
   }
 
   physicsData(): TerrainQueryData {
-    const { spacing, columns, rows, minX, minZ, heights, minHeight, maxHeight, segments, halfWidth, padRadius } = this;
-    return { spacing, columns, rows, minX, minZ, heights, minHeight, maxHeight, segments, halfWidth, padRadius };
+    const {
+      spacing,
+      columns,
+      rows,
+      minX,
+      minZ,
+      heights,
+      minHeight,
+      maxHeight,
+      segments,
+      halfWidth,
+      padRadius,
+    } = this;
+    return {
+      spacing,
+      columns,
+      rows,
+      minX,
+      minZ,
+      heights,
+      minHeight,
+      maxHeight,
+      segments,
+      halfWidth,
+      padRadius,
+    };
   }
 
   // Split paint and pavement at the heightfield's triangle edges, avoiding
@@ -345,7 +429,7 @@ export class CourseTerrain {
         const dp = side(p);
         const dq = side(q);
         if (dp >= 0) result.push(p);
-        if ((dp < 0) !== (dq < 0)) {
+        if (dp < 0 !== dq < 0) {
           const t = dp / (dp - dq);
           result.push({ x: p.x + t * (q.x - p.x), z: p.z + t * (q.z - p.z) });
         }
@@ -369,9 +453,13 @@ export class CourseTerrain {
           const b = { x: px + this.spacing, z: pz };
           const c = { x: px, z: pz + this.spacing };
           const d = { x: px + this.spacing, z: pz + this.spacing };
-          for (const cell of [[a, b, c], [b, d, c]]) {
+          for (const cell of [
+            [a, b, c],
+            [b, d, c],
+          ]) {
             let polygon = triangle;
-            for (let edge = 0; edge < 3; edge++) polygon = clip(polygon, cell[edge], cell[(edge + 1) % 3]);
+            for (let edge = 0; edge < 3; edge++)
+              polygon = clip(polygon, cell[edge], cell[(edge + 1) % 3]);
             for (let j = 1; j < polygon.length - 1; j++) {
               for (const p of [polygon[0], polygon[j], polygon[j + 1]]) {
                 positions.push(p.x, this.heightAt(p.x, p.z) + lift, p.z);

@@ -8,7 +8,11 @@ export interface PhysicsPluginContext {
   dispatcher: AmmoFactory.btCollisionDispatcher;
   vehicleBody: AmmoFactory.btRigidBody;
   readonly laps: LapTimer;
-  createRigidBody(mass: number, shape: AmmoFactory.btCollisionShape, position: THREE.Vector3): AmmoFactory.btRigidBody;
+  createRigidBody(
+    mass: number,
+    shape: AmmoFactory.btCollisionShape,
+    position: THREE.Vector3,
+  ): AmmoFactory.btRigidBody;
   setBodyEnabled(body: AmmoFactory.btRigidBody, enabled: boolean): void;
 }
 
@@ -22,7 +26,10 @@ export interface PhysicsPlugin {
   dispose?(): void;
 }
 
-export function createPhysicsVisuals(objects: readonly THREE.Object3D[], isActive = (_index: number) => true) {
+export function createPhysicsVisuals(
+  objects: readonly THREE.Object3D[],
+  isActive = (_index: number) => true,
+) {
   const states = objects.map((object) => ({
     object,
     previousPosition: object.position.clone(),

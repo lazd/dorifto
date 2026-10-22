@@ -1,11 +1,11 @@
-import * as THREE from "three";
-import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
-import { Reflector } from "three/addons/objects/Reflector.js";
-import { RectAreaLightUniformsLib } from "three/addons/lights/RectAreaLightUniformsLib.js";
-import { ConvexHull } from "three/addons/math/ConvexHull.js";
-import { idleRpm, redlineRpm } from "./drivetrain";
-import type { ConfigurationState } from "./configuration-state";
-import { clockText, createSegmentedDisplay, mapDisplaySurface } from "./segmented-display";
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { Reflector } from 'three/addons/objects/Reflector.js';
+import { RectAreaLightUniformsLib } from 'three/addons/lights/RectAreaLightUniformsLib.js';
+import { ConvexHull } from 'three/addons/math/ConvexHull.js';
+import { idleRpm, redlineRpm } from './drivetrain';
+import type { ConfigurationState } from './configuration-state';
+import { clockText, createSegmentedDisplay, mapDisplaySurface } from './segmented-display';
 
 type StandardMesh = THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>;
 
@@ -145,7 +145,7 @@ export async function loadCar(onProgress?: (fraction: number) => void) {
     const sides = [new THREE.Box3(), new THREE.Box3()];
     const point = new THREE.Vector3();
     for (const mesh of named(pattern)) {
-      const positions = mesh.geometry.getAttribute("position");
+      const positions = mesh.geometry.getAttribute('position');
       for (let i = 0; i < positions.count; i++) {
         point.fromBufferAttribute(positions, i).applyMatrix4(mesh.matrixWorld);
         sides[point.x < 0 ? 0 : 1].expandByPoint(point);
@@ -156,7 +156,10 @@ export async function loadCar(onProgress?: (fraction: number) => void) {
     return sides;
   }
   function signalLenses(pattern: RegExp) {
-    const sides = { left: [] as THREE.MeshStandardMaterial[], right: [] as THREE.MeshStandardMaterial[] };
+    const sides = {
+      left: [] as THREE.MeshStandardMaterial[],
+      right: [] as THREE.MeshStandardMaterial[],
+    };
     const point = new THREE.Vector3();
     for (const mesh of named(pattern)) {
       const box = new THREE.Box3().setFromObject(mesh);
@@ -169,7 +172,7 @@ export async function loadCar(onProgress?: (fraction: number) => void) {
         sides.left.push(emissiveMaterial(left, 0xff8800));
         sides.right.push(emissiveMaterial(mesh, 0xff8800));
       } else {
-        const side = box.getCenter(point).x > 0 ? "left" : "right";
+        const side = box.getCenter(point).x > 0 ? 'left' : 'right';
         sides[side].push(emissiveMaterial(mesh, 0xff8800));
       }
     }
@@ -191,7 +194,8 @@ export async function loadCar(onProgress?: (fraction: number) => void) {
   const projectors = emissive(/^Projectorglass_/, 0xffe2b8);
   const highBeamLenses = emissive(/^(LightsInside_004_001_LightChrome|BulbHL_Bulb)_0$/, 0xffe2b8);
   const fogLenses = emissive(
-    /^(FogGlass_FogGlass|Bulbfogs_Bulb|LightsInside_003_001_LightChrome)_0$/, 0xffe2b8,
+    /^(FogGlass_FogGlass|Bulbfogs_Bulb|LightsInside_003_001_LightChrome)_0$/,
+    0xffe2b8,
   );
   const gaugeFaces = emissive(/^gaugeface[12]_Gauges_0$/, 0xd7f5df, true);
   const odometer = emissive(/^Odo_Odometer_0$/, 0xd7f5df, true);
@@ -206,7 +210,7 @@ export async function loadCar(onProgress?: (fraction: number) => void) {
     const source = pattern instanceof RegExp ? named(pattern)[0] : pattern;
     if (!source) throw new Error(`Missing ${name} geometry.`);
     const geometry = source.geometry;
-    const positions = geometry.getAttribute("position");
+    const positions = geometry.getAttribute('position');
     const indices = geometry.getIndex();
     const selected: number[] = [];
     const remaining: number[] = [];
@@ -222,7 +226,8 @@ export async function loadCar(onProgress?: (fraction: number) => void) {
       // Keep adjoining dashboard geometry fixed, even where it overlaps the column's bounds.
       const vertexKey = (index: number) =>
         [positions.getX(index), positions.getY(index), positions.getZ(index)]
-          .map((value) => value.toFixed(5)).join(",");
+          .map((value) => value.toFixed(5))
+          .join(',');
       const touching = new Map<string, number[]>();
       const excluded: number[] = [];
       triangles.forEach(({ vertices, included }, index) => {
@@ -263,12 +268,12 @@ export async function loadCar(onProgress?: (fraction: number) => void) {
     return surface;
   }
   // Radioface also includes the gauge cover, clock and A/C glass; the stereo is at +X.
-  const stereoDisplay = splitSurface(/^intglass_Radioface_0$/, "stereo-display", (x) => x > 0);
+  const stereoDisplay = splitSurface(/^intglass_Radioface_0$/, 'stereo-display', (x) => x > 0);
   const stereoMaterial = stereoDisplay.material;
-  const radioReadout = createSegmentedDisplay(1024, 256, "#123522", "#8fffc1", 8);
-  let stereoStationId = "";
+  const radioReadout = createSegmentedDisplay(1024, 256, '#123522', '#8fffc1', 8);
+  let stereoStationId = '';
   let stereoPowered = false;
-  radioReadout.setText(" ");
+  radioReadout.setText(' ');
   mapDisplaySurface(stereoDisplay.geometry);
   stereoMaterial.map = radioReadout.texture;
   stereoMaterial.emissiveMap = radioReadout.texture;
@@ -279,7 +284,7 @@ export async function loadCar(onProgress?: (fraction: number) => void) {
   const stereoBounds = new THREE.Box3().setFromObject(stereoDisplay);
   const stereoLight = new THREE.PointLight(0x42ff88, 0.025, 0.45, 2);
   stereoLight.layers.set(carLightLayers.interior);
-  stereoLight.name = "stereo-glow";
+  stereoLight.name = 'stereo-glow';
   stereoLight.position.copy(stereoBounds.getCenter(new THREE.Vector3()));
   stereoLight.position.z = stereoBounds.min.z - 0.025;
   chassis.worldToLocal(stereoLight.position);
@@ -287,18 +292,21 @@ export async function loadCar(onProgress?: (fraction: number) => void) {
   chassis.add(stereoLight);
 
   const [clock] = named(/^CLOCKTIME_Clocktime_0$/);
-  if (!clock) throw new Error("Missing clock display geometry.");
-  const clockReadout = createSegmentedDisplay(512, 128, "#07130e", "#b9f8d1", 5);
+  if (!clock) throw new Error('Missing clock display geometry.');
+  const clockReadout = createSegmentedDisplay(512, 128, '#07130e', '#b9f8d1', 5);
   clock.geometry = clock.geometry.clone();
   const [clockFace] = named(/^clockface_Clockface_0$/);
-  if (!clockFace) throw new Error("Missing clock bezel geometry.");
+  if (!clockFace) throw new Error('Missing clock bezel geometry.');
   clockFace.geometry.computeBoundingBox();
   const faceBounds = clockFace.geometry.boundingBox!;
   const faceSlope = (faceBounds.max.z - faceBounds.min.z) / (faceBounds.max.y - faceBounds.min.y);
-  const clockPositions = clock.geometry.getAttribute("position");
+  const clockPositions = clock.geometry.getAttribute('position');
   // The exported digits tilt opposite to the bezel, which hides half of the readout.
   for (let i = 0; i < clockPositions.count; i++) {
-    clockPositions.setZ(i, faceBounds.min.z + (clockPositions.getY(i) - faceBounds.min.y) * faceSlope - 0.0005);
+    clockPositions.setZ(
+      i,
+      faceBounds.min.z + (clockPositions.getY(i) - faceBounds.min.y) * faceSlope - 0.0005,
+    );
   }
   clock.geometry.computeVertexNormals();
   clock.geometry.computeBoundingSphere();
@@ -316,10 +324,13 @@ export async function loadCar(onProgress?: (fraction: number) => void) {
   // The label atlas is shared by cabin buttons; isolate the two gauge-side pods.
   const podLabels = splitSurface(
     /^Intbuttons_Interiorbuttons_0$/,
-    "gauge-pod-labels",
+    'gauge-pod-labels',
     (x, y, z) =>
       ((x > -0.21 && x < -0.1) || (x > -0.65 && x < -0.56)) &&
-      y > 0.57 && y < 0.71 && z > 0.2 && z < 0.27,
+      y > 0.57 &&
+      y < 0.71 &&
+      z > 0.2 &&
+      z < 0.27,
   );
   podLabels.material.emissive.set(0xffffff);
   podLabels.material.emissiveMap = podLabels.material.map;
@@ -358,13 +369,16 @@ export async function loadCar(onProgress?: (fraction: number) => void) {
     for (const material of materials) material.emissiveIntensity = intensity;
   };
   function updateSignals() {
-    for (const side of ["left", "right"] as const) {
-      const illuminated = hazardsEnabled ? hazardsActive
-        : side === "left" ? leftSignalActive : rightSignalActive;
+    for (const side of ['left', 'right'] as const) {
+      const illuminated = hazardsEnabled
+        ? hazardsActive
+        : side === 'left'
+          ? leftSignalActive
+          : rightSignalActive;
       setIntensity(rearSignals[side], illuminated ? 3 : 0);
       setIntensity(frontSignals[side], illuminated ? 3 : headlightsOn ? 0.8 : 0);
       setIntensity(sideMarkers[side], illuminated ? 2 : headlightsOn ? 0.9 : 0);
-      setDashLight(side === "left" ? "leftSignal" : "rightSignal", illuminated);
+      setDashLight(side === 'left' ? 'leftSignal' : 'rightSignal', illuminated);
     }
   }
   function setHazards(illuminated: boolean, enabled = illuminated) {
@@ -407,7 +421,7 @@ export async function loadCar(onProgress?: (fraction: number) => void) {
   ];
   for (const strip of lightStrips) {
     const light = new THREE.RectAreaLight(0xff1824, 18, strip.width, strip.length);
-    light.name = "red-underglow";
+    light.name = 'red-underglow';
     light.position.set(strip.x, -0.38, strip.z);
     light.rotation.x = -Math.PI / 2;
     light.intensity = 0;
@@ -442,7 +456,15 @@ export async function loadCar(onProgress?: (fraction: number) => void) {
   });
   function headlightPair(
     pattern: RegExp,
-    { name, intensity, range, angle, drop, spread, front }: {
+    {
+      name,
+      intensity,
+      range,
+      angle,
+      drop,
+      spread,
+      front,
+    }: {
       name: string;
       intensity: number;
       range: number;
@@ -476,16 +498,31 @@ export async function loadCar(onProgress?: (fraction: number) => void) {
     });
   }
   const headlights = headlightPair(/^Projectorglass_/, {
-    name: "headlight-beam", intensity: 550, range: 65, angle: Math.PI / 7,
-    drop: 1.1, spread: 1.5, front: headlightFront,
+    name: 'headlight-beam',
+    intensity: 550,
+    range: 65,
+    angle: Math.PI / 7,
+    drop: 1.1,
+    spread: 1.5,
+    front: headlightFront,
   });
   const highBeams = headlightPair(/^LightsInside_004_001_LightChrome_0$/, {
-    name: "high-beam", intensity: 900, range: 100, angle: Math.PI / 9,
-    drop: 0.25, spread: 1.15, front: headlightFront,
+    name: 'high-beam',
+    intensity: 900,
+    range: 100,
+    angle: Math.PI / 9,
+    drop: 0.25,
+    spread: 1.15,
+    front: headlightFront,
   });
   const fogLights = headlightPair(/^FogGlass_/, {
-    name: "fog-light", intensity: 350, range: 35, angle: Math.PI / 5,
-    drop: 3, spread: 5, front: meshBounds(/^FogGlass_/).max.z + 0.015,
+    name: 'fog-light',
+    intensity: 350,
+    range: 35,
+    angle: Math.PI / 5,
+    drop: 3,
+    spread: 5,
+    front: meshBounds(/^FogGlass_/).max.z + 0.015,
   });
   function setFogLights(enabled: boolean) {
     if (fogLightsOn === enabled) return;
@@ -512,7 +549,7 @@ export async function loadCar(onProgress?: (fraction: number) => void) {
     updateFrontShadows();
     for (const material of headlightCovers)
       material.opacity = headlightsOn || highBeamsOn ? 0.2 : 0.6;
-    setDashLight("highBeam", highBeamsOn);
+    setDashLight('highBeam', highBeamsOn);
   }
   function setHighBeams(enabled: boolean) {
     if (highBeamsOn === enabled) return;
@@ -521,7 +558,7 @@ export async function loadCar(onProgress?: (fraction: number) => void) {
   }
   const cabinLight = new THREE.PointLight(0xffd9b0, 0.06, 1.4, 2);
   cabinLight.layers.set(carLightLayers.interior);
-  cabinLight.name = "cabin-ambient";
+  cabinLight.name = 'cabin-ambient';
   cabinLight.position.set(0, 0.62, -0.15);
   cabinLight.intensity = 0;
   chassis.add(cabinLight);
@@ -529,7 +566,7 @@ export async function loadCar(onProgress?: (fraction: number) => void) {
   const gaugeBounds = meshBounds(/^gaugeface[12]_Gauges_0$/);
   const gaugeLight = new THREE.PointLight(0xffd9b0, 0.025, 0.45, 2);
   gaugeLight.layers.set(carLightLayers.interior);
-  gaugeLight.name = "gauge-glow";
+  gaugeLight.name = 'gauge-glow';
   gaugeLight.position.copy(gaugeBounds.getCenter(new THREE.Vector3()));
   gaugeLight.position.z = gaugeBounds.min.z - 0.025;
   chassis.worldToLocal(gaugeLight.position);
@@ -553,7 +590,7 @@ export async function loadCar(onProgress?: (fraction: number) => void) {
   }
 
   // Replace the flat mirror-glass mesh with live planar reflections.
-  let mirrorResolution: ConfigurationState["mirrorResolution"] = "low";
+  let mirrorResolution: ConfigurationState['mirrorResolution'] = 'low';
   let mirrorsEnabled = false;
   const inactiveMirrorMaterial = new THREE.MeshStandardMaterial({
     color: 0xdde4ee,
@@ -578,8 +615,8 @@ export async function loadCar(onProgress?: (fraction: number) => void) {
   }
   for (const mesh of named(/^Mirrorglass_/)) {
     const geometry = mesh.geometry.clone().applyMatrix4(mesh.matrixWorld);
-    const positions = geometry.getAttribute("position");
-    const normals = geometry.getAttribute("normal");
+    const positions = geometry.getAttribute('position');
+    const normals = geometry.getAttribute('normal');
     const index = geometry.getIndex();
     // Right door mirror, interior rear-view mirror, left door mirror.
     const sides: number[][] = [[], [], []];
@@ -632,8 +669,8 @@ export async function loadCar(onProgress?: (fraction: number) => void) {
         const [renderer, , camera] = args;
         reflectionCameraFor(mirror, camera);
         const close = mirror.getWorldPosition(eye).distanceToSquared(camera.position) < 2 ** 2;
-        if (close && mirrorResolution === "high") renderer.getDrawingBufferSize(size);
-        else if (close && mirrorResolution === "medium") size.set(1024, 512);
+        if (close && mirrorResolution === 'high') renderer.getDrawingBufferSize(size);
+        else if (close && mirrorResolution === 'medium') size.set(1024, 512);
         else size.set(512, 256);
         const target = mirror.getRenderTarget();
         if (target.width !== size.x || target.height !== size.y) target.setSize(size.x, size.y);
@@ -669,13 +706,20 @@ export async function loadCar(onProgress?: (fraction: number) => void) {
             0,
             -1,
           ).normalize();
-      mirrorMounts.push({ mirror, reflectionMaterial, center: mirrorCenter, normal, orientation, sightLine });
+      mirrorMounts.push({
+        mirror,
+        reflectionMaterial,
+        center: mirrorCenter,
+        normal,
+        orientation,
+        sightLine,
+      });
       chassis.add(mirror);
     }
     geometry.dispose();
     mesh.visible = false;
   }
-  if (mirrors.length !== 3) throw new Error("Missing mirror glass in the car model.");
+  if (mirrors.length !== 3) throw new Error('Missing mirror glass in the car model.');
 
   // Pivot each glass in its housing so that a ray from the driver's eye reflects
   // along the mirror's sight line (eye is in chassis space).
@@ -697,7 +741,7 @@ export async function loadCar(onProgress?: (fraction: number) => void) {
     const [mesh] = named(pattern);
     if (!mesh) throw new Error(`Missing ${pattern} in the car model.`);
     const geometry = mesh.geometry.clone();
-    const positions = geometry.getAttribute("position");
+    const positions = geometry.getAttribute('position');
     const index = geometry.getIndex();
     const vertex = new THREE.Vector3();
     const kept: number[] = [];
@@ -746,12 +790,7 @@ export async function loadCar(onProgress?: (fraction: number) => void) {
     mesh.removeFromParent();
 
   // Re-parent interior parts under pivots so they can rotate about their real hubs.
-  function pivot(
-    pattern: RegExp,
-    origin: THREE.Vector3,
-    axis: THREE.Vector3,
-    mount = chassis,
-  ) {
+  function pivot(pattern: RegExp, origin: THREE.Vector3, axis: THREE.Vector3, mount = chassis) {
     const group = new THREE.Group();
     group.position.copy(origin);
     for (const mesh of named(pattern)) {
@@ -768,12 +807,12 @@ export async function loadCar(onProgress?: (fraction: number) => void) {
     return (angle: number) => group.quaternion.setFromAxisAngle(axis, angle);
   }
   const steeringColumn = new THREE.Group();
-  steeringColumn.name = "steering-column";
+  steeringColumn.name = 'steering-column';
   steeringColumn.position.set(-0.3808, 0.14, 0.33);
   chassis.add(steeringColumn);
   for (const [pattern, name] of [
-    [/^Plastic_PlasticInterior_0$/, "steering-column-housing"],
-    [/^Intbuttons_Interiorbuttons_0$/, "steering-column-labels"],
+    [/^Plastic_PlasticInterior_0$/, 'steering-column-housing'],
+    [/^Intbuttons_Interiorbuttons_0$/, 'steering-column-labels'],
   ] as const) {
     const part = splitSurface(
       pattern,
@@ -851,7 +890,7 @@ export async function loadCar(onProgress?: (fraction: number) => void) {
     });
   }
   function setDashLight(light: DashLight, on: boolean) {
-    const unlitMaterial = light === "catalyst" ? unlitCatalystLight : unlitDashLight;
+    const unlitMaterial = light === 'catalyst' ? unlitCatalystLight : unlitDashLight;
     for (const mesh of dashLights[light]) mesh.material = on ? litDashLight! : unlitMaterial;
   }
   for (const light of Object.keys(dashLights) as DashLight[]) setDashLight(light, false);
@@ -892,7 +931,7 @@ export async function loadCar(onProgress?: (fraction: number) => void) {
     tireBounds[cornerOf(box)].union(box);
   }
   const centers = tireBounds.map((box) => {
-    if (box.isEmpty()) throw new Error("The car model is missing expected wheel geometry.");
+    if (box.isEmpty()) throw new Error('The car model is missing expected wheel geometry.');
     return box.getCenter(new THREE.Vector3());
   });
   const radii = tireBounds.map((box) => box.getSize(new THREE.Vector3()).y / 2);
@@ -917,7 +956,7 @@ export async function loadCar(onProgress?: (fraction: number) => void) {
     }
   }
   for (const mesh of named(/^(Body2|Front|Hood|rbumper|Wing)_Paint_0$/)) {
-    const positions = mesh.geometry.getAttribute("position");
+    const positions = mesh.geometry.getAttribute('position');
     for (let i = 0; i < positions.count; i++) {
       const point = new THREE.Vector3()
         .fromBufferAttribute(positions, i)
@@ -926,7 +965,7 @@ export async function loadCar(onProgress?: (fraction: number) => void) {
     }
   }
   if (collisionPoints.length === 8)
-    throw new Error("Missing car body geometry for collision hull.");
+    throw new Error('Missing car body geometry for collision hull.');
   const hull = new ConvexHull().setFromPoints(collisionPoints);
   const collisionVertices = new Set<THREE.Vector3>();
   for (const face of hull.faces) {
@@ -953,25 +992,32 @@ export async function loadCar(onProgress?: (fraction: number) => void) {
     setFogLights,
     setStereo(powered: boolean) {
       stereoPowered = powered;
-      radioReadout.setText(powered ? stereoStationId : " ");
+      radioReadout.setText(powered ? stereoStationId : ' ');
       stereoMaterial.emissiveIntensity = powered ? 1.5 : 0;
       stereoLight.intensity = powered ? 0.025 : 0;
     },
     setStereoStation(id: string) {
       stereoStationId = id;
-      radioReadout.setText(stereoPowered ? id : " ");
+      radioReadout.setText(stereoPowered ? id : ' ');
     },
     updateClock(date: Date) {
       clockReadout.setText(clockText(date));
     },
-    setMirrors(cameraStyle: ConfigurationState["cameraStyle"], resolution: ConfigurationState["mirrorResolution"]) {
+    setMirrors(
+      cameraStyle: ConfigurationState['cameraStyle'],
+      resolution: ConfigurationState['mirrorResolution'],
+    ) {
       mirrorResolution = resolution;
-      mirrorsEnabled = cameraStyle === "cabin" && resolution !== "off";
+      mirrorsEnabled = cameraStyle === 'cabin' && resolution !== 'off';
       for (const { mirror, reflectionMaterial } of mirrorMounts) {
         mirror.material = mirrorsEnabled ? reflectionMaterial : inactiveMirrorMaterial;
       }
     },
-    async warmMirrors(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.PerspectiveCamera) {
+    async warmMirrors(
+      renderer: THREE.WebGLRenderer,
+      scene: THREE.Scene,
+      camera: THREE.PerspectiveCamera,
+    ) {
       const target = renderer.getRenderTarget();
       const shadowAutoUpdate = renderer.shadowMap.autoUpdate;
       scene.updateMatrixWorld(true);
@@ -980,7 +1026,7 @@ export async function loadCar(onProgress?: (fraction: number) => void) {
         renderer.shadowMap.autoUpdate = false;
         for (const mirror of mirrors) {
           const material = mirror.material;
-          if (Array.isArray(material)) throw new Error("Mirror must use a single material.");
+          if (Array.isArray(material)) throw new Error('Mirror must use a single material.');
           const reflectionCamera = reflectionCameraFor(mirror, camera);
           renderer.setRenderTarget(mirror.getRenderTarget());
           await renderer.compileAsync(scene, reflectionCamera);

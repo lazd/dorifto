@@ -14,24 +14,38 @@ before(async () => {
   ({ DrivingControls, updateVehicleLights } = await server.ssrLoadModule('/src/controls.ts'));
 });
 
-after(async () => { await server?.close(); });
+after(async () => {
+  await server?.close();
+});
 
 function rig(t) {
-  const descriptors = new Map(['document', 'window', 'navigator', 'performance'].map((key) =>
-    [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
+  const descriptors = new Map(
+    ['document', 'window', 'navigator', 'performance'].map((key) => [
+      key,
+      Object.getOwnPropertyDescriptor(globalThis, key),
+    ]),
+  );
   const listeners = {};
   const pad = { connected: true, mapping: 'standard', axes: [0, 0, 0, 0], buttons: [] };
   const document = {
-    hasFocus: () => true, hidden: false, addEventListener() {},
-    documentElement: { style: {} }, body: { style: {} },
+    hasFocus: () => true,
+    hidden: false,
+    addEventListener() {},
+    documentElement: { style: {} },
+    body: { style: {} },
   };
   let now = 0;
   for (const [key, value] of Object.entries({
     document,
-    window: { addEventListener: (name, callback) => { listeners[name] = callback; } },
-    navigator: { getGamepads: () => pad.connected ? [pad] : [] },
+    window: {
+      addEventListener: (name, callback) => {
+        listeners[name] = callback;
+      },
+    },
+    navigator: { getGamepads: () => (pad.connected ? [pad] : []) },
     performance: { now: () => now },
-  })) Object.defineProperty(globalThis, key, { configurable: true, value });
+  }))
+    Object.defineProperty(globalThis, key, { configurable: true, value });
   t.after(() => {
     for (const [key, descriptor] of descriptors) {
       if (descriptor) Object.defineProperty(globalThis, key, descriptor);
@@ -40,8 +54,14 @@ function rig(t) {
   });
   const controls = new DrivingControls();
   return {
-    controls, pad, document, listeners,
-    poll(ms = 0, enabled = true, dismissError) { now += ms; controls.poll(enabled, 0, dismissError); },
+    controls,
+    pad,
+    document,
+    listeners,
+    poll(ms = 0, enabled = true, dismissError) {
+      now += ms;
+      controls.poll(enabled, 0, dismissError);
+    },
     lightButton(pressed, keyboard = false) {
       if (keyboard) {
         if (pressed) controls.keys.add('KeyF');
@@ -107,7 +127,11 @@ for (const keyboard of [true, false]) {
     r.poll(1);
     assert.equal(r.controls.lightingRequested, 'hold', 'acts at the threshold, before release');
     r.headlightsButton(false, keyboard);
-    assert.equal(r.controls.lightingRequested, null, 'release after a long hold does not toggle again');
+    assert.equal(
+      r.controls.lightingRequested,
+      null,
+      'release after a long hold does not toggle again',
+    );
     r.headlightsButton(true, keyboard);
     r.poll(1000);
     assert.equal(r.controls.lightingRequested, 'hold');
@@ -130,8 +154,15 @@ test('short taps and long holds implement every headlight / fog-light transition
     [true, false, 'hold', { headlights: true, fogLights: true }],
     [true, true, 'hold', { headlights: true, fogLights: false }],
   ]) {
-    const pressed = updateVehicleLights({ headlights, fogLights, headlightsAtPress: false }, 'press');
-    assert.equal(pressed.headlights, true, 'headlights illuminate on press, without waiting for release');
+    const pressed = updateVehicleLights(
+      { headlights, fogLights, headlightsAtPress: false },
+      'press',
+    );
+    assert.equal(
+      pressed.headlights,
+      true,
+      'headlights illuminate on press, without waiting for release',
+    );
     assert.equal(pressed.fogLights, fogLights, 'press alone does not change fog lights');
     const result = updateVehicleLights(pressed, request);
     assert.deepEqual({ headlights: result.headlights, fogLights: result.fogLights }, expected);
@@ -192,7 +223,10 @@ test('Xbox B consumes error dismissal once per press instead of toggling the map
 test('unfocused or hidden pages cannot dismiss errors with Xbox B', (t) => {
   const r = rig(t);
   let requests = 0;
-  const dismiss = () => { requests++; return true; };
+  const dismiss = () => {
+    requests++;
+    return true;
+  };
   r.listeners.blur();
   r.pad.buttons[1] = { pressed: true };
   r.poll(0, true, dismiss);
@@ -296,7 +330,10 @@ test('blur, hidden pages, disabled controls, and clear cancel lighting and pendi
     () => r.controls.clear(),
     () => r.poll(0, false),
     () => r.listeners.blur(),
-    () => { r.document.hidden = true; r.poll(); },
+    () => {
+      r.document.hidden = true;
+      r.poll();
+    },
   ]) {
     r.document.hidden = false;
     r.listeners.focus();

@@ -3,24 +3,41 @@ import { TireSmoke } from './smoke';
 import type { loadCar } from './car';
 import type { CourseTerrain } from './terrain';
 
-export function createTireEffects(scene: THREE.Scene, car: Awaited<ReturnType<typeof loadCar>>, terrain: CourseTerrain,
-  isAsphalt: (position: THREE.Vector3) => boolean) {
+export function createTireEffects(
+  scene: THREE.Scene,
+  car: Awaited<ReturnType<typeof loadCar>>,
+  terrain: CourseTerrain,
+  isAsphalt: (position: THREE.Vector3) => boolean,
+) {
   const maxMarks = 6000;
   const markPositions = new Float32Array(maxMarks * 18);
   const markColors = new Float32Array(maxMarks * 18);
   const markNormals = new Float32Array(maxMarks * 18);
   const markGeometry = new THREE.BufferGeometry();
-  const markAttribute = new THREE.BufferAttribute(markPositions, 3).setUsage(THREE.DynamicDrawUsage);
+  const markAttribute = new THREE.BufferAttribute(markPositions, 3).setUsage(
+    THREE.DynamicDrawUsage,
+  );
   markGeometry.setAttribute('position', markAttribute);
-  const markColorAttribute = new THREE.BufferAttribute(markColors, 3).setUsage(THREE.DynamicDrawUsage);
+  const markColorAttribute = new THREE.BufferAttribute(markColors, 3).setUsage(
+    THREE.DynamicDrawUsage,
+  );
   markGeometry.setAttribute('color', markColorAttribute);
-  const markNormalAttribute = new THREE.BufferAttribute(markNormals, 3).setUsage(THREE.DynamicDrawUsage);
+  const markNormalAttribute = new THREE.BufferAttribute(markNormals, 3).setUsage(
+    THREE.DynamicDrawUsage,
+  );
   markGeometry.setAttribute('normal', markNormalAttribute);
   markGeometry.setDrawRange(0, 0);
-  const marks = new THREE.Mesh(markGeometry, new THREE.MeshStandardMaterial({
-    vertexColors: true, side: THREE.DoubleSide, roughness: 1,
-    transparent: true, opacity: 0.45, depthWrite: false,
-  }));
+  const marks = new THREE.Mesh(
+    markGeometry,
+    new THREE.MeshStandardMaterial({
+      vertexColors: true,
+      side: THREE.DoubleSide,
+      roughness: 1,
+      transparent: true,
+      opacity: 0.45,
+      depthWrite: false,
+    }),
+  );
   marks.frustumCulled = false;
   scene.add(marks);
   const previousTires = [new THREE.Vector3(), new THREE.Vector3()];
@@ -48,8 +65,14 @@ export function createTireEffects(scene: THREE.Scene, car: Awaited<ReturnType<ty
     marking.fill(false);
   }
 
-  function update(dt: number, velocity: THREE.Vector3, camera: THREE.Camera,
-    wheelContacts: boolean[], sliding: boolean, burningOut: boolean) {
+  function update(
+    dt: number,
+    velocity: THREE.Vector3,
+    camera: THREE.Camera,
+    wheelContacts: boolean[],
+    sliding: boolean,
+    burningOut: boolean,
+  ) {
     const leavingMarks = sliding || burningOut;
     for (let i = 2; i < 4; i++) wheelAsphalt[i] = isAsphalt(car.wheels[i].position);
     if (leavingMarks) {
@@ -63,16 +86,24 @@ export function createTireEffects(scene: THREE.Scene, car: Awaited<ReturnType<ty
         tireRight.copy(wheel.position).add(tireAcross);
         tireLeft.y = terrain.heightAt(tireLeft.x, tireLeft.z) + 0.04;
         tireRight.y = terrain.heightAt(tireRight.x, tireRight.z) + 0.04;
-        if (marking[i] && contact && paved === previousAsphalt[i] && wheel.position.distanceToSquared(previousTires[i]) < 4) {
+        if (
+          marking[i] &&
+          contact &&
+          paved === previousAsphalt[i] &&
+          wheel.position.distanceToSquared(previousTires[i]) < 4
+        ) {
           const offset = (markCount % maxMarks) * 18;
-          markPositions.set([
-            ...previousLeft[i].toArray(),
-            ...previousRight[i].toArray(),
-            ...tireLeft.toArray(),
-            ...previousRight[i].toArray(),
-            ...tireRight.toArray(),
-            ...tireLeft.toArray(),
-          ], offset);
+          markPositions.set(
+            [
+              ...previousLeft[i].toArray(),
+              ...previousRight[i].toArray(),
+              ...tireLeft.toArray(),
+              ...previousRight[i].toArray(),
+              ...tireRight.toArray(),
+              ...tireLeft.toArray(),
+            ],
+            offset,
+          );
           const color = paved ? asphaltMark : dirtMark;
           for (let vertex = 0; vertex < 6; vertex++) color.toArray(markColors, offset + vertex * 3);
           for (let triangle = 0; triangle < 2; triangle++) {
@@ -81,7 +112,8 @@ export function createTireEffects(scene: THREE.Scene, car: Awaited<ReturnType<ty
             markTriangle.b.fromArray(markPositions, start + 3);
             markTriangle.c.fromArray(markPositions, start + 6);
             markTriangle.getNormal(markNormal);
-            for (let vertex = 0; vertex < 3; vertex++) markNormal.toArray(markNormals, start + vertex * 3);
+            for (let vertex = 0; vertex < 3; vertex++)
+              markNormal.toArray(markNormals, start + vertex * 3);
           }
           markCount++;
         }
@@ -98,11 +130,22 @@ export function createTireEffects(scene: THREE.Scene, car: Awaited<ReturnType<ty
     } else {
       marking.fill(false);
     }
-    smoke.update(dt, car.wheels, wheelContacts, leavingMarks, velocity, camera, wheelAsphalt,
-      (x, z) => terrain.heightAt(x, z));
+    smoke.update(
+      dt,
+      car.wheels,
+      wheelContacts,
+      leavingMarks,
+      velocity,
+      camera,
+      wheelAsphalt,
+      (x, z) => terrain.heightAt(x, z),
+    );
   }
 
-  function setCourse(nextTerrain: CourseTerrain, nextIsAsphalt: (position: THREE.Vector3) => boolean) {
+  function setCourse(
+    nextTerrain: CourseTerrain,
+    nextIsAsphalt: (position: THREE.Vector3) => boolean,
+  ) {
     terrain = nextTerrain;
     isAsphalt = nextIsAsphalt;
     reset();

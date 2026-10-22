@@ -1,5 +1,5 @@
-import processorUrl from "./engine-worklet.js?url";
-import { idleRpm, type DrivetrainState } from "./drivetrain";
+import processorUrl from './engine-worklet.js?url';
+import { idleRpm, type DrivetrainState } from './drivetrain';
 
 const clamp = (value: number, low = 0, high = 1) => Math.max(low, Math.min(high, value));
 
@@ -36,11 +36,11 @@ export class VehicleAudio {
   ) {
     this.muted = startMuted;
     const unlock = () => this.activate();
-    window.addEventListener("pointerdown", unlock);
-    window.addEventListener("pointerup", unlock);
-    window.addEventListener("keydown", unlock);
-    window.addEventListener("keyup", unlock);
-    window.addEventListener("click", unlock);
+    window.addEventListener('pointerdown', unlock);
+    window.addEventListener('pointerup', unlock);
+    window.addEventListener('keydown', unlock);
+    window.addEventListener('keyup', unlock);
+    window.addEventListener('click', unlock);
     this.activate();
     if (startMuted) this.publishState();
   }
@@ -56,11 +56,11 @@ export class VehicleAudio {
     if (this.failed || this.muted) return;
     if (!this.context) {
       this.context = new AudioContext();
-      this.context.addEventListener("statechange", () => this.publishState());
+      this.context.addEventListener('statechange', () => this.publishState());
     }
     // A blocked resume can remain pending; never let it prevent a later
     // user gesture from issuing another resume directly in that handler.
-    if (this.context.state !== "running") {
+    if (this.context.state !== 'running') {
       void this.context
         .resume()
         .then(() => {
@@ -87,10 +87,10 @@ export class VehicleAudio {
 
   private async start() {
     const context = this.context;
-    if (!context) throw new Error("Audio context must be created before loading sound.");
+    if (!context) throw new Error('Audio context must be created before loading sound.');
     if (!this.node) {
       await context.audioWorklet.addModule(processorUrl);
-      const node = new AudioWorkletNode(context, "vehicle-sound", {
+      const node = new AudioWorkletNode(context, 'vehicle-sound', {
         numberOfInputs: 0,
         numberOfOutputs: 4,
         outputChannelCount: [1, 1, 2, 1],
@@ -100,7 +100,7 @@ export class VehicleAudio {
         this.failed = true;
         this.setAudible(false);
         this.publishState();
-        this.reportError(new Error("Vehicle audio processor failed. Reload to restart sound."));
+        this.reportError(new Error('Vehicle audio processor failed. Reload to restart sound.'));
       };
       const master = context.createGain();
       master.gain.value = 0;
@@ -111,14 +111,14 @@ export class VehicleAudio {
       limiter.attack.value = 0.003;
       limiter.release.value = 0.15;
       const rumbleFilter = context.createBiquadFilter();
-      rumbleFilter.type = "highpass";
+      rumbleFilter.type = 'highpass';
       rumbleFilter.frequency.value = 25;
       master.connect(rumbleFilter).connect(limiter).connect(context.destination);
       const channels: { type: BiquadFilterType; frequency: number; gain: number; q: number }[] = [
-        { type: "lowpass", frequency: 800, gain: 0.65, q: 0.7 },
-        { type: "highpass", frequency: 900, gain: 0.28, q: 0.7 },
-        { type: "lowpass", frequency: 4800, gain: 0.28, q: 0.7 },
-        { type: "lowpass", frequency: 6500, gain: 0.9, q: 0.8 },
+        { type: 'lowpass', frequency: 800, gain: 0.65, q: 0.7 },
+        { type: 'highpass', frequency: 900, gain: 0.28, q: 0.7 },
+        { type: 'lowpass', frequency: 4800, gain: 0.28, q: 0.7 },
+        { type: 'lowpass', frequency: 6500, gain: 0.9, q: 0.8 },
       ];
       channels.forEach((channel, i) => {
         const filter = context.createBiquadFilter();
@@ -139,7 +139,7 @@ export class VehicleAudio {
 
   private publishState() {
     this.reportState({
-      running: Boolean(this.node) && this.context?.state === "running",
+      running: Boolean(this.node) && this.context?.state === 'running',
       muted: this.muted,
       failed: this.failed,
     });

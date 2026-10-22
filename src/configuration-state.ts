@@ -14,7 +14,9 @@ export function isTimeOfDay(value: string): value is ConfigurationState['timeOfD
   return value === 'noon' || value === 'sunset' || value === 'night';
 }
 
-export function isMinimapOrientation(value: string): value is ConfigurationState['minimapOrientation'] {
+export function isMinimapOrientation(
+  value: string,
+): value is ConfigurationState['minimapOrientation'] {
   return value === 'north-up' || value === 'heading-up';
 }
 
@@ -22,7 +24,9 @@ export function isMirrorResolution(value: string): value is ConfigurationState['
   return value === 'off' || value === 'low' || value === 'medium' || value === 'high';
 }
 
-export function readMirrorResolution(params: URLSearchParams): ConfigurationState['mirrorResolution'] {
+export function readMirrorResolution(
+  params: URLSearchParams,
+): ConfigurationState['mirrorResolution'] {
   const value = params.get('mirror-resolution');
   if (value !== null) {
     if (!isMirrorResolution(value)) throw new Error(`Invalid mirror resolution: ${value}`);
@@ -57,21 +61,50 @@ export type { TuningPreset } from './tuning-presets';
 
 export function defaultTuningPresets(): TuningPreset[] {
   return [
-    { id: 'drift-default', name: 'Default', mode: 'drift', readonly: true, tuning: defaultTuning('drift') },
     {
-      id: 'drift-aggressive', name: 'Aggressive', mode: 'drift',
+      id: 'drift-default',
+      name: 'Default',
+      mode: 'drift',
+      readonly: true,
+      tuning: defaultTuning('drift'),
+    },
+    {
+      id: 'drift-aggressive',
+      name: 'Aggressive',
+      mode: 'drift',
       readonly: true,
       tuning: {
-        horsepower: 515, steeringExpo: 0.6, steeringRate: 2.8, steeringScale: 1.03,
-        frontGrip: 1.05, rearGrip: 1, frontStiffness: 45000, rearStiffness: 43000,
+        horsepower: 515,
+        steeringExpo: 0.6,
+        steeringRate: 2.8,
+        steeringScale: 1.03,
+        frontGrip: 1.05,
+        rearGrip: 1,
+        frontStiffness: 45000,
+        rearStiffness: 43000,
       },
     },
-    { id: 'grip-default', name: 'Default', mode: 'grip', readonly: true, tuning: defaultTuning('grip') },
     {
-      id: 'grip-fast', name: 'Fast', mode: 'grip', readonly: true,
+      id: 'grip-default',
+      name: 'Default',
+      mode: 'grip',
+      readonly: true,
+      tuning: defaultTuning('grip'),
+    },
+    {
+      id: 'grip-fast',
+      name: 'Fast',
+      mode: 'grip',
+      readonly: true,
       tuning: {
-        horsepower: 500, steeringExpo: 0.6, steeringRate: 2, steeringScale: 1,
-        frontGrip: 1.1, rearGrip: 1.15, frontStiffness: 51000, rearStiffness: 51000,
+        horsepower: 500,
+        steeringExpo: 0.6,
+        steeringRate: 2,
+        steeringScale: 1,
+        frontGrip: 1.1,
+        rearGrip: 1.15,
+        frontStiffness: 51000,
+        rearStiffness: 51000,
       },
     },
   ];
@@ -105,10 +138,17 @@ export function createConfigurationState(storage?: Storage) {
     profiles: { drift: defaultTuning('drift'), grip: defaultTuning('grip') },
     selectedTuningPresets: { drift: 'drift-default', grip: 'grip-default' },
     tuningPresets,
-    cameraStyle: 'corner', timeOfDay: 'noon',
-    minimapOrientation: 'heading-up', cabinHeadMotion: true, mirrorResolution: 'low',
-    courseReverse: false, coneMode: 'corners', showGrass: true, turnSignMode: 'several',
-    ghostMode: 'fastest', muted: false,
+    cameraStyle: 'corner',
+    timeOfDay: 'noon',
+    minimapOrientation: 'heading-up',
+    cabinHeadMotion: true,
+    mirrorResolution: 'low',
+    courseReverse: false,
+    coneMode: 'corners',
+    showGrass: true,
+    turnSignMode: 'several',
+    ghostMode: 'fastest',
+    muted: false,
     stereoStation: 'off',
   });
   return store;

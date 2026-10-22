@@ -1,10 +1,10 @@
-import * as THREE from "three";
-import { courseRoute, type CourseDefinition } from "./courses";
-import { driveModes, type DriveMode } from "./drive-modes";
-import type { ConfigurationState } from "./configuration-state";
-import type { DrivingControls } from "./controls";
-import type { CourseTerrain } from "./terrain";
-import { carLightLayers, type loadCar } from "./car";
+import * as THREE from 'three';
+import { courseRoute, type CourseDefinition } from './courses';
+import { driveModes, type DriveMode } from './drive-modes';
+import type { ConfigurationState } from './configuration-state';
+import type { DrivingControls } from './controls';
+import type { CourseTerrain } from './terrain';
+import { carLightLayers, type loadCar } from './car';
 
 export const cabinCameraMotion = {
   // Displacement in meters per g, along the car's local axes.
@@ -52,7 +52,7 @@ export function createDrivingCamera(
   const cabinTilt = new THREE.Quaternion();
   const cabinTiltAngles = new THREE.Euler();
   let hasCabinVelocity = false;
-  let previousCameraStyle: ConfigurationState["cameraStyle"] | null = null;
+  let previousCameraStyle: ConfigurationState['cameraStyle'] | null = null;
   const previousTravel = new THREE.Vector3();
   const cameraRight = new THREE.Vector3();
   const cornerTarget = new THREE.Vector3();
@@ -148,7 +148,7 @@ export function createDrivingCamera(
     dt: number,
     velocity: THREE.Vector3,
     driveMode: DriveMode,
-    cameraStyle: ConfigurationState["cameraStyle"],
+    cameraStyle: ConfigurationState['cameraStyle'],
     reversing: boolean,
     cabinHeadMotion = true,
   ) {
@@ -171,8 +171,7 @@ export function createDrivingCamera(
     cameraDirection.lerp(travel, 1 - Math.exp(-tune.cameraDirectionResponse * dt)).normalize();
     const cameraX = controls.mapView ? 0 : controls.cameraX;
     const cameraY = controls.mapView ? 0 : controls.cameraY;
-    const yawResponse =
-      !controls.lookBehind && cameraX === 0 ? tune.cameraRecenterResponse : 9;
+    const yawResponse = !controls.lookBehind && cameraX === 0 ? tune.cameraRecenterResponse : 9;
     const pitchResponse = cameraY === 0 ? tune.cameraRecenterResponse : 9;
     cameraYaw = THREE.MathUtils.damp(
       cameraYaw,
@@ -181,7 +180,7 @@ export function createDrivingCamera(
       dt,
     );
     cameraPitch = THREE.MathUtils.damp(cameraPitch, -cameraY * 0.8, pitchResponse, dt);
-    const cabin = cameraStyle === "cabin";
+    const cabin = cameraStyle === 'cabin';
     if (cameraStyle !== previousCameraStyle) {
       if (cabin) camera.layers.enable(carLightLayers.interior);
       else camera.layers.disable(carLightLayers.interior);
@@ -236,7 +235,7 @@ export function createDrivingCamera(
         Math.abs(cameraYaw) > 0.1 ||
         Math.abs(cameraX) > 0 ||
         Math.abs(cameraY) > 0;
-      const cornerCamera = cameraStyle === "corner" && !manualCamera && !reversing;
+      const cornerCamera = cameraStyle === 'corner' && !manualCamera && !reversing;
       const slideAngle =
         speed > 3 ? Math.acos(THREE.MathUtils.clamp(forward.dot(travelVelocity), -1, 1)) : 0;
       const slideAmount = cornerCamera
@@ -250,14 +249,14 @@ export function createDrivingCamera(
         3,
         dt,
       );
-      if (cameraStyle === "corner") {
+      if (cameraStyle === 'corner') {
         cameraRight.set(cameraDirection.z, 0, -cameraDirection.x);
         desiredCamera
           .addScaledVector(cameraRight, outsideOffset)
           .addScaledVector(cameraOrbit, -slideCameraAmount);
         desiredCamera.y += slideCameraAmount * 0.7;
       }
-      if (previousCameraStyle === "cabin") camera.position.copy(desiredCamera);
+      if (previousCameraStyle === 'cabin') camera.position.copy(desiredCamera);
       else camera.position.lerp(desiredCamera, 1 - Math.exp(-tune.cameraPositionResponse * dt));
       camera.position.y = Math.max(
         camera.position.y,
@@ -301,9 +300,9 @@ export function createDrivingCamera(
         cornerTarget.y = terrain.heightAt(cornerTarget.x, cornerTarget.z) + 0.65;
         desiredLookTarget.lerp(cornerTarget, amount * 0.4);
       }
-      if (previousCameraStyle === "cabin") lookTarget.copy(desiredLookTarget);
+      if (previousCameraStyle === 'cabin') lookTarget.copy(desiredLookTarget);
       else
-        lookTarget.lerp(desiredLookTarget, 1 - Math.exp(-(cameraStyle === "corner" ? 5 : 10) * dt));
+        lookTarget.lerp(desiredLookTarget, 1 - Math.exp(-(cameraStyle === 'corner' ? 5 : 10) * dt));
       camera.lookAt(lookTarget);
     }
     previousCameraStyle = cameraStyle;
@@ -325,7 +324,9 @@ export function createDrivingCamera(
     const halfHeight = Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2);
     mapZoom = THREE.MathUtils.clamp(mapZoom * Math.exp(controls.mapZoom * dt), 0.02, 4);
     const height =
-      mapZoom * 1.1 * Math.max(mapSize.z / 2 / halfHeight, mapSize.x / 2 / (halfHeight * camera.aspect));
+      mapZoom *
+      1.1 *
+      Math.max(mapSize.z / 2 / halfHeight, mapSize.x / 2 / (halfHeight * camera.aspect));
     const panSpeed = height * halfHeight;
     // With +Z at the top of this view, screen-right points toward -X.
     mapOffset.x -= controls.cameraX * panSpeed * dt;
@@ -342,9 +343,14 @@ export function createDrivingCamera(
   }
 
   return {
-    reset, update, setCabinEye,
+    reset,
+    update,
+    setCabinEye,
     getCabinEye(target: THREE.Vector3) {
-      return target.copy(cabinEye).applyQuaternion(car.chassis.quaternion).add(car.chassis.position);
+      return target
+        .copy(cabinEye)
+        .applyQuaternion(car.chassis.quaternion)
+        .add(car.chassis.position);
     },
   };
 }

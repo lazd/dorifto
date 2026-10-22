@@ -34,8 +34,11 @@ export function courseCrestWarnings(
     const blind = [12, 30].some((approachDistance) => {
       const approach = height(crest - approachDistance);
       const beyond = height(crest + approachDistance * 2);
-      if ((top - approach) / approachDistance < 0.015
-        || (top - beyond) / (approachDistance * 2) < 0.015) return false;
+      if (
+        (top - approach) / approachDistance < 0.015 ||
+        (top - beyond) / (approachDistance * 2) < 0.015
+      )
+        return false;
       // A driver's eye on the approach cannot see the road beyond this crest.
       const sightline = THREE.MathUtils.lerp(approach + 1.1, beyond, 1 / 3);
       return top >= sightline + 0.15;
@@ -44,7 +47,9 @@ export function courseCrestWarnings(
     const before = route.getTangentAt(THREE.MathUtils.euclideanModulo(crest - 8, length) / length);
     let bend = 0;
     for (const ahead of [15, 30, 45]) {
-      const after = route.getTangentAt(THREE.MathUtils.euclideanModulo(crest + ahead, length) / length);
+      const after = route.getTangentAt(
+        THREE.MathUtils.euclideanModulo(crest + ahead, length) / length,
+      );
       const angle = Math.atan2(before.z * after.x - before.x * after.z, before.dot(after));
       if (Math.abs(angle) > Math.abs(bend)) bend = angle;
     }
@@ -61,30 +66,37 @@ export function courseTurnSignPlacements(
 ) {
   if (mode === 'off') return [];
   const length = route.getLength();
-  const placements = courseTurns(route).flatMap(({ distance, direction, apexDistance, exitDistance }) => {
-    if (mode === 'few') {
-      return [-6, 0, 6].map((offset) => ({
-        distance: THREE.MathUtils.euclideanModulo(distance + offset, length), direction,
+  const placements = courseTurns(route).flatMap(
+    ({ distance, direction, apexDistance, exitDistance }) => {
+      if (mode === 'few') {
+        return [-6, 0, 6].map((offset) => ({
+          distance: THREE.MathUtils.euclideanModulo(distance + offset, length),
+          direction,
+        }));
+      }
+      const start = distance - 6;
+      const span =
+        mode === 'many'
+          ? THREE.MathUtils.euclideanModulo(exitDistance - start, length)
+          : Math.max(0, THREE.MathUtils.euclideanModulo(apexDistance - start, length) - 6);
+      const intervals = Math.max(2, Math.ceil(span / 8));
+      return Array.from({ length: intervals + 1 }, (_, index) => ({
+        distance: THREE.MathUtils.euclideanModulo(start + (span * index) / intervals, length),
+        direction,
       }));
-    }
-    const start = distance - 6;
-    const span = mode === 'many'
-      ? THREE.MathUtils.euclideanModulo(exitDistance - start, length)
-      : Math.max(0, THREE.MathUtils.euclideanModulo(apexDistance - start, length) - 6);
-    const intervals = Math.max(2, Math.ceil(span / 8));
-    return Array.from({ length: intervals + 1 }, (_, index) => ({
-      distance: THREE.MathUtils.euclideanModulo(start + span * index / intervals, length),
-      direction,
-    }));
-  });
+    },
+  );
   if (heightAt) {
     for (const { distance, direction } of courseCrestWarnings(route, heightAt)) {
       for (const offset of [-12, -6, 0]) {
         const signDistance = THREE.MathUtils.euclideanModulo(distance + offset, length);
-        if (placements.some((sign) => {
-          const gap = Math.abs(sign.distance - signDistance);
-          return sign.direction === direction && Math.min(gap, length - gap) < 5;
-        })) continue;
+        if (
+          placements.some((sign) => {
+            const gap = Math.abs(sign.distance - signDistance);
+            return sign.direction === direction && Math.min(gap, length - gap) < 5;
+          })
+        )
+          continue;
         placements.push({ distance: signDistance, direction });
       }
     }
@@ -103,7 +115,8 @@ export const turnSignDimensions = {
   postZ: -0.045,
   centerOfMassHeight: 1.35,
 };
-const { boardWidth, boardHeight, boardBottom, postSize, postBuried, postTopInset, postZ } = turnSignDimensions;
+const { boardWidth, boardHeight, boardBottom, postSize, postBuried, postTopInset, postZ } =
+  turnSignDimensions;
 
 function roundedRect(width: number, height: number, radius: number) {
   const x = -width / 2;
@@ -159,8 +172,14 @@ function faceTexture() {
   const point = (x: number, y: number) => [x * width, (1 - y) * height] as const;
   context.fillStyle = '#141210';
   context.beginPath();
-  [[0.96, 0.5], [0.52, 0.97], [0.05, 0.97], [0.49, 0.5], [0.05, 0.03], [0.52, 0.03]]
-    .forEach(([x, y], i) => (i ? context.lineTo : context.moveTo).call(context, ...point(x, y)));
+  [
+    [0.96, 0.5],
+    [0.52, 0.97],
+    [0.05, 0.97],
+    [0.49, 0.5],
+    [0.05, 0.03],
+    [0.52, 0.03],
+  ].forEach(([x, y], i) => (i ? context.lineTo : context.moveTo).call(context, ...point(x, y)));
   context.closePath();
   context.fill();
   for (const y of [0.955, 0.045]) {
@@ -206,16 +225,29 @@ export function createTurnSignFactory() {
   const postGeometry = new THREE.BoxGeometry(postSize, postLength, postSize);
   const boardGeometry = roundedRect(boardWidth, boardHeight, 0.05);
   const postMaterial = new THREE.MeshStandardMaterial({
-    map: postTexture(postLength), metalness: 0.35, roughness: 0.55,
+    map: postTexture(postLength),
+    metalness: 0.35,
+    roughness: 0.55,
   });
-  const backMaterial = new THREE.MeshStandardMaterial({ color: 0xa9aba6, metalness: 0.4, roughness: 0.5 });
+  const backMaterial = new THREE.MeshStandardMaterial({
+    color: 0xa9aba6,
+    metalness: 0.4,
+    roughness: 0.5,
+  });
   const rightTexture = faceTexture();
   const leftTexture = rightTexture.clone();
   leftTexture.repeat.x = -1;
   leftTexture.offset.x = 1;
-  const faceMaterials = [rightTexture, leftTexture].map((map) => new THREE.MeshStandardMaterial({
-    map, roughness: 0.55, emissive: 0xffffff, emissiveMap: map, emissiveIntensity: 0.08,
-  }));
+  const faceMaterials = [rightTexture, leftTexture].map(
+    (map) =>
+      new THREE.MeshStandardMaterial({
+        map,
+        roughness: 0.55,
+        emissive: 0xffffff,
+        emissiveMap: map,
+        emissiveIntensity: 0.08,
+      }),
+  );
 
   // The sign faces local +z; positive direction points the chevron to the viewer's left.
   return (direction: number) => {

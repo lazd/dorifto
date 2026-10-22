@@ -1,0 +1,7 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "singleQuote": true,
+  "printWidth": 100,
+  "objectWrap": "preserve",
+  "ignorePatterns": ["models/**", "src/tracks/**", "zview.html", "package-lock.json"]
+}

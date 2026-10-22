@@ -1,14 +1,14 @@
-import * as THREE from "three";
-import { carLightLayers, loadCar } from "./car";
-import { DrivingControls, updateVehicleLights } from "./controls";
-import { createCourse } from "./course";
+import * as THREE from 'three';
+import { carLightLayers, loadCar } from './car';
+import { DrivingControls, updateVehicleLights } from './controls';
+import { createCourse } from './course';
 import {
   courses,
   courseSpawn,
   generateCourse,
   readCourseReverse,
   type CourseDefinition,
-} from "./courses";
+} from './courses';
 import {
   courseGenerationFields,
   defaultCourseWeights,
@@ -16,11 +16,11 @@ import {
   readCourseWeights,
   writeCourseWeights,
   type CourseGenerationWeights,
-} from "./course-generation";
-import { isDriveMode } from "./drive-modes";
-import { formatLapTime } from "./laps";
-import { VehicleAudio } from "./audio";
-import { CarStereo, isStereoStationSelection } from "./stereo";
+} from './course-generation';
+import { isDriveMode } from './drive-modes';
+import { formatLapTime } from './laps';
+import { VehicleAudio } from './audio';
+import { CarStereo, isStereoStationSelection } from './stereo';
 import {
   createConfigurationState,
   defaultTuningPresets,
@@ -30,19 +30,19 @@ import {
   isTimeOfDay,
   readMirrorResolution,
   type ConfigurationState,
-} from "./configuration-state";
-import { createGameState, type SavedRunOption } from "./game-state";
-import { loadTuningPresets } from "./tuning-presets";
-import { deleteSavedCourse, loadSavedCourses, saveCourse } from "./saved-courses";
-import { bindGameUI, bindGameActions, bindCoursePicker, bindLapRecorder, element } from "./ui";
-import { createDrivingCamera } from "./camera";
-import { createLighting } from "./lighting";
-import { createTireEffects } from "./tire-effects";
-import { createMinimap } from "./minimap";
-import { createPhysicsClient } from "./physics-client";
-import type { PhysicsRecord } from "./physics-messages";
-import { readTurnSignMode } from "./turn-sign";
-import { createGhostCar } from "./ghost-car";
+} from './configuration-state';
+import { createGameState, type SavedRunOption } from './game-state';
+import { loadTuningPresets } from './tuning-presets';
+import { deleteSavedCourse, loadSavedCourses, saveCourse } from './saved-courses';
+import { bindGameUI, bindGameActions, bindCoursePicker, bindLapRecorder, element } from './ui';
+import { createDrivingCamera } from './camera';
+import { createLighting } from './lighting';
+import { createTireEffects } from './tire-effects';
+import { createMinimap } from './minimap';
+import { createPhysicsClient } from './physics-client';
+import type { PhysicsRecord } from './physics-messages';
+import { readTurnSignMode } from './turn-sign';
+import { createGhostCar } from './ghost-car';
 import {
   RunRecording,
   applyCarPose,
@@ -55,8 +55,8 @@ import {
   saveRecordLap,
   saveRun,
   type RunSummary,
-} from "./lap-recording";
-import "./style.css";
+} from './lap-recording';
+import './style.css';
 
 // Imported styles have been applied, so the page can be revealed without unstyled content.
 document.body.hidden = false;
@@ -77,10 +77,10 @@ async function start() {
     try {
       return read(new URL(location.href).searchParams);
     } catch (error) {
-      console.warn(`Ignoring invalid URL option ${names.join(", ")}:`, error);
+      console.warn(`Ignoring invalid URL option ${names.join(', ')}:`, error);
       const url = new URL(location.href);
       for (const name of names) url.searchParams.delete(name);
-      history.replaceState(null, "", url);
+      history.replaceState(null, '', url);
       return fallback;
     }
   };
@@ -99,26 +99,26 @@ async function start() {
       },
       fallback,
     );
-  const requestedCamera = readOption("camera", "corner", isCameraStyle);
-  const requestedMode = readOption("mode", "drift", isDriveMode);
-  const requestedStation = readOption("station", "off", isStereoStationSelection);
+  const requestedCamera = readOption('camera', 'corner', isCameraStyle);
+  const requestedMode = readOption('mode', 'drift', isDriveMode);
+  const requestedStation = readOption('station', 'off', isStereoStationSelection);
   configurationState.update({ stereoStation: requestedStation });
   const requestedPresetId =
-    new URL(location.href).searchParams.get("preset") ?? `${requestedMode}-default`;
+    new URL(location.href).searchParams.get('preset') ?? `${requestedMode}-default`;
   const matchedPreset =
-    requestedPresetId === "custom"
+    requestedPresetId === 'custom'
       ? null
       : configurationState
           .getState()
           .tuningPresets.find(({ id, mode }) => id === requestedPresetId && mode === requestedMode);
   const requestedPreset =
-    requestedPresetId !== "custom" && !matchedPreset
+    requestedPresetId !== 'custom' && !matchedPreset
       ? configurationState
           .getState()
           .tuningPresets.find(({ id }) => id === `${requestedMode}-default`)
       : matchedPreset;
   const resolvedPresetId =
-    requestedPreset?.id ?? (requestedPresetId === "custom" ? "custom" : `${requestedMode}-default`);
+    requestedPreset?.id ?? (requestedPresetId === 'custom' ? 'custom' : `${requestedMode}-default`);
   const selectedTuningPresets = {
     ...configurationState.getState().selectedTuningPresets,
     [requestedMode]: requestedPreset?.id ?? null,
@@ -127,73 +127,73 @@ async function start() {
     ? { ...configurationState.getState().profiles, [requestedMode]: { ...requestedPreset.tuning } }
     : configurationState.getState().profiles;
   const requestedMinimap = readOption(
-    "minimap",
+    'minimap',
     configurationState.getState().minimapOrientation,
     isMinimapOrientation,
   );
   const readToggle = (name: string) =>
-    readOption(name, "on", (value): value is "on" | "off" => value === "on" || value === "off") ===
-    "on";
+    readOption(name, 'on', (value): value is 'on' | 'off' => value === 'on' || value === 'off') ===
+    'on';
   const coneMode = readOption(
-    "cones",
+    'cones',
     configurationState.getState().coneMode,
-    (value): value is ConfigurationState["coneMode"] | "on" =>
-      value === "all" || value === "on" || value === "corners" || value === "off",
+    (value): value is ConfigurationState['coneMode'] | 'on' =>
+      value === 'all' || value === 'on' || value === 'corners' || value === 'off',
   );
-  const requestedConeMode = coneMode === "on" ? "all" : coneMode;
-  const requestedGhost = readOption("ghost", "fastest", isGhostMode);
+  const requestedConeMode = coneMode === 'on' ? 'all' : coneMode;
+  const requestedGhost = readOption('ghost', 'fastest', isGhostMode);
   configurationState.update({
     driveMode: requestedMode,
     profiles,
     selectedTuningPresets,
     cameraStyle: requestedCamera,
     minimapOrientation: requestedMinimap,
-    cabinHeadMotion: readToggle("head-motion"),
+    cabinHeadMotion: readToggle('head-motion'),
     mirrorResolution: readParams(
-      ["mirror-resolution", "low-res-mirrors"],
+      ['mirror-resolution', 'low-res-mirrors'],
       readMirrorResolution,
-      "low",
+      'low',
     ),
     coneMode: requestedConeMode,
-    showGrass: readToggle("grass"),
+    showGrass: readToggle('grass'),
     ghostMode: requestedGhost,
     turnSignMode: readParams(
-      ["signs"],
-      (params) => readTurnSignMode(params.get("signs")),
-      "several",
+      ['signs'],
+      (params) => readTurnSignMode(params.get('signs')),
+      'several',
     ),
-    muted: !readToggle("sound"),
+    muted: !readToggle('sound'),
   });
   const presetUrl = new URL(location.href);
-  if (presetUrl.searchParams.get("preset") !== resolvedPresetId) {
-    presetUrl.searchParams.set("preset", resolvedPresetId);
-    history.replaceState(null, "", presetUrl);
+  if (presetUrl.searchParams.get('preset') !== resolvedPresetId) {
+    presetUrl.searchParams.set('preset', resolvedPresetId);
+    history.replaceState(null, '', presetUrl);
   }
   const settingsUrl = new URL(location.href);
-  if (settingsUrl.searchParams.has("transmission")) {
-    settingsUrl.searchParams.delete("transmission");
-    history.replaceState(null, "", settingsUrl);
+  if (settingsUrl.searchParams.has('transmission')) {
+    settingsUrl.searchParams.delete('transmission');
+    history.replaceState(null, '', settingsUrl);
   }
   const courseUrl = new URL(location.href);
   const availableCourses = [...courses, ...loadSavedCourses(localStorage)];
-  const courseId = courseUrl.searchParams.get("course");
+  const courseId = courseUrl.searchParams.get('course');
   const requestedCourse =
     courseId === null ||
-    courseId === "random" ||
-    courseId === "custom" ||
+    courseId === 'random' ||
+    courseId === 'custom' ||
     availableCourses.some((course) => course.id === courseId)
       ? courseId
       : null;
   if (requestedCourse !== courseId) {
     console.warn(`Ignoring unknown course: ${courseId}`);
-    courseUrl.searchParams.delete("course");
-    history.replaceState(null, "", courseUrl);
+    courseUrl.searchParams.delete('course');
+    history.replaceState(null, '', courseUrl);
   }
-  const requestedReverse = readParams(["reverse"], readCourseReverse, false);
+  const requestedReverse = readParams(['reverse'], readCourseReverse, false);
   const requestedWeights =
-    requestedCourse === "custom"
+    requestedCourse === 'custom'
       ? readParams(
-          ["hairpins", ...courseGenerationFields.map(({ key }) => key)],
+          ['hairpins', ...courseGenerationFields.map(({ key }) => key)],
           readCourseWeights,
           { ...defaultCourseWeights },
         )
@@ -201,62 +201,62 @@ async function start() {
   ui.setCourseWeights(requestedWeights);
   configurationState.update({ courseReverse: requestedReverse });
   let seed = 0;
-  if (requestedCourse === "random" || requestedCourse === "custom") {
-    let value = courseUrl.searchParams.get("seed");
+  if (requestedCourse === 'random' || requestedCourse === 'custom') {
+    let value = courseUrl.searchParams.get('seed');
     if (value !== null && !/^\d{1,10}$/.test(value)) value = null;
     seed = value === null ? crypto.getRandomValues(new Uint32Array(1))[0] : Number(value);
-    courseUrl.searchParams.set("seed", String(seed));
-    if (requestedCourse === "custom") writeCourseWeights(courseUrl.searchParams, requestedWeights);
-    history.replaceState(null, "", courseUrl);
+    courseUrl.searchParams.set('seed', String(seed));
+    if (requestedCourse === 'custom') writeCourseWeights(courseUrl.searchParams, requestedWeights);
+    history.replaceState(null, '', courseUrl);
   }
   const definition =
-    requestedCourse === "custom"
+    requestedCourse === 'custom'
       ? generateCustomCourse(seed, requestedWeights)
-      : requestedCourse === "random"
+      : requestedCourse === 'random'
         ? generateCourse(seed)
         : requestedCourse
           ? availableCourses.find((course) => course.id === requestedCourse)
           : courses[0];
   if (!definition) throw new Error(`Unknown course: ${requestedCourse}`);
   // Download the car while the sky, lighting, and course are built.
-  const carLoad = loadCar((fraction) => showLoading("Loading models…", 0.2 * fraction));
+  const carLoad = loadCar((fraction) => showLoading('Loading models…', 0.2 * fraction));
   const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
   renderer.setSize(innerWidth, innerHeight);
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFShadowMap;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.domElement.style.visibility = "hidden";
-  element("#app").append(renderer.domElement);
-  renderer.domElement.setAttribute("aria-label", "3D driving playground");
+  renderer.domElement.style.visibility = 'hidden';
+  element('#app').append(renderer.domElement);
+  renderer.domElement.setAttribute('aria-label', '3D driving playground');
 
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 1500);
   camera.layers.enable(1);
   const lighting = createLighting(scene, renderer, camera);
-  const requestedTime = readOption("time", "noon", isTimeOfDay);
+  const requestedTime = readOption('time', 'noon', isTimeOfDay);
   configurationState.update({ timeOfDay: requestedTime });
   lighting.apply(requestedTime);
   const initialDefinition = { ...definition, reverse: requestedReverse };
   const initialCourse = createCourse(scene, initialDefinition);
   const car = await carLoad;
-  showLoading("Starting physics…", 0.2);
+  showLoading('Starting physics…', 0.2);
   // The picker may change while the model is loading.
   const selectedTime = configurationState.getState().timeOfDay;
   lighting.apply(selectedTime);
   let vehicleLights = {
-    headlights: selectedTime !== "noon",
+    headlights: selectedTime !== 'noon',
     fogLights: false,
     headlightsAtPress: false,
   };
   let shownHeadlights = vehicleLights.headlights;
-  car.setLighting(shownHeadlights, selectedTime === "night");
+  car.setLighting(shownHeadlights, selectedTime === 'night');
   let appliedTime = selectedTime;
   configurationState.subscribe(
     ({ cameraStyle, mirrorResolution }) => {
       car.setMirrors(cameraStyle, mirrorResolution);
     },
-    ["cameraStyle", "mirrorResolution"],
+    ['cameraStyle', 'mirrorResolution'],
   );
   configurationState.subscribe(
     ({ timeOfDay }) => {
@@ -264,14 +264,14 @@ async function start() {
       appliedTime = timeOfDay;
       lighting.apply(timeOfDay);
       vehicleLights = {
-        headlights: timeOfDay !== "noon",
+        headlights: timeOfDay !== 'noon',
         fogLights: false,
         headlightsAtPress: false,
       };
       shownHeadlights = vehicleLights.headlights;
-      car.setLighting(shownHeadlights, timeOfDay === "night");
+      car.setLighting(shownHeadlights, timeOfDay === 'night');
     },
-    ["timeOfDay"],
+    ['timeOfDay'],
   );
 
   scene.add(car.chassis, ...car.wheels, ...car.hubs);
@@ -286,7 +286,7 @@ async function start() {
       }
     },
     (error) => {
-      console.error("Vehicle audio unavailable:", error);
+      console.error('Vehicle audio unavailable:', error);
       gameState.update({
         sound: {
           ...gameState.getState().sound,
@@ -300,12 +300,12 @@ async function start() {
     (powered) => {
       car.setStereo(powered);
       const { status } = gameState.getState();
-      if (powered && status.error && status.message.startsWith("Stereo unavailable:")) {
-        gameState.update({ status: { visible: false, error: false, message: "" } });
+      if (powered && status.error && status.message.startsWith('Stereo unavailable:')) {
+        gameState.update({ status: { visible: false, error: false, message: '' } });
       }
     },
     (error) => {
-      console.error("Stereo unavailable:", error);
+      console.error('Stereo unavailable:', error);
       gameState.update({
         status: {
           visible: true,
@@ -318,7 +318,7 @@ async function start() {
   );
   configurationState.subscribe(
     ({ stereoStation }) => {
-      if (stereoStation === "off") {
+      if (stereoStation === 'off') {
         stereo.turnOff();
         return;
       }
@@ -326,31 +326,31 @@ async function start() {
       car.setStereoStation(stereoStation);
       stereo.turnOn();
     },
-    ["stereoStation"],
+    ['stereoStation'],
   );
   configurationState.subscribe(
     ({ muted }) => {
       audio.setMuted(muted);
       stereo.setMuted(muted);
     },
-    ["muted"],
+    ['muted'],
   );
   let dialogOpen = false;
   const keys = controls.keys;
   const controlKeys = new Set([
-    "ArrowLeft",
-    "ArrowRight",
-    "KeyX",
-    "KeyZ",
-    "Space",
-    "KeyR",
-    "KeyC",
-    "KeyD",
-    "KeyM",
-    "KeyW",
-    "KeyS",
-    "KeyF",
-    "KeyH",
+    'ArrowLeft',
+    'ArrowRight',
+    'KeyX',
+    'KeyZ',
+    'Space',
+    'KeyR',
+    'KeyC',
+    'KeyD',
+    'KeyM',
+    'KeyW',
+    'KeyS',
+    'KeyF',
+    'KeyH',
   ]);
   let lastTime = 0;
   let changingCourse = false;
@@ -385,10 +385,10 @@ async function start() {
           showError(error);
         },
       });
-      physics.setCones(coneMode !== "off", coneMode === "corners");
+      physics.setCones(coneMode !== 'off', coneMode === 'corners');
       await physics.ready;
       const latest = configurationState.getState();
-      physics.setCones(latest.coneMode !== "off", latest.coneMode === "corners");
+      physics.setCones(latest.coneMode !== 'off', latest.coneMode === 'corners');
       course.setTurnSignMode(latest.turnSignMode);
       course.terrain.grass.visible = latest.showGrass;
       const laps = physics.laps;
@@ -414,25 +414,25 @@ async function start() {
     initialDefinition,
     initialCourse,
   );
-  const minimap = createMinimap(element("#minimap"), definition);
+  const minimap = createMinimap(element('#minimap'), definition);
   const { fixedStep } = physics;
   configurationState.subscribe(
     ({ coneMode }) => {
-      physics.setCones(coneMode !== "off", coneMode === "corners");
+      physics.setCones(coneMode !== 'off', coneMode === 'corners');
     },
-    ["coneMode"],
+    ['coneMode'],
   );
   configurationState.subscribe(
     ({ turnSignMode }) => {
       course.setTurnSignMode(turnSignMode);
     },
-    ["turnSignMode"],
+    ['turnSignMode'],
   );
   configurationState.subscribe(
     ({ showGrass }) => {
       terrain.grass.visible = showGrass;
     },
-    ["showGrass"],
+    ['showGrass'],
   );
   const tireEffects = createTireEffects(scene, car, terrain, course.isAsphalt);
   lighting.setupMaterials();
@@ -469,12 +469,12 @@ async function start() {
 
   function syncLapRecorder() {
     const mode = replay
-      ? "replay"
+      ? 'replay'
       : run?.started
-        ? "recording"
+        ? 'recording'
         : savedRuns.length
-          ? "ready"
-          : "off";
+          ? 'ready'
+          : 'off';
     const replayLap = replay ? replay.recording.replayLapAt(replay.time) : null;
     const current = gameState.getState().lapRecorder;
     if (
@@ -489,12 +489,12 @@ async function start() {
 
   function runLabel({ createdAt, laps: times }: RunSummary) {
     const date = new Date(createdAt).toLocaleString(undefined, {
-      month: "short",
-      day: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
     });
-    const count = `${times.length} lap${times.length === 1 ? "" : "s"}`;
+    const count = `${times.length} lap${times.length === 1 ? '' : 's'}`;
     return times.length
       ? `${date} · ${count} · best ${formatLapTime(Math.min(...times))}`
       : `${date} · partial lap`;
@@ -504,7 +504,7 @@ async function start() {
     try {
       savedRuns = listSavedRuns(storageKey);
     } catch (error) {
-      console.error("Unable to read saved laps:", error);
+      console.error('Unable to read saved laps:', error);
       savedRuns = [];
     }
     if (!savedRuns.some((saved) => saved.id === selectedRun))
@@ -523,7 +523,7 @@ async function start() {
     gameState.update({ status });
     setTimeout(() => {
       if (gameState.getState().status === status)
-        gameState.update({ status: { visible: false, error: false, message: "" } });
+        gameState.update({ status: { visible: false, error: false, message: '' } });
     }, 5000);
   }
 
@@ -531,7 +531,7 @@ async function start() {
     if (recordLap && recordLap.lapTimes[0] <= lap.lapTimes[0]) return;
     recordLap = lap;
     void saveRecordLap(storageKey, lap).catch((error) =>
-      reportLapError("Unable to save record lap:", error),
+      reportLapError('Unable to save record lap:', error),
     );
   }
 
@@ -555,7 +555,7 @@ async function start() {
       }
       if (generation === recordLoad && key === storageKey && loaded) keepRecord(loaded);
     } catch (error) {
-      reportLapError("Unable to load record lap:", error);
+      reportLapError('Unable to load record lap:', error);
     }
   }
 
@@ -608,7 +608,7 @@ async function start() {
         selectedRun = saved.id;
         refreshSavedRuns();
       },
-      (error) => reportLapError("Unable to save laps:", error),
+      (error) => reportLapError('Unable to save laps:', error),
     );
   }
 
@@ -618,7 +618,7 @@ async function start() {
       const recording = await loadRun(key, id);
       if (key === storageKey && !run?.started && !replay && !changingCourse) startReplay(recording);
     } catch (error) {
-      reportLapError("Unable to load saved laps:", error);
+      reportLapError('Unable to load saved laps:', error);
     }
   }
 
@@ -629,7 +629,7 @@ async function start() {
     else if (selectedRun) void playSavedRun(selectedRun);
   }
 
-  function seekReplayLap(direction: "previous" | "next") {
+  function seekReplayLap(direction: 'previous' | 'next') {
     if (!replay || changingCourse) return;
     const time = replay.recording.replayLapAt(replay.time)[direction];
     if (time !== null) startReplay(replay.recording, time);
@@ -653,15 +653,15 @@ async function start() {
 
   function updateGhost(alpha: number) {
     const mode = configurationState.getState().ghostMode;
-    const source = mode === "record" ? recordLap : run;
+    const source = mode === 'record' ? recordLap : run;
     const index =
-      mode === "record"
+      mode === 'record'
         ? laps.lap > 0 && recordLap
           ? 0
           : null
-        : !run || mode === "off" || laps.lap < 2
+        : !run || mode === 'off' || laps.lap < 2
           ? null
-          : mode === "fastest"
+          : mode === 'fastest'
             ? run.bestLap
             : run.lapTimes.length - 1;
     // laps.current matches the newest physics state; the drawn car lags it by the interpolation remainder.
@@ -672,7 +672,7 @@ async function start() {
     }
     source.read(source.lapStarts[index] + lapTime, ghostFrame);
     applyCarPose(ghostFrame, ghost.chassis, ghost.wheels);
-    ghost.fadeNear(car.chassis.position, configurationState.getState().cameraStyle === "cabin");
+    ghost.fadeNear(car.chassis.position, configurationState.getState().cameraStyle === 'cabin');
     ghost.visible = true;
   }
 
@@ -723,7 +723,7 @@ async function start() {
     controls.clear();
     audio.reset();
     clearLapRecording();
-    gameState.update({ status: { visible: true, error: false, message: "Building course…" } });
+    gameState.update({ status: { visible: true, error: false, message: 'Building course…' } });
     try {
       await new Promise<void>((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
       const nextDefinition = build();
@@ -737,14 +737,14 @@ async function start() {
       previousCourse.dispose();
       const url = new URL(location.href);
       updateUrl(url);
-      if (reverse) url.searchParams.set("reverse", "1");
-      else url.searchParams.delete("reverse");
-      history.replaceState(null, "", url);
+      if (reverse) url.searchParams.set('reverse', '1');
+      else url.searchParams.delete('reverse');
+      history.replaceState(null, '', url);
       activeDefinition = nextDefinition;
       storageKey = replayStorageKey({ ...nextDefinition, reverse });
       refreshSavedRuns();
       configurationState.update({ courseReverse: reverse });
-      gameState.update({ status: { visible: false, error: false, message: "" } });
+      gameState.update({ status: { visible: false, error: false, message: '' } });
       await refreshRecordLap();
       return nextDefinition;
     } catch (error) {
@@ -762,20 +762,20 @@ async function start() {
     return loadCourse(
       () => {
         const nextDefinition =
-          id === "custom" && seed !== undefined
+          id === 'custom' && seed !== undefined
             ? generateCustomCourse(seed, customWeights)
-            : id === "random" && seed !== undefined
+            : id === 'random' && seed !== undefined
               ? generateCourse(seed)
               : availableCourses.find((course) => course.id === id);
         if (!nextDefinition) throw new Error(`Unknown course: ${id}`);
         return nextDefinition;
       },
       (url) => {
-        url.searchParams.set("course", id);
-        if ((id === "random" || id === "custom") && seed !== undefined)
-          url.searchParams.set("seed", String(seed));
-        else url.searchParams.delete("seed");
-        writeCourseWeights(url.searchParams, id === "custom" ? customWeights : undefined);
+        url.searchParams.set('course', id);
+        if ((id === 'random' || id === 'custom') && seed !== undefined)
+          url.searchParams.set('seed', String(seed));
+        else url.searchParams.delete('seed');
+        writeCourseWeights(url.searchParams, id === 'custom' ? customWeights : undefined);
       },
       configurationState.getState().courseReverse,
     );
@@ -794,11 +794,11 @@ async function start() {
     storageKey = replayStorageKey(directed);
     refreshSavedRuns();
     const url = new URL(location.href);
-    if (reverse) url.searchParams.set("reverse", "1");
-    else url.searchParams.delete("reverse");
-    history.replaceState(null, "", url);
+    if (reverse) url.searchParams.set('reverse', '1');
+    else url.searchParams.delete('reverse');
+    history.replaceState(null, '', url);
     configurationState.update({ courseReverse: reverse });
-    gameState.update({ status: { visible: false, error: false, message: "" } });
+    gameState.update({ status: { visible: false, error: false, message: '' } });
     await refreshRecordLap();
   }
 
@@ -808,7 +808,7 @@ async function start() {
     changeCourse,
     changeCourseDirection,
     (error) => {
-      console.error("Unable to change course:", error);
+      console.error('Unable to change course:', error);
       gameState.update({
         status: {
           visible: true,
@@ -830,19 +830,19 @@ async function start() {
       ++recordLoad;
       if (recordLap)
         void saveRecordLap(storageKey, recordLap).catch((error) =>
-          reportLapError("Unable to save record lap:", error),
+          reportLapError('Unable to save record lap:', error),
         );
       refreshSavedRuns();
       const url = new URL(location.href);
-      url.searchParams.set("course", saved.id);
-      url.searchParams.delete("seed");
+      url.searchParams.set('course', saved.id);
+      url.searchParams.delete('seed');
       writeCourseWeights(url.searchParams);
-      history.replaceState(null, "", url);
+      history.replaceState(null, '', url);
       return saved;
     },
     async (id) => {
       if (!loadSavedCourses(localStorage).some((course) => course.id === id))
-        throw new Error("Only saved courses can be deleted");
+        throw new Error('Only saved courses can be deleted');
       const fallback = await changeCourse(courses[0].id);
       try {
         deleteSavedCourse(localStorage, id);
@@ -860,65 +860,65 @@ async function start() {
   );
 
   function cycleCamera() {
-    const styles = ["corner", "classic", "cabin"] as const;
+    const styles = ['corner', 'classic', 'cabin'] as const;
     const cameraStyle =
       styles[(styles.indexOf(configurationState.getState().cameraStyle) + 1) % styles.length];
     configurationState.update({ cameraStyle });
     const url = new URL(location.href);
-    url.searchParams.set("camera", cameraStyle);
-    history.replaceState(null, "", url);
+    url.searchParams.set('camera', cameraStyle);
+    history.replaceState(null, '', url);
   }
 
   function toggleDriveMode() {
-    const driveMode = configurationState.getState().driveMode === "drift" ? "grip" : "drift";
+    const driveMode = configurationState.getState().driveMode === 'drift' ? 'grip' : 'drift';
     configurationState.update({ driveMode });
     const url = new URL(location.href);
-    url.searchParams.set("mode", driveMode);
-    history.replaceState(null, "", url);
+    url.searchParams.set('mode', driveMode);
+    history.replaceState(null, '', url);
   }
 
   function cycleTimeOfDay() {
-    const times = ["noon", "sunset", "night"] as const;
+    const times = ['noon', 'sunset', 'night'] as const;
     const timeOfDay =
       times[(times.indexOf(configurationState.getState().timeOfDay) + 1) % times.length];
     configurationState.update({ timeOfDay });
     const url = new URL(location.href);
-    url.searchParams.set("time", timeOfDay);
-    history.replaceState(null, "", url);
+    url.searchParams.set('time', timeOfDay);
+    history.replaceState(null, '', url);
   }
 
-  function pressStereo(direction: "previous" | "next" = "next") {
+  function pressStereo(direction: 'previous' | 'next' = 'next') {
     const station = stereo.press(direction);
-    const stereoStation = stereo.isPowered ? station : "off";
+    const stereoStation = stereo.isPowered ? station : 'off';
     configurationState.update({ stereoStation });
     const url = new URL(location.href);
-    if (stereo.isPowered) url.searchParams.set("station", station);
-    else url.searchParams.delete("station");
-    history.replaceState(null, "", url);
+    if (stereo.isPowered) url.searchParams.set('station', station);
+    else url.searchParams.delete('station');
+    history.replaceState(null, '', url);
   }
 
-  window.addEventListener("keydown", (event) => {
+  window.addEventListener('keydown', (event) => {
     if (dialogOpen) return;
     if (event.target instanceof HTMLSelectElement || event.target instanceof HTMLInputElement)
       return;
     if (!controlKeys.has(event.code)) return;
-    if (event.target instanceof HTMLButtonElement && event.code === "Space") return;
+    if (event.target instanceof HTMLButtonElement && event.code === 'Space') return;
     event.preventDefault();
-    if (event.code === "KeyR") {
+    if (event.code === 'KeyR') {
       if (!event.repeat) reset();
-    } else if (event.code === "KeyC") {
+    } else if (event.code === 'KeyC') {
       if (!event.repeat) cycleCamera();
-    } else if (event.code === "KeyD") {
+    } else if (event.code === 'KeyD') {
       if (!event.repeat) toggleDriveMode();
-    } else if (event.code === "KeyM") {
+    } else if (event.code === 'KeyM') {
       if (!event.repeat) controls.mapView = !controls.mapView;
-    } else if (event.code === "KeyW") {
+    } else if (event.code === 'KeyW') {
       if (!event.repeat) cycleTimeOfDay();
-    } else if (event.code === "KeyS") {
+    } else if (event.code === 'KeyS') {
       if (!event.repeat) pressStereo();
     } else keys.add(event.code);
   });
-  window.addEventListener("keyup", (event) => {
+  window.addEventListener('keyup', (event) => {
     if (event.target instanceof HTMLInputElement) {
       keys.delete(event.code);
       return;
@@ -929,8 +929,8 @@ async function start() {
       keys.delete(event.code);
     }
   });
-  window.addEventListener("blur", () => keys.clear());
-  document.addEventListener("visibilitychange", () => {
+  window.addEventListener('blur', () => keys.clear());
+  document.addEventListener('visibilitychange', () => {
     keys.clear();
     lastTime = 0;
     physics.captureVisuals(true);
@@ -959,19 +959,19 @@ async function start() {
       try {
         deleteRun(storageKey, id);
       } catch (error) {
-        reportLapError("Unable to delete saved laps:", error);
+        reportLapError('Unable to delete saved laps:', error);
       }
       refreshSavedRuns();
     },
   });
   refreshSavedRuns();
-  window.addEventListener("resize", () => {
+  window.addEventListener('resize', () => {
     camera.aspect = innerWidth / innerHeight;
     camera.updateProjectionMatrix();
     renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
     renderer.setSize(innerWidth, innerHeight);
   });
-  renderer.domElement.addEventListener("webglcontextlost", (event) => {
+  renderer.domElement.addEventListener('webglcontextlost', (event) => {
     event.preventDefault();
     audio.silence();
     renderer.setAnimationLoop(null);
@@ -980,7 +980,7 @@ async function start() {
         visible: true,
         error: true,
         fatal: true,
-        message: "Graphics context lost. Reload the page to restart.",
+        message: 'Graphics context lost. Reload the page to restart.',
       },
     });
   });
@@ -998,12 +998,12 @@ async function start() {
     if (controls.resetRequested) reset();
     if (controls.recordRequested) pressLapRecorder();
     if (controls.previousLapRequested) {
-      if (replay) seekReplayLap("previous");
-      else pressStereo("previous");
+      if (replay) seekReplayLap('previous');
+      else pressStereo('previous');
     }
     if (controls.nextLapRequested) {
-      if (replay) seekReplayLap("next");
-      else pressStereo("next");
+      if (replay) seekReplayLap('next');
+      else pressStereo('next');
     }
     const dt = lastTime ? Math.min((time - lastTime) / 1000, 0.05) : fixedStep;
     lastTime = time;
@@ -1020,7 +1020,7 @@ async function start() {
       : vehicleLights.headlights;
     if (shownHeadlights !== frameHeadlights) {
       shownHeadlights = frameHeadlights;
-      car.setLighting(frameHeadlights, appliedTime === "night");
+      car.setLighting(frameHeadlights, appliedTime === 'night');
     }
     let velocity: THREE.Vector3;
     if (replayVelocity3d) {
@@ -1073,8 +1073,8 @@ async function start() {
     car.setGauges(Math.abs(forward.dot(velocity)) * 3.6, engine.rpm, manifoldMmHg, dt);
     car.updateClock(new Date());
     car.setSteering(replaying ? playbackFrame.steering : physics.steering);
-    car.setDashLight("brake", handbrake);
-    car.setDashLight("abs", cameraState.driveMode === "drift");
+    car.setDashLight('brake', handbrake);
+    car.setDashLight('abs', cameraState.driveMode === 'drift');
     const slip = speed > 3 ? 1 - Math.abs(forward.dot(velocity) / speed) : 0;
     const sliding = speed > 3 && (handbrake || slip > 0.045);
     const burningOut = replaying
@@ -1101,20 +1101,20 @@ async function start() {
         ...timing,
         cones: replaying ? 0 : laps.conesHit,
         driving: spawnBrakeHeld
-          ? "brakes-held"
+          ? 'brakes-held'
           : handbrake
-            ? "handbrake"
+            ? 'handbrake'
             : !replaying && physics.brakestand
-              ? "brakestand"
+              ? 'brakestand'
               : reversing
-                ? "reverse"
+                ? 'reverse'
                 : braking
-                  ? "braking"
+                  ? 'braking'
                   : burningOut
-                    ? "burnout"
+                    ? 'burnout'
                     : sliding
-                      ? "sliding"
-                      : "driving",
+                      ? 'sliding'
+                      : 'driving',
       },
     });
     if (
@@ -1130,7 +1130,7 @@ async function start() {
   }
 
   reset();
-  showLoading("Loading your record lap…", 0.4);
+  showLoading('Loading your record lap…', 0.4);
   await refreshRecordLap();
   const warmupCamera = camera.clone();
   warmupCamera.position.copy(car.chassis.position).add(new THREE.Vector3(5, 3, 6));
@@ -1158,21 +1158,21 @@ async function start() {
     car.setFogLights(vehicleLights.fogLights);
     car.setBraking(physics.spawnBrakeHeld);
     car.setReversing(physics.reversing);
-    car.setLighting(shownHeadlights, appliedTime === "night");
+    car.setLighting(shownHeadlights, appliedTime === 'night');
     car.setStereo(stereo.isPowered);
-    car.setDashLight("abs", configurationState.getState().driveMode === "drift");
+    car.setDashLight('abs', configurationState.getState().driveMode === 'drift');
   }
   try {
     // Offscreen targets use different output and tone-mapping shaders than the game canvas.
     renderer.setRenderTarget(null);
     ghost.visible = true;
-    car.setDashLight("abs", true);
+    car.setDashLight('abs', true);
     // Sky shaders only re-key when the sky changes, so other times of day compile on first switch.
     // Headlights come first so their glow meshes are visible when each light layout first compiles.
     const lightLayouts = [true, false].flatMap((headlights) =>
       [false, true].flatMap((highBeams) =>
         [false, true].flatMap((fogLights) =>
-          (["off", "brake", "reverse"] as const).flatMap((rearLights) =>
+          (['off', 'brake', 'reverse'] as const).flatMap((rearLights) =>
             [false, true].map((interiorLights) => ({
               headlights,
               highBeams,
@@ -1185,7 +1185,7 @@ async function start() {
       ),
     );
     const { mirrorResolution } = configurationState.getState();
-    const warmMirrorResolution = mirrorResolution === "off" ? "low" : mirrorResolution;
+    const warmMirrorResolution = mirrorResolution === 'off' ? 'low' : mirrorResolution;
     // Shader programs depend on the number of visible lights of each kind, not which switch made them visible.
     const warmedLayouts = new Set<string>();
     const signature = (view: THREE.Camera) => {
@@ -1194,7 +1194,12 @@ async function start() {
         if (!(object instanceof THREE.Light) || !object.layers.test(view.layers)) return;
         // Lights whose shadow maps don't exist yet still need a render to allocate them.
         const { shadow: lightShadow } = object as THREE.Light & { shadow?: THREE.LightShadow };
-        const shadow = !object.castShadow || !lightShadow ? "" : lightShadow.map ? "+shadow" : `+new${object.id}`;
+        const shadow =
+          !object.castShadow || !lightShadow
+            ? ''
+            : lightShadow.map
+              ? '+shadow'
+              : `+new${object.id}`;
         const key = `${object.type}${shadow}`;
         counts.set(key, (counts.get(key) ?? 0) + 1);
       });
@@ -1207,13 +1212,13 @@ async function start() {
     placeholderSky.colorSpace = THREE.SRGBColorSpace;
     placeholderSky.needsUpdate = true;
     for (const [index, layout] of lightLayouts.entries()) {
-      showLoading("Compiling shaders…", 0.45 + (0.4 * index) / lightLayouts.length);
-      car.setLighting(layout.headlights, appliedTime === "night");
+      showLoading('Compiling shaders…', 0.45 + (0.4 * index) / lightLayouts.length);
+      car.setLighting(layout.headlights, appliedTime === 'night');
       car.setHighBeams(layout.highBeams);
       car.setFogLights(layout.fogLights);
-      car.setBraking(layout.rearLights === "brake");
-      car.setReversing(layout.rearLights === "reverse");
-      car.setMirrors(layout.interiorLights ? "cabin" : "corner", warmMirrorResolution);
+      car.setBraking(layout.rearLights === 'brake');
+      car.setReversing(layout.rearLights === 'reverse');
+      car.setMirrors(layout.interiorLights ? 'cabin' : 'corner', warmMirrorResolution);
       const view = layout.interiorLights ? mirrorWarmupCamera : warmupCamera;
       const layoutSignature = signature(view);
       if (warmedLayouts.has(layoutSignature)) continue;
@@ -1225,17 +1230,17 @@ async function start() {
     }
     scene.background = sky;
     placeholderSky.dispose();
-    showLoading("Preparing rear-view mirrors…", 0.85);
-    car.setMirrors("cabin", warmMirrorResolution);
-    for (const rearLights of ["off", "brake", "reverse"] as const) {
-      car.setBraking(rearLights === "brake");
-      car.setReversing(rearLights === "reverse");
+    showLoading('Preparing rear-view mirrors…', 0.85);
+    car.setMirrors('cabin', warmMirrorResolution);
+    for (const rearLights of ['off', 'brake', 'reverse'] as const) {
+      car.setBraking(rearLights === 'brake');
+      car.setReversing(rearLights === 'reverse');
       await renderer.compileAsync(scene, mirrorWarmupCamera);
       await car.warmMirrors(renderer, scene, mirrorWarmupCamera);
     }
-    showLoading("Preparing the ghost car…", 0.95);
+    showLoading('Preparing the ghost car…', 0.95);
     restoreLighting();
-    car.setMirrors("corner", configurationState.getState().mirrorResolution);
+    car.setMirrors('corner', configurationState.getState().mirrorResolution);
     ghost.visible = true;
     await renderer.compileAsync(scene, warmupCamera);
     const depth = tireEffects.captureDepth(renderer, scene, warmupCamera, true);
@@ -1250,14 +1255,14 @@ async function start() {
     restoreLighting();
     renderer.setRenderTarget(previousTarget);
   }
-  gameState.update({ status: { visible: false, error: false, message: "" } });
+  gameState.update({ status: { visible: false, error: false, message: '' } });
   let firstFrame = true;
   renderer.setAnimationLoop((time) => {
     try {
       frame(time);
       if (firstFrame) {
-        renderer.domElement.style.visibility = "";
-        document.body.classList.remove("loading");
+        renderer.domElement.style.visibility = '';
+        document.body.classList.remove('loading');
         firstFrame = false;
       }
     } catch (error) {
@@ -1273,7 +1278,7 @@ function showLoading(message: string, progress: number) {
 }
 
 function showError(error: unknown, fatal = true) {
-  console.error("Unable to run Dorifto:", error);
+  console.error('Unable to run Dorifto:', error);
   gameState.update({
     status: {
       visible: true,

@@ -15,7 +15,8 @@ before(async () => {
     server: { middlewareMode: true, hmr: false, ws: false, watch: null },
     appType: 'custom',
   });
-  ({ courses, racetracks, courseRoute, courseSpawn, generateCourse } = await server.ssrLoadModule('/src/courses.ts'));
+  ({ courses, racetracks, courseRoute, courseSpawn, generateCourse } =
+    await server.ssrLoadModule('/src/courses.ts'));
   ({ terrainBaseHeight } = await server.ssrLoadModule('/src/terrain-profile.ts'));
 });
 
@@ -42,7 +43,10 @@ function checkGeometry(definition) {
     const after = samples[(i + 1) % count];
     const incoming = current.clone().sub(before);
     const outgoing = after.clone().sub(current);
-    const bend = Math.atan2(incoming.z * outgoing.x - incoming.x * outgoing.z, incoming.dot(outgoing));
+    const bend = Math.atan2(
+      incoming.z * outgoing.x - incoming.x * outgoing.z,
+      incoming.dot(outgoing),
+    );
     const radius = (incoming.length() + outgoing.length()) / (2 * Math.abs(bend));
     radii.push(radius);
     if (radius < 150) {
@@ -52,7 +56,10 @@ function checkGeometry(definition) {
     const height = terrainBaseHeight(current.x, current.z);
     minHeight = Math.min(minHeight, height);
     maxHeight = Math.max(maxHeight, height);
-    maxGrade = Math.max(maxGrade, Math.abs(terrainBaseHeight(after.x, after.z) - height) / outgoing.length());
+    maxGrade = Math.max(
+      maxGrade,
+      Math.abs(terrainBaseHeight(after.x, after.z) - height) / outgoing.length(),
+    );
   }
   radii.sort((a, b) => a - b);
   assert.ok(radii[0] >= 38, `minimum radius ${radii[0]}`);
@@ -60,16 +67,21 @@ function checkGeometry(definition) {
   assert.ok(medianRadius >= 59.9 && medianRadius <= 110.1, `median radius ${medianRadius}`);
   assert.ok(leftDistance >= length * 0.099, `left cornering ${leftDistance}`);
   assert.ok(rightDistance >= length * 0.099, `right cornering ${rightDistance}`);
-  assert.ok(maxHeight - minHeight >= 10 && maxHeight - minHeight <= 20, `relief ${maxHeight - minHeight}`);
+  assert.ok(
+    maxHeight - minHeight >= 10 && maxHeight - minHeight <= 20,
+    `relief ${maxHeight - minHeight}`,
+  );
   assert.ok(maxGrade <= 0.1201, `grade ${maxGrade}`);
   const clearanceCount = Math.ceil(length);
   const clearanceSamples = route.getSpacedPoints(clearanceCount).slice(0, -1);
   for (let i = 0; i < clearanceCount; i++) {
     for (let j = i + 1; j < clearanceCount; j++) {
-      const separation = Math.min(j - i, clearanceCount - (j - i)) * length / clearanceCount;
+      const separation = (Math.min(j - i, clearanceCount - (j - i)) * length) / clearanceCount;
       if (separation > definition.width * 2) {
-        assert.ok(clearanceSamples[i].distanceTo(clearanceSamples[j]) >= definition.width + 8,
-          `road clearance near ${i}, ${j}`);
+        assert.ok(
+          clearanceSamples[i].distanceTo(clearanceSamples[j]) >= definition.width + 8,
+          `road clearance near ${i}, ${j}`,
+        );
       }
     }
   }
@@ -94,7 +106,11 @@ test('random banking is deterministic and moderately above the legacy profile', 
     scales.add(definition.bankingScale);
   }
   assert.equal(scales.size, 6);
-  assert.ok(courses.filter(({ id }) => id !== 'sweeper').every((course) => course.bankingScale === undefined));
+  assert.ok(
+    courses
+      .filter(({ id }) => id !== 'sweeper')
+      .every((course) => course.bankingScale === undefined),
+  );
 });
 
 test('keeps Hillside fixed and generation deterministic without mutating course markers', () => {
@@ -115,7 +131,10 @@ test('excludes retired courses and defaults to Sweeper Circuit', () => {
 });
 
 test('identifies Sonoma and Thunderhill as racetracks within the available courses', () => {
-  assert.deepEqual(racetracks.map(({ id }) => id), ['sonoma-raceway', 'thunderhill-east']);
+  assert.deepEqual(
+    racetracks.map(({ id }) => id),
+    ['sonoma-raceway', 'thunderhill-east'],
+  );
   for (const racetrack of racetracks) assert.ok(courses.includes(racetrack));
 });
 

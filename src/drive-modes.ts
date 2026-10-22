@@ -39,5 +39,5 @@ export const driveModes = {
 export type DriveMode = keyof typeof driveModes;
 
 export function isDriveMode(value: string): value is DriveMode {
-  return value === "grip" || value === "drift";
+  return value === 'grip' || value === 'drift';
 }

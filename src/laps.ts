@@ -23,7 +23,7 @@ export class LapTimer {
     const startDistance = courseStartDistance(definition, length);
     this.halfWidth = definition.width / 2 + 0.8;
     this.gates = Array.from({ length: 16 }, (_, i) => {
-      const t = ((startDistance + i * length / 16) % length) / length;
+      const t = ((startDistance + (i * length) / 16) % length) / length;
       return { center: route.getPointAt(t), forward: route.getTangentAt(t) };
     });
   }
@@ -56,15 +56,17 @@ export class LapTimer {
 
   update(position: THREE.Vector3, dt: number) {
     const gate = this.gates[this.nextGate];
-    const before = (this.previous.x - gate.center.x) * gate.forward.x
-      + (this.previous.z - gate.center.z) * gate.forward.z;
-    const after = (position.x - gate.center.x) * gate.forward.x
-      + (position.z - gate.center.z) * gate.forward.z;
+    const before =
+      (this.previous.x - gate.center.x) * gate.forward.x +
+      (this.previous.z - gate.center.z) * gate.forward.z;
+    const after =
+      (position.x - gate.center.x) * gate.forward.x + (position.z - gate.center.z) * gate.forward.z;
     if (before < 0 && after >= 0) {
       const fraction = -before / (after - before);
       this.crossing.lerpVectors(this.previous, position, fraction);
-      const across = (this.crossing.x - gate.center.x) * gate.forward.z
-        - (this.crossing.z - gate.center.z) * gate.forward.x;
+      const across =
+        (this.crossing.x - gate.center.x) * gate.forward.z -
+        (this.crossing.z - gate.center.z) * gate.forward.x;
       if (Math.abs(across) <= this.halfWidth) {
         const time = this.elapsed + dt * fraction;
         if (this.nextGate === 0) {

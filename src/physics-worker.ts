@@ -28,7 +28,8 @@ self.onmessage = ({ data }: MessageEvent<PhysicsRequest>) => {
     } catch (error) {
       failed = true;
       respond({
-        type: 'error', revision: data.revision,
+        type: 'error',
+        revision: data.revision,
         message: error instanceof Error ? error.message : String(error),
         stack: error instanceof Error ? error.stack : undefined,
       });

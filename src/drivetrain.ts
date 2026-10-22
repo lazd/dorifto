@@ -1,4 +1,4 @@
-import { vehicleSettings } from "./vehicle-settings";
+import { vehicleSettings } from './vehicle-settings';
 
 export const redlineRpm = 7500;
 export const downshiftRpm = 4000;

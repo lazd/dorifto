@@ -19,7 +19,8 @@ before(async () => {
     server: { middlewareMode: true, hmr: false, ws: false, watch: null },
     appType: 'custom',
   });
-  ({ createVehiclePhysics, createPhysicsResources } = await server.ssrLoadModule('/src/vehicle-physics.ts'));
+  ({ createVehiclePhysics, createPhysicsResources } =
+    await server.ssrLoadModule('/src/vehicle-physics.ts'));
   ({ createConePhysics } = await server.ssrLoadModule('/src/cone-physics.ts'));
   ({ createConfigurationState } = await server.ssrLoadModule('/src/configuration-state.ts'));
   ({ courses, courseCornerAt, courseRoute } = await server.ssrLoadModule('/src/courses.ts'));
@@ -35,9 +36,14 @@ test('corner-only course cones exclude straightaways', () => {
     const route = courseRoute(definition);
     const length = route.getLength();
     const gates = Math.ceil(length / (definition.coneSpacing ?? 6));
-    const cornerGates = Array.from({ length: gates }, (_, i) => courseCornerAt(route, i * length / gates));
+    const cornerGates = Array.from({ length: gates }, (_, i) =>
+      courseCornerAt(route, (i * length) / gates),
+    );
     assert.ok(cornerGates.some(Boolean), `${definition.id} has corner cones`);
-    assert.ok(cornerGates.some((corner) => !corner), `${definition.id} excludes straightaways`);
+    assert.ok(
+      cornerGates.some((corner) => !corner),
+      `${definition.id} excludes straightaways`,
+    );
   }
 });
 
@@ -68,12 +74,15 @@ test('replaces real Ammo worlds while reusing car assets and heightfields and fr
     wheels: Array.from({ length: 4 }, () => new THREE.Group()),
     hubs: Array.from({ length: 4 }, () => new THREE.Group()),
     centers: [
-      new THREE.Vector3(-0.75, 0, 1.3), new THREE.Vector3(0.75, 0, 1.3),
-      new THREE.Vector3(-0.75, 0, -1.3), new THREE.Vector3(0.75, 0, -1.3),
+      new THREE.Vector3(-0.75, 0, 1.3),
+      new THREE.Vector3(0.75, 0, 1.3),
+      new THREE.Vector3(-0.75, 0, -1.3),
+      new THREE.Vector3(0.75, 0, -1.3),
     ],
     radii: [0.32, 0.32, 0.32, 0.32],
-    collisionVertices: [-1, 1].flatMap((x) => [-1, 1].flatMap((y) =>
-      [-1, 1].map((z) => new THREE.Vector3(x * 0.75, y * 0.3, z * 2)))),
+    collisionVertices: [-1, 1].flatMap((x) =>
+      [-1, 1].flatMap((y) => [-1, 1].map((z) => new THREE.Vector3(x * 0.75, y * 0.3, z * 2))),
+    ),
     setBraking() {},
     setReversing() {},
     setHazards() {},
@@ -114,31 +123,55 @@ test('replaces real Ammo worlds while reusing car assets and heightfields and fr
         cornerCones: [cones[0], cones[2]],
         terrain: {
           heights: new Float32Array(32 * 32).fill(i),
-          columns: 32, rows: 32, spacing: 1.5, minX: -24, minZ: -24,
-          minHeight: i - 0.01, maxHeight: i + 0.01,
+          columns: 32,
+          rows: 32,
+          spacing: 1.5,
+          minX: -24,
+          minZ: -24,
+          minHeight: i - 0.01,
+          maxHeight: i + 0.01,
           normalAt: () => new THREE.Vector3(0, 1, 0),
           heightAt: () => i,
         },
         isAsphalt: () => true,
       };
       const next = createVehiclePhysics({
-        Ammo, resources, car, controls, configurationState, laps,
+        Ammo,
+        resources,
+        car,
+        controls,
+        configurationState,
+        laps,
         spawn: { position: [i, 0], heading: i * 0.2 },
         course,
       });
-      const conePhysics = next.addPlugin((context) => createConePhysics(context, { course, audio }));
+      const conePhysics = next.addPlugin((context) =>
+        createConePhysics(context, { course, audio }),
+      );
       current?.dispose();
       current = next;
       current.reset();
       if (i === 0) {
         conePhysics.setEnabled(true, true);
-        assert.deepEqual(cones.map(({ visible }) => visible), [true, false, true]);
+        assert.deepEqual(
+          cones.map(({ visible }) => visible),
+          [true, false, true],
+        );
         conePhysics.setEnabled(true);
-        assert.deepEqual(cones.map(({ visible }) => visible), [true, true, true]);
+        assert.deepEqual(
+          cones.map(({ visible }) => visible),
+          [true, true, true],
+        );
         conePhysics.setEnabled(false, true);
-        assert.deepEqual(cones.map(({ visible }) => visible), [false, false, false]);
+        assert.deepEqual(
+          cones.map(({ visible }) => visible),
+          [false, false, false],
+        );
         conePhysics.setEnabled(true, true);
-        assert.deepEqual(cones.map(({ visible }) => visible), [true, false, true]);
+        assert.deepEqual(
+          cones.map(({ visible }) => visible),
+          [true, false, true],
+        );
         conePhysics.setEnabled(true);
       }
       assert.equal(current.spawnBrakeHeld, true);
@@ -158,11 +191,18 @@ test('replaces real Ammo worlds while reusing car assets and heightfields and fr
       const bodyDestructions = destroyed.get(Ammo.btRigidBody);
       let directionReset = false;
       let directionUpdated = false;
-      current.setCourseDirection({ position: [i, 2], heading: Math.PI }, {
-        reset() { directionReset = true; },
-        update() { directionUpdated = true; },
-        hitCone() {},
-      });
+      current.setCourseDirection(
+        { position: [i, 2], heading: Math.PI },
+        {
+          reset() {
+            directionReset = true;
+          },
+          update() {
+            directionUpdated = true;
+          },
+          hitCone() {},
+        },
+      );
       current.reset();
       assert.equal(directionReset, true);
       assert.ok(Math.abs(car.chassis.position.x - i) < 1e-4);
@@ -183,11 +223,18 @@ test('replaces real Ammo worlds while reusing car assets and heightfields and fr
     assert.equal(destroyed.get(Ammo.btRigidBody), replacements * (coneCount + 2));
     assert.equal(destroyed.get(Ammo.btDefaultMotionState), replacements * (coneCount + 2));
     for (const type of [
-      Ammo.btRaycastVehicle, Ammo.btDefaultVehicleRaycaster, Ammo.btHeightfieldTerrainShape,
-      Ammo.btDiscreteDynamicsWorld, Ammo.btCollisionDispatcher, Ammo.btDbvtBroadphase,
-      Ammo.btSequentialImpulseConstraintSolver, Ammo.btDefaultCollisionConfiguration,
-      Ammo.btCompoundShape, Ammo.btBoxShape,
-    ]) assert.equal(destroyed.get(type), replacements);
+      Ammo.btRaycastVehicle,
+      Ammo.btDefaultVehicleRaycaster,
+      Ammo.btHeightfieldTerrainShape,
+      Ammo.btDiscreteDynamicsWorld,
+      Ammo.btCollisionDispatcher,
+      Ammo.btDbvtBroadphase,
+      Ammo.btSequentialImpulseConstraintSolver,
+      Ammo.btDefaultCollisionConfiguration,
+      Ammo.btCompoundShape,
+      Ammo.btBoxShape,
+    ])
+      assert.equal(destroyed.get(type), replacements);
     assert.equal(destroyed.get(Ammo.btConvexHullShape), replacements * 2);
     assert.equal(destroyed.get(Ammo.btVehicleTuning), undefined);
   } finally {

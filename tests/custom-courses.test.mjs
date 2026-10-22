@@ -17,8 +17,13 @@ before(async () => {
     server: { middlewareMode: true, hmr: false, ws: false, watch: null },
     appType: 'custom',
   });
-  ({ generateCustomCourse, defaultCourseWeights, courseGenerationFields, readCourseWeights, writeCourseWeights }
-    = await server.ssrLoadModule('/src/course-generation.ts'));
+  ({
+    generateCustomCourse,
+    defaultCourseWeights,
+    courseGenerationFields,
+    readCourseWeights,
+    writeCourseWeights,
+  } = await server.ssrLoadModule('/src/course-generation.ts'));
   ({ courseRoute, courses } = await server.ssrLoadModule('/src/courses.ts'));
   ({ terrainBaseHeight } = await server.ssrLoadModule('/src/terrain-profile.ts'));
 });
@@ -28,7 +33,9 @@ after(async () => {
 });
 
 function weights(value, length = 2000) {
-  return Object.fromEntries(courseGenerationFields.map(({ key }) => [key, key === 'length' ? length : value]));
+  return Object.fromEntries(
+    courseGenerationFields.map(({ key }) => [key, key === 'length' ? length : value]),
+  );
 }
 
 function geometry(definition, spacing = 0.5) {
@@ -49,7 +56,10 @@ function geometry(definition, spacing = 0.5) {
     const after = samples[(i + 1) % samples.length];
     const incoming = current.clone().sub(samples[(i + samples.length - 1) % samples.length]);
     const outgoing = after.clone().sub(current);
-    const bend = Math.atan2(incoming.z * outgoing.x - incoming.x * outgoing.z, incoming.dot(outgoing));
+    const bend = Math.atan2(
+      incoming.z * outgoing.x - incoming.x * outgoing.z,
+      incoming.dot(outgoing),
+    );
     const radius = (incoming.length() + outgoing.length()) / (2 * Math.abs(bend));
     minRadius = Math.min(minRadius, radius);
     if (radius > 500) straight += distance;
@@ -62,36 +72,66 @@ function geometry(definition, spacing = 0.5) {
         previous.minRadius = Math.min(previous.minRadius, radius);
       } else bends.push({ sign: Math.sign(bend), turn: Math.abs(bend), minRadius: radius });
     }
-    const height = definition.flat ? 0 : terrainBaseHeight(current.x, current.z) * definition.elevationScale;
-    const nextHeight = definition.flat ? 0 : terrainBaseHeight(after.x, after.z) * definition.elevationScale;
+    const height = definition.flat
+      ? 0
+      : terrainBaseHeight(current.x, current.z) * definition.elevationScale;
+    const nextHeight = definition.flat
+      ? 0
+      : terrainBaseHeight(after.x, after.z) * definition.elevationScale;
     minHeight = Math.min(minHeight, height);
     maxHeight = Math.max(maxHeight, height);
     maxGrade = Math.max(maxGrade, Math.abs(nextHeight - height) / outgoing.length());
   }
   return {
-    route, length, minRadius, straight, tight, sweeping, maxGrade, relief: maxHeight - minHeight,
-    hairpins: bends.filter((bend) => bend.turn > 150 * Math.PI / 180 && bend.minRadius < 40).length,
+    route,
+    length,
+    minRadius,
+    straight,
+    tight,
+    sweeping,
+    maxGrade,
+    relief: maxHeight - minHeight,
+    hairpins: bends.filter((bend) => bend.turn > (150 * Math.PI) / 180 && bend.minRadius < 40)
+      .length,
     transitions: bends.length,
   };
 }
 
 test('validates every weight and seed rather than clamping or silently defaulting', () => {
   for (const seed of [-1, 0x100000000, 1.5, NaN, Infinity, '123']) {
-    assert.throws(() => generateCustomCourse(seed, defaultCourseWeights), /unsigned 32-bit integer/);
+    assert.throws(
+      () => generateCustomCourse(seed, defaultCourseWeights),
+      /unsigned 32-bit integer/,
+    );
   }
   for (const { key, min, max } of courseGenerationFields) {
     for (const value of [min - 0.01, max + 0.01, NaN, Infinity, undefined, '0.5']) {
-      assert.throws(() => generateCustomCourse(1, { ...defaultCourseWeights, [key]: value }), /must be a number between/);
+      assert.throws(
+        () => generateCustomCourse(1, { ...defaultCourseWeights, [key]: value }),
+        /must be a number between/,
+      );
     }
   }
 });
 
 test('serializes generation preferences, preserves zero, and removes obsolete hairpins', () => {
-  const original = { ...defaultCourseWeights, length: 3100, elevation: 0, banking: 0, tightCorners: 1, chicanes: 0.13 };
-  const parameters = new URLSearchParams('course=custom&seed=123&camera=cabin&reverse=1&hairpins=0.8');
+  const original = {
+    ...defaultCourseWeights,
+    length: 3100,
+    elevation: 0,
+    banking: 0,
+    tightCorners: 1,
+    chicanes: 0.13,
+  };
+  const parameters = new URLSearchParams(
+    'course=custom&seed=123&camera=cabin&reverse=1&hairpins=0.8',
+  );
   writeCourseWeights(parameters, original);
   assert.equal(parameters.has('hairpins'), false);
-  assert.equal(courseGenerationFields.some(({ key }) => key === 'hairpins'), false);
+  assert.equal(
+    courseGenerationFields.some(({ key }) => key === 'hairpins'),
+    false,
+  );
   assert.deepEqual(readCourseWeights(parameters), original);
   assert.deepEqual(readCourseWeights(new URLSearchParams()), defaultCourseWeights);
   for (const key of ['elevation', 'banking']) {
@@ -102,7 +142,10 @@ test('serializes generation preferences, preserves zero, and removes obsolete ha
   for (const value of ['', ' ', 'not-a-number', '999', '5001', 'Infinity']) {
     assert.throws(() => readCourseWeights(new URLSearchParams({ length: value })));
   }
-  assert.equal(readCourseWeights(new URLSearchParams('hairpins=1')).tightCorners, defaultCourseWeights.tightCorners);
+  assert.equal(
+    readCourseWeights(new URLSearchParams('hairpins=1')).tightCorners,
+    defaultCourseWeights.tightCorners,
+  );
   writeCourseWeights(parameters);
   assert.equal(parameters.toString(), 'course=custom&seed=123&camera=cabin&reverse=1');
 });
@@ -122,7 +165,13 @@ test('banking controls the real terrain independently of elevation and layout', 
   const context = {
     createImageData: (width, height) => ({ data: new Uint8ClampedArray(width * height * 4) }),
     getImageData: (_x, _y, width, height) => ({ data: new Uint8ClampedArray(width * height * 4) }),
-    putImageData() {}, beginPath() {}, ellipse() {}, fill() {}, moveTo() {}, lineTo() {}, stroke() {},
+    putImageData() {},
+    beginPath() {},
+    ellipse() {},
+    fill() {},
+    moveTo() {},
+    lineTo() {},
+    stroke() {},
   };
   globalThis.document = { createElement: () => ({ getContext: () => context }) };
   t.after(() => {
@@ -130,7 +179,12 @@ test('banking controls the real terrain independently of elevation and layout', 
     else globalThis.document = previousDocument;
   });
   const { CourseTerrain } = await server.ssrLoadModule('/src/terrain.ts');
-  const flat = generateCustomCourse(42, { ...defaultCourseWeights, length: 1000, elevation: 0, banking: 0 });
+  const flat = generateCustomCourse(42, {
+    ...defaultCourseWeights,
+    length: 1000,
+    elevation: 0,
+    banking: 0,
+  });
   const route = courseRoute(flat);
   const slopes = [];
   for (const banking of [0, 0.5, 1]) {
@@ -160,9 +214,14 @@ test('banking controls the real terrain independently of elevation and layout', 
           });
           const grades = heights.map((height, i) => heights[(i + 1) % count] - height);
           const peakGrade = Math.max(...grades.map(Math.abs));
-          const peakChange = Math.max(...grades.map((grade, i) => Math.abs(grades[(i + 1) % count] - grade)));
+          const peakChange = Math.max(
+            ...grades.map((grade, i) => Math.abs(grades[(i + 1) % count] - grade)),
+          );
           assert.ok(peakGrade < 0.1, `banking ramp at offset ${offset}: grade ${peakGrade}`);
-          assert.ok(peakChange < 0.03, `banking bump at offset ${offset}: grade change ${peakChange}`);
+          assert.ok(
+            peakChange < 0.03,
+            `banking bump at offset ${offset}: grade change ${peakChange}`,
+          );
         }
       }
     } finally {
@@ -199,26 +258,37 @@ test('each preference has a measurable effect on actual centerline geometry', ()
     assert.ok(geometry(elevated).relief > 8);
     const half = generateCustomCourse(seed, { ...zero, elevation: 0.5 });
     assert.ok(Math.abs(geometry(half).relief * 2 - geometry(elevated).relief) < 1e-8);
-    totals.straight += geometry(generateCustomCourse(seed, { ...zero, straightaways: 1 })).straight - baseline.straight;
-    totals.tight += geometry(generateCustomCourse(seed, { ...zero, tightCorners: 1 })).tight - baseline.tight;
-    totals.sweeping += geometry(generateCustomCourse(seed, { ...zero, sweepingCorners: 1 })).sweeping - baseline.sweeping;
-    totals.transitions += geometry(generateCustomCourse(seed, { ...zero, chicanes: 1 })).transitions - baseline.transitions;
+    totals.straight +=
+      geometry(generateCustomCourse(seed, { ...zero, straightaways: 1 })).straight -
+      baseline.straight;
+    totals.tight +=
+      geometry(generateCustomCourse(seed, { ...zero, tightCorners: 1 })).tight - baseline.tight;
+    totals.sweeping +=
+      geometry(generateCustomCourse(seed, { ...zero, sweepingCorners: 1 })).sweeping -
+      baseline.sweeping;
+    totals.transitions +=
+      geometry(generateCustomCourse(seed, { ...zero, chicanes: 1 })).transitions -
+      baseline.transitions;
     assert.equal(baseline.hairpins, 0);
   }
   assert.ok(totals.straight / 6 > 100, `straightaway increase ${totals.straight / 6}`);
   assert.ok(totals.tight / 6 > 150, `tight corner increase ${totals.tight / 6}`);
   assert.ok(totals.sweeping / 6 > 200, `sweeping corner increase ${totals.sweeping / 6}`);
   assert.ok(totals.transitions / 6 >= 4, `chicane transition increase ${totals.transitions / 6}`);
-  assert.ok(geometry(generateCustomCourse(1, { ...weights(0, 5000), tightCorners: 1 })).hairpins >= 2);
+  assert.ok(
+    geometry(generateCustomCourse(1, { ...weights(0, 5000), tightCorners: 1 })).hairpins >= 2,
+  );
 });
 
 test('all 32 feature extremes at short, medium, and long lengths retain safe geometry', () => {
   const fields = courseGenerationFields.filter(({ key }) => key !== 'length' && key !== 'banking');
   const mixes = [1000, 3000, 5000].flatMap((length) =>
     Array.from({ length: 32 }, (_, mask) => ({
-      length, banking: defaultCourseWeights.banking,
+      length,
+      banking: defaultCourseWeights.banking,
       ...Object.fromEntries(fields.map(({ key }, i) => [key, (mask >> i) & 1])),
-    })));
+    })),
+  );
   for (let i = 0; i < 16; i++) {
     mixes.push({
       length: 1000 + i * 250,
@@ -231,8 +301,10 @@ test('all 32 feature extremes at short, medium, and long lengths retain safe geo
     const definition = generateCustomCourse(seed, mixes[i]);
     const measured = geometry(definition, 0.25);
     assert.equal(definition.width, 17.5);
-    assert.ok(Math.abs(measured.length / mixes[i].length - 1) <= 0.05,
-      `length ${measured.length} vs ${mixes[i].length} for mix ${i}`);
+    assert.ok(
+      Math.abs(measured.length / mixes[i].length - 1) <= 0.05,
+      `length ${measured.length} vs ${mixes[i].length} for mix ${i}`,
+    );
     assert.ok(measured.minRadius >= 22, `radius ${measured.minRadius} for mix ${i}`);
     assert.ok(measured.relief <= 20.001, `relief ${measured.relief} for mix ${i}`);
     assert.ok(measured.maxGrade <= 0.1201, `grade ${measured.maxGrade} for mix ${i}`);
@@ -242,8 +314,11 @@ test('all 32 feature extremes at short, medium, and long lengths retain safe geo
     const samples = measured.route.getSpacedPoints(count).slice(0, -1);
     for (let a = 0; a < count; a++) {
       for (let b = a + 1; b < count; b++) {
-        if (Math.min(b - a, count - b + a) * measured.length / count > definition.width * 2) {
-          assert.ok(samples[a].distanceTo(samples[b]) >= definition.width + 8, `clearance for mix ${i}`);
+        if ((Math.min(b - a, count - b + a) * measured.length) / count > definition.width * 2) {
+          assert.ok(
+            samples[a].distanceTo(samples[b]) >= definition.width + 8,
+            `clearance for mix ${i}`,
+          );
         }
       }
     }
@@ -254,14 +329,21 @@ test('custom layouts have varied concave outlines rather than two sides and semi
   const concavities = [];
   const signatures = new Set();
   const cross = (a, b, c) => (b.x - a.x) * (c.z - a.z) - (b.z - a.z) * (c.x - a.x);
-  const area = (points) => Math.abs(points.reduce((sum, p, i) => {
-    const next = points[(i + 1) % points.length];
-    return sum + p.x * next.z - next.x * p.z;
-  }, 0)) / 2;
+  const area = (points) =>
+    Math.abs(
+      points.reduce((sum, p, i) => {
+        const next = points[(i + 1) % points.length];
+        return sum + p.x * next.z - next.x * p.z;
+      }, 0),
+    ) / 2;
   for (let i = 0; i < 32; i++) {
-    const route = courseRoute(generateCustomCourse(Math.imul(i, 2654435761) >>> 0, defaultCourseWeights));
-    assert.ok(route.getTangentAt(0).dot(route.getTangentAt(5 / route.getLength())) > 0.9999,
-      `start/finish should remain on a straight for seed ${i}`);
+    const route = courseRoute(
+      generateCustomCourse(Math.imul(i, 2654435761) >>> 0, defaultCourseWeights),
+    );
+    assert.ok(
+      route.getTangentAt(0).dot(route.getTangentAt(5 / route.getLength())) > 0.9999,
+      `start/finish should remain on a straight for seed ${i}`,
+    );
     const samples = route.getSpacedPoints(256).slice(0, -1);
     const sorted = [...samples].sort((a, b) => a.x - b.x || a.z - b.z);
     const hull = [];
@@ -276,9 +358,16 @@ test('custom layouts have varied concave outlines rather than two sides and semi
     const concavity = 1 - area(samples) / area(hull);
     assert.ok(concavity > 0.03, `oval-like outline for seed ${i}: concavity ${concavity}`);
     concavities.push(concavity);
-    signatures.add([32, 64, 96, 128].map((j) => (samples[0].distanceTo(samples[j]) / route.getLength()).toFixed(2)).join(','));
+    signatures.add(
+      [32, 64, 96, 128]
+        .map((j) => (samples[0].distanceTo(samples[j]) / route.getLength()).toFixed(2))
+        .join(','),
+    );
   }
-  assert.ok(Math.max(...concavities) - Math.min(...concavities) > 0.1, 'outlines should vary in depth and shape');
+  assert.ok(
+    Math.max(...concavities) - Math.min(...concavities) > 0.1,
+    'outlines should vary in depth and shape',
+  );
   assert.ok(signatures.size >= 28, `only ${signatures.size} distinct outline signatures`);
 });
 

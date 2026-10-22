@@ -4,7 +4,11 @@ import type { CourseDefinition } from './courses';
 /** Physics steps between recorded samples (120 Hz physics → 30 Hz samples). */
 export const sampleSteps = 4;
 
-export interface ReplayTireState { slip: number; speed: number; load: number }
+export interface ReplayTireState {
+  slip: number;
+  speed: number;
+  load: number;
+}
 
 export interface ReplayFrame {
   position: THREE.Vector3;
@@ -35,11 +39,30 @@ export interface ReplayFrame {
 
 export function createReplayFrame(): ReplayFrame {
   return {
-    position: new THREE.Vector3(), quaternion: new THREE.Quaternion(),
-    wheels: Array.from({ length: 4 }, () => ({ position: new THREE.Vector3(), quaternion: new THREE.Quaternion(), spin: 0 })),
-    rpm: 0, gear: 1, throttle: 0, load: 0, boost: 0, steering: 0,
-    braking: false, reversing: false, shifting: false, limiterCut: false, handbrake: false,
-    highBeams: false, headlights: null, fogLights: false, leftSignal: false, rightSignal: false, burnout: false,
+    position: new THREE.Vector3(),
+    quaternion: new THREE.Quaternion(),
+    wheels: Array.from({ length: 4 }, () => ({
+      position: new THREE.Vector3(),
+      quaternion: new THREE.Quaternion(),
+      spin: 0,
+    })),
+    rpm: 0,
+    gear: 1,
+    throttle: 0,
+    load: 0,
+    boost: 0,
+    steering: 0,
+    braking: false,
+    reversing: false,
+    shifting: false,
+    limiterCut: false,
+    handbrake: false,
+    highBeams: false,
+    headlights: null,
+    fogLights: false,
+    leftSignal: false,
+    rightSignal: false,
+    burnout: false,
     contacts: [false, false, false, false],
     tires: Array.from({ length: 4 }, () => ({ slip: 0, speed: 0, load: 0 })),
   };
@@ -76,9 +99,19 @@ const byteSizes: Record<SlotType, number> = { f32: 4, i8: 1, i16: 2, u8: 1, u16:
 const frameBytes = slots.reduce((sum, { type }) => sum + byteSizes[type], 0);
 
 const Flag = {
-  Braking: 1, Reversing: 2, Shifting: 4, Limiter: 8, Handbrake: 16, Burnout: 32,
-  Contact: 64, HighBeams: 1024, FogLights: 2048, LeftSignal: 4096, RightSignal: 8192,
-  HeadlightsOn: 16384, HeadlightsSet: 32768,
+  Braking: 1,
+  Reversing: 2,
+  Shifting: 4,
+  Limiter: 8,
+  Handbrake: 16,
+  Burnout: 32,
+  Contact: 64,
+  HighBeams: 1024,
+  FogLights: 2048,
+  LeftSignal: 4096,
+  RightSignal: 8192,
+  HeadlightsOn: 16384,
+  HeadlightsSet: 32768,
 } as const;
 
 export function writeFrame(target: Float32Array, offset: number, frame: ReplayFrame) {
@@ -96,14 +129,22 @@ export function writeFrame(target: Float32Array, offset: number, frame: ReplayFr
   target[offset + LOAD] = frame.load;
   target[offset + BOOST] = frame.boost;
   target[offset + STEERING] = frame.steering;
-  let flags = (frame.braking ? Flag.Braking : 0) | (frame.reversing ? Flag.Reversing : 0)
-    | (frame.shifting ? Flag.Shifting : 0) | (frame.limiterCut ? Flag.Limiter : 0)
-    | (frame.handbrake ? Flag.Handbrake : 0) | (frame.burnout ? Flag.Burnout : 0)
-    | (frame.highBeams ? Flag.HighBeams : 0) | (frame.fogLights ? Flag.FogLights : 0)
-    | (frame.leftSignal ? Flag.LeftSignal : 0) | (frame.rightSignal ? Flag.RightSignal : 0)
-    | (frame.headlights === null ? 0 : Flag.HeadlightsSet)
-    | (frame.headlights ? Flag.HeadlightsOn : 0);
-  frame.contacts.forEach((contact, i) => { if (contact) flags |= Flag.Contact << i; });
+  let flags =
+    (frame.braking ? Flag.Braking : 0) |
+    (frame.reversing ? Flag.Reversing : 0) |
+    (frame.shifting ? Flag.Shifting : 0) |
+    (frame.limiterCut ? Flag.Limiter : 0) |
+    (frame.handbrake ? Flag.Handbrake : 0) |
+    (frame.burnout ? Flag.Burnout : 0) |
+    (frame.highBeams ? Flag.HighBeams : 0) |
+    (frame.fogLights ? Flag.FogLights : 0) |
+    (frame.leftSignal ? Flag.LeftSignal : 0) |
+    (frame.rightSignal ? Flag.RightSignal : 0) |
+    (frame.headlights === null ? 0 : Flag.HeadlightsSet) |
+    (frame.headlights ? Flag.HeadlightsOn : 0);
+  frame.contacts.forEach((contact, i) => {
+    if (contact) flags |= Flag.Contact << i;
+  });
   target[offset + FLAGS] = flags;
   frame.tires.forEach((tire, i) => {
     target[offset + TIRES + i * 3] = Math.min(Math.max(tire.slip, 0), 1);
@@ -117,7 +158,13 @@ const quaternionB = new THREE.Quaternion();
 
 function catmullRom(p0: number, p1: number, p2: number, p3: number, t: number) {
   const t2 = t * t;
-  return 0.5 * (2 * p1 + (p2 - p0) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t2 + (3 * p1 - p0 - 3 * p2 + p3) * t2 * t);
+  return (
+    0.5 *
+    (2 * p1 +
+      (p2 - p0) * t +
+      (2 * p0 - 5 * p1 + 4 * p2 - p3) * t2 +
+      (3 * p1 - p0 - 3 * p2 + p3) * t2 * t)
+  );
 }
 
 export interface RunSummary {
@@ -186,7 +233,9 @@ export class RunRecording {
   /** Index of the fastest completed lap, or null. */
   get bestLap() {
     let best: number | null = null;
-    this.lapTimes.forEach((time, i) => { if (best === null || time < this.lapTimes[best]) best = i; });
+    this.lapTimes.forEach((time, i) => {
+      if (best === null || time < this.lapTimes[best]) best = i;
+    });
     return best;
   }
 
@@ -195,7 +244,8 @@ export class RunRecording {
     const index = lap - 1;
     const time = this.lapTimes[index] ?? null;
     return {
-      lap, time,
+      lap,
+      time,
       fastest: time !== null && this.bestLap !== null && time === this.lapTimes[this.bestLap],
       previous: index > 0 ? this.lapStarts[index - 1] : null,
       next: this.lapStarts[index + 1] ?? null,
@@ -209,10 +259,15 @@ export class RunRecording {
     if (time === undefined || start === undefined || !this.count)
       throw new Error('Completed lap not found');
     const first = Math.max(0, Math.floor((start - this.firstTime) / this.interval) - 1);
-    const end = Math.min(this.count, Math.ceil((start + time - this.firstTime) / this.interval) + 2);
+    const end = Math.min(
+      this.count,
+      Math.ceil((start + time - this.firstTime) / this.interval) + 2,
+    );
     const lap = new RunRecording(
       this.firstTime + first * this.interval - start,
-      this.interval, this.data.slice(first * frameStride, end * frameStride), end - first,
+      this.interval,
+      this.data.slice(first * frameStride, end * frameStride),
+      end - first,
     );
     lap.lapStarts.push(0);
     lap.completeLap(time, time, this.lapCones[index]);
@@ -244,8 +299,10 @@ export class RunRecording {
     const alpha = position - i1;
     const d = this.data;
     const [o0, o1, o2, o3] = [i0, i1, i2, i3].map((i) => i * frameStride);
-    const lerp = (slotIndex: number) => d[o1 + slotIndex] + (d[o2 + slotIndex] - d[o1 + slotIndex]) * alpha;
-    const spline = (slotIndex: number) => catmullRom(d[o0 + slotIndex], d[o1 + slotIndex], d[o2 + slotIndex], d[o3 + slotIndex], alpha);
+    const lerp = (slotIndex: number) =>
+      d[o1 + slotIndex] + (d[o2 + slotIndex] - d[o1 + slotIndex]) * alpha;
+    const spline = (slotIndex: number) =>
+      catmullRom(d[o0 + slotIndex], d[o1 + slotIndex], d[o2 + slotIndex], d[o3 + slotIndex], alpha);
     const slerp = (slotIndex: number, target: THREE.Quaternion) => {
       quaternionA.fromArray(d, o1 + slotIndex).normalize();
       quaternionB.fromArray(d, o2 + slotIndex).normalize();
@@ -278,7 +335,9 @@ export class RunRecording {
     out.leftSignal = (flags & Flag.LeftSignal) !== 0;
     out.rightSignal = (flags & Flag.RightSignal) !== 0;
     out.burnout = (flags & Flag.Burnout) !== 0;
-    out.contacts.forEach((_, i) => { out.contacts[i] = (flags & (Flag.Contact << i)) !== 0; });
+    out.contacts.forEach((_, i) => {
+      out.contacts[i] = (flags & (Flag.Contact << i)) !== 0;
+    });
     out.tires.forEach((tire, i) => {
       tire.slip = lerp(TIRES + i * 3);
       tire.speed = lerp(TIRES + i * 3 + 1);
@@ -303,7 +362,9 @@ export function captureCarPose(
   chassisInverse.copy(chassis.quaternion).invert();
   hubs.forEach((hub, i) => {
     const wheel = frame.wheels[i];
-    wheel.position.copy(localOffset.subVectors(hub.position, chassis.position).applyQuaternion(chassisInverse));
+    wheel.position.copy(
+      localOffset.subVectors(hub.position, chassis.position).applyQuaternion(chassisInverse),
+    );
     wheel.quaternion.copy(chassisInverse).multiply(hub.quaternion);
     wheel.spin = spins[i];
   });
@@ -351,9 +412,17 @@ function readRecord(key: string, storage: Storage): StoredRecord | null {
   const text = storage.getItem(`${recordPrefix}:${key}`);
   if (text === null) return null;
   const record: StoredRecord = JSON.parse(text);
-  if (!record || !Number.isFinite(record.time) || record.time <= 0
-    || !Number.isFinite(record.firstTime) || !Number.isFinite(record.interval) || record.interval <= 0
-    || !Number.isInteger(record.cones) || record.cones < 0 || typeof record.frames !== 'string')
+  if (
+    !record ||
+    !Number.isFinite(record.time) ||
+    record.time <= 0 ||
+    !Number.isFinite(record.firstTime) ||
+    !Number.isFinite(record.interval) ||
+    record.interval <= 0 ||
+    !Number.isInteger(record.cones) ||
+    record.cones < 0 ||
+    typeof record.frames !== 'string'
+  )
     throw new Error('Corrupt record lap');
   return record;
 }
@@ -361,7 +430,9 @@ function readRecord(key: string, storage: Storage): StoredRecord | null {
 export async function loadRecordLap(key: string, storage: Storage = localStorage) {
   const stored = readRecord(key, storage);
   if (!stored) return null;
-  const { data, count } = decodeFrames(await transform(fromBase64(stored.frames), new DecompressionStream('deflate')));
+  const { data, count } = decodeFrames(
+    await transform(fromBase64(stored.frames), new DecompressionStream('deflate')),
+  );
   if (!count) throw new Error('Empty record lap');
   const lap = new RunRecording(stored.firstTime, stored.interval, data, count);
   lap.lapStarts.push(0);
@@ -370,7 +441,11 @@ export async function loadRecordLap(key: string, storage: Storage = localStorage
 }
 
 /** Stored independently from saved runs; recheck after compression so a slower async save cannot win. */
-export async function saveRecordLap(key: string, lap: RunRecording, storage: Storage = localStorage) {
+export async function saveRecordLap(
+  key: string,
+  lap: RunRecording,
+  storage: Storage = localStorage,
+) {
   const time = lap.lapTimes[0];
   if (!lap.count || !Number.isFinite(time) || time <= 0) throw new Error('Invalid record lap');
   const previous = readRecord(key, storage);
@@ -379,7 +454,11 @@ export async function saveRecordLap(key: string, lap: RunRecording, storage: Sto
   const latest = readRecord(key, storage);
   if (latest && latest.time <= time) return false;
   const record: StoredRecord = {
-    time, cones: lap.lapCones[0], firstTime: lap.firstTime, interval: lap.interval, frames,
+    time,
+    cones: lap.lapCones[0],
+    firstTime: lap.firstTime,
+    interval: lap.interval,
+    frames,
   };
   storage.setItem(`${recordPrefix}:${key}`, JSON.stringify(record));
   return true;
@@ -396,7 +475,9 @@ function hashString(text: string) {
 
 /** Identifies a course layout and direction, including generated courses. */
 export function replayStorageKey(definition: CourseDefinition) {
-  const shape = hashString(JSON.stringify([definition.points, definition.elevation ?? null, definition.width]));
+  const shape = hashString(
+    JSON.stringify([definition.points, definition.elevation ?? null, definition.width]),
+  );
   return `${definition.id}:${shape}:${definition.reverse ? 'reverse' : 'forward'}`;
 }
 
@@ -410,11 +491,21 @@ export function encodeFrames(recording: RunRecording) {
       const { type, scale } = slots[s];
       const value = recording.data[base + s] * scale;
       switch (type) {
-        case 'f32': view.setFloat32(offset, value, true); break;
-        case 'i8': view.setInt8(offset, Math.max(-128, Math.min(127, Math.round(value)))); break;
-        case 'u8': view.setUint8(offset, Math.max(0, Math.min(255, Math.round(value)))); break;
-        case 'i16': view.setInt16(offset, Math.max(-32768, Math.min(32767, Math.round(value))), true); break;
-        case 'u16': view.setUint16(offset, Math.max(0, Math.min(65535, Math.round(value))), true); break;
+        case 'f32':
+          view.setFloat32(offset, value, true);
+          break;
+        case 'i8':
+          view.setInt8(offset, Math.max(-128, Math.min(127, Math.round(value))));
+          break;
+        case 'u8':
+          view.setUint8(offset, Math.max(0, Math.min(255, Math.round(value))));
+          break;
+        case 'i16':
+          view.setInt16(offset, Math.max(-32768, Math.min(32767, Math.round(value))), true);
+          break;
+        case 'u16':
+          view.setUint16(offset, Math.max(0, Math.min(65535, Math.round(value))), true);
+          break;
       }
       offset += byteSizes[type];
     }
@@ -434,11 +525,21 @@ export function decodeFrames(bytes: Uint8Array) {
       const { type, scale } = slots[s];
       let value: number;
       switch (type) {
-        case 'f32': value = view.getFloat32(offset, true); break;
-        case 'i8': value = view.getInt8(offset); break;
-        case 'u8': value = view.getUint8(offset); break;
-        case 'i16': value = view.getInt16(offset, true); break;
-        case 'u16': value = view.getUint16(offset, true); break;
+        case 'f32':
+          value = view.getFloat32(offset, true);
+          break;
+        case 'i8':
+          value = view.getInt8(offset);
+          break;
+        case 'u8':
+          value = view.getUint8(offset);
+          break;
+        case 'i16':
+          value = view.getInt16(offset, true);
+          break;
+        case 'u16':
+          value = view.getUint16(offset, true);
+          break;
       }
       data[base + s] = value / scale;
       offset += byteSizes[type];
@@ -454,7 +555,8 @@ async function transform(bytes: Uint8Array, stream: CompressionStream | Decompre
 
 function toBase64(bytes: Uint8Array) {
   let binary = '';
-  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  for (let i = 0; i < bytes.length; i += 0x8000)
+    binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
   return btoa(binary);
 }
 
@@ -474,24 +576,41 @@ interface StoredRun extends RunSummary {
 function readIndex(storage: Storage, key: string): StoredRun[] {
   try {
     const parsed: unknown = JSON.parse(storage.getItem(`${storagePrefix}:${key}`) ?? '[]');
-    return Array.isArray(parsed) ? parsed as StoredRun[] : [];
+    return Array.isArray(parsed) ? (parsed as StoredRun[]) : [];
   } catch {
     return [];
   }
 }
 
 export function listSavedRuns(key: string, storage: Storage = localStorage): RunSummary[] {
-  return readIndex(storage, key).map(({ id, createdAt, laps, cones, duration }) => ({ id, createdAt, laps, cones, duration }));
+  return readIndex(storage, key).map(({ id, createdAt, laps, cones, duration }) => ({
+    id,
+    createdAt,
+    laps,
+    cones,
+    duration,
+  }));
 }
 
-export async function saveRun(key: string, recording: RunRecording, storage: Storage = localStorage): Promise<RunSummary> {
+export async function saveRun(
+  key: string,
+  recording: RunRecording,
+  storage: Storage = localStorage,
+): Promise<RunSummary> {
   const id = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
   const run: StoredRun = {
-    id, createdAt: Date.now(), laps: [...recording.lapTimes], cones: [...recording.lapCones],
-    duration: recording.duration, firstTime: recording.firstTime, interval: recording.interval,
+    id,
+    createdAt: Date.now(),
+    laps: [...recording.lapTimes],
+    cones: [...recording.lapCones],
+    duration: recording.duration,
+    firstTime: recording.firstTime,
+    interval: recording.interval,
     lapStarts: [...recording.lapStarts],
   };
-  const payload = toBase64(await transform(encodeFrames(recording), new CompressionStream('deflate')));
+  const payload = toBase64(
+    await transform(encodeFrames(recording), new CompressionStream('deflate')),
+  );
   const dataKey = `${storagePrefix}:${key}:${id}`;
   storage.setItem(dataKey, payload);
   try {
@@ -507,7 +626,9 @@ export async function loadRun(key: string, id: string, storage: Storage = localS
   const run = readIndex(storage, key).find((run) => run.id === id);
   const payload = storage.getItem(`${storagePrefix}:${key}:${id}`);
   if (!run || payload === null) throw new Error('Saved laps not found');
-  const { data, count } = decodeFrames(await transform(fromBase64(payload), new DecompressionStream('deflate')));
+  const { data, count } = decodeFrames(
+    await transform(fromBase64(payload), new DecompressionStream('deflate')),
+  );
   const recording = new RunRecording(run.firstTime, run.interval, data, count);
   recording.lapStarts.splice(0, recording.lapStarts.length, ...run.lapStarts);
   recording.lapTimes.push(...run.laps);
@@ -517,5 +638,8 @@ export async function loadRun(key: string, id: string, storage: Storage = localS
 
 export function deleteRun(key: string, id: string, storage: Storage = localStorage) {
   storage.removeItem(`${storagePrefix}:${key}:${id}`);
-  storage.setItem(`${storagePrefix}:${key}`, JSON.stringify(readIndex(storage, key).filter((run) => run.id !== id)));
+  storage.setItem(
+    `${storagePrefix}:${key}`,
+    JSON.stringify(readIndex(storage, key).filter((run) => run.id !== id)),
+  );
 }

@@ -6,36 +6,72 @@ import { createCloudLayer } from './clouds';
 
 const daylight = {
   noon: {
-    sky: '#78b5ec', horizon: '#b6d7ee', ground: '#656052',
-    cloudLight: '#fffaf0', cloudShade: '#849bb8',
-    ambient: '#d9edff', ambientIntensity: 0.42, environmentIntensity: 0.4,
-    sun: '#ffefd4', sunIntensity: 2.8, sunOffset: [-35, 30, -20],
+    sky: '#78b5ec',
+    horizon: '#b6d7ee',
+    ground: '#656052',
+    cloudLight: '#fffaf0',
+    cloudShade: '#849bb8',
+    ambient: '#d9edff',
+    ambientIntensity: 0.42,
+    environmentIntensity: 0.4,
+    sun: '#ffefd4',
+    sunIntensity: 2.8,
+    sunOffset: [-35, 30, -20],
     exposure: 0.95,
   },
   sunset: {
-    sky: '#182b45', horizon: '#f5a04c', ground: '#493b38',
-    cloudLight: '#fa603d', cloudShade: '#29394f', cloudSun: '#ffb640',
-    ambient: '#bdc4dc', ambientIntensity: 0.42, environmentIntensity: 0.24,
-    sun: '#ff963e', sunIntensity: 3, sunOffset: [-42, 5, -20],
+    sky: '#182b45',
+    horizon: '#f5a04c',
+    ground: '#493b38',
+    cloudLight: '#fa603d',
+    cloudShade: '#29394f',
+    cloudSun: '#ffb640',
+    ambient: '#bdc4dc',
+    ambientIntensity: 0.42,
+    environmentIntensity: 0.24,
+    sun: '#ff963e',
+    sunIntensity: 3,
+    sunOffset: [-42, 5, -20],
     exposure: 0.95,
   },
   night: {
-    sky: '#030914', horizon: '#101d35', ground: '#080b13',
-    cloudLight: '#33415c', cloudShade: '#111b30',
-    ambient: '#a8bde3', ambientIntensity: 0.35, environmentIntensity: 0.08,
-    sun: '#9fbfff', sunIntensity: 0.22, sunOffset: [-20, 35, -12],
+    sky: '#030914',
+    horizon: '#101d35',
+    ground: '#080b13',
+    cloudLight: '#33415c',
+    cloudShade: '#111b30',
+    ambient: '#a8bde3',
+    ambientIntensity: 0.35,
+    environmentIntensity: 0.08,
+    sun: '#9fbfff',
+    sunIntensity: 0.22,
+    sunOffset: [-20, 35, -12],
     exposure: 0.85,
   },
-} satisfies Record<string, {
-  sky: string; horizon: string; ground: string; ambient: string;
-  cloudLight: string; cloudShade: string;
-  cloudSun?: string;
-  ambientIntensity: number; environmentIntensity: number;
-  sun: string; sunIntensity: number; sunOffset: [number, number, number]; exposure: number;
-}>;
+} satisfies Record<
+  string,
+  {
+    sky: string;
+    horizon: string;
+    ground: string;
+    ambient: string;
+    cloudLight: string;
+    cloudShade: string;
+    cloudSun?: string;
+    ambientIntensity: number;
+    environmentIntensity: number;
+    sun: string;
+    sunIntensity: number;
+    sunOffset: [number, number, number];
+    exposure: number;
+  }
+>;
 
-
-export function createLighting(scene: THREE.Scene, renderer: THREE.WebGLRenderer, camera: THREE.PerspectiveCamera) {
+export function createLighting(
+  scene: THREE.Scene,
+  renderer: THREE.WebGLRenderer,
+  camera: THREE.PerspectiveCamera,
+) {
   const fogNear = 220;
   const fogFar = 650;
   const fog = new THREE.Fog(0x78b5ec, fogNear, fogFar);
@@ -47,12 +83,18 @@ export function createLighting(scene: THREE.Scene, renderer: THREE.WebGLRenderer
   const ambient = new THREE.HemisphereLight();
   scene.add(ambient);
   const csm = new CSM({
-    camera, parent: scene, cascades: 3, maxFar: 1500,
-    shadowMapSize: 2048, mode: 'custom',
+    camera,
+    parent: scene,
+    cascades: 3,
+    maxFar: 1500,
+    shadowMapSize: 2048,
+    mode: 'custom',
     customSplitsCallback: (_cascades, _near, far, breaks) => {
       breaks.push(Math.min(30 / far, 1 / 3), Math.min(180 / far, 2 / 3), 1);
     },
-    lightNear: 0.1, lightFar: 4000, lightMargin: 1000,
+    lightNear: 0.1,
+    lightFar: 4000,
+    lightMargin: 1000,
   });
   csm.fade = true;
   csm.updateFrustums();
@@ -65,9 +107,16 @@ export function createLighting(scene: THREE.Scene, renderer: THREE.WebGLRenderer
     scene.traverse((object) => {
       if (!(object instanceof THREE.Mesh)) return;
       for (const material of Array.isArray(object.material) ? object.material : [object.material]) {
-        if (!(material instanceof THREE.MeshStandardMaterial || material instanceof THREE.MeshLambertMaterial
-          || material instanceof THREE.MeshPhongMaterial || material instanceof THREE.MeshToonMaterial)
-          || materials.has(material)) continue;
+        if (
+          !(
+            material instanceof THREE.MeshStandardMaterial ||
+            material instanceof THREE.MeshLambertMaterial ||
+            material instanceof THREE.MeshPhongMaterial ||
+            material instanceof THREE.MeshToonMaterial
+          ) ||
+          materials.has(material)
+        )
+          continue;
         materials.add(material);
         const compile = material.onBeforeCompile;
         const cacheKey = material.customProgramCacheKey();
@@ -78,8 +127,10 @@ export function createLighting(scene: THREE.Scene, renderer: THREE.WebGLRenderer
           compileCSM.call(this, shader, renderer);
           shader.uniforms.csmShadowView = shadowView;
           // Mirrors reuse the main view's shadow maps, so select cascades in that view too.
-          shader.vertexShader = `uniform mat4 csmShadowView;\nvarying float vCSMDepth;\n${shader.vertexShader}`
-            .replace('#include <project_vertex>', `
+          shader.vertexShader =
+            `uniform mat4 csmShadowView;\nvarying float vCSMDepth;\n${shader.vertexShader}`.replace(
+              '#include <project_vertex>',
+              `
               #include <project_vertex>
               vec4 csmPosition = vec4(transformed, 1.0);
               #ifdef USE_BATCHING
@@ -89,22 +140,30 @@ export function createLighting(scene: THREE.Scene, renderer: THREE.WebGLRenderer
                 csmPosition = instanceMatrix * csmPosition;
               #endif
               vCSMDepth = -(csmShadowView * modelMatrix * csmPosition).z;
-            `);
-          shader.fragmentShader = `varying float vCSMDepth;\n${shader.fragmentShader}`
-            .replace('#include <lights_fragment_begin>',
-              THREE.ShaderChunk.lights_fragment_begin.replace('(vViewPosition.z)', 'vCSMDepth'));
+            `,
+            );
+          shader.fragmentShader = `varying float vCSMDepth;\n${shader.fragmentShader}`.replace(
+            '#include <lights_fragment_begin>',
+            THREE.ShaderChunk.lights_fragment_begin.replace('(vViewPosition.z)', 'vCSMDepth'),
+          );
         };
         material.customProgramCacheKey = () => `${cacheKey}-csm-main-view`;
         material.needsUpdate = true;
-        material.addEventListener('dispose', () => { csm.shaders.delete(material); });
+        material.addEventListener('dispose', () => {
+          csm.shaders.delete(material);
+        });
       }
     });
   }
 
   scene.onBeforeRender = (renderer, _scene, renderCamera) => {
     // Depth captures and Reflector passes must not move the shared shadow maps.
-    if (!renderer.shadowMap.enabled || !renderer.shadowMap.autoUpdate
-      || !(renderCamera instanceof THREE.PerspectiveCamera)) return;
+    if (
+      !renderer.shadowMap.enabled ||
+      !renderer.shadowMap.autoUpdate ||
+      !(renderCamera instanceof THREE.PerspectiveCamera)
+    )
+      return;
     if (csm.camera !== renderCamera || !projection.equals(renderCamera.projectionMatrix)) {
       csm.camera = renderCamera;
       csm.updateFrustums();
@@ -166,7 +225,11 @@ export function createLighting(scene: THREE.Scene, renderer: THREE.WebGLRenderer
         skyContext.fill();
       }
     }
-    cloudContext.putImageData(new ImageData(paintClouds(preset), cloudCanvas.width, cloudCanvas.height), 0, 0);
+    cloudContext.putImageData(
+      new ImageData(paintClouds(preset), cloudCanvas.width, cloudCanvas.height),
+      0,
+      0,
+    );
     skyContext.drawImage(cloudCanvas, 0, 0, skyCanvas.width, skyCanvas.height);
     const sky = new THREE.CanvasTexture(skyCanvas);
     sky.colorSpace = THREE.SRGBColorSpace;

@@ -6,9 +6,12 @@ import type { loadCar } from './car';
 type Car = Awaited<ReturnType<typeof loadCar>>;
 
 // Exterior shell only; the cabin and engine bay would just add see-through clutter.
-const bodyParts = /^((Body2|Front|Hood|rbumper|Wing|Mirrors)_Paint|Windows_Windows|BlackTrim|Mustache|HLblack|hlglass|glasstails|glassmiddle|Glasstop|334_T_001_001_LightsGlass|Rubber_001_001_Black|Cornerglass|72_T_Cornerglass)/;
-const trimParts = /^(BlackTrim|Mustache|Rubber_|Cube_Black|68_T_003_001_Plastico|Fenderlight1_Plastico|glasstails|glassmiddle|Glasstop|334_T_001_001_LightsGlass)/;
-const frontParts = /^(FogGlass_|Projectorglass_|Chin_003_001_Paint|Badge_(Insideglass|003_001_Chrome|001_001_Badgecolor))/;
+const bodyParts =
+  /^((Body2|Front|Hood|rbumper|Wing|Mirrors)_Paint|Windows_Windows|BlackTrim|Mustache|HLblack|hlglass|glasstails|glassmiddle|Glasstop|334_T_001_001_LightsGlass|Rubber_001_001_Black|Cornerglass|72_T_Cornerglass)/;
+const trimParts =
+  /^(BlackTrim|Mustache|Rubber_|Cube_Black|68_T_003_001_Plastico|Fenderlight1_Plastico|glasstails|glassmiddle|Glasstop|334_T_001_001_LightsGlass)/;
+const frontParts =
+  /^(FogGlass_|Projectorglass_|Chin_003_001_Paint|Badge_(Insideglass|003_001_Chrome|001_001_Badgecolor))/;
 const wheelParts = /^(tyr_|llantaoem)/;
 const ghostOpacity = 0.38;
 const glowOpacity = 0.24;
@@ -23,7 +26,8 @@ function mergeParts(meshes: { mesh: THREE.Mesh; matrix: THREE.Matrix4 }[]) {
     const colors = new Float32Array(source.getAttribute('position').count * 3);
     colors.fill(trimParts.test(mesh.name) ? 0.6 : 1);
     geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-    if (source.getAttribute('normal')) geometry.setAttribute('normal', source.getAttribute('normal'));
+    if (source.getAttribute('normal'))
+      geometry.setAttribute('normal', source.getAttribute('normal'));
     else geometry.computeVertexNormals();
     return geometry.applyMatrix4(matrix);
   });
@@ -39,12 +43,22 @@ function mergeParts(meshes: { mesh: THREE.Mesh; matrix: THREE.Matrix4 }[]) {
  */
 export function createGhostCar(scene: THREE.Scene, car: Car) {
   const prepass = new THREE.MeshBasicMaterial({
-    colorWrite: false, transparent: true, side: THREE.DoubleSide, forceSinglePass: true,
+    colorWrite: false,
+    transparent: true,
+    side: THREE.DoubleSide,
+    forceSinglePass: true,
   });
   const material = new THREE.MeshStandardMaterial({
-    color: 0x9ee8ff, emissive: 0x3a9fd0, emissiveIntensity: 0.7, roughness: 0.35, metalness: 0,
-    transparent: true, opacity: ghostOpacity, depthWrite: false,
-    side: THREE.DoubleSide, forceSinglePass: true,
+    color: 0x9ee8ff,
+    emissive: 0x3a9fd0,
+    emissiveIntensity: 0.7,
+    roughness: 0.35,
+    metalness: 0,
+    transparent: true,
+    opacity: ghostOpacity,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+    forceSinglePass: true,
     vertexColors: true,
   });
   material.onBeforeCompile = (shader) => {
@@ -129,8 +143,10 @@ export function createGhostCar(scene: THREE.Scene, car: Car) {
   const toChassis = car.chassis.matrixWorld.clone().invert();
   const body: { mesh: THREE.Mesh; matrix: THREE.Matrix4 }[] = [];
   car.chassis.traverse((object) => {
-    if (object instanceof THREE.Mesh
-      && (bodyParts.test(object.name) || trimParts.test(object.name) || frontParts.test(object.name)))
+    if (
+      object instanceof THREE.Mesh &&
+      (bodyParts.test(object.name) || trimParts.test(object.name) || frontParts.test(object.name))
+    )
       body.push({ mesh: object, matrix: toChassis.clone().multiply(object.matrixWorld) });
   });
   if (!body.length) throw new Error('Missing car body geometry for the ghost car');
@@ -139,7 +155,9 @@ export function createGhostCar(scene: THREE.Scene, car: Car) {
   const wheels = car.wheels.map((wheel) => {
     wheel.updateMatrixWorld(true);
     const parts = wheel.children
-      .filter((child): child is THREE.Mesh => child instanceof THREE.Mesh && wheelParts.test(child.name))
+      .filter(
+        (child): child is THREE.Mesh => child instanceof THREE.Mesh && wheelParts.test(child.name),
+      )
       .map((mesh) => ({ mesh, matrix: mesh.matrix.clone() }));
     const group = new THREE.Group();
     if (parts.length) group.add(...meshesFor(mergeParts(parts)));
@@ -188,7 +206,9 @@ export function createGhostCar(scene: THREE.Scene, car: Car) {
   return {
     chassis,
     wheels,
-    get visible() { return root.visible; },
+    get visible() {
+      return root.visible;
+    },
     set visible(visible: boolean) {
       root.visible = visible;
       updateLights();
@@ -200,7 +220,11 @@ export function createGhostCar(scene: THREE.Scene, car: Car) {
       material.opacity = ghostOpacity * THREE.MathUtils.lerp(cabinView ? 0 : 0.7, 1, fade);
       updateLights();
     },
-    renderGlow(renderer: THREE.WebGLRenderer, camera: THREE.PerspectiveCamera, depth: THREE.DepthTexture | null) {
+    renderGlow(
+      renderer: THREE.WebGLRenderer,
+      camera: THREE.PerspectiveCamera,
+      depth: THREE.DepthTexture | null,
+    ) {
       if (!root.visible || material.opacity === 0) return;
       if (!depth) throw new Error('Ghost glow requires a scene depth texture');
       renderer.getDrawingBufferSize(size);
@@ -215,8 +239,10 @@ export function createGhostCar(scene: THREE.Scene, car: Car) {
         maskGroups[i].matrixAutoUpdate = false;
         maskGroups[i].matrix.copy(group.matrixWorld);
       });
-      viewPosition.setFromMatrixPosition(chassis.matrixWorld).applyMatrix4(camera.matrixWorldInverse);
-      const radius = 0.09 * camera.projectionMatrix.elements[5] / Math.max(1, -viewPosition.z);
+      viewPosition
+        .setFromMatrixPosition(chassis.matrixWorld)
+        .applyMatrix4(camera.matrixWorldInverse);
+      const radius = (0.09 * camera.projectionMatrix.elements[5]) / Math.max(1, -viewPosition.z);
       const target = renderer.getRenderTarget();
       const autoClear = renderer.autoClear;
       try {
@@ -235,7 +261,7 @@ export function createGhostCar(scene: THREE.Scene, car: Car) {
         blurMaterial.uniforms.source.value = blurTarget.texture;
         blurMaterial.uniforms.direction.value.set(0, radius);
         blurMaterial.uniforms.color.value.set(0x9ee8ff);
-        blurMaterial.uniforms.opacity.value = glowOpacity * material.opacity / ghostOpacity;
+        blurMaterial.uniforms.opacity.value = (glowOpacity * material.opacity) / ghostOpacity;
         renderer.setRenderTarget(target);
         renderer.autoClear = false;
         quad.render(renderer);

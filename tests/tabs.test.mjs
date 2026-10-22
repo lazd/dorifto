@@ -13,7 +13,9 @@ before(async () => {
   ({ Tabs } = await server.ssrLoadModule('/src/tabs.ts'));
 });
 
-after(async () => { await server?.close(); });
+after(async () => {
+  await server?.close();
+});
 
 function fixture() {
   let focused = null;
@@ -25,9 +27,15 @@ function fixture() {
       super();
       this.id = id;
     }
-    setAttribute(name, value) { this.attributes.set(name, value); }
-    getAttribute(name) { return this.attributes.get(name) ?? null; }
-    focus() { focused = this; }
+    setAttribute(name, value) {
+      this.attributes.set(name, value);
+    }
+    getAttribute(name) {
+      return this.attributes.get(name) ?? null;
+    }
+    focus() {
+      focused = this;
+    }
   }
   const tabs = Array.from({ length: 3 }, (_, i) => {
     const tab = new Element(`tab-${i}`);
@@ -79,8 +87,11 @@ test('arrow keys wrap and Home/End select and focus their destination', () => {
   const dom = fixture();
   new Tabs(dom.root);
   for (const [from, key, to] of [
-    [0, 'ArrowLeft', 2], [2, 'ArrowRight', 0],
-    [0, 'ArrowRight', 1], [1, 'End', 2], [2, 'Home', 0],
+    [0, 'ArrowLeft', 2],
+    [2, 'ArrowRight', 0],
+    [0, 'ArrowRight', 1],
+    [1, 'End', 2],
+    [2, 'Home', 0],
   ]) {
     const event = new Event('keydown', { cancelable: true });
     Object.defineProperty(event, 'key', { value: key });

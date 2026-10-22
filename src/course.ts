@@ -1,6 +1,12 @@
 import * as THREE from 'three';
 import type { CourseDefinition } from './courses';
-import { courseCornerAt, courseKerbSegments, courseRoute, courseShoulderWidth, startDistance } from './courses';
+import {
+  courseCornerAt,
+  courseKerbSegments,
+  courseRoute,
+  courseShoulderWidth,
+  startDistance,
+} from './courses';
 import { surfaceMaterial } from './surfaces';
 import { CourseTerrain } from './terrain';
 import { courseTurnSignPlacements, createTurnSignFactory, type TurnSignMode } from './turn-sign';
@@ -52,7 +58,8 @@ function buildCourse(scene: THREE.Group, definition: CourseDefinition) {
   const route = courseRoute({ ...definition, reverse: false });
   const terrain = new CourseTerrain(definition);
   scene.add(terrain.mesh);
-  const { height, bottomRadius, topRadius, baseWidth, baseHeight, centerOfMassHeight } = coneDimensions;
+  const { height, bottomRadius, topRadius, baseWidth, baseHeight, centerOfMassHeight } =
+    coneDimensions;
   const originOffset = height / 2 - centerOfMassHeight;
   const bodyHeight = height - baseHeight;
   const coneGeometry = new THREE.CylinderGeometry(topRadius, bottomRadius, bodyHeight, 24);
@@ -61,18 +68,25 @@ function buildCourse(scene: THREE.Group, definition: CourseDefinition) {
   const baseMaterial = new THREE.MeshStandardMaterial({ color: 0x242424, roughness: 0.95 });
   const orange = new THREE.MeshStandardMaterial({ color: 0xf07424, roughness: 0.65 });
   const stripeMaterial = new THREE.MeshPhysicalMaterial({
-    color: 0xffffff, roughness: 0.22, metalness: 0,
-    clearcoat: 1, clearcoatRoughness: 0.12,
+    color: 0xffffff,
+    roughness: 0.22,
+    metalness: 0,
+    clearcoat: 1,
+    clearcoatRoughness: 0.12,
   });
   // Match the cone's taper exactly; a slight radius offset avoids z-fighting.
-  const radiusAt = (y: number) => THREE.MathUtils.lerp(
-    bottomRadius, topRadius, (y + height / 2 - baseHeight) / bodyHeight,
-  ) + 0.001;
+  const radiusAt = (y: number) =>
+    THREE.MathUtils.lerp(bottomRadius, topRadius, (y + height / 2 - baseHeight) / bodyHeight) +
+    0.001;
   const stripeHeight = height * 0.2;
   const stripeCenter = height / 14;
   const stripeGeometry = new THREE.CylinderGeometry(
-    radiusAt(stripeCenter + stripeHeight / 2), radiusAt(stripeCenter - stripeHeight / 2),
-    stripeHeight, 24, 1, true,
+    radiusAt(stripeCenter + stripeHeight / 2),
+    radiusAt(stripeCenter - stripeHeight / 2),
+    stripeHeight,
+    24,
+    1,
+    true,
   );
   const cones: THREE.Mesh[] = [];
   const cornerCones: THREE.Mesh[] = [];
@@ -81,7 +95,7 @@ function buildCourse(scene: THREE.Group, definition: CourseDefinition) {
   const across = new THREE.Vector3();
   for (let i = 0; i < gates; i++) {
     const t = i / gates;
-    const distance = i * length / gates;
+    const distance = (i * length) / gates;
     const center = route.getPointAt(t);
     const tangent = route.getTangentAt(t);
     const corner = courseCornerAt(route, distance);
@@ -99,7 +113,10 @@ function buildCourse(scene: THREE.Group, definition: CourseDefinition) {
       const support = new THREE.Vector3();
       for (const x of [-baseWidth / 2, 0, baseWidth / 2]) {
         for (const z of [-baseWidth / 2, 0, baseWidth / 2]) {
-          support.set(x, -centerOfMassHeight, z).applyQuaternion(cone.quaternion).add(cone.position);
+          support
+            .set(x, -centerOfMassHeight, z)
+            .applyQuaternion(cone.quaternion)
+            .add(cone.position);
           clearance = Math.max(clearance, terrain.heightAt(support.x, support.z) - support.y);
         }
       }
@@ -124,8 +141,14 @@ function buildCourse(scene: THREE.Group, definition: CourseDefinition) {
   const white = new THREE.MeshBasicMaterial({ color: 0xe1e6df, side: THREE.DoubleSide });
   const dark = new THREE.MeshBasicMaterial({ color: 0x20282b, side: THREE.DoubleSide });
   const segments = Math.ceil(length / 0.5);
-  function ribbon(offset: number, width: number, height: number, material: THREE.Material,
-    from = 0, to = 1) {
+  function ribbon(
+    offset: number,
+    width: number,
+    height: number,
+    material: THREE.Material,
+    from = 0,
+    to = 1,
+  ) {
     const positions: number[] = [];
     const uvs: number[] = [];
     const steps = Math.max(1, Math.ceil((to - from) * segments));
@@ -168,14 +191,16 @@ function buildCourse(scene: THREE.Group, definition: CourseDefinition) {
     for (let i = 0; i < positions.count; i++) {
       uv.setXY(i, positions.getX(i) / 5, positions.getZ(i) / 5);
     }
-    const projected = definition.flat ? geometry.translate(0, 0.008, 0) : terrain.projectGeometry(geometry, 0.008);
+    const projected = definition.flat
+      ? geometry.translate(0, 0.008, 0)
+      : terrain.projectGeometry(geometry, 0.008);
     if (projected !== geometry) geometry.dispose();
     const pad = new THREE.Mesh(projected, asphalt);
     pad.name = 'skidpad-asphalt';
     pad.receiveShadow = true;
     scene.add(pad);
   } else ribbon(0, definition.width + courseShoulderWidth * 2, 0.008, asphalt);
-  for (const side of [-1, 1]) ribbon(side * definition.width / 2, 0.16, 0.016, white);
+  for (const side of [-1, 1]) ribbon((side * definition.width) / 2, 0.16, 0.016, white);
   const columns = Math.ceil(definition.width / 0.5);
   const tileWidth = definition.width / columns;
   const start = route.getPointAt(startDistance / length);
@@ -184,12 +209,15 @@ function buildCourse(scene: THREE.Group, definition: CourseDefinition) {
   for (let row = 0; row < 2; row++) {
     for (let column = 0; column < columns; column++) {
       const tile = new THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>(
-        new THREE.PlaneGeometry(tileWidth, 0.5), (row + column) % 2 ? dark : white,
+        new THREE.PlaneGeometry(tileWidth, 0.5),
+        (row + column) % 2 ? dark : white,
       );
       tile.rotation.set(-Math.PI / 2, 0, Math.atan2(startTangent.x, startTangent.z));
-      tile.position.copy(start)
+      tile.position
+        .copy(start)
         .addScaledVector(across, -definition.width / 2 + (column + 0.5) * tileWidth)
-        .addScaledVector(startTangent, row * 0.5).setY(0.02);
+        .addScaledVector(startTangent, row * 0.5)
+        .setY(0.02);
       tile.updateMatrix();
       const geometry = tile.geometry.clone().applyMatrix4(tile.matrix);
       tile.geometry.dispose();
@@ -201,7 +229,8 @@ function buildCourse(scene: THREE.Group, definition: CourseDefinition) {
     }
   }
   const signVariants = [false, true].flatMap((reverse) =>
-    (['few', 'several', 'many'] as const).map((mode) => ({ reverse, mode })));
+    (['few', 'several', 'many'] as const).map((mode) => ({ reverse, mode })),
+  );
   const turnSignGroups = signVariants.map(({ reverse, mode }) => {
     const group = new THREE.Group();
     group.name = `${reverse ? 'reverse' : 'forward'}-${mode}-turn-signs`;
@@ -242,15 +271,31 @@ function buildCourse(scene: THREE.Group, definition: CourseDefinition) {
     setDirection(directionReverse);
   }
   setDirection(definition.reverse ?? false);
-  const curbRed = new THREE.MeshStandardMaterial({ color: 0xbc2823, roughness: 0.85, side: THREE.DoubleSide });
-  const curbWhite = new THREE.MeshStandardMaterial({ color: 0xe6e3d7, roughness: 0.85, side: THREE.DoubleSide });
+  const curbRed = new THREE.MeshStandardMaterial({
+    color: 0xbc2823,
+    roughness: 0.85,
+    side: THREE.DoubleSide,
+  });
+  const curbWhite = new THREE.MeshStandardMaterial({
+    color: 0xe6e3d7,
+    roughness: 0.85,
+    side: THREE.DoubleSide,
+  });
   const curbPositions: number[][] = [[], []];
   const kerbs = definition.padRadius === undefined ? courseKerbSegments(route) : [];
   for (const { distance, endDistance, direction } of kerbs) {
-    const curb = ribbon(direction * (definition.width / 2 + 0.4), 0.8, 0.024,
-      curbRed, distance / length, endDistance / length);
+    const curb = ribbon(
+      direction * (definition.width / 2 + 0.4),
+      0.8,
+      0.024,
+      curbRed,
+      distance / length,
+      endDistance / length,
+    );
     const positions = curb.geometry.getAttribute('position');
-    curbPositions[Math.round(distance / (length / Math.ceil(length / 2))) % 2].push(...Array.from(positions.array));
+    curbPositions[Math.round(distance / (length / Math.ceil(length / 2))) % 2].push(
+      ...Array.from(positions.array),
+    );
     scene.remove(curb);
     curb.geometry.dispose();
   }

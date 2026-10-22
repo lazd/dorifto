@@ -29,14 +29,26 @@ test('proximity fading is subtle in chase view, full in cabin view, and updates 
   const player = new THREE.Vector3();
   ghost.visible = true;
 
-  for (const [distance, opacity] of [[0, 0.266], [2.5, 0.266], [4.75, 0.323], [7, 0.38], [20, 0.38]]) {
+  for (const [distance, opacity] of [
+    [0, 0.266],
+    [2.5, 0.266],
+    [4.75, 0.323],
+    [7, 0.38],
+    [20, 0.38],
+  ]) {
     ghost.chassis.position.set(distance, 0, 0);
     ghost.fadeNear(player, false);
     assert.ok(Math.abs(material.opacity - opacity) < 1e-10);
     assert.equal(ghost.visible, true);
   }
 
-  for (const [distance, opacity] of [[0, 0], [2.5, 0], [4.75, 0.19], [7, 0.38], [20, 0.38]]) {
+  for (const [distance, opacity] of [
+    [0, 0],
+    [2.5, 0],
+    [4.75, 0.19],
+    [7, 0.38],
+    [20, 0.38],
+  ]) {
     ghost.chassis.position.set(distance, 0, 0);
     ghost.fadeNear(player, true);
     assert.equal(material.opacity, opacity);

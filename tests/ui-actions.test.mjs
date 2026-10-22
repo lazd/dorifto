@@ -18,7 +18,9 @@ before(async () => {
   ({ createConfigurationState } = await server.ssrLoadModule('/src/configuration-state.ts'));
 });
 
-after(async () => { await server?.close(); });
+after(async () => {
+  await server?.close();
+});
 
 function fixture(t, initiallyOpen = false) {
   const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'document');
@@ -26,14 +28,19 @@ function fixture(t, initiallyOpen = false) {
   const menu = { hidden: true };
   const tuning = new EventTarget();
   const sound = new EventTarget();
-  const dialogs = ['settings', 'tuning', 'help', 'course-picker', 'custom-course']
-    .map((id) => ({ id, open: initiallyOpen && id === 'help' }));
+  const dialogs = ['settings', 'tuning', 'help', 'course-picker', 'custom-course'].map((id) => ({
+    id,
+    open: initiallyOpen && id === 'help',
+  }));
   const elements = new Map([
-    ['#course-menu', menu], ['#drift-tuning', tuning], ['#sound', sound],
+    ['#course-menu', menu],
+    ['#drift-tuning', tuning],
+    ['#sound', sound],
   ]);
-  document.querySelector = (selector) => selector === 'dialog[open]'
-    ? dialogs.find((dialog) => dialog.open) ?? null
-    : elements.get(selector) ?? null;
+  document.querySelector = (selector) =>
+    selector === 'dialog[open]'
+      ? (dialogs.find((dialog) => dialog.open) ?? null)
+      : (elements.get(selector) ?? null);
   Object.defineProperty(globalThis, 'document', { configurable: true, value: document });
   t.after(() => {
     if (descriptor) Object.defineProperty(globalThis, 'document', descriptor);
@@ -43,11 +50,18 @@ function fixture(t, initiallyOpen = false) {
   let cleared = 0;
   bindGameActions({
     sound() {},
-    clearInput() { cleared++; },
-    setUIOpen(open) { states.push(open); },
+    clearInput() {
+      cleared++;
+    },
+    setUIOpen(open) {
+      states.push(open);
+    },
   });
   return {
-    menu, dialogs, tuning, states,
+    menu,
+    dialogs,
+    tuning,
+    states,
     cleared: () => cleared,
     notify: () => document.dispatchEvent(new Event('driving-ui-change')),
   };
@@ -58,7 +72,9 @@ test('every dialog blocks driving through UI events without game-store updates',
   const store = createGameState();
   assert.equal(createConfigurationState().getState().stereoStation, 'off');
   let gameUpdates = 0;
-  store.subscribe(() => { gameUpdates++; });
+  store.subscribe(() => {
+    gameUpdates++;
+  });
   assert.deepEqual(ui.states, [false]);
   for (const dialog of ui.dialogs) {
     dialog.open = true;
@@ -107,11 +123,13 @@ function statusFixture(t) {
     target.hidden = false;
     target.classList = {
       contains: (name) => classes.has(name),
-      toggle: (name, enabled) => enabled ? classes.add(name) : classes.delete(name),
+      toggle: (name, enabled) => (enabled ? classes.add(name) : classes.delete(name)),
     };
     target.getAttribute = (name) => attributes.get(name) ?? null;
     target.setAttribute = (name, value) => attributes.set(name, value);
-    target.blur = () => { document.activeElement = null; };
+    target.blur = () => {
+      document.activeElement = null;
+    };
     target.style = { setProperty: () => {} };
     return target;
   };
@@ -121,8 +139,11 @@ function statusFixture(t) {
   const progress = node();
   const footer = node();
   const elements = new Map([
-    ['#status', status], ['#status-message', message],
-    ['#status-close', close], ['#status-progress', progress], ['footer', footer],
+    ['#status', status],
+    ['#status-message', message],
+    ['#status-close', close],
+    ['#status-progress', progress],
+    ['footer', footer],
   ]);
   document.querySelector = (selector) => elements.get(selector) ?? null;
   Object.defineProperty(globalThis, 'document', { configurable: true, value: document });
@@ -133,10 +154,11 @@ function statusFixture(t) {
   const store = createGameState();
   let renders = 0;
   const subscribe = store.subscribe;
-  store.subscribe = (listener, keys) => subscribe((state) => {
-    renders++;
-    listener(state);
-  }, keys);
+  store.subscribe = (listener, keys) =>
+    subscribe((state) => {
+      renders++;
+      listener(state);
+    }, keys);
   const dismiss = bindStatusUI(store);
   const key = (key) => {
     const event = new Event('keydown', { cancelable: true });
@@ -190,7 +212,9 @@ test('Escape consumes only dismissal of a visible nonfatal error', (t) => {
   assert.equal(ui.key('Enter').defaultPrevented, false);
   assert.equal(ui.store.getState().status, error);
   let propagated = 0;
-  ui.document.addEventListener('keydown', () => { propagated++; });
+  ui.document.addEventListener('keydown', () => {
+    propagated++;
+  });
   assert.equal(ui.key('Escape').defaultPrevented, true);
   assert.equal(propagated, 0, 'dismissal does not close other UI');
   assert.equal(ui.status.hidden, true);

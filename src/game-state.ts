@@ -1,5 +1,5 @@
-import { idleRpm } from "./drivetrain";
-import { createStore } from "./store";
+import { idleRpm } from './drivetrain';
+import { createStore } from './store';
 
 export interface SavedRunOption {
   id: string;
@@ -9,7 +9,7 @@ export interface SavedRunOption {
 export interface GameState {
   /** off: nothing to show; ready: saved laps can be replayed; recording: run in progress; replay: watching. */
   lapRecorder: Readonly<{
-    mode: "off" | "ready" | "recording" | "replay";
+    mode: 'off' | 'ready' | 'recording' | 'replay';
     runs: readonly SavedRunOption[];
     selectedRun: string | null;
     replayLap: Readonly<{
@@ -42,24 +42,24 @@ export interface GameState {
     cones: number;
     lastCones: number | null;
     driving:
-      | "brakes-held"
-      | "handbrake"
-      | "brakestand"
-      | "reverse"
-      | "braking"
-      | "burnout"
-      | "sliding"
-      | "driving";
+      | 'brakes-held'
+      | 'handbrake'
+      | 'brakestand'
+      | 'reverse'
+      | 'braking'
+      | 'burnout'
+      | 'sliding'
+      | 'driving';
   }>;
 }
 
 export function createGameState() {
   return createStore<GameState>({
-    lapRecorder: { mode: "off", runs: [], selectedRun: null, replayLap: null },
+    lapRecorder: { mode: 'off', runs: [], selectedRun: null, replayLap: null },
     focused: true,
-    controllerStatus: "",
+    controllerStatus: '',
     sound: { running: false, failed: false, error: null },
-    status: { message: "Starting…", error: false, visible: true, progress: 0 },
+    status: { message: 'Starting…', error: false, visible: true, progress: 0 },
     telemetry: {
       speed: 0,
       rpm: idleRpm,
@@ -67,11 +67,11 @@ export function createGameState() {
       limiter: false,
       lap: 0,
       current: 0,
-      last: null, 
+      last: null,
       best: null,
       cones: 0,
       lastCones: null,
-      driving: "brakes-held",
+      driving: 'brakes-held',
     },
   });
 }

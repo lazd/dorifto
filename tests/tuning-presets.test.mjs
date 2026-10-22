@@ -15,9 +15,11 @@ before(async () => {
     server: { middlewareMode: true, hmr: false, ws: false, watch: null },
     appType: 'custom',
   });
-  ({ createConfigurationState, defaultTuning, defaultTuningPresets } =
-    await server.ssrLoadModule('/src/configuration-state.ts'));
-  ({ tuningPresetsStorageKey, nextTuningPresetId, persistTuningPresets } = await server.ssrLoadModule('/src/tuning-presets.ts'));
+  ({ createConfigurationState, defaultTuning, defaultTuningPresets } = await server.ssrLoadModule(
+    '/src/configuration-state.ts',
+  ));
+  ({ tuningPresetsStorageKey, nextTuningPresetId, persistTuningPresets } =
+    await server.ssrLoadModule('/src/tuning-presets.ts'));
 });
 
 after(async () => {
@@ -27,8 +29,12 @@ after(async () => {
 function createStorage() {
   const values = new Map();
   return {
-    getItem(key) { return values.get(key) ?? null; },
-    setItem(key, value) { values.set(key, String(value)); },
+    getItem(key) {
+      return values.get(key) ?? null;
+    },
+    setItem(key, value) {
+      values.set(key, String(value));
+    },
   };
 }
 
@@ -40,31 +46,55 @@ test('starts with protected defaults and the captured Drift Aggressive and Grip 
   );
   assert.deepEqual(presets.find(({ id }) => id === 'grip-default').tuning, defaultTuning('grip'));
   assert.deepEqual(presets.find(({ id }) => id === 'grip-fast').tuning, {
-    horsepower: 500, steeringExpo: 0.6, steeringRate: 2, steeringScale: 1,
-    frontGrip: 1.1, rearGrip: 1.15, frontStiffness: 51000, rearStiffness: 51000,
+    horsepower: 500,
+    steeringExpo: 0.6,
+    steeringRate: 2,
+    steeringScale: 1,
+    frontGrip: 1.1,
+    rearGrip: 1.15,
+    frontStiffness: 51000,
+    rearStiffness: 51000,
   });
   assert.equal(presets.find(({ id }) => id === 'grip-fast').readonly, true);
   assert.deepEqual(presets.find(({ id }) => id === 'drift-default').tuning, defaultTuning('drift'));
-  assert.ok(presets.filter(({ readonly }) => readonly).every(({ id }) =>
-    ['drift-default', 'drift-aggressive', 'grip-default', 'grip-fast'].includes(id)));
+  assert.ok(
+    presets
+      .filter(({ readonly }) => readonly)
+      .every(({ id }) =>
+        ['drift-default', 'drift-aggressive', 'grip-default', 'grip-fast'].includes(id),
+      ),
+  );
   assert.equal(presets.find(({ id }) => id === 'drift-aggressive').readonly, true);
   assert.deepEqual(presets.find(({ id }) => id === 'drift-aggressive').tuning, {
-    horsepower: 515, steeringExpo: 0.6, steeringRate: 2.8, steeringScale: 1.03,
-    frontGrip: 1.05, rearGrip: 1, frontStiffness: 45000, rearStiffness: 43000,
+    horsepower: 515,
+    steeringExpo: 0.6,
+    steeringRate: 2.8,
+    steeringScale: 1.03,
+    frontGrip: 1.05,
+    rearGrip: 1,
+    frontStiffness: 45000,
+    rearStiffness: 43000,
   });
 });
 
 test('loads built-ins from code without writing them to storage', () => {
   const storage = createStorage();
-  storage.setItem = () => { throw new Error('Unexpected storage write'); };
-  assert.deepEqual(createConfigurationState(storage).getState().tuningPresets, defaultTuningPresets());
+  storage.setItem = () => {
+    throw new Error('Unexpected storage write');
+  };
+  assert.deepEqual(
+    createConfigurationState(storage).getState().tuningPresets,
+    defaultTuningPresets(),
+  );
   assert.equal(storage.getItem(tuningPresetsStorageKey), null);
 });
 
 test('stores only user presets and combines them with built-ins on load', () => {
   const storage = createStorage();
   const custom = {
-    id: 'grip-personal', name: 'Personal', mode: 'grip',
+    id: 'grip-personal',
+    name: 'Personal',
+    mode: 'grip',
     tuning: { ...defaultTuning('grip'), horsepower: 420 },
   };
   persistTuningPresets(storage, [...defaultTuningPresets(), custom]);
@@ -79,12 +109,17 @@ test('empty saved presets cannot remove built-ins', () => {
   const storage = createStorage();
   persistTuningPresets(storage, defaultTuningPresets());
   assert.deepEqual(JSON.parse(storage.getItem(tuningPresetsStorageKey)), []);
-  assert.deepEqual(createConfigurationState(storage).getState().tuningPresets, defaultTuningPresets());
+  assert.deepEqual(
+    createConfigurationState(storage).getState().tuningPresets,
+    defaultTuningPresets(),
+  );
 });
 
 test('surfaces failures when saving user presets', () => {
   const storage = createStorage();
-  storage.setItem = () => { throw new Error('Storage blocked'); };
+  storage.setItem = () => {
+    throw new Error('Storage blocked');
+  };
   assert.throws(() => persistTuningPresets(storage, []), /Storage blocked/);
 });
 
@@ -92,8 +127,14 @@ test('rejects corrupt stored preset data explicitly', () => {
   const storage = createStorage();
   storage.setItem(tuningPresetsStorageKey, '{');
   assert.throws(() => createConfigurationState(storage), /Saved tuning presets are not valid JSON/);
-  storage.setItem(tuningPresetsStorageKey, JSON.stringify([{ id: 'bad', name: 'Bad', mode: 'drift', tuning: {} }]));
-  assert.throws(() => createConfigurationState(storage), /Saved tuning presets have an invalid format/);
+  storage.setItem(
+    tuningPresetsStorageKey,
+    JSON.stringify([{ id: 'bad', name: 'Bad', mode: 'drift', tuning: {} }]),
+  );
+  assert.throws(
+    () => createConfigurationState(storage),
+    /Saved tuning presets have an invalid format/,
+  );
 });
 
 test('generates short preset IDs without collisions', () => {

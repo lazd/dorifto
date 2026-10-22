@@ -18,7 +18,9 @@ before(async () => {
   ({ createCloudLayer } = await server.ssrLoadModule('/src/clouds.ts'));
 });
 
-after(async () => { await server?.close(); });
+after(async () => {
+  await server?.close();
+});
 
 test('clouds are deterministic, seamless, varied, and confined above the horizon', () => {
   const pixels = createCloudLayer(width, height)(sunset);
@@ -28,7 +30,7 @@ test('clouds are deterministic, seamless, varied, and confined above the horizon
   let clearPixels = 0;
   let softPixels = 0;
   for (let y = 0; y < height; y++) {
-    const left = (y * width) * 4;
+    const left = y * width * 4;
     const right = (y * width + width - 1) * 4;
     assert.deepEqual(pixels.slice(left, left + 4), pixels.slice(right, right + 4));
     for (let x = 0; x < width; x++) {
@@ -41,7 +43,7 @@ test('clouds are deterministic, seamless, varied, and confined above the horizon
       }
     }
   }
-  const skyPixels = width * height / 2;
+  const skyPixels = (width * height) / 2;
   assert.ok(cloudPixels > skyPixels * 0.05 && cloudPixels < skyPixels * 0.65);
   assert.ok(clearPixels > skyPixels * 0.1);
   assert.ok(softPixels > skyPixels * 0.1);

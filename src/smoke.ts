@@ -129,25 +129,48 @@ export class TireSmoke {
   });
   readonly mesh: THREE.Mesh<THREE.InstancedBufferGeometry, THREE.ShaderMaterial>;
 
-  constructor(scene: THREE.Scene, private readonly chassis: THREE.Object3D) {
+  constructor(
+    scene: THREE.Scene,
+    private readonly chassis: THREE.Object3D,
+  ) {
     scene.traverse((object) => {
       if (object instanceof THREE.SpotLight || object instanceof THREE.RectAreaLight) {
         this.localLights.push({
-          light: object, position: new THREE.Vector3(), direction: new THREE.Vector3(),
+          light: object,
+          position: new THREE.Vector3(),
+          direction: new THREE.Vector3(),
           inverse: new THREE.Matrix4(),
         });
-      } else if (object instanceof THREE.HemisphereLight || object instanceof THREE.DirectionalLight) {
+      } else if (
+        object instanceof THREE.HemisphereLight ||
+        object instanceof THREE.DirectionalLight
+      ) {
         this.daylight.push(object);
       }
     });
     const quad = new THREE.PlaneGeometry(2, 2);
     this.geometry.index = quad.index;
     this.geometry.attributes = quad.attributes;
-    this.geometry.setAttribute('center', new THREE.InstancedBufferAttribute(this.centers, 3).setUsage(THREE.DynamicDrawUsage));
-    this.geometry.setAttribute('age', new THREE.InstancedBufferAttribute(this.ages, 1).setUsage(THREE.DynamicDrawUsage));
-    this.geometry.setAttribute('seed', new THREE.InstancedBufferAttribute(this.seeds, 1).setUsage(THREE.DynamicDrawUsage));
-    this.geometry.setAttribute('dust', new THREE.InstancedBufferAttribute(this.dust, 1).setUsage(THREE.DynamicDrawUsage));
-    this.geometry.setAttribute('lighting', new THREE.InstancedBufferAttribute(this.lighting, 3).setUsage(THREE.DynamicDrawUsage));
+    this.geometry.setAttribute(
+      'center',
+      new THREE.InstancedBufferAttribute(this.centers, 3).setUsage(THREE.DynamicDrawUsage),
+    );
+    this.geometry.setAttribute(
+      'age',
+      new THREE.InstancedBufferAttribute(this.ages, 1).setUsage(THREE.DynamicDrawUsage),
+    );
+    this.geometry.setAttribute(
+      'seed',
+      new THREE.InstancedBufferAttribute(this.seeds, 1).setUsage(THREE.DynamicDrawUsage),
+    );
+    this.geometry.setAttribute(
+      'dust',
+      new THREE.InstancedBufferAttribute(this.dust, 1).setUsage(THREE.DynamicDrawUsage),
+    );
+    this.geometry.setAttribute(
+      'lighting',
+      new THREE.InstancedBufferAttribute(this.lighting, 3).setUsage(THREE.DynamicDrawUsage),
+    );
     this.geometry.instanceCount = 0;
     this.mesh = new THREE.Mesh(this.geometry, this.material);
     this.mesh.frustumCulled = false;
@@ -163,15 +186,23 @@ export class TireSmoke {
   }
 
   update(
-    dt: number, wheels: THREE.Group[], contacts: boolean[], emitting: boolean,
-    velocity: THREE.Vector3, camera: THREE.Camera, asphalt: readonly boolean[],
+    dt: number,
+    wheels: THREE.Group[],
+    contacts: boolean[],
+    emitting: boolean,
+    velocity: THREE.Vector3,
+    camera: THREE.Camera,
+    asphalt: readonly boolean[],
     groundHeight: (x: number, z: number) => number,
   ) {
     for (const particle of this.particles) {
       if (particle.age >= lifetime) continue;
       particle.age += dt;
       particle.position.addScaledVector(particle.velocity, dt);
-      particle.position.y = Math.max(particle.position.y, groundHeight(particle.position.x, particle.position.z) + 0.12);
+      particle.position.y = Math.max(
+        particle.position.y,
+        groundHeight(particle.position.x, particle.position.z) + 0.12,
+      );
       particle.velocity.multiplyScalar(Math.exp(-dt * 1.4));
       particle.velocity.y += dt * (particle.dust ? 0.2 : 0.45);
     }
@@ -198,9 +229,12 @@ export class TireSmoke {
     }
     camera.updateMatrixWorld();
     for (const particle of this.particles) {
-      particle.depth = -this.viewPosition.copy(particle.position).applyMatrix4(camera.matrixWorldInverse).z;
+      particle.depth = -this.viewPosition
+        .copy(particle.position)
+        .applyMatrix4(camera.matrixWorldInverse).z;
     }
-    const active = this.particles.filter((particle) => particle.age < lifetime)
+    const active = this.particles
+      .filter((particle) => particle.age < lifetime)
       .sort((a, b) => b.depth - a.depth);
     active.forEach((particle, i) => {
       particle.position.toArray(this.centers, i * 3);
@@ -209,7 +243,8 @@ export class TireSmoke {
       this.dust[i] = Number(particle.dust);
     });
     this.geometry.instanceCount = active.length;
-    for (const name of ['center', 'age', 'seed', 'dust']) this.geometry.getAttribute(name).needsUpdate = true;
+    for (const name of ['center', 'age', 'seed', 'dust'])
+      this.geometry.getAttribute(name).needsUpdate = true;
   }
 
   updateLighting(scene: THREE.Scene) {
@@ -218,8 +253,11 @@ export class TireSmoke {
     this.ambient.setRGB(0, 0, 0);
     for (const light of this.daylight) {
       if (!light.visible) continue;
-      const strength = light.intensity * (light instanceof THREE.HemisphereLight ? 0.35 : 0.3)
-        * scene.environmentIntensity / 0.65;
+      const strength =
+        (light.intensity *
+          (light instanceof THREE.HemisphereLight ? 0.35 : 0.3) *
+          scene.environmentIntensity) /
+        0.65;
       this.ambient.r += light.color.r * strength;
       this.ambient.g += light.color.g * strength;
       this.ambient.b += light.color.b * strength;
@@ -240,7 +278,8 @@ export class TireSmoke {
       this.illumination.copy(this.ambient);
       if (!this.dust[i]) {
         // Keep rubber smoke white under colored daylight without lifting dark puffs.
-        const luminance = this.ambient.r * 0.2126 + this.ambient.g * 0.7152 + this.ambient.b * 0.0722;
+        const luminance =
+          this.ambient.r * 0.2126 + this.ambient.g * 0.7152 + this.ambient.b * 0.0722;
         this.illumination.r = THREE.MathUtils.lerp(luminance, this.ambient.r, 0.2);
         this.illumination.g = THREE.MathUtils.lerp(luminance, this.ambient.g, 0.2);
         this.illumination.b = THREE.MathUtils.lerp(luminance, this.ambient.b, 0.2);
@@ -252,23 +291,37 @@ export class TireSmoke {
           this.lightOffset.copy(this.particlePosition).sub(position);
           const distance = this.lightOffset.length();
           if (light.distance > 0 && distance >= light.distance) continue;
-          const angle = this.lightOffset.multiplyScalar(1 / Math.max(distance, 0.001)).dot(direction);
-          const cone = THREE.MathUtils.smoothstep(angle, Math.cos(light.angle),
-            Math.cos(light.angle * (1 - light.penumbra)));
-          const cutoff = light.distance > 0 ? Math.pow(1 - Math.pow(distance / light.distance, 4), 2) : 1;
-          strength = 0.08 * light.intensity * cone * cutoff / Math.max(Math.pow(distance, light.decay), 0.01);
+          const angle = this.lightOffset
+            .multiplyScalar(1 / Math.max(distance, 0.001))
+            .dot(direction);
+          const cone = THREE.MathUtils.smoothstep(
+            angle,
+            Math.cos(light.angle),
+            Math.cos(light.angle * (1 - light.penumbra)),
+          );
+          const cutoff =
+            light.distance > 0 ? Math.pow(1 - Math.pow(distance / light.distance, 4), 2) : 1;
+          strength =
+            (0.08 * light.intensity * cone * cutoff) /
+            Math.max(Math.pow(distance, light.decay), 0.01);
         } else {
           // Approximate the strip as a one-sided area emitter, not a point at its center.
           this.nearestLightPoint.copy(this.particlePosition).applyMatrix4(inverse);
-          this.nearestLightPoint.set(
-            THREE.MathUtils.clamp(this.nearestLightPoint.x, -light.width / 2, light.width / 2),
-            THREE.MathUtils.clamp(this.nearestLightPoint.y, -light.height / 2, light.height / 2), 0,
-          ).applyMatrix4(light.matrixWorld);
+          this.nearestLightPoint
+            .set(
+              THREE.MathUtils.clamp(this.nearestLightPoint.x, -light.width / 2, light.width / 2),
+              THREE.MathUtils.clamp(this.nearestLightPoint.y, -light.height / 2, light.height / 2),
+              0,
+            )
+            .applyMatrix4(light.matrixWorld);
           this.lightOffset.copy(this.particlePosition).sub(this.nearestLightPoint);
           const distance = this.lightOffset.length();
-          const facing = this.lightOffset.multiplyScalar(1 / Math.max(distance, 0.001)).dot(direction);
+          const facing = this.lightOffset
+            .multiplyScalar(1 / Math.max(distance, 0.001))
+            .dot(direction);
           const area = light.width * light.height;
-          strength = 0.2 * light.intensity * area * Math.max(facing, 0) / (distance * distance + area);
+          strength =
+            (0.2 * light.intensity * area * Math.max(facing, 0)) / (distance * distance + area);
         }
         strength = Math.min(strength, 3);
         this.illumination.r += light.color.r * strength;
@@ -280,11 +333,19 @@ export class TireSmoke {
     this.geometry.getAttribute('lighting').needsUpdate = true;
   }
 
-  captureDepth(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.PerspectiveCamera, force = false) {
+  captureDepth(
+    renderer: THREE.WebGLRenderer,
+    scene: THREE.Scene,
+    camera: THREE.PerspectiveCamera,
+    force = false,
+  ) {
     if (!this.geometry.instanceCount && !force) return this.depthTarget.depthTexture;
     this.chassis.updateWorldMatrix(true, false);
     camera.updateWorldMatrix(true, false);
-    this.material.uniforms.viewToCar.value.copy(this.chassis.matrixWorld).invert().multiply(camera.matrixWorld);
+    this.material.uniforms.viewToCar.value
+      .copy(this.chassis.matrixWorld)
+      .invert()
+      .multiply(camera.matrixWorld);
     this.updateLighting(scene);
     renderer.getDrawingBufferSize(this.size);
     if (this.depthTarget.width !== this.size.x || this.depthTarget.height !== this.size.y) {
@@ -317,7 +378,9 @@ export class TireSmoke {
       renderer.shadowMap.enabled = shadows;
       scene.overrideMaterial = override;
       scene.background = background;
-      hidden.forEach((object) => { object.visible = true; });
+      hidden.forEach((object) => {
+        object.visible = true;
+      });
     }
     return this.depthTarget.depthTexture;
   }

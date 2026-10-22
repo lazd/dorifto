@@ -16,13 +16,17 @@ export function createMinimapLayout(definition: CourseDefinition) {
   const route = courseRoute({ ...definition, reverse: false });
   const points = route.getSpacedPoints(Math.max(256, Math.ceil(route.getLength() / 2)));
   const { project, path, roadWidth, pad, startLine } = createCourseMapGeometry(
-    points, size, padding, definition.width,
+    points,
+    size,
+    padding,
+    definition.width,
     { padRadius: definition.padRadius, minimumRoadWidth: 3 },
   );
   const start = route.getPointAt(startDistance / route.getLength());
   const tangent = route.getTangentAt(startDistance / route.getLength());
   return {
-    path, project,
+    path,
+    project,
     roadWidth,
     startLine: startLine(start, tangent),
     pad,
@@ -30,22 +34,30 @@ export function createMinimapLayout(definition: CourseDefinition) {
 }
 
 function headingAngle(forward: MapPoint) {
-  return Math.atan2(forward.x, -forward.z) * 180 / Math.PI;
+  return (Math.atan2(forward.x, -forward.z) * 180) / Math.PI;
 }
 
-export function minimapViewTransform(forward: MapPoint, orientation: ConfigurationState['minimapOrientation']) {
-  return orientation === 'north-up' ? '' :
-    `translate(${size / 2} ${size / 2}) rotate(${(-headingAngle(forward)).toFixed(2)}) scale(${headingUpScale}) translate(${-size / 2} ${-size / 2})`;
+export function minimapViewTransform(
+  forward: MapPoint,
+  orientation: ConfigurationState['minimapOrientation'],
+) {
+  return orientation === 'north-up'
+    ? ''
+    : `translate(${size / 2} ${size / 2}) rotate(${(-headingAngle(forward)).toFixed(2)}) scale(${headingUpScale}) translate(${-size / 2} ${-size / 2})`;
 }
 
 export function minimapMarkerTransform(
-  layout: ReturnType<typeof createMinimapLayout>, position: MapPoint, forward: MapPoint,
+  layout: ReturnType<typeof createMinimapLayout>,
+  position: MapPoint,
+  forward: MapPoint,
   orientation: ConfigurationState['minimapOrientation'] = 'north-up',
 ) {
   const { x, y } = layout.project(position);
   const angle = headingAngle(forward);
-  return `translate(${x.toFixed(2)} ${y.toFixed(2)}) rotate(${angle.toFixed(2)})`
-    + (orientation === 'heading-up' ? ` scale(${1 / headingUpScale})` : '');
+  return (
+    `translate(${x.toFixed(2)} ${y.toFixed(2)}) rotate(${angle.toFixed(2)})` +
+    (orientation === 'heading-up' ? ` scale(${1 / headingUpScale})` : '')
+  );
 }
 
 export function createMinimap(container: HTMLElement, definition: CourseDefinition) {
@@ -82,7 +94,10 @@ export function createMinimap(container: HTMLElement, definition: CourseDefiniti
   let layout: ReturnType<typeof createMinimapLayout>;
   function setCourse(next: CourseDefinition) {
     layout = createMinimapLayout(next);
-    svg.setAttribute('aria-label', `${next.name}: bird's-eye course map with live car and ghost positions and headings`);
+    svg.setAttribute(
+      'aria-label',
+      `${next.name}: bird's-eye course map with live car and ghost positions and headings`,
+    );
     ghostMarker.setAttribute('visibility', 'hidden');
     road.setAttribute('d', layout.path);
     road.setAttribute('stroke-width', String(layout.roadWidth));
@@ -99,14 +114,22 @@ export function createMinimap(container: HTMLElement, definition: CourseDefiniti
   return {
     setCourse,
     update(
-      position: MapPoint, forward: MapPoint, orientation: ConfigurationState['minimapOrientation'],
+      position: MapPoint,
+      forward: MapPoint,
+      orientation: ConfigurationState['minimapOrientation'],
       ghost?: { position: MapPoint; forward: MapPoint } | null,
     ) {
       map.setAttribute('transform', minimapViewTransform(forward, orientation));
-      marker.setAttribute('transform', minimapMarkerTransform(layout, position, forward, orientation));
+      marker.setAttribute(
+        'transform',
+        minimapMarkerTransform(layout, position, forward, orientation),
+      );
       ghostMarker.setAttribute('visibility', ghost ? 'visible' : 'hidden');
       if (ghost)
-        ghostMarker.setAttribute('transform', minimapMarkerTransform(layout, ghost.position, ghost.forward, orientation));
+        ghostMarker.setAttribute(
+          'transform',
+          minimapMarkerTransform(layout, ghost.position, ghost.forward, orientation),
+        );
     },
   };
 }

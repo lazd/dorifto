@@ -16,12 +16,19 @@ before(async () => {
   THREE = await server.ssrLoadModule('three');
   ({ stereoStations } = await server.ssrLoadModule('/src/stereo.ts'));
 });
-after(async () => { await server?.close(); });
+after(async () => {
+  await server?.close();
+});
 
 test('clock formats local 12-hour time with a blank leading hour cell and zero-padded minutes', () => {
   for (const [hour, minute, expected] of [
-    [0, 0, '12:00'], [1, 7, ' 1:07'], [9, 5, ' 9:05'], [12, 30, '12:30'],
-    [13, 7, ' 1:07'], [22, 0, '10:00'], [23, 59, '11:59'],
+    [0, 0, '12:00'],
+    [1, 7, ' 1:07'],
+    [9, 5, ' 9:05'],
+    [12, 30, '12:30'],
+    [13, 7, ' 1:07'],
+    [22, 0, '10:00'],
+    [23, 59, '11:59'],
   ]) {
     assert.equal(display.clockText(new Date(2026, 9, 22, hour, minute)), expected);
   }
@@ -31,8 +38,17 @@ test('display renders all station IDs and clock characters and only uploads chan
   const previousDocument = globalThis.document;
   let strokes = 0;
   const context = {
-    fillRect() {}, save() {}, restore() {}, translate() {}, scale() {},
-    beginPath() {}, moveTo() {}, lineTo() {}, stroke() { strokes++; },
+    fillRect() {},
+    save() {},
+    restore() {},
+    translate() {},
+    scale() {},
+    beginPath() {},
+    moveTo() {},
+    lineTo() {},
+    stroke() {
+      strokes++;
+    },
   };
   globalThis.document = { createElement: () => ({ getContext: () => context }) };
   t.after(() => {
@@ -61,13 +77,20 @@ test('eight-column displays pad or truncate text without changing character size
   const translations = [];
   let slots = 0;
   const context = {
-    fillRect() {}, save() {}, restore() {},
+    fillRect() {},
+    save() {},
+    restore() {},
     translate(x, y) {
       if (x === 15 && y === 0) slots++;
       else translations.push([x, y]);
     },
-    scale(x, y) { scales.push([x, y]); },
-    beginPath() {}, moveTo() {}, lineTo() {}, stroke() {},
+    scale(x, y) {
+      scales.push([x, y]);
+    },
+    beginPath() {},
+    moveTo() {},
+    lineTo() {},
+    stroke() {},
   };
   globalThis.document = { createElement: () => ({ getContext: () => context }) };
   t.after(() => {
@@ -91,9 +114,10 @@ test('eight-column displays pad or truncate text without changing character size
 
 test('display UVs face the cabin without mirroring or stretching outside the panel', () => {
   const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute([
-    1, 2, 3, 5, 2, 3, 1, 4, 4, 5, 4, 4,
-  ], 3));
+  geometry.setAttribute(
+    'position',
+    new THREE.Float32BufferAttribute([1, 2, 3, 5, 2, 3, 1, 4, 4, 5, 4, 4], 3),
+  );
   display.mapDisplaySurface(geometry);
   assert.deepEqual(Array.from(geometry.getAttribute('uv').array), [1, 0, 0, 0, 1, 1, 0, 1]);
   geometry.dispose();

@@ -22,7 +22,9 @@ before(async () => {
   ({ carLightLayers } = await server.ssrLoadModule('/src/car.ts'));
   ({ DrivingControls } = await server.ssrLoadModule('/src/controls.ts'));
   ({ courses, courseRoute } = await server.ssrLoadModule('/src/courses.ts'));
-  ({ generateCustomCourse, defaultCourseWeights } = await server.ssrLoadModule('/src/course-generation.ts'));
+  ({ generateCustomCourse, defaultCourseWeights } = await server.ssrLoadModule(
+    '/src/course-generation.ts',
+  ));
 });
 
 after(async () => {
@@ -53,7 +55,13 @@ for (const style of ['corner', 'classic', 'cabin']) {
     const camera = new THREE.PerspectiveCamera(55, 16 / 9, 0.1, 1500);
     const reference = camera.clone();
     const driving = createDrivingCamera(camera, car, controls, definition, terrain);
-    const referenceDriving = createDrivingCamera(reference, car, referenceControls, definition, terrain);
+    const referenceDriving = createDrivingCamera(
+      reference,
+      car,
+      referenceControls,
+      definition,
+      terrain,
+    );
     const velocity = new THREE.Vector3(0, 0, 10);
     const update = () => {
       driving.update(1 / 1000, velocity, 'drift', style, false);
@@ -79,8 +87,12 @@ for (const style of ['corner', 'classic', 'cabin']) {
     const center = bounds.getCenter(new THREE.Vector3());
     const size = bounds.getSize(new THREE.Vector3());
     const halfHeight = Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2);
-    const height = 1.1 * Math.max(size.z / 2 / halfHeight, size.x / 2 / (halfHeight * camera.aspect));
-    assert.ok(camera.position.distanceTo(new THREE.Vector3(center.x, bounds.max.y + height, center.z)) < 1e-8);
+    const height =
+      1.1 * Math.max(size.z / 2 / halfHeight, size.x / 2 / (halfHeight * camera.aspect));
+    assert.ok(
+      camera.position.distanceTo(new THREE.Vector3(center.x, bounds.max.y + height, center.z)) <
+        1e-8,
+    );
     const direction = camera.getWorldDirection(new THREE.Vector3());
     assert.ok(direction.distanceTo(new THREE.Vector3(0, -1, 0)) < 1e-8);
     assert.equal(camera.near, height * 0.05);
@@ -129,7 +141,12 @@ test('map view fits a 5 km course within the clipping planes on a portrait displ
 
 function cabinRig(rotation = new THREE.Quaternion()) {
   let mirrorAims = 0;
-  const car = { chassis: new THREE.Group(), aimMirrors() { mirrorAims++; } };
+  const car = {
+    chassis: new THREE.Group(),
+    aimMirrors() {
+      mirrorAims++;
+    },
+  };
   car.chassis.position.set(20, 2, 10);
   car.chassis.quaternion.copy(rotation);
   const controls = { mapView: false, mapZoom: 0, cameraX: 0, cameraY: 0, lookBehind: false };
@@ -143,10 +160,24 @@ function cabinRig(rotation = new THREE.Quaternion()) {
     car.chassis.position.addScaledVector(velocity, dt);
     driving.update(dt, velocity, 'drift', style, false);
   };
-  const offset = () => camera.position.clone().sub(car.chassis.position)
-    .applyQuaternion(car.chassis.quaternion.clone().invert()).sub(eye);
+  const offset = () =>
+    camera.position
+      .clone()
+      .sub(car.chassis.position)
+      .applyQuaternion(car.chassis.quaternion.clone().invert())
+      .sub(eye);
   update(1 / 60);
-  return { camera, car, controls, driving, eye, velocity, update, offset, mirrorAims: () => mirrorAims };
+  return {
+    camera,
+    car,
+    controls,
+    driving,
+    eye,
+    velocity,
+    update,
+    offset,
+    mirrorAims: () => mirrorAims,
+  };
 }
 
 for (const style of ['corner', 'classic', 'cabin']) {
@@ -176,21 +207,31 @@ for (const style of ['corner', 'classic', 'cabin']) {
 }
 
 test('gamepad left vertical axis controls map zoom only in map view and clears when disabled', () => {
-  const descriptors = new Map(['document', 'window', 'navigator'].map((key) =>
-    [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
+  const descriptors = new Map(
+    ['document', 'window', 'navigator'].map((key) => [
+      key,
+      Object.getOwnPropertyDescriptor(globalThis, key),
+    ]),
+  );
   const pad = { connected: true, mapping: 'standard', axes: [0.4, -0.7, 0.3, -0.5], buttons: [] };
   try {
     Object.defineProperty(globalThis, 'document', {
-      configurable: true, value: {
-        hasFocus: () => true, hidden: false, addEventListener() {},
-        documentElement: { style: {} }, body: { style: {} },
+      configurable: true,
+      value: {
+        hasFocus: () => true,
+        hidden: false,
+        addEventListener() {},
+        documentElement: { style: {} },
+        body: { style: {} },
       },
     });
     Object.defineProperty(globalThis, 'window', {
-      configurable: true, value: { addEventListener() {} },
+      configurable: true,
+      value: { addEventListener() {} },
     });
     Object.defineProperty(globalThis, 'navigator', {
-      configurable: true, value: { getGamepads: () => [pad] },
+      configurable: true,
+      value: { getGamepads: () => [pad] },
     });
     const controls = new DrivingControls();
     controls.poll();
@@ -218,21 +259,31 @@ test('gamepad left vertical axis controls map zoom only in map view and clears w
 });
 
 test('gamepad D-pad up controls the lap recorder and left/right request replay lap skips once per press', () => {
-  const descriptors = new Map(['document', 'window', 'navigator'].map((key) =>
-    [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
+  const descriptors = new Map(
+    ['document', 'window', 'navigator'].map((key) => [
+      key,
+      Object.getOwnPropertyDescriptor(globalThis, key),
+    ]),
+  );
   const pad = { connected: true, mapping: 'standard', axes: [], buttons: [] };
   try {
     Object.defineProperty(globalThis, 'document', {
-      configurable: true, value: {
-        hasFocus: () => true, hidden: false, addEventListener() {},
-        documentElement: { style: {} }, body: { style: {} },
+      configurable: true,
+      value: {
+        hasFocus: () => true,
+        hidden: false,
+        addEventListener() {},
+        documentElement: { style: {} },
+        body: { style: {} },
       },
     });
     Object.defineProperty(globalThis, 'window', {
-      configurable: true, value: { addEventListener() {} },
+      configurable: true,
+      value: { addEventListener() {} },
     });
     Object.defineProperty(globalThis, 'navigator', {
-      configurable: true, value: { getGamepads: () => [pad] },
+      configurable: true,
+      value: { getGamepads: () => [pad] },
     });
     const controls = new DrivingControls();
     const press = (index) => {
@@ -286,7 +337,10 @@ test('map zoom is directional, bounded, frame-rate independent, and retained unt
     rig.controls.mapZoom = 1;
     rig.update(1);
     assert.ok(rig.camera.position.distanceTo(initial) < 1e-8);
-    for (const [input, limit] of [[-1, 0.02], [1, 4]]) {
+    for (const [input, limit] of [
+      [-1, 0.02],
+      [1, 4],
+    ]) {
       rig.controls.mapZoom = input;
       for (let i = 0; i < 12; i++) rig.update(1);
       assert.ok(Math.abs(rig.camera.near / 0.05 - initialHeight * limit) < 1e-8);
@@ -321,8 +375,8 @@ test('map stick pans in all screen directions, stops on release, and resets fram
       rig.controls[axis] = sign;
       rig.update(0.5);
       const displacement = rig.camera.position.clone().sub(initial);
-      const distance = rig.camera.near / 0.05 *
-        Math.tan(THREE.MathUtils.degToRad(rig.camera.fov) / 2) * 0.5;
+      const distance =
+        (rig.camera.near / 0.05) * Math.tan(THREE.MathUtils.degToRad(rig.camera.fov) / 2) * 0.5;
       assert.ok(displacement.distanceTo(direction.multiplyScalar(sign * distance)) < 1e-8);
       assert.ok(rig.camera.quaternion.angleTo(orientation) < 1e-7);
       rig.controls[axis] = 0;
@@ -382,8 +436,12 @@ test('cabin offsets oppose measured acceleration on all three car-local axes, in
         for (let i = 0; i < 60; i++) rig.update(1 / 60, acceleration);
         const expected = new THREE.Vector3();
         expected[axis] = -sign * movement;
-        assert.ok(rig.offset().distanceTo(expected) < 1e-6, `${axis}, ${sign}: ${rig.offset().toArray()}`);
-        const direction = rig.camera.getWorldDirection(new THREE.Vector3())
+        assert.ok(
+          rig.offset().distanceTo(expected) < 1e-6,
+          `${axis}, ${sign}: ${rig.offset().toArray()}`,
+        );
+        const direction = rig.camera
+          .getWorldDirection(new THREE.Vector3())
           .applyQuaternion(rotation.clone().invert());
         if (axis === 'z') assert.equal(Math.sign(direction.y), sign);
         assert.equal(rig.mirrorAims(), 1);
@@ -417,7 +475,9 @@ test('cabin motion is consistent at different and varying frame rates', () => {
 test('cabin motion is bounded during impacts and settles at constant velocity without re-aiming mirrors', () => {
   const rig = cabinRig();
   const limits = new THREE.Vector3(
-    cabinCameraMotion.lateralMovement, cabinCameraMotion.verticalMovement, cabinCameraMotion.longitudinalMovement,
+    cabinCameraMotion.lateralMovement,
+    cabinCameraMotion.verticalMovement,
+    cabinCameraMotion.longitudinalMovement,
   ).multiplyScalar(cabinCameraMotion.maxGForce);
   const steps = [1 / 144, 1 / 30, 0.05, 0.5];
   for (let i = 0; i < 120; i++) {

@@ -1,38 +1,38 @@
 // Direct MP3 streams from SomaFM's PLS playlists; browsers cannot play PLS files.
 export const stereoStations = [
   {
-    id: "grvesald",
-    name: "Groove Salad",
-    stream: "https://ice2.somafm.com/groovesalad-128-mp3",
+    id: 'grvesald',
+    name: 'Groove Salad',
+    stream: 'https://ice2.somafm.com/groovesalad-128-mp3',
   },
   {
-    id: "scrtagnt",
-    name: "Secret Agent",
-    stream: "https://ice6.somafm.com/secretagent-128-mp3",
+    id: 'scrtagnt',
+    name: 'Secret Agent',
+    stream: 'https://ice6.somafm.com/secretagent-128-mp3',
   },
-  { id: "vaprwvs", name: "Vaporwaves", stream: "https://ice5.somafm.com/vaporwaves-128-mp3" },
+  { id: 'vaprwvs', name: 'Vaporwaves', stream: 'https://ice5.somafm.com/vaporwaves-128-mp3' },
   {
-    id: "reggae",
-    name: "Heavyweight Reggae",
-    stream: "https://ice5.somafm.com/reggae-128-mp3",
+    id: 'reggae',
+    name: 'Heavyweight Reggae',
+    stream: 'https://ice5.somafm.com/reggae-128-mp3',
   },
   {
-    id: "80s",
-    name: "Underground 80s",
-    stream: "https://ice5.somafm.com/u80s-128-mp3",
+    id: '80s',
+    name: 'Underground 80s',
+    stream: 'https://ice5.somafm.com/u80s-128-mp3',
   },
-  { id: "metal", name: "Metal Detector", stream: "https://ice6.somafm.com/metal-128-mp3" },
+  { id: 'metal', name: 'Metal Detector', stream: 'https://ice6.somafm.com/metal-128-mp3' },
 ] as const;
 
-export type StereoStationId = (typeof stereoStations)[number]["id"];
-export type StereoStationSelection = StereoStationId | "off";
+export type StereoStationId = (typeof stereoStations)[number]['id'];
+export type StereoStationSelection = StereoStationId | 'off';
 
 export function isStereoStation(value: string): value is StereoStationId {
   return stereoStations.some(({ id }) => id === value);
 }
 
 export function isStereoStationSelection(value: string): value is StereoStationSelection {
-  return value === "off" || isStereoStation(value);
+  return value === 'off' || isStereoStation(value);
 }
 
 export class CarStereo {
@@ -43,7 +43,7 @@ export class CarStereo {
   private awaitingGesture = false;
   private readonly retryPlayback = (event: Event) => {
     // S is handled by press(), which retries rather than advancing while blocked.
-    if (event instanceof KeyboardEvent && event.code === "KeyS") return;
+    if (event instanceof KeyboardEvent && event.code === 'KeyS') return;
     if (this.awaitingGesture) this.playStation();
   };
 
@@ -56,10 +56,10 @@ export class CarStereo {
     private readonly reportError: (error: unknown) => void,
     muted = false,
   ) {
-    this.audio.preload = "none";
-    this.audio.setAttribute("referrerpolicy", "no-referrer");
+    this.audio.preload = 'none';
+    this.audio.setAttribute('referrerpolicy', 'no-referrer');
     this.audio.muted = muted;
-    this.audio.addEventListener("error", () => {
+    this.audio.addEventListener('error', () => {
       this.fail(new Error(this.audio.error?.message || `${this.station.name} stream unavailable.`));
     });
   }
@@ -68,16 +68,16 @@ export class CarStereo {
     this.audio.muted = muted;
   }
 
-  press(direction: "previous" | "next" = "next"): StereoStationId {
+  press(direction: 'previous' | 'next' = 'next'): StereoStationId {
     if (this.awaitingGesture) {
       this.playStation();
     } else if (this.powered) {
       const index = stereoStations.indexOf(this.station);
-      const step = direction === "previous" ? -1 : 1;
+      const step = direction === 'previous' ? -1 : 1;
       const next = index + step;
       if (next < 0 || next >= stereoStations.length) {
         this.turnOff();
-        this.station = stereoStations[direction === "previous" ? stereoStations.length - 1 : 0];
+        this.station = stereoStations[direction === 'previous' ? stereoStations.length - 1 : 0];
       } else {
         this.setStation(stereoStations[next].id);
       }
@@ -98,7 +98,7 @@ export class CarStereo {
     this.powered = false;
     this.playbackAttempt++;
     this.audio.pause();
-    this.audio.removeAttribute("src");
+    this.audio.removeAttribute('src');
     this.audio.load();
     this.reportPower(false);
   }
@@ -119,12 +119,12 @@ export class CarStereo {
     // Call play directly in the key handler to retain browser user activation.
     void this.audio.play().catch((error: unknown) => {
       if (attempt !== this.playbackAttempt) return;
-      if (error instanceof Error && error.name === "NotAllowedError") {
+      if (error instanceof Error && error.name === 'NotAllowedError') {
         this.awaitingGesture = true;
-        window.addEventListener("pointerdown", this.retryPlayback);
-        window.addEventListener("keydown", this.retryPlayback);
+        window.addEventListener('pointerdown', this.retryPlayback);
+        window.addEventListener('keydown', this.retryPlayback);
         this.reportError(
-          new Error("Browser blocked stereo autoplay. Click or press a key to start playback."),
+          new Error('Browser blocked stereo autoplay. Click or press a key to start playback.'),
         );
       } else {
         this.fail(error);
@@ -135,8 +135,8 @@ export class CarStereo {
   private clearGestureRetry() {
     if (!this.awaitingGesture) return;
     this.awaitingGesture = false;
-    window.removeEventListener("pointerdown", this.retryPlayback);
-    window.removeEventListener("keydown", this.retryPlayback);
+    window.removeEventListener('pointerdown', this.retryPlayback);
+    window.removeEventListener('keydown', this.retryPlayback);
   }
 
   private fail(error: unknown) {

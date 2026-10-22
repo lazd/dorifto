@@ -1,12 +1,18 @@
 export interface Store<State> {
   getState(): Readonly<State>;
   update(patch: Partial<State>): void;
-  subscribe(listener: (state: Readonly<State>) => void, keys?: readonly (keyof State)[]): () => void;
+  subscribe(
+    listener: (state: Readonly<State>) => void,
+    keys?: readonly (keyof State)[],
+  ): () => void;
 }
 
 export function createStore<State extends object>(initial: State): Store<State> {
   let state: Readonly<State> = Object.freeze({ ...initial });
-  const listeners = new Map<(state: Readonly<State>) => void, readonly (keyof State)[] | undefined>();
+  const listeners = new Map<
+    (state: Readonly<State>) => void,
+    readonly (keyof State)[] | undefined
+  >();
   return {
     getState: () => state,
     update(patch) {
@@ -21,7 +27,9 @@ export function createStore<State extends object>(initial: State): Store<State> 
     subscribe(listener, keys) {
       listeners.set(listener, keys);
       listener(state);
-      return () => { listeners.delete(listener); };
+      return () => {
+        listeners.delete(listener);
+      };
     },
   };
 }

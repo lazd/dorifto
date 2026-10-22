@@ -1,14 +1,21 @@
 import type { VehicleAudio } from './audio';
 import type * as THREE from 'three';
 import { coneDimensions } from './course';
-import { createPhysicsVisuals, type PhysicsPluginContext, type PhysicsPlugin } from './physics-plugin';
+import {
+  createPhysicsVisuals,
+  type PhysicsPluginContext,
+  type PhysicsPlugin,
+} from './physics-plugin';
 
 interface ConePhysicsOptions {
   course: { cones: THREE.Object3D[]; cornerCones: THREE.Object3D[] };
   audio: Pick<VehicleAudio, 'hitCone'>;
 }
 
-export function createConePhysics(context: PhysicsPluginContext, { course, audio }: ConePhysicsOptions) {
+export function createConePhysics(
+  context: PhysicsPluginContext,
+  { course, audio }: ConePhysicsOptions,
+) {
   const { Ammo, world, dispatcher, vehicleBody, createRigidBody, setBodyEnabled } = context;
   const { cones } = course;
   const cornerIndices = new Set((course.cornerCones ?? []).map((cone) => cones.indexOf(cone)));
@@ -19,10 +26,14 @@ export function createConePhysics(context: PhysicsPluginContext, { course, audio
   resetTransform.setIdentity();
   const shape = new Ammo.btCompoundShape();
   const bodyShape = new Ammo.btConvexHullShape();
-  const { height, bottomRadius, topRadius, baseWidth, baseHeight, centerOfMassHeight } = coneDimensions;
-  for (const [y, radius] of [[baseHeight - centerOfMassHeight, bottomRadius], [height - centerOfMassHeight, topRadius]]) {
+  const { height, bottomRadius, topRadius, baseWidth, baseHeight, centerOfMassHeight } =
+    coneDimensions;
+  for (const [y, radius] of [
+    [baseHeight - centerOfMassHeight, bottomRadius],
+    [height - centerOfMassHeight, topRadius],
+  ]) {
     for (let i = 0; i < 24; i++) {
-      const angle = i / 24 * Math.PI * 2;
+      const angle = (i / 24) * Math.PI * 2;
       vector.setValue(Math.cos(angle) * radius, y, Math.sin(angle) * radius);
       bodyShape.addPoint(vector, true);
     }
@@ -38,7 +49,12 @@ export function createConePhysics(context: PhysicsPluginContext, { course, audio
   const bodies = cones.map((mesh) => {
     const body = createRigidBody(3, shape, mesh.position);
     const transform = body.getWorldTransform();
-    const rotation = new Ammo.btQuaternion(mesh.quaternion.x, mesh.quaternion.y, mesh.quaternion.z, mesh.quaternion.w);
+    const rotation = new Ammo.btQuaternion(
+      mesh.quaternion.x,
+      mesh.quaternion.y,
+      mesh.quaternion.z,
+      mesh.quaternion.w,
+    );
     transform.setRotation(rotation);
     body.setCenterOfMassTransform(transform);
     body.getMotionState().setWorldTransform(transform);
@@ -125,8 +141,12 @@ export function createConePhysics(context: PhysicsPluginContext, { course, audio
         const manifold = dispatcher.getManifoldByIndexInternal(i);
         const first = Ammo.getPointer(manifold.getBody0());
         const second = Ammo.getPointer(manifold.getBody1());
-        const cone = first === vehiclePointer ? ids.get(second)
-          : second === vehiclePointer ? ids.get(first) : undefined;
+        const cone =
+          first === vehiclePointer
+            ? ids.get(second)
+            : second === vehiclePointer
+              ? ids.get(first)
+              : undefined;
         if (cone === undefined || !isActive(cone)) continue;
         let impulse = 0;
         let touching = false;

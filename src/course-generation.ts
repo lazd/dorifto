@@ -1,28 +1,91 @@
 import * as THREE from 'three';
-import { courseHasClearance, courseRoute, createCourseRandom, type CourseDefinition } from './courses';
+import {
+  courseHasClearance,
+  courseRoute,
+  createCourseRandom,
+  type CourseDefinition,
+} from './courses';
 import { terrainBaseHeight } from './terrain-profile';
 
 export const courseGenerationFields = [
-  { key: 'length', label: 'Course length', min: 1000, max: 5000, step: 100, description: 'Target lap distance, from 1 to 5 km.' },
-  { key: 'elevation', label: 'Elevation change', min: 0, max: 1, step: 0.01, description: 'Flat centerline to rolling climbs and descents, independent of banking.' },
-  { key: 'banking', label: 'Turn banking', min: 0, max: 1, step: 0.01, description: 'Unbanked turns to steep banking up to 33°, independent of elevation.' },
-  { key: 'straightaways', label: 'Straightaways', min: 0, max: 1, step: 0.01, description: 'Longer straights and fewer corner complexes.' },
-  { key: 'tightCorners', label: 'Tight corners', min: 0, max: 1, step: 0.01, description: 'More 90° corners and hairpins, around 25-40 m radius.' },
-  { key: 'sweepingCorners', label: 'Sweeping corners', min: 0, max: 1, step: 0.01, description: 'More broad, flowing bends around 95-140 m radius.' },
-  { key: 'chicanes', label: 'Chicanes', min: 0, max: 1, step: 0.01, description: 'More left-right chicanes and esses.' },
+  {
+    key: 'length',
+    label: 'Course length',
+    min: 1000,
+    max: 5000,
+    step: 100,
+    description: 'Target lap distance, from 1 to 5 km.',
+  },
+  {
+    key: 'elevation',
+    label: 'Elevation change',
+    min: 0,
+    max: 1,
+    step: 0.01,
+    description: 'Flat centerline to rolling climbs and descents, independent of banking.',
+  },
+  {
+    key: 'banking',
+    label: 'Turn banking',
+    min: 0,
+    max: 1,
+    step: 0.01,
+    description: 'Unbanked turns to steep banking up to 33°, independent of elevation.',
+  },
+  {
+    key: 'straightaways',
+    label: 'Straightaways',
+    min: 0,
+    max: 1,
+    step: 0.01,
+    description: 'Longer straights and fewer corner complexes.',
+  },
+  {
+    key: 'tightCorners',
+    label: 'Tight corners',
+    min: 0,
+    max: 1,
+    step: 0.01,
+    description: 'More 90° corners and hairpins, around 25-40 m radius.',
+  },
+  {
+    key: 'sweepingCorners',
+    label: 'Sweeping corners',
+    min: 0,
+    max: 1,
+    step: 0.01,
+    description: 'More broad, flowing bends around 95-140 m radius.',
+  },
+  {
+    key: 'chicanes',
+    label: 'Chicanes',
+    min: 0,
+    max: 1,
+    step: 0.01,
+    description: 'More left-right chicanes and esses.',
+  },
 ] as const;
 
-export type CourseGenerationWeights = Readonly<Record<typeof courseGenerationFields[number]['key'], number>>;
+export type CourseGenerationWeights = Readonly<
+  Record<(typeof courseGenerationFields)[number]['key'], number>
+>;
 
 export const defaultCourseWeights: CourseGenerationWeights = {
-  length: 2000, elevation: 0.5, banking: 0.1, straightaways: 0.5, tightCorners: 0.35,
-  sweepingCorners: 0.7, chicanes: 0.35,
+  length: 2000,
+  elevation: 0.5,
+  banking: 0.1,
+  straightaways: 0.5,
+  tightCorners: 0.35,
+  sweepingCorners: 0.7,
+  chicanes: 0.35,
 };
 
 export function validateCourseWeights(weights: CourseGenerationWeights) {
   for (const { key, label, min, max } of courseGenerationFields) {
     if (!Number.isFinite(weights[key]) || weights[key] < min || weights[key] > max) {
-      throw new Error(`${label} must be a number between ${min} and ${max}${key === 'length' ? ' metres' : ''}`);
+      throw new Error(
+        `${label} must be a number between ${min} and ${max}${key === 'length' ? ' metres' : ''}`,
+      );
     }
   }
 }
@@ -49,7 +112,15 @@ export function writeCourseWeights(parameters: URLSearchParams, weights?: Course
   }
 }
 
-type ComplexKind = 'hairpin' | 'tight' | 'medium' | 'sweeper' | 'kink' | 'double' | 'esses' | 'chicane';
+type ComplexKind =
+  | 'hairpin'
+  | 'tight'
+  | 'medium'
+  | 'sweeper'
+  | 'kink'
+  | 'double'
+  | 'esses'
+  | 'chicane';
 
 interface Bend {
   /** Signed relative to the complex's direction; esses and chicanes alternate. */
@@ -75,31 +146,62 @@ const minimumCounterTurn = degrees(70);
 function createComplex(kind: ComplexKind, random: () => number, scale: number): Complex {
   const range = (min: number, max: number) => min + random() * (max - min);
   const open = (min: number, max: number) => range(min, max) * scale;
-  const bend = (angle: number, radius: number, link = 0) => ({ angle: degrees(angle), radius, link });
+  const bend = (angle: number, radius: number, link = 0) => ({
+    angle: degrees(angle),
+    radius,
+    link,
+  });
   switch (kind) {
-    case 'hairpin': return { kind, scalable: false, bends: [bend(range(155, 185), range(25, 34))] };
-    case 'tight': return { kind, scalable: true, bends: [bend(range(70, 115), range(27, 40))] };
-    case 'medium': return { kind, scalable: true, bends: [bend(range(45, 120), range(45, 75))] };
-    case 'sweeper': return { kind, scalable: true, bends: [bend(range(40, 110), open(98, 140))] };
-    case 'kink': return { kind, scalable: true, bends: [bend(range(15, 35), open(130, 200))] };
+    case 'hairpin':
+      return { kind, scalable: false, bends: [bend(range(155, 185), range(25, 34))] };
+    case 'tight':
+      return { kind, scalable: true, bends: [bend(range(70, 115), range(27, 40))] };
+    case 'medium':
+      return { kind, scalable: true, bends: [bend(range(45, 120), range(45, 75))] };
+    case 'sweeper':
+      return { kind, scalable: true, bends: [bend(range(40, 110), open(98, 140))] };
+    case 'kink':
+      return { kind, scalable: true, bends: [bend(range(15, 35), open(130, 200))] };
     case 'double': {
       const radius = range(45, 70);
-      return { kind, scalable: true, bends: [bend(range(40, 80), radius, range(20, 60)), bend(range(40, 80), radius)] };
+      return {
+        kind,
+        scalable: true,
+        bends: [bend(range(40, 80), radius, range(20, 60)), bend(range(40, 80), radius)],
+      };
     }
     case 'esses': {
       const count = random() < 0.5 ? 2 : 3;
-      return { kind, scalable: false, bends: Array.from({ length: count }, (_, i) =>
-        bend((i % 2 ? -1 : 1) * range(45, 80), range(45, 75), i < count - 1 ? range(10, 30) : 0)) };
+      return {
+        kind,
+        scalable: false,
+        bends: Array.from({ length: count }, (_, i) =>
+          bend((i % 2 ? -1 : 1) * range(45, 80), range(45, 75), i < count - 1 ? range(10, 30) : 0),
+        ),
+      };
     }
     case 'chicane': {
       const angle = range(30, 50);
-      return { kind, scalable: false, bends: [bend(angle, range(26, 34), range(4, 12)), bend(-angle * range(0.85, 1.15), range(26, 34))] };
+      return {
+        kind,
+        scalable: false,
+        bends: [
+          bend(angle, range(26, 34), range(4, 12)),
+          bend(-angle * range(0.85, 1.15), range(26, 34)),
+        ],
+      };
     }
   }
 }
 
 /** Weighted least-change straight lengths that close the loop at the target distance. */
-function solveStraights(headings: number[], desired: number[], minimum: number[], gap: THREE.Vector2, total: number) {
+function solveStraights(
+  headings: number[],
+  desired: number[],
+  minimum: number[],
+  gap: THREE.Vector2,
+  total: number,
+) {
   const n = headings.length;
   const lengths = desired.slice();
   const fixed = new Array<boolean>(n).fill(false);
@@ -115,14 +217,18 @@ function solveStraights(headings: number[], desired: number[], minimum: number[]
     const m = matrix.elements;
     for (let i = 0; i < n; i++) {
       if (fixed[i]) continue;
-      for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) m[c * 3 + r] += desired[i] * rows[i][r] * rows[i][c];
+      for (let r = 0; r < 3; r++)
+        for (let c = 0; c < 3; c++) m[c * 3 + r] += desired[i] * rows[i][r] * rows[i][c];
     }
     if (Math.abs(matrix.determinant()) < 1e-6) return null;
     const multipliers = new THREE.Vector3(...residual).applyMatrix3(matrix.invert()).toArray();
     let clamped = false;
     for (let i = 0; i < n; i++) {
       if (fixed[i]) continue;
-      lengths[i] = desired[i] + desired[i] * (rows[i][0] * multipliers[0] + rows[i][1] * multipliers[1] + rows[i][2] * multipliers[2]);
+      lengths[i] =
+        desired[i] +
+        desired[i] *
+          (rows[i][0] * multipliers[0] + rows[i][1] * multipliers[1] + rows[i][2] * multipliers[2]);
       if (lengths[i] < minimum[i]) {
         lengths[i] = minimum[i];
         fixed[i] = clamped = true;
@@ -133,7 +239,11 @@ function solveStraights(headings: number[], desired: number[], minimum: number[]
   return null;
 }
 
-function roughClearance(points: readonly (readonly [number, number])[], distances: number[], width: number) {
+function roughClearance(
+  points: readonly (readonly [number, number])[],
+  distances: number[],
+  width: number,
+) {
   const cell = 32;
   const limit = (width + 10) ** 2;
   const grid = new Map<string, number[]>();
@@ -146,19 +256,23 @@ function roughClearance(points: readonly (readonly [number, number])[], distance
     const [x, z] = points[i];
     const cx = Math.floor(x / cell);
     const cz = Math.floor(z / cell);
-    for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) {
-      for (const j of grid.get(`${cx + dx},${cz + dz}`) ?? []) {
-        if (j <= i) continue;
-        const separation = distances[j] - distances[i];
-        if (Math.min(separation, length - separation) <= width * 2.5) continue;
-        if ((points[j][0] - x) ** 2 + (points[j][1] - z) ** 2 < limit) return false;
+    for (let dx = -1; dx <= 1; dx++)
+      for (let dz = -1; dz <= 1; dz++) {
+        for (const j of grid.get(`${cx + dx},${cz + dz}`) ?? []) {
+          if (j <= i) continue;
+          const separation = distances[j] - distances[i];
+          if (Math.min(separation, length - separation) <= width * 2.5) continue;
+          if ((points[j][0] - x) ** 2 + (points[j][1] - z) ** 2 < limit) return false;
+        }
       }
-    }
   }
   return true;
 }
 
-export function generateCustomCourse(seed: number, weights: CourseGenerationWeights): CourseDefinition {
+export function generateCustomCourse(
+  seed: number,
+  weights: CourseGenerationWeights,
+): CourseDefinition {
   const random = createCourseRandom(seed);
   validateCourseWeights(weights);
   const range = (min: number, max: number) => min + random() * (max - min);
@@ -183,24 +297,31 @@ export function generateCustomCourse(seed: number, weights: CourseGenerationWeig
   const radiusScale = THREE.MathUtils.clamp(weights.length / 2500, 0.65, 1);
   for (let attempt = 0; attempt < 600; attempt++) {
     // Real circuits run roughly one corner complex every 220-450 m.
-    const spacing = range(230, 300) + 150 * weights.straightaways - 50 * weights.tightCorners - 40 * weights.chicanes;
+    const spacing =
+      range(230, 300) +
+      150 * weights.straightaways -
+      50 * weights.tightCorners -
+      40 * weights.chicanes;
     const count = Math.max(6, Math.round(weights.length / Math.max(spacing, 220)));
     // Every layout gets at least four real corners; the rest follow the full feature mix.
     const complexes = Array.from({ length: count }, (_, i) =>
-      createComplex(pickKind(i < 4 ? cornerKinds : kinds), random, radiusScale));
+      createComplex(pickKind(i < 4 ? cornerKinds : kinds), random, radiusScale),
+    );
     const isCorner = (complex: Complex) => !['kink', 'esses', 'chicane'].includes(complex.kind);
 
     // Assign directions so the lap turns exactly once; some corners turn against the lap.
     const net = (complex: Complex) => complex.bends.reduce((total, bend) => total + bend.angle, 0);
     const totalTurn = complexes.reduce((total, complex) => total + Math.abs(net(complex)), 0);
-    const counterChance = THREE.MathUtils.clamp((1 - Math.PI * 2 / totalTurn) / 2, 0.2, 0.48);
+    const counterChance = THREE.MathUtils.clamp((1 - (Math.PI * 2) / totalTurn) / 2, 0.2, 0.48);
     let signs: number[] = [];
     let factor = NaN;
     for (let draw = 0; draw < 24 && !(factor > 0.75 && factor < 1.35); draw++) {
       signs = complexes.map(() => (random() < counterChance ? -1 : 1));
       // Substantial corners against the lap direction fold the outline instead of leaving a convex blob.
-      const counterTurn = complexes.reduce((total, complex, i) =>
-        total + (signs[i] < 0 && isCorner(complex) ? net(complex) : 0), 0);
+      const counterTurn = complexes.reduce(
+        (total, complex, i) => total + (signs[i] < 0 && isCorner(complex) ? net(complex) : 0),
+        0,
+      );
       if (counterTurn < minimumCounterTurn) continue;
       let fixedTurn = 0;
       let positive = 0;
@@ -219,7 +340,10 @@ export function generateCustomCourse(seed: number, weights: CourseGenerationWeig
         bend.angle *= signs[i];
       });
     });
-    if (complexes.some((complex) => complex.bends.some((bend) => Math.abs(bend.angle) > maximumBend))) continue;
+    if (
+      complexes.some((complex) => complex.bends.some((bend) => Math.abs(bend.angle) > maximumBend))
+    )
+      continue;
     // Shuffle until the running heading stays within one lap plus a fold; wider swings spiral into overlaps.
     const windowed = () => {
       let turned = 0;
@@ -258,15 +382,23 @@ export function generateCustomCourse(seed: number, weights: CourseGenerationWeig
         fixedLength += Math.abs(bend.angle) * bend.radius + bend.link;
       }
     }
-    const desired = complexes.map((_, i) => i === 0
-      ? weights.length * range(0.1, 0.16) * (0.7 + 0.6 * weights.straightaways)
-      : range(15, 30 + 200 * weights.straightaways) * (random() < 0.3 ? 2 : 1));
+    const desired = complexes.map((_, i) =>
+      i === 0
+        ? weights.length * range(0.1, 0.16) * (0.7 + 0.6 * weights.straightaways)
+        : range(15, 30 + 200 * weights.straightaways) * (random() < 0.3 ? 2 : 1),
+    );
     const minimum = complexes.map((_, i) => (i === 0 ? Math.min(desired[0], 90) : 15));
     const straightTotal = weights.length - fixedLength;
     if (straightTotal < minimum.reduce((total, value) => total + value, 0)) continue;
     const desiredTotal = desired.reduce((total, value) => total + value, 0);
     for (let i = 0; i < desired.length; i++) desired[i] *= straightTotal / desiredTotal;
-    const lengths = solveStraights(headings, desired, minimum, position.clone().negate(), straightTotal);
+    const lengths = solveStraights(
+      headings,
+      desired,
+      minimum,
+      position.clone().negate(),
+      straightTotal,
+    );
     // Reject solutions that distort the planned rhythm into very long or very lopsided straights.
     if (!lengths || lengths.some((length, i) => length > desired[i] * 2.5 + 80)) continue;
 
@@ -282,24 +414,24 @@ export function generateCustomCourse(seed: number, weights: CourseGenerationWeig
       const startZ = z;
       if (start) startIndex = points.length - 1 + Math.floor(steps * range(0.35, 0.6));
       for (let i = 1; i <= steps; i++) {
-        x = startX + Math.cos(heading) * length * i / steps;
-        z = startZ + Math.sin(heading) * length * i / steps;
+        x = startX + (Math.cos(heading) * length * i) / steps;
+        z = startZ + (Math.sin(heading) * length * i) / steps;
         points.push([x, z]);
         distances.push(distances[distances.length - 1] + length / steps);
       }
     }
     function arc(angle: number, radius: number) {
-      const steps = Math.ceil(Math.abs(angle) * radius / 8);
+      const steps = Math.ceil((Math.abs(angle) * radius) / 8);
       const curvature = Math.sign(angle) / radius;
       const startX = x;
       const startZ = z;
       const startHeading = heading;
       for (let i = 1; i <= steps; i++) {
-        const direction = startHeading + angle * i / steps;
+        const direction = startHeading + (angle * i) / steps;
         x = startX + (Math.sin(direction) - Math.sin(startHeading)) / curvature;
         z = startZ + (Math.cos(startHeading) - Math.cos(direction)) / curvature;
         points.push([x, z]);
-        distances.push(distances[distances.length - 1] + Math.abs(angle) * radius / steps);
+        distances.push(distances[distances.length - 1] + (Math.abs(angle) * radius) / steps);
       }
       heading += angle;
     }
@@ -318,7 +450,9 @@ export function generateCustomCourse(seed: number, weights: CourseGenerationWeig
     const rotation = random() * Math.PI * 2;
     const mirror = random() < 0.5 ? -1 : 1;
     const definition: CourseDefinition = {
-      id: 'custom', name: `Custom Circuit (${seed})`, width,
+      id: 'custom',
+      name: `Custom Circuit (${seed})`,
+      width,
       generation: { type: 'custom', seed, weights: { ...weights } },
       points: [...points.slice(startIndex), ...points.slice(0, startIndex)].map(([px, pz]) => [
         mirror * (px * Math.cos(rotation) - pz * Math.sin(rotation)),
@@ -345,13 +479,19 @@ export function generateCustomCourse(seed: number, weights: CourseGenerationWeig
       const height = terrainBaseHeight(current.x, current.z);
       minHeight = Math.min(minHeight, height);
       maxHeight = Math.max(maxHeight, height);
-      maxGrade = Math.max(maxGrade, Math.abs(terrainBaseHeight(after.x, after.z) - height) / outgoing.length());
+      maxGrade = Math.max(
+        maxGrade,
+        Math.abs(terrainBaseHeight(after.x, after.z) - height) / outgoing.length(),
+      );
     }
     if (!navigable || !courseHasClearance(route, definition.width)) continue;
     definition.flat = weights.elevation === 0 && weights.banking === 0;
     definition.bankingScale = weights.banking * 10;
-    definition.elevationScale = weights.elevation * Math.min(20 / (maxHeight - minHeight), 0.12 / maxGrade);
+    definition.elevationScale =
+      weights.elevation * Math.min(20 / (maxHeight - minHeight), 0.12 / maxGrade);
     return definition;
   }
-  throw new Error(`Unable to generate a navigable custom course for seed ${seed}; try another seed, length, or feature mix`);
+  throw new Error(
+    `Unable to generate a navigable custom course for seed ${seed}; try another seed, length, or feature mix`,
+  );
 }

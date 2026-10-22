@@ -15,7 +15,9 @@ before(async () => {
   });
   ({ courseKerbSegments, courseRoute, courses } = await server.ssrLoadModule('/src/courses.ts'));
 });
-after(async () => { await server?.close(); });
+after(async () => {
+  await server?.close();
+});
 
 function routeWithHeading(heading) {
   return {
@@ -28,14 +30,17 @@ function routeWithHeading(heading) {
 }
 
 function courseKerbDirection(route, distance) {
-  return courseKerbSegments(route).find((segment) =>
-    distance >= segment.distance && distance < segment.endDistance)?.direction ?? 0;
+  return (
+    courseKerbSegments(route).find(
+      (segment) => distance >= segment.distance && distance < segment.endDistance,
+    )?.direction ?? 0
+  );
 }
 
 test('kerbs cover ordinary bends but exclude huge sweepers and straights', () => {
   for (const radius of [40, 65, 100, 130]) {
     for (const direction of [-1, 1]) {
-      const route = routeWithHeading((distance) => direction * distance / radius);
+      const route = routeWithHeading((distance) => (direction * distance) / radius);
       route.getLength = () => 2 * Math.PI * radius;
       route.getTangentAt = (t) => {
         const angle = direction * t * 2 * Math.PI;
@@ -48,7 +53,8 @@ test('kerbs cover ordinary bends but exclude huge sweepers and straights', () =>
     const route = routeWithHeading(() => 0);
     if (Number.isFinite(radius)) {
       route.getLength = () => 2 * Math.PI * radius;
-      route.getTangentAt = (t) => new THREE.Vector3(Math.sin(t * 2 * Math.PI), 0, Math.cos(t * 2 * Math.PI));
+      route.getTangentAt = (t) =>
+        new THREE.Vector3(Math.sin(t * 2 * Math.PI), 0, Math.cos(t * 2 * Math.PI));
     }
     assert.equal(courseKerbDirection(route, 500), 0);
   }
@@ -59,12 +65,14 @@ test('kerbs extend into entry and exit transitions without covering distant stra
   for (const distance of [398, 400, 450, 500, 501]) {
     assert.equal(courseKerbDirection(route, distance), 1, `covered at ${distance}`);
   }
-  for (const distance of [396, 502, 380, 520]) assert.equal(courseKerbDirection(route, distance), 0);
+  for (const distance of [396, 502, 380, 520])
+    assert.equal(courseKerbDirection(route, distance), 0);
 });
 
 test('kerbs stay on the inside through opposite-direction bends', () => {
   const route = routeWithHeading((distance) =>
-    distance < 500 ? (distance - 500) / 100 : -(distance - 500) / 100);
+    distance < 500 ? (distance - 500) / 100 : -(distance - 500) / 100,
+  );
   assert.equal(courseKerbDirection(route, 494), 1);
   assert.equal(courseKerbDirection(route, 506), -1);
 });
@@ -79,7 +87,8 @@ test('Thunderhill East gains kerb coverage beyond the former tight-only threshol
   const segments = courseKerbSegments(route);
   const reversed = courseKerbSegments(reverse);
   const directionAt = (segments, distance) =>
-    segments.find((segment) => distance >= segment.distance && distance < segment.endDistance)?.direction ?? 0;
+    segments.find((segment) => distance >= segment.distance && distance < segment.endDistance)
+      ?.direction ?? 0;
   for (let distance = 1; distance < length; distance += 2) {
     const before = route.getTangentAt(((distance - 4 + length) % length) / length);
     const after = route.getTangentAt(((distance + 4) % length) / length);
@@ -96,11 +105,16 @@ test('Sonoma finish straight stays unkerbed and same-side runs have no short hol
   const route = courseRoute(courses.find(({ id }) => id === 'sonoma-raceway'));
   const length = route.getLength();
   const segments = courseKerbSegments(route);
-  const coverage = segments.reduce((total, segment) => total + segment.endDistance - segment.distance, 0);
+  const coverage = segments.reduce(
+    (total, segment) => total + segment.endDistance - segment.distance,
+    0,
+  );
   assert.ok(coverage < 1939.06 * 0.9, `trim at least 10% more Sonoma coverage: ${coverage}`);
   assert.ok(segments.length > 0);
-  assert.ok(!segments.some(({ distance, endDistance }) => distance < 25 || endDistance > length - 15),
-    'no kerbs around the start/finish spline seam');
+  assert.ok(
+    !segments.some(({ distance, endDistance }) => distance < 25 || endDistance > length - 15),
+    'no kerbs around the start/finish spline seam',
+  );
   for (let index = 0; index < segments.length; index++) {
     const previous = segments[index];
     const next = segments[(index + 1) % segments.length];

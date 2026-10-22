@@ -30,14 +30,16 @@ before(async () => {
     server: { middlewareMode: true, hmr: false, ws: false, watch: null },
     appType: 'custom',
   });
-  ({ createVehiclePhysics, createPhysicsResources } = await server.ssrLoadModule('/src/vehicle-physics.ts'));
+  ({ createVehiclePhysics, createPhysicsResources } =
+    await server.ssrLoadModule('/src/vehicle-physics.ts'));
   ({ createConePhysics } = await server.ssrLoadModule('/src/cone-physics.ts'));
   ({ createPhysicsVisuals } = await server.ssrLoadModule('/src/physics-plugin.ts'));
   ({ createTurnSignPhysics } = await server.ssrLoadModule('/src/turn-sign-physics.ts'));
   ({ createConfigurationState } = await server.ssrLoadModule('/src/configuration-state.ts'));
   ({ createPhysicsSimulation } = await server.ssrLoadModule('/src/physics-simulation.ts'));
   ({ createPhysicsClient } = await server.ssrLoadModule('/src/physics-client.ts'));
-  ({ createPhysicsInit, physicsStep, snapshotStride, poseStride, vehiclePoseCount, replayData } = await server.ssrLoadModule('/src/physics-messages.ts'));
+  ({ createPhysicsInit, physicsStep, snapshotStride, poseStride, vehiclePoseCount, replayData } =
+    await server.ssrLoadModule('/src/physics-messages.ts'));
   ({ courses, courseSpawn } = await server.ssrLoadModule('/src/courses.ts'));
   ({ RunRecording, createReplayFrame } = await server.ssrLoadModule('/src/lap-recording.ts'));
   Ammo = await AmmoFactory.call({});
@@ -53,24 +55,38 @@ function fixture(slopeX = 0, slopeZ = 0) {
     wheels: Array.from({ length: 4 }, () => new THREE.Group()),
     hubs: Array.from({ length: 4 }, () => new THREE.Group()),
     centers: [
-      new THREE.Vector3(-0.75, 0, 1.3), new THREE.Vector3(0.75, 0, 1.3),
-      new THREE.Vector3(-0.75, 0, -1.3), new THREE.Vector3(0.75, 0, -1.3),
+      new THREE.Vector3(-0.75, 0, 1.3),
+      new THREE.Vector3(0.75, 0, 1.3),
+      new THREE.Vector3(-0.75, 0, -1.3),
+      new THREE.Vector3(0.75, 0, -1.3),
     ],
     radii: [0.32, 0.32, 0.32, 0.32],
-    collisionVertices: [-1, 1].flatMap((x) => [-1, 1].flatMap((y) =>
-      [-1, 1].map((z) => new THREE.Vector3(x * 0.75, y < 0 ? -0.1 : 0.3, z * 2)))),
-    setBraking() {}, setReversing() {}, setHazards() {},
+    collisionVertices: [-1, 1].flatMap((x) =>
+      [-1, 1].flatMap((y) =>
+        [-1, 1].map((z) => new THREE.Vector3(x * 0.75, y < 0 ? -0.1 : 0.3, z * 2)),
+      ),
+    ),
+    setBraking() {},
+    setReversing() {},
+    setHazards() {},
   };
   const cones = [new THREE.Group(), new THREE.Group()];
   cones[0].position.set(5, 1, 5);
   cones[0].rotation.z = 0.2;
   cones[1].position.set(8, 1, 5);
   const course = {
-    cones, cornerCones: [cones[0]],
+    cones,
+    cornerCones: [cones[0]],
     terrain: {
-      heights: Float32Array.from({ length: 16 * 16 }, (_, i) =>
-        (i % 16 - 7.5) * 2 * slopeX + (Math.floor(i / 16) - 7.5) * 2 * slopeZ),
-      columns: 16, rows: 16, spacing: 2, minX: -16, minZ: -16,
+      heights: Float32Array.from(
+        { length: 16 * 16 },
+        (_, i) => ((i % 16) - 7.5) * 2 * slopeX + (Math.floor(i / 16) - 7.5) * 2 * slopeZ,
+      ),
+      columns: 16,
+      rows: 16,
+      spacing: 2,
+      minX: -16,
+      minZ: -16,
       minHeight: -15 * (Math.abs(slopeX) + Math.abs(slopeZ)) - 0.01,
       maxHeight: 15 * (Math.abs(slopeX) + Math.abs(slopeZ)) + 0.01,
       normalAt: () => new THREE.Vector3(-slopeX, 1, -slopeZ).normalize(),
@@ -79,13 +95,24 @@ function fixture(slopeX = 0, slopeZ = 0) {
     isAsphalt: () => true,
   };
   const hits = [];
-  const laps = { reset() {}, update() {}, hitCone(index) { hits.push(index); } };
+  const laps = {
+    reset() {},
+    update() {},
+    hitCone(index) {
+      hits.push(index);
+    },
+  };
   const controls = { throttle: 0, brake: 0, reverse: 0, steer: 0, handbrake: false };
   const configurationState = createConfigurationState();
   const physics = createVehiclePhysics({
-    Ammo, resources: createPhysicsResources(Ammo), car, course, laps,
+    Ammo,
+    resources: createPhysicsResources(Ammo),
+    car,
+    course,
+    laps,
     controls,
-    configurationState, spawn: { position: [0, 0], heading: 0 },
+    configurationState,
+    spawn: { position: [0, 0], heading: 0 },
   });
   return { physics, course, laps, hits, car, controls, configurationState };
 }
@@ -97,21 +124,49 @@ function workerFixture() {
   const spawn = courseSpawn(definition);
   const { heights, columns, rows, spacing, minHeight, maxHeight } = course.terrain;
   const terrain = {
-    heights, columns, rows, spacing, minHeight, maxHeight,
-    minX: spawn.position[0] - columns * spacing / 2,
-    minZ: spawn.position[1] - rows * spacing / 2,
-    segments: [], halfWidth: definition.width / 2, padRadius: Infinity,
+    heights,
+    columns,
+    rows,
+    spacing,
+    minHeight,
+    maxHeight,
+    minX: spawn.position[0] - (columns * spacing) / 2,
+    minZ: spawn.position[1] - (rows * spacing) / 2,
+    segments: [],
+    halfWidth: definition.width / 2,
+    padRadius: Infinity,
   };
   configurationState.update({ coneMode: 'off' });
   const configuration = configurationState.getState();
-  const sceneCourse = { ...course, terrain: { physicsData: () => terrain }, turnSignGroups: [new THREE.Group()] };
+  const sceneCourse = {
+    ...course,
+    terrain: { physicsData: () => terrain },
+    turnSignGroups: [new THREE.Group()],
+  };
   const data = structuredClone(createPhysicsInit(definition, car, sceneCourse, configuration));
   const input = {
-    controls, configuration, signs: [true],
-    lights: { highBeams: true, headlights: true, fogLights: true, leftSignal: true, rightSignal: false },
+    controls,
+    configuration,
+    signs: [true],
+    lights: {
+      highBeams: true,
+      headlights: true,
+      fogLights: true,
+      leftSignal: true,
+      rightSignal: false,
+    },
   };
   const simulation = createPhysicsSimulation(Ammo, data);
-  return { simulation, input, data, definition, car, course: sceneCourse, controls, configurationState };
+  return {
+    simulation,
+    input,
+    data,
+    definition,
+    car,
+    course: sceneCourse,
+    controls,
+    configurationState,
+  };
 }
 
 test('worker client bounds in-flight advances, ignores pre-reset replies, preserves snap samples, and surfaces failures', async (t) => {
@@ -120,12 +175,21 @@ test('worker client bounds in-flight advances, ignores pre-reset replies, preser
   const previousWorker = globalThis.Worker;
   globalThis.Worker = class {
     requests = [];
-    constructor() { worker = this; }
-    postMessage(message, transfer) { this.requests.push(structuredClone(message, { transfer })); }
-    terminate() { this.terminated = true; }
+    constructor() {
+      worker = this;
+    }
+    postMessage(message, transfer) {
+      this.requests.push(structuredClone(message, { transfer }));
+    }
+    terminate() {
+      this.terminated = true;
+    }
     reply() {
       const snapshot = fixture.simulation.handle(this.requests.shift());
-      const transfer = [snapshot.buffer, ...snapshot.records.flatMap(({ sample }) => sample ? [sample.buffer] : [])];
+      const transfer = [
+        snapshot.buffer,
+        ...snapshot.records.flatMap(({ sample }) => (sample ? [sample.buffer] : [])),
+      ];
       const response = structuredClone(snapshot, { transfer });
       this.onmessage({ data: response });
       return response;
@@ -138,8 +202,10 @@ test('worker client bounds in-flight advances, ignores pre-reset replies, preser
   });
   const errors = [];
   const client = createPhysicsClient({
-    ...fixture, audio: { hitCone() {}, hitTurnSign() {} },
-    lights: () => fixture.input.lights, onError: (error) => errors.push(error),
+    ...fixture,
+    audio: { hitCone() {}, hitTurnSign() {} },
+    lights: () => fixture.input.lights,
+    onError: (error) => errors.push(error),
   });
   t.after(() => client.dispose());
   worker.reply();
@@ -161,7 +227,11 @@ test('worker client bounds in-flight advances, ignores pre-reset replies, preser
   const live = worker.reply();
   assert.ok(live.records.length > 0);
   worker.reply();
-  assert.equal(client.takeRecords().length, live.records.length, 'a visibility snap must not discard in-flight recording samples');
+  assert.equal(
+    client.takeRecords().length,
+    live.records.length,
+    'a visibility snap must not discard in-flight recording samples',
+  );
   client.advance(physicsStep);
   worker.onmessage({ data: { type: 'error', revision: 1, message: 'simulation failed' } });
   assert.match(errors[0].message, /simulation failed/);
@@ -175,7 +245,11 @@ test('worker batches preserve fixed-step timing, transferable poses, and simulat
     assert.equal(initial.count, vehiclePoseCount + data.cones.length);
     input.controls.throttle = 1;
     const batch = simulation.handle({
-      type: 'advance', dt: physicsStep * 6, input, recycled: [initial.buffer], revision: 0,
+      type: 'advance',
+      dt: physicsStep * 6,
+      input,
+      recycled: [initial.buffer],
+      revision: 0,
     });
     assert.equal(batch.buffer, initial.buffer, 'reuse the returned snapshot buffer');
     assert.equal(batch.count, vehiclePoseCount, 'sleeping/disabled props are not resent');
@@ -194,9 +268,17 @@ test('worker batches preserve fixed-step timing, transferable poses, and simulat
     assert.equal(frame.rightSignal, false);
     const transferred = structuredClone(batch, { transfer: [batch.buffer] });
     assert.equal(batch.buffer.byteLength, 0);
-    assert.ok(new Float32Array(transferred.buffer).subarray(0, transferred.count * snapshotStride).every(Number.isFinite));
+    assert.ok(
+      new Float32Array(transferred.buffer)
+        .subarray(0, transferred.count * snapshotStride)
+        .every(Number.isFinite),
+    );
     const snap = simulation.handle({ type: 'snap', input, revision: 0 });
-    assert.equal(snap.laps.elapsedTime, transferred.laps.elapsedTime, 'visibility snaps do not advance time');
+    assert.equal(
+      snap.laps.elapsedTime,
+      transferred.laps.elapsedTime,
+      'visibility snaps do not advance time',
+    );
     assert.equal(snap.count, initial.count);
   } finally {
     simulation.dispose();
@@ -208,17 +290,39 @@ test('worker resets, direction changes, and replay share the live physics world 
   try {
     simulation.handle({ type: 'init', data, revision: 0 });
     input.controls.throttle = 1;
-    const live = simulation.handle({ type: 'advance', dt: physicsStep * 6, input, recycled: [], revision: 0 });
+    const live = simulation.handle({
+      type: 'advance',
+      dt: physicsStep * 6,
+      input,
+      recycled: [],
+      revision: 0,
+    });
     const recording = new RunRecording();
     for (const { sample } of live.records) if (sample) recording.pushSample(sample);
-    simulation.handle({ type: 'replay', recording: replayData(recording), time: 0, input, revision: 1 });
-    const replay = simulation.handle({ type: 'advance', dt: physicsStep * 2, input, recycled: [], revision: 1 });
+    simulation.handle({
+      type: 'replay',
+      recording: replayData(recording),
+      time: 0,
+      input,
+      revision: 1,
+    });
+    const replay = simulation.handle({
+      type: 'advance',
+      dt: physicsStep * 2,
+      input,
+      recycled: [],
+      revision: 1,
+    });
     assert.equal(replay.replayTime, physicsStep * 2);
     assert.equal(replay.records.length, 0);
     input.controls.throttle = 0;
     const reverse = { ...definition, reverse: true };
     const directed = simulation.handle({
-      type: 'direction', definition: reverse, spawn: courseSpawn(reverse), input, revision: 2,
+      type: 'direction',
+      definition: reverse,
+      spawn: courseSpawn(reverse),
+      input,
+      revision: 2,
     });
     assert.equal(directed.revision, 2);
     assert.equal(directed.replayTime, null);
@@ -238,7 +342,12 @@ test('worker resets, direction changes, and replay share the live physics world 
 });
 
 test('static tire friction holds on banks and hills but releases under throttle', () => {
-  for (const [slopeX, slopeZ] of [[0.3, 0], [-0.3, 0], [0, 0.2], [0.2, -0.15]]) {
+  for (const [slopeX, slopeZ] of [
+    [0.3, 0],
+    [-0.3, 0],
+    [0, 0.2],
+    [0.2, -0.15],
+  ]) {
     const { physics, car, controls } = fixture(slopeX, slopeZ);
     try {
       physics.reset();
@@ -252,7 +361,10 @@ test('static tire friction holds on banks and hills but releases under throttle'
       controls.throttle = 1;
       for (let i = 0; i < 120; i++) physics.step();
       physics.captureVisuals(true);
-      assert.ok(car.chassis.position.distanceTo(start) > 0.2, 'throttle must release the parked car');
+      assert.ok(
+        car.chassis.position.distanceTo(start) > 0.2,
+        'throttle must release the parked car',
+      );
     } finally {
       physics.dispose();
     }
@@ -279,7 +391,10 @@ test('static friction cannot hold beyond tire grip or stop freely rolling wheels
       }
       for (let i = 0; i < 120; i++) physics.step();
       physics.captureVisuals(true);
-      assert.ok(car.chassis.position.z < start.z - 0.2, `${release}: gravity must move the car downhill`);
+      assert.ok(
+        car.chassis.position.z < start.z - 0.2,
+        `${release}: gravity must move the car downhill`,
+      );
     } finally {
       physics.dispose();
     }
@@ -304,13 +419,30 @@ test('object plugins receive lifecycle hooks and managed bodies are freed before
       body = context.createRigidBody(2, shape, new THREE.Vector3(6, 2, 0));
       motion = body.getMotionState();
       return {
-        reset() { events.push('reset'); },
-        beforeStep(dt) { assert.equal(dt, physics.fixedStep); events.push('before'); },
-        afterStep(dt) { assert.equal(dt, physics.fixedStep); events.push('after'); },
-        captureVisuals(snap) { events.push(['capture', snap]); },
-        interpolate(alpha) { events.push(['interpolate', alpha]); },
-        dispose() { events.push('dispose'); Ammo.destroy(shape); },
-        setEnabled(enabled) { context.setBodyEnabled(body, enabled); },
+        reset() {
+          events.push('reset');
+        },
+        beforeStep(dt) {
+          assert.equal(dt, physics.fixedStep);
+          events.push('before');
+        },
+        afterStep(dt) {
+          assert.equal(dt, physics.fixedStep);
+          events.push('after');
+        },
+        captureVisuals(snap) {
+          events.push(['capture', snap]);
+        },
+        interpolate(alpha) {
+          events.push(['interpolate', alpha]);
+        },
+        dispose() {
+          events.push('dispose');
+          Ammo.destroy(shape);
+        },
+        setEnabled(enabled) {
+          context.setBodyEnabled(body, enabled);
+        },
       };
     });
     physics.addPlugin(() => ({}));
@@ -337,7 +469,12 @@ test('object plugins receive lifecycle hooks and managed bodies are freed before
     physics.captureVisuals();
     physics.interpolate(0.25);
     assert.deepEqual(events, [
-      'reset', ['capture', true], 'before', 'after', ['capture', false], ['interpolate', 0.25],
+      'reset',
+      ['capture', true],
+      'before',
+      'after',
+      ['capture', false],
+      ['interpolate', 0.25],
     ]);
     const nextLaps = { ...laps };
     physics.setCourseDirection({ position: [0, 0], heading: Math.PI }, nextLaps);
@@ -374,8 +511,8 @@ test('cone plugin preserves collision penalties, sound threshold/cooldown, filte
   const dispatcher = {
     getNumManifolds: () => 1,
     getManifoldByIndexInternal: () => ({
-      getBody0: () => reversed ? bodies[0] : vehicleBody,
-      getBody1: () => reversed ? vehicleBody : otherBody ?? bodies[0],
+      getBody0: () => (reversed ? bodies[0] : vehicleBody),
+      getBody1: () => (reversed ? vehicleBody : (otherBody ?? bodies[0])),
       getNumContacts: () => contacts.length,
       getContactPoint: (index) => ({
         getDistance: () => contacts[index].distance,
@@ -386,14 +523,21 @@ test('cone plugin preserves collision penalties, sound threshold/cooldown, filte
   try {
     const plugin = physics.addPlugin((context) => {
       vehicleBody = context.vehicleBody;
-      return createConePhysics({
-        ...context, dispatcher, get laps() { return context.laps; },
-        createRigidBody(...args) {
-          const body = context.createRigidBody(...args);
-          bodies.push(body);
-          return body;
+      return createConePhysics(
+        {
+          ...context,
+          dispatcher,
+          get laps() {
+            return context.laps;
+          },
+          createRigidBody(...args) {
+            const body = context.createRigidBody(...args);
+            bodies.push(body);
+            return body;
+          },
         },
-      }, { course, audio: { hitCone: (impulse) => sounds.push(impulse) } });
+        { course, audio: { hitCone: (impulse) => sounds.push(impulse) } },
+      );
     });
     physics.reset();
     contacts = [{ distance: 0.01, impulse: 10 }];
@@ -403,7 +547,10 @@ test('cone plugin preserves collision penalties, sound threshold/cooldown, filte
     plugin.afterStep();
     assert.deepEqual(hits, [0]);
     assert.deepEqual(sounds, []);
-    contacts = [{ distance: -0.01, impulse: 0.2 }, { distance: 0, impulse: 0.3 }];
+    contacts = [
+      { distance: -0.01, impulse: 0.2 },
+      { distance: 0, impulse: 0.3 },
+    ];
     reversed = true;
     plugin.afterStep();
     plugin.afterStep();
@@ -422,15 +569,25 @@ test('cone plugin preserves collision penalties, sound threshold/cooldown, filte
     plugin.afterStep();
     assert.equal(hits.at(-1), 1);
     const nextHits = [];
-    physics.setCourseDirection({ position: [0, 0], heading: Math.PI }, {
-      reset() {}, update() {}, hitCone(index) { nextHits.push(index); },
-    });
+    physics.setCourseDirection(
+      { position: [0, 0], heading: Math.PI },
+      {
+        reset() {},
+        update() {},
+        hitCone(index) {
+          nextHits.push(index);
+        },
+      },
+    );
     plugin.afterStep();
     assert.deepEqual(nextHits, [1]);
     plugin.setEnabled(true, true);
     plugin.afterStep();
     assert.deepEqual(nextHits, [1]);
-    assert.deepEqual(course.cones.map(({ visible }) => visible), [true, false]);
+    assert.deepEqual(
+      course.cones.map(({ visible }) => visible),
+      [true, false],
+    );
     plugin.setEnabled(false);
     assert.equal(course.cones[0].visible, false);
     assert.equal(course.cones[1].visible, false);
@@ -512,7 +669,10 @@ test('turn signs topple silently on terrain, reset, and follow visibility and co
     group.add(sign);
     return sign;
   });
-  const starts = signs.map((sign) => ({ position: sign.position.clone(), rotation: sign.quaternion.clone() }));
+  const starts = signs.map((sign) => ({
+    position: sign.position.clone(),
+    rotation: sign.quaternion.clone(),
+  }));
   const bodies = [];
   const clanks = [];
   const destroy = Ammo.destroy;
@@ -523,24 +683,37 @@ test('turn signs topple silently on terrain, reset, and follow visibility and co
       context = value;
       const updateAabb = value.world.updateSingleAabb.bind(value.world);
       value.world.updateSingleAabb = (body) => {
-        assert.notEqual(Ammo.getPointer(body.getBroadphaseHandle()), 0,
-          'never update the AABB of a body removed from the world');
+        assert.notEqual(
+          Ammo.getPointer(body.getBroadphaseHandle()),
+          0,
+          'never update the AABB of a body removed from the world',
+        );
         updateAabb(body);
       };
-      return createTurnSignPhysics({
-        ...value,
-        createRigidBody(...args) {
-          const body = value.createRigidBody(...args);
-          bodies.push(body);
-          return body;
+      return createTurnSignPhysics(
+        {
+          ...value,
+          createRigidBody(...args) {
+            const body = value.createRigidBody(...args);
+            bodies.push(body);
+            return body;
+          },
         },
-      }, groups, { hitTurnSign: (impulse) => clanks.push(impulse) });
+        groups,
+        { hitTurnSign: (impulse) => clanks.push(impulse) },
+      );
     });
     const membership = [];
     const add = context.world.addRigidBody.bind(context.world);
     const remove = context.world.removeRigidBody.bind(context.world);
-    context.world.addRigidBody = (body) => { membership.push(['add', bodies.indexOf(body)]); add(body); };
-    context.world.removeRigidBody = (body) => { membership.push(['remove', bodies.indexOf(body)]); remove(body); };
+    context.world.addRigidBody = (body) => {
+      membership.push(['add', bodies.indexOf(body)]);
+      add(body);
+    };
+    context.world.removeRigidBody = (body) => {
+      membership.push(['remove', bodies.indexOf(body)]);
+      remove(body);
+    };
     physics.reset();
     for (let i = 0; i < 120; i++) physics.step();
     physics.captureVisuals(true);
@@ -567,7 +740,10 @@ test('turn signs topple silently on terrain, reset, and follow visibility and co
     groups[0].visible = false;
     groups[1].visible = true;
     physics.step();
-    assert.deepEqual(membership, [['remove', 0], ['add', 1]]);
+    assert.deepEqual(membership, [
+      ['remove', 0],
+      ['add', 1],
+    ]);
     groups[1].visible = false;
     physics.step();
     assert.deepEqual(membership.at(-1), ['remove', 1]);
@@ -597,9 +773,11 @@ test('vehicle collisions wake planted signs and trigger clanks without cone pena
   group.add(sign);
   const clanks = [];
   try {
-    physics.addPlugin((context) => createTurnSignPhysics(context, [group], {
-      hitTurnSign: (impulse) => clanks.push(impulse),
-    }));
+    physics.addPlugin((context) =>
+      createTurnSignPhysics(context, [group], {
+        hitTurnSign: (impulse) => clanks.push(impulse),
+      }),
+    );
     physics.reset();
     for (let i = 0; i < 120; i++) {
       physics.step();
@@ -623,7 +801,7 @@ test('sign clanks only for car contacts in either manifold order', () => {
   let pair;
   let vehicle;
   const dispatcher = {
-    getNumManifolds: () => pair ? 1 : 0,
+    getNumManifolds: () => (pair ? 1 : 0),
     getManifoldByIndexInternal: () => ({
       getBody0: () => pair[0],
       getBody1: () => pair[1],
@@ -637,14 +815,19 @@ test('sign clanks only for car contacts in either manifold order', () => {
   try {
     const plugin = physics.addPlugin((context) => {
       vehicle = context.vehicleBody;
-      return createTurnSignPhysics({
-        ...context, dispatcher,
-        createRigidBody(...args) {
-          const body = context.createRigidBody(...args);
-          bodies.push(body);
-          return body;
+      return createTurnSignPhysics(
+        {
+          ...context,
+          dispatcher,
+          createRigidBody(...args) {
+            const body = context.createRigidBody(...args);
+            bodies.push(body);
+            return body;
+          },
         },
-      }, [group], { hitTurnSign: (impulse) => clanks.push(impulse) });
+        [group],
+        { hitTurnSign: (impulse) => clanks.push(impulse) },
+      );
     });
     pair = [bodies[0], bodies[1]];
     plugin.afterStep();
@@ -679,9 +862,11 @@ test('moving vehicle strikes sleeping cones and signs from a distance', () => {
     try {
       const plugin = physics.addPlugin((context) => {
         body = context.vehicleBody;
-        if (kind === 'cone') return createConePhysics(context, {
-          course, audio: { hitCone: (impulse) => sounds.push(impulse) },
-        });
+        if (kind === 'cone')
+          return createConePhysics(context, {
+            course,
+            audio: { hitCone: (impulse) => sounds.push(impulse) },
+          });
         return createTurnSignPhysics(context, [group], {
           hitTurnSign: (impulse) => sounds.push(impulse),
         });
@@ -696,7 +881,9 @@ test('moving vehicle strikes sleeping cones and signs from a distance', () => {
           group.add(sign);
         }
       });
-      physics.addPlugin((context) => createTurnSignPhysics(context, signGroups, { hitTurnSign() {} }));
+      physics.addPlugin((context) =>
+        createTurnSignPhysics(context, signGroups, { hitTurnSign() {} }),
+      );
       physics.reset();
       for (let i = 0; i < 360; i++) {
         physics.step();

@@ -101,7 +101,7 @@ h1 span {
   background: color-mix(in srgb, var(--accent) 20%, transparent);
 }
 .progress-bar::after {
-  content: "";
+  content: '';
   display: block;
   height: 100%;
   background: var(--accent);
@@ -453,7 +453,7 @@ input {
   accent-color: #9ee8d5;
   font: inherit;
 }
-input[type="checkbox"] {
+input[type='checkbox'] {
   appearance: none;
   display: inline-grid;
   place-content: center;
@@ -466,8 +466,8 @@ input[type="checkbox"] {
   background: #10191fe1;
   cursor: pointer;
 }
-input[type="checkbox"]::before {
-  content: "";
+input[type='checkbox']::before {
+  content: '';
   width: 5px;
   height: 9px;
   border: solid #9ee8d5;
@@ -475,7 +475,7 @@ input[type="checkbox"]::before {
   transform: translateY(-1px) rotate(45deg);
   visibility: hidden;
 }
-input[type="checkbox"]:checked::before {
+input[type='checkbox']:checked::before {
   visibility: visible;
 }
 button {
@@ -504,7 +504,7 @@ button.keycap {
   color: #fff;
 }
 select,
-input:not([type="range"]):not([type="checkbox"]):not([type="radio"]) {
+input:not([type='range']):not([type='checkbox']):not([type='radio']) {
   min-width: 0;
   padding: 5px 8px;
   color: #eef6f5;
@@ -519,12 +519,12 @@ select {
 input::placeholder {
   color: #aebfbd;
 }
-input[type="range"]:not(:disabled) {
+input[type='range']:not(:disabled) {
   cursor: pointer;
 }
 button:not(:disabled):not(:focus):hover,
 select:not(:disabled):not(:focus):hover,
-input:not([type="range"]):not(:disabled):not(:focus):hover,
+input:not([type='range']):not(:disabled):not(:focus):hover,
 #lap-recorder-button:not(:disabled):not(:focus):hover {
   background: #18272e;
   border-color: #9ee8d5;
@@ -538,7 +538,7 @@ input:focus-visible:active {
   outline: 2px solid #9ee8d5;
   outline-offset: 2px;
 }
-input:not([type="range"]):not([type="checkbox"]):not([type="radio"]):focus:not(:focus-visible) {
+input:not([type='range']):not([type='checkbox']):not([type='radio']):focus:not(:focus-visible) {
   border-color: #9ee8d5;
 }
 .credit {
@@ -612,13 +612,13 @@ dialog h2 {
 #course-picker-dialog {
   width: min(800px, calc(100vw - 32px));
 }
-.tabs [role="tablist"] {
+.tabs [role='tablist'] {
   display: flex;
   gap: 4px;
   border-bottom: 1px solid #9ee8d533;
   margin-bottom: 16px;
 }
-.tabs [role="tab"] {
+.tabs [role='tab'] {
   flex: 1;
   min-width: 0;
   padding: 12px 8px;
@@ -631,7 +631,7 @@ dialog h2 {
   font-size: 13px;
   cursor: pointer;
 }
-.tabs [role="tab"][aria-selected="true"] {
+.tabs [role='tab'][aria-selected='true'] {
   color: #9ee8d5;
   border-bottom-color: #9ee8d5;
   background: #9ee8d511;
@@ -679,7 +679,7 @@ dialog h2 {
   margin-top: -4px;
 }
 .course-card:hover,
-.course-card[aria-current="true"] {
+.course-card[aria-current='true'] {
   border-color: #9ee8d5;
   background: #9ee8d511;
 }
@@ -748,7 +748,7 @@ dialog h2 {
 #save-course-status:empty {
   display: none;
 }
-#tuning-preset-status[data-error="true"] {
+#tuning-preset-status[data-error='true'] {
   color: #ffb8a8;
 }
 #sound-status:empty,
@@ -867,21 +867,21 @@ dialog h2 {
   flex-shrink: 0;
 }
 /* Ready: play triangle. Recording: pulsing red dot. Replay: stop square. */
-[data-mode="ready"] .lap-recorder-icon {
+[data-mode='ready'] .lap-recorder-icon {
   background: #9ee8d5;
   clip-path: polygon(15% 0, 100% 50%, 15% 100%);
 }
-[data-mode="recording"] .lap-recorder-icon {
+[data-mode='recording'] .lap-recorder-icon {
   border-radius: 50%;
   background: #ff3b30;
   box-shadow: 0 0 8px #ff3b30aa;
   animation: lap-recording-pulse 1.2s ease-in-out infinite;
 }
-#lap-recorder-button[data-mode="recording"] {
+#lap-recorder-button[data-mode='recording'] {
   border-color: #ff3b3066;
   color: #ffd2cf;
 }
-[data-mode="replay"] .lap-recorder-icon {
+[data-mode='replay'] .lap-recorder-icon {
   border-radius: 2px;
   background: #eef6f5;
   transform: scale(0.8);
@@ -892,7 +892,7 @@ dialog h2 {
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  [data-mode="recording"] .lap-recorder-icon {
+  [data-mode='recording'] .lap-recorder-icon {
     animation: none;
   }
 }

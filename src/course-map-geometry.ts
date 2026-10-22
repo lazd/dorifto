@@ -63,18 +63,32 @@ export function createCourseMapGeometry(
     x: size / 2 + (x - centerX) * scale,
     y: size / 2 + (z - centerZ) * scale * (options.invertZ ? -1 : 1),
   });
-  const path = points.map((point, index) => {
-    const { x, y } = project(point);
-    return `${index ? 'L' : 'M'}${x.toFixed(2)},${y.toFixed(2)}`;
-  }).join(' ') + ' Z';
-  const pad = options.padRadius === undefined
-    ? undefined
-    : { ...project({ x: 0, z: 0 }), radius: options.padRadius * scale };
-  const renderedRoadWidth = Math.max(options.minimumRoadWidth ?? 0, options.minStrokeWidth ?? 0, roadWidth * scale);
+  const path =
+    points
+      .map((point, index) => {
+        const { x, y } = project(point);
+        return `${index ? 'L' : 'M'}${x.toFixed(2)},${y.toFixed(2)}`;
+      })
+      .join(' ') + ' Z';
+  const pad =
+    options.padRadius === undefined
+      ? undefined
+      : { ...project({ x: 0, z: 0 }), radius: options.padRadius * scale };
+  const renderedRoadWidth = Math.max(
+    options.minimumRoadWidth ?? 0,
+    options.minStrokeWidth ?? 0,
+    roadWidth * scale,
+  );
   const startLine = (position: CoursePoint, tangent: CoursePoint) => {
     const halfLine = (renderedRoadWidth / 2 + 2) / scale;
-    const left = project({ x: position.x - tangent.z * halfLine, z: position.z + tangent.x * halfLine });
-    const right = project({ x: position.x + tangent.z * halfLine, z: position.z - tangent.x * halfLine });
+    const left = project({
+      x: position.x - tangent.z * halfLine,
+      z: position.z + tangent.x * halfLine,
+    });
+    const right = project({
+      x: position.x + tangent.z * halfLine,
+      z: position.z - tangent.x * halfLine,
+    });
     return `M${left.x},${left.y} L${right.x},${right.y}`;
   };
   return {

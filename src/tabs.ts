@@ -17,11 +17,20 @@ export class Tabs {
         const index = this.tabs.indexOf(tab);
         let next: number;
         switch (event.key) {
-          case 'ArrowRight': next = (index + 1) % this.tabs.length; break;
-          case 'ArrowLeft': next = (index + this.tabs.length - 1) % this.tabs.length; break;
-          case 'Home': next = 0; break;
-          case 'End': next = this.tabs.length - 1; break;
-          default: return;
+          case 'ArrowRight':
+            next = (index + 1) % this.tabs.length;
+            break;
+          case 'ArrowLeft':
+            next = (index + this.tabs.length - 1) % this.tabs.length;
+            break;
+          case 'Home':
+            next = 0;
+            break;
+          case 'End':
+            next = this.tabs.length - 1;
+            break;
+          default:
+            return;
         }
         event.preventDefault();
         this.select(this.panels[next].id);

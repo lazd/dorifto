@@ -22,17 +22,25 @@ function createProcessor(sampleRate = 48000, workletSource = source) {
 }
 
 function trigger(processor, boost) {
-  processor.port.onmessage({ data: {
-    rpm: 750, load: 0, boost: 0, cut: 0, limiter: 0, blow: boost,
-    tires: Array.from({ length: 4 }, () => ({ level: 0, speed: 0, load: 0 })),
-  } });
+  processor.port.onmessage({
+    data: {
+      rpm: 750,
+      load: 0,
+      boost: 0,
+      cut: 0,
+      limiter: 0,
+      blow: boost,
+      tires: Array.from({ length: 4 }, () => ({ level: 0, speed: 0, load: 0 })),
+    },
+  });
 }
 
 function render(processor, seconds, sampleRate = 48000, channel = 1) {
   const samples = [];
-  for (let i = 0; i < Math.ceil(seconds * sampleRate / 128); i++) {
+  for (let i = 0; i < Math.ceil((seconds * sampleRate) / 128); i++) {
     const outputs = [1, 1, 2, 1].map((channels) =>
-      Array.from({ length: channels }, () => new Float32Array(128)));
+      Array.from({ length: channels }, () => new Float32Array(128)),
+    );
     assert.equal(processor.process([], outputs), true);
     for (const channels of outputs) {
       for (const channel of channels) assert.ok(channel.every(Number.isFinite));
@@ -92,8 +100,7 @@ test('sign crash gain is reduced without changing other channels', () => {
   const unity = createProcessor(48000, unitySource);
   quiet.port.onmessage({ data: { clank: 1 } });
   unity.port.onmessage({ data: { clank: 1 } });
-  const ratio = energy(render(quiet, 0.15, 48000, 3))
-    / energy(render(unity, 0.15, 48000, 3));
+  const ratio = energy(render(quiet, 0.15, 48000, 3)) / energy(render(unity, 0.15, 48000, 3));
   assert.ok(Math.abs(ratio - 0.75 ** 2) < 0.00001);
 });
 
@@ -109,8 +116,10 @@ test('sign crash has a stronger initial punch without increasing its tail', () =
   light.port.onmessage({ data: { clank: 1 } });
   const hit = render(full, 0.25, 48000, 3);
   const baseline = render(light, 0.25, 48000, 3);
-  assert.ok(energy(hit.slice(0, 960)) > energy(baseline.slice(0, 960)) * 2,
-    'first 20 ms has a weighty impact');
+  assert.ok(
+    energy(hit.slice(0, 960)) > energy(baseline.slice(0, 960)) * 2,
+    'first 20 ms has a weighty impact',
+  );
   const difference = hit.map((value, index) => value - baseline[index]);
   assert.ok(energy(difference.slice(7200)) < 1e-7, 'punch is gone after 150 ms');
 });
@@ -133,8 +142,8 @@ test('blow-off adds a high-pitched tone without changing other sound channels', 
   const quiet = createProcessor();
   trigger(active, 1);
   trigger(quiet, 0);
-  const outputs = () => [1, 1, 2, 1].map((channels) =>
-    Array.from({ length: channels }, () => new Float32Array(128)));
+  const outputs = () =>
+    [1, 1, 2, 1].map((channels) => Array.from({ length: channels }, () => new Float32Array(128)));
   const a = outputs();
   const b = outputs();
   active.process([], a);
@@ -158,7 +167,7 @@ test('blow-off adds a high-pitched tone without changing other sound channels', 
   for (let i = 1; i < tone.length; i++) {
     if (tone[i - 1] <= 0 && tone[i] > 0) crossings++;
   }
-  const frequency = crossings * 48000 / tone.length;
+  const frequency = (crossings * 48000) / tone.length;
   assert.ok(frequency > 4500 && frequency < 5100, `${frequency} Hz release squeal`);
   assert.ok(energy(tone) > 0.003);
 });
@@ -182,7 +191,15 @@ test('audio uses pre-release boost for lift-off and gear changes, and clears it 
     audio.reset();
     const update = (throttle, boost, gear = 1) => {
       audio.update({
-        drivetrain: { rpm: 4500, load: throttle, throttle, boost, gear, shifting: false, limiterCut: false },
+        drivetrain: {
+          rpm: 4500,
+          load: throttle,
+          throttle,
+          boost,
+          gear,
+          shifting: false,
+          limiterCut: false,
+        },
         tires: Array.from({ length: 4 }, () => ({ slip: 0, speed: 0, load: 0 })),
       });
       return messages.at(-1).blow;

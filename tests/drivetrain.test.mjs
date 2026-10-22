@@ -42,7 +42,7 @@ function revEngine() {
 test('closed-throttle free revs fall three times as fast across the RPM range', () => {
   for (const rpm of [1500, 3000, 6000]) {
     const drivetrain = new Drivetrain();
-    drivetrain.engineSpeed = rpm * 2 * Math.PI / 60;
+    drivetrain.engineSpeed = (rpm * 2 * Math.PI) / 60;
     drivetrain.state.rpm = rpm;
     const previousTorque = -(22 + drivetrain.engineSpeed * 0.055);
     assert.equal(drivetrain.getEngineTorque(input, 0, 0), previousTorque * 3);
@@ -84,19 +84,16 @@ test('rev release settles at the configured idle without stalling', () => {
 test('positive torque and full-throttle drag retain their existing behavior', () => {
   const drivetrain = new Drivetrain();
   for (const rpm of [idleRpm, 3000, 6000]) {
-    drivetrain.engineSpeed = rpm * 2 * Math.PI / 60;
+    drivetrain.engineSpeed = (rpm * 2 * Math.PI) / 60;
     drivetrain.state.rpm = rpm;
     for (const load of [0, 1]) {
       const t = (value, low, high) => {
         const x = Math.max(0, Math.min(1, (value - low) / (high - low)));
         return x * x * (3 - 2 * x);
       };
-      const curve = (0.65 + 0.35 * t(rpm, 1000, 4000))
-        * (1 - 0.18 * t(rpm, 5500, 7500));
-      const combustion = load * Math.min(
-        input.peakTorque * curve * 0.8,
-        input.peakPower / drivetrain.engineSpeed,
-      );
+      const curve = (0.65 + 0.35 * t(rpm, 1000, 4000)) * (1 - 0.18 * t(rpm, 5500, 7500));
+      const combustion =
+        load * Math.min(input.peakTorque * curve * 0.8, input.peakPower / drivetrain.engineSpeed);
       const drag = (22 + drivetrain.engineSpeed * 0.055) * (1 - load * 0.85);
       assert.equal(drivetrain.getEngineTorque(input, 1, load), combustion - drag);
     }

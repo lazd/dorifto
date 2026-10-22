@@ -1,0 +1,18 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "unicorn", "oxc"],
+  "categories": {
+    "correctness": "error"
+  },
+  "rules": {
+    "no-unused-vars": [
+      "error",
+      { "ignoreRestSiblings": true, "argsIgnorePattern": "^_", "varsIgnorePattern": "^_" }
+    ],
+    "unicorn/no-new-array": "off"
+  },
+  "env": {
+    "builtin": true
+  },
+  "ignorePatterns": ["models/**", ".z32bounds.mjs"]
+}

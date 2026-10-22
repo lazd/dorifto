@@ -10,17 +10,26 @@ import { wattsPerHorsepower } from './configuration-state';
 import { driveModes } from './drive-modes';
 import { Drivetrain, wheelInertia, type DrivetrainInput } from './drivetrain';
 import { vehicleSettings } from './vehicle-settings';
-import { createPhysicsVisuals, type PhysicsPlugin, type PhysicsPluginContext } from './physics-plugin';
+import {
+  createPhysicsVisuals,
+  type PhysicsPlugin,
+  type PhysicsPluginContext,
+} from './physics-plugin';
 import type { HeightfieldData } from './terrain-query';
 
-export type PhysicsControls = Pick<DrivingControls, 'throttle' | 'brake' | 'reverse' | 'steer' | 'handbrake'>;
+export type PhysicsControls = Pick<
+  DrivingControls,
+  'throttle' | 'brake' | 'reverse' | 'steer' | 'handbrake'
+>;
 export type PhysicsConfiguration = Pick<ConfigurationState, 'driveMode' | 'profiles' | 'coneMode'>;
-export type PhysicsCar = Pick<Awaited<ReturnType<typeof loadCar>>, 'centers' | 'radii' | 'collisionVertices'
-  | 'setBraking' | 'setReversing' | 'setHazards'> & {
-    chassis: THREE.Object3D;
-    wheels: THREE.Object3D[];
-    hubs: THREE.Object3D[];
-  };
+export type PhysicsCar = Pick<
+  Awaited<ReturnType<typeof loadCar>>,
+  'centers' | 'radii' | 'collisionVertices' | 'setBraking' | 'setReversing' | 'setHazards'
+> & {
+  chassis: THREE.Object3D;
+  wheels: THREE.Object3D[];
+  hubs: THREE.Object3D[];
+};
 
 export interface ChassisPose {
   position: THREE.Vector3;
@@ -62,13 +71,25 @@ export function createPhysicsResources(Ammo: typeof AmmoFactory) {
       buffer.used = true;
       Ammo.HEAPF32.set(heights, buffer.pointer / 4);
       const allocated = buffer;
-      return { pointer: buffer.pointer, release() { allocated.used = false; } };
+      return {
+        pointer: buffer.pointer,
+        release() {
+          allocated.used = false;
+        },
+      };
     },
   };
 }
 
 export function createVehiclePhysics({
-  Ammo, resources, car, course, spawn, controls, configurationState, laps,
+  Ammo,
+  resources,
+  car,
+  course,
+  spawn,
+  controls,
+  configurationState,
+  laps,
 }: VehiclePhysicsOptions) {
   const { terrain, isAsphalt } = course;
   const settings = vehicleSettings;
@@ -115,16 +136,28 @@ export function createVehiclePhysics({
 
   const heightData = resources.acquireHeightfield(terrain.heights);
   const groundShape = new Ammo.btHeightfieldTerrainShape(
-    terrain.columns, terrain.rows, heightData.pointer, 1, terrain.minHeight, terrain.maxHeight, 1, Ammo.PHY_FLOAT, false,
+    terrain.columns,
+    terrain.rows,
+    heightData.pointer,
+    1,
+    terrain.minHeight,
+    terrain.maxHeight,
+    1,
+    Ammo.PHY_FLOAT,
+    false,
   );
   vector.setValue(terrain.spacing, 1, terrain.spacing);
   groundShape.setLocalScaling(vector);
   groundShape.setMargin(0.01);
-  rigidBody(0, groundShape, new THREE.Vector3(
-    terrain.minX + (terrain.columns - 1) * terrain.spacing / 2,
-    (terrain.minHeight + terrain.maxHeight) / 2,
-    terrain.minZ + (terrain.rows - 1) * terrain.spacing / 2,
-  ));
+  rigidBody(
+    0,
+    groundShape,
+    new THREE.Vector3(
+      terrain.minX + ((terrain.columns - 1) * terrain.spacing) / 2,
+      (terrain.minHeight + terrain.maxHeight) / 2,
+      terrain.minZ + ((terrain.rows - 1) * terrain.spacing) / 2,
+    ),
+  );
   const chassisShape = new Ammo.btConvexHullShape();
   for (let i = 0; i < car.collisionVertices.length; i++) {
     const point = car.collisionVertices[i];
@@ -132,8 +165,11 @@ export function createVehiclePhysics({
     chassisShape.addPoint(vector, i === car.collisionVertices.length - 1);
   }
   chassisShape.setMargin(settings.collisionMarginM);
-  const body = rigidBody(settings.massKg, chassisShape,
-    new THREE.Vector3(0, settings.spawnHeightM, 0).add(centerOfMass));
+  const body = rigidBody(
+    settings.massKg,
+    chassisShape,
+    new THREE.Vector3(0, settings.spawnHeightM, 0).add(centerOfMass),
+  );
   // Vehicle-scale pitch/yaw/roll inertia, not the thin underbody box's inertia.
   vector.setValue(settings.inertiaKgM2.pitch, settings.inertiaKgM2.yaw, settings.inertiaKgM2.roll);
   body.setMassProps(settings.massKg, vector);
@@ -155,7 +191,15 @@ export function createVehiclePhysics({
       center.y + suspension.mountHeightOffsetM - centerOfMass.y,
       (pair[0].z + pair[1].z) / 2 - centerOfMass.z,
     );
-    const wheel = vehicle.addWheel(vector, direction, axle, suspension.restLengthM, car.radii[i], tuning, i < 2);
+    const wheel = vehicle.addWheel(
+      vector,
+      direction,
+      axle,
+      suspension.restLengthM,
+      car.radii[i],
+      tuning,
+      i < 2,
+    );
     wheel.set_m_suspensionStiffness(suspension.stiffness);
     wheel.set_m_wheelsDampingRelaxation(suspension.dampingRelaxation);
     wheel.set_m_wheelsDampingCompression(suspension.dampingCompression);
@@ -167,7 +211,6 @@ export function createVehiclePhysics({
   });
   Ammo.destroy(direction);
   Ammo.destroy(axle);
-
 
   const tireSounds = Array.from({ length: 4 }, () => ({ slip: 0, speed: 0, load: 0 }));
 
@@ -182,14 +225,32 @@ export function createVehiclePhysics({
   const drivenWheelRadius = (car.radii[2] + car.radii[3]) / 2;
   const drivetrain = new Drivetrain();
   const drivetrainInput: DrivetrainInput = {
-    throttle: 0, reversing: false, wheelSpeed: 0, roadWheelSpeed: 0, handbrake: false,
-    speedLimited: false, peakTorque: 0, peakPower: 0,
+    throttle: 0,
+    reversing: false,
+    wheelSpeed: 0,
+    roadWheelSpeed: 0,
+    handbrake: false,
+    speedLimited: false,
+    peakTorque: 0,
+    peakPower: 0,
   };
   const tireContacts = Array.from({ length: 4 }, () => ({
-    forward: new THREE.Vector3(), lateral: new THREE.Vector3(), offset: new THREE.Vector3(),
-    along: 0, across: 0, slipAngle: 0, load: 0, capacity: 0, lateralDemand: 0,
-    staticLateral: 0, staticLongitudinal: 0, staticBlend: 0,
-    brakeTorque: 0, longitudinalForce: 0, lateralForce: 0, paved: true,
+    forward: new THREE.Vector3(),
+    lateral: new THREE.Vector3(),
+    offset: new THREE.Vector3(),
+    along: 0,
+    across: 0,
+    slipAngle: 0,
+    load: 0,
+    capacity: 0,
+    lateralDemand: 0,
+    staticLateral: 0,
+    staticLongitudinal: 0,
+    staticBlend: 0,
+    brakeTorque: 0,
+    longitudinalForce: 0,
+    lateralForce: 0,
+    paved: true,
   }));
   const fixedStep = 1 / 120;
   const velocity = new THREE.Vector3();
@@ -218,8 +279,13 @@ export function createVehiclePhysics({
   const replaySpin = new THREE.Quaternion();
   function setCourseDirection(nextSpawn: ReturnType<typeof courseSpawn>, nextLaps: LapTimer) {
     const spawnNormal = terrain.normalAt(nextSpawn.position[0], nextSpawn.position[1]);
-    const spawnForward = new THREE.Vector3(Math.sin(nextSpawn.heading), 0, Math.cos(nextSpawn.heading))
-      .projectOnPlane(spawnNormal).normalize();
+    const spawnForward = new THREE.Vector3(
+      Math.sin(nextSpawn.heading),
+      0,
+      Math.cos(nextSpawn.heading),
+    )
+      .projectOnPlane(spawnNormal)
+      .normalize();
     const spawnRight = new THREE.Vector3().crossVectors(spawnNormal, spawnForward).normalize();
     const spawnQuaternion = new THREE.Quaternion().setFromRotationMatrix(
       new THREE.Matrix4().makeBasis(spawnRight, spawnNormal, spawnForward),
@@ -227,11 +293,18 @@ export function createVehiclePhysics({
     centerOfMassOffset.copy(centerOfMass).applyQuaternion(spawnQuaternion);
     vector.setValue(
       nextSpawn.position[0] + centerOfMassOffset.x,
-      terrain.heightAt(nextSpawn.position[0], nextSpawn.position[1]) + settings.spawnHeightM + centerOfMassOffset.y,
+      terrain.heightAt(nextSpawn.position[0], nextSpawn.position[1]) +
+        settings.spawnHeightM +
+        centerOfMassOffset.y,
       nextSpawn.position[1] + centerOfMassOffset.z,
     );
     resetTransform.setOrigin(vector);
-    const spawnRotation = new Ammo.btQuaternion(spawnQuaternion.x, spawnQuaternion.y, spawnQuaternion.z, spawnQuaternion.w);
+    const spawnRotation = new Ammo.btQuaternion(
+      spawnQuaternion.x,
+      spawnQuaternion.y,
+      spawnQuaternion.z,
+      spawnQuaternion.w,
+    );
     resetTransform.setRotation(spawnRotation);
     Ammo.destroy(spawnRotation);
     laps = nextLaps;
@@ -248,7 +321,10 @@ export function createVehiclePhysics({
     car.chassis.position.sub(centerOfMassOffset);
     car.wheels.forEach((wheel, i) => {
       // Non-rotating hub pose first, for the calipers, then the spinning wheel pose.
-      for (const [object, angle] of [[car.hubs[i], 0], [wheel, tireAngles[i]]] as const) {
+      for (const [object, angle] of [
+        [car.hubs[i], 0],
+        [wheel, tireAngles[i]],
+      ] as const) {
         vehicle.getWheelInfo(i).set_m_rotation(angle);
         vehicle.updateWheelTransform(i, true);
         const transform = vehicle.getWheelTransformWS(i);
@@ -315,13 +391,16 @@ export function createVehiclePhysics({
     const rotation = body.getWorldTransform().getRotation();
     physicsRotation.set(rotation.x(), rotation.y(), rotation.z(), rotation.w());
     tireForward.set(0, 0, 1).applyQuaternion(physicsRotation);
-    const forwardSpeed = linear.x() * tireForward.x + linear.y() * tireForward.y + linear.z() * tireForward.z;
+    const forwardSpeed =
+      linear.x() * tireForward.x + linear.y() * tireForward.y + linear.z() * tireForward.z;
     if (controls.throttle > 0) spawnBrakeHeld = false;
     if (spawnBrakeHeld || controls.throttle > 0 || controls.reverse === 0) reversing = false;
-    else if (Math.abs(forwardSpeed) < 0.5 && Math.abs(angular.y()) < 0.5 && speed < 4) reversing = true;
+    else if (Math.abs(forwardSpeed) < 0.5 && Math.abs(angular.y()) < 0.5 && speed < 4)
+      reversing = true;
     const input = controls.steer;
-    const steeringLimit = THREE.MathUtils.lerp(tune.steeringLow, tune.steeringHigh, Math.min(speed / 140, 1))
-      * tireTune.steeringScale;
+    const steeringLimit =
+      THREE.MathUtils.lerp(tune.steeringLow, tune.steeringHigh, Math.min(speed / 140, 1)) *
+      tireTune.steeringScale;
     const targetSteering = input * steeringLimit;
     const smoothedSteering = THREE.MathUtils.damp(steering, targetSteering, 10, fixedStep);
     const maxChange = tireTune.steeringRate * fixedStep;
@@ -330,7 +409,8 @@ export function createVehiclePhysics({
     const braking = brakeAmount > 0;
     const handbrake = controls.handbrake;
     const throttle = reversing ? controls.reverse : controls.throttle;
-    brakestand = throttle > 0 && braking && !reversing && speed < settings.brakes.brakestandMaxSpeedKmh;
+    brakestand =
+      throttle > 0 && braking && !reversing && speed < settings.brakes.brakestandMaxSpeedKmh;
     burnout = 0;
     for (const tire of tireSounds) tire.slip = tire.speed = tire.load = 0;
     for (const plugin of plugins) plugin.beforeStep?.(fixedStep);
@@ -344,10 +424,16 @@ export function createVehiclePhysics({
       const rightLoad = Math.max(0, vehicle.getWheelInfo(axle + 1).get_m_wheelsSuspensionForce());
       const limit = Math.min(leftLoad, rightLoad) * suspension.antiRollMaxLoadFraction;
       const barForce = THREE.MathUtils.clamp(
-        (right.get_m_suspensionLength() - left.get_m_suspensionLength()) * suspension.antiRollStiffness, -limit, limit,
+        (right.get_m_suspensionLength() - left.get_m_suspensionLength()) *
+          suspension.antiRollStiffness,
+        -limit,
+        limit,
       );
       for (let side = 0; side < 2; side++) {
-        antiRollOffset.copy(car.centers[axle + side]).sub(centerOfMass).applyQuaternion(physicsRotation);
+        antiRollOffset
+          .copy(car.centers[axle + side])
+          .sub(centerOfMass)
+          .applyQuaternion(physicsRotation);
         const force = side === 0 ? barForce : -barForce;
         vector.setValue(suspensionUp.x * force, suspensionUp.y * force, suspensionUp.z * force);
         forceOffset.setValue(antiRollOffset.x, antiRollOffset.y, antiRollOffset.z);
@@ -371,7 +457,8 @@ export function createVehiclePhysics({
         const normal = contact.get_m_contactNormalWS();
         tireNormal.set(normal.x(), normal.y(), normal.z()).normalize();
       }
-      tireForward.set(Math.sin(rear ? 0 : steering), 0, Math.cos(rear ? 0 : steering))
+      tireForward
+        .set(Math.sin(rear ? 0 : steering), 0, Math.cos(rear ? 0 : steering))
         .applyQuaternion(physicsRotation);
       tireForward.projectOnPlane(tireNormal).normalize();
       tireLateral.crossVectors(tireNormal, tireForward).normalize();
@@ -382,26 +469,50 @@ export function createVehiclePhysics({
       const across = vx * tireLateral.x + vy * tireLateral.y + vz * tireLateral.z;
       const slipAngle = Math.atan2(across, Math.max(Math.abs(along), 2));
       const load = wheelContacts[i] ? Math.max(0, wheel.get_m_wheelsSuspensionForce()) : 0;
-      const staticGrip = braking && !rear ? 0.15 * brakeAmount * (1 - THREE.MathUtils.smoothstep(Math.abs(along), 0.2, 0.5)) : 0;
+      const staticGrip =
+        braking && !rear
+          ? 0.15 * brakeAmount * (1 - THREE.MathUtils.smoothstep(Math.abs(along), 0.2, 0.5))
+          : 0;
       const surfaceGrip = paved ? 1 : 0.65;
-      const capacity = load * (tune.friction * (rear ? tireTune.rearGrip : tireTune.frontGrip) + staticGrip) * surfaceGrip;
-      const lateralDemand = -(rear ? tireTune.rearStiffness : tireTune.frontStiffness) * slipAngle * surfaceGrip;
+      const capacity =
+        load *
+        (tune.friction * (rear ? tireTune.rearGrip : tireTune.frontGrip) + staticGrip) *
+        surfaceGrip;
+      const lateralDemand =
+        -(rear ? tireTune.rearStiffness : tireTune.frontStiffness) * slipAngle * surfaceGrip;
       // At low speed, solve for the contact force that cancels tangential
       // velocity and gravity over this step, instead of requiring tire slip.
       const contactMass = settings.massKg / 4;
       const staticLateral = contactMass * (9.81 * tireLateral.y - across / fixedStep);
       const staticLongitudinal = contactMass * (9.81 * tireForward.y - along / fixedStep);
       const staticBlend = 1 - THREE.MathUtils.smoothstep(Math.hypot(along, across), 0.5, 2);
-      const brakeTorque = rear && handbrake ? settings.brakes.handbrakeTorqueNm
-        : brakeAmount * (rear ? brakestand ? 0 : settings.brakes.rearTorqueNm : settings.brakes.frontTorqueNm);
+      const brakeTorque =
+        rear && handbrake
+          ? settings.brakes.handbrakeTorqueNm
+          : brakeAmount *
+            (rear
+              ? brakestand
+                ? 0
+                : settings.brakes.rearTorqueNm
+              : settings.brakes.frontTorqueNm);
       const tire = tireContacts[i];
       tire.forward.copy(tireForward);
       tire.lateral.copy(tireLateral);
       tire.offset.copy(tireOffset);
       Object.assign(tire, {
-        along, across, slipAngle, load, capacity, lateralDemand, staticLateral, staticLongitudinal, staticBlend,
-        brakeTorque, paved,
-        longitudinalForce: 0, lateralForce: 0,
+        along,
+        across,
+        slipAngle,
+        load,
+        capacity,
+        lateralDemand,
+        staticLateral,
+        staticLongitudinal,
+        staticBlend,
+        brakeTorque,
+        paved,
+        longitudinalForce: 0,
+        lateralForce: 0,
       });
     }
     drivetrainInput.throttle = throttle;
@@ -420,33 +531,47 @@ export function createVehiclePhysics({
       const engineTorque = drivetrain.step(tireStep, drivetrainInput);
       const differential = THREE.MathUtils.clamp(
         (tireSpeeds[3] - tireSpeeds[2]) * settings.differential.coupling,
-        -settings.differential.maxTorqueNm, settings.differential.maxTorqueNm,
+        -settings.differential.maxTorqueNm,
+        settings.differential.maxTorqueNm,
       );
       for (let i = 0; i < 4; i++) {
         const rear = i >= 2;
         const tire = tireContacts[i];
         const { along, capacity, lateralDemand, brakeTorque } = tire;
-        const slipRatio = (tireSpeeds[i] * car.radii[i] - along) / Math.max(Math.abs(along), braking ? 0.5 : 4);
+        const slipRatio =
+          (tireSpeeds[i] * car.radii[i] - along) / Math.max(Math.abs(along), braking ? 0.5 : 4);
         // Saturate both pure-slip demands before sharing the friction circle;
         // unbounded wheelspin demand would erase lateral force under throttle.
-        const staticBlend = tire.staticBlend
-          * (1 - THREE.MathUtils.smoothstep(Math.abs(tireSpeeds[i] * car.radii[i]), 0.5, 2));
+        const staticBlend =
+          tire.staticBlend *
+          (1 - THREE.MathUtils.smoothstep(Math.abs(tireSpeeds[i] * car.radii[i]), 0.5, 2));
         const brakeCapacity = brakeTorque / car.radii[i];
-        const driveDemand = THREE.MathUtils.lerp(capacity * Math.tanh(slipRatio * 8),
+        const driveDemand = THREE.MathUtils.lerp(
+          capacity * Math.tanh(slipRatio * 8),
           THREE.MathUtils.clamp(tire.staticLongitudinal, -brakeCapacity, brakeCapacity),
-          brakeTorque > 0 ? staticBlend : 0);
-        const lateral = THREE.MathUtils.lerp(capacity * Math.tanh(lateralDemand / Math.max(capacity, 1)),
-          THREE.MathUtils.clamp(tire.staticLateral, -capacity, capacity), staticBlend);
+          brakeTorque > 0 ? staticBlend : 0,
+        );
+        const lateral = THREE.MathUtils.lerp(
+          capacity * Math.tanh(lateralDemand / Math.max(capacity, 1)),
+          THREE.MathUtils.clamp(tire.staticLateral, -capacity, capacity),
+          staticBlend,
+        );
         const combined = Math.hypot(driveDemand, lateral);
         // Round the friction-circle boundary without a separate breakaway drop.
         const utilization = combined / Math.max(capacity, 1);
-        const scale = THREE.MathUtils.lerp(1 / (1 + utilization ** 8) ** (1 / 8),
-          1 / Math.max(1, utilization), staticBlend);
+        const scale = THREE.MathUtils.lerp(
+          1 / (1 + utilization ** 8) ** (1 / 8),
+          1 / Math.max(1, utilization),
+          staticBlend,
+        );
         const fx = driveDemand * scale;
         const fy = lateral * scale;
-        const torque = (rear ? engineTorque + (i === 2 ? differential : -differential) : 0) - fx * car.radii[i];
-        const nextSpeed = tireSpeeds[i] + torque / wheelInertia * tireStep;
-        tireSpeeds[i] = Math.sign(nextSpeed) * Math.max(0, Math.abs(nextSpeed) - brakeTorque / wheelInertia * tireStep);
+        const torque =
+          (rear ? engineTorque + (i === 2 ? differential : -differential) : 0) - fx * car.radii[i];
+        const nextSpeed = tireSpeeds[i] + (torque / wheelInertia) * tireStep;
+        tireSpeeds[i] =
+          Math.sign(nextSpeed) *
+          Math.max(0, Math.abs(nextSpeed) - (brakeTorque / wheelInertia) * tireStep);
         tireAngles[i] += tireSpeeds[i] * tireStep;
         tire.longitudinalForce += fx / 12;
         tire.lateralForce += fy / 12;
@@ -463,17 +588,23 @@ export function createVehiclePhysics({
         const excessSpeed = Math.abs(tireSpeeds[i] * car.radii[i] - along);
         const slipRatio = excessSpeed / Math.max(Math.abs(along), 4);
         if (paved && load > 100) {
-          const lateralSlip = THREE.MathUtils.smoothstep(Math.abs(slipAngle), 0.08, 0.35)
-            * THREE.MathUtils.smoothstep(Math.abs(across), 0.8, 4);
-          const longitudinalSlip = THREE.MathUtils.smoothstep(slipRatio, 0.15, 0.65)
-            * THREE.MathUtils.smoothstep(excessSpeed, 1, 5);
+          const lateralSlip =
+            THREE.MathUtils.smoothstep(Math.abs(slipAngle), 0.08, 0.35) *
+            THREE.MathUtils.smoothstep(Math.abs(across), 0.8, 4);
+          const longitudinalSlip =
+            THREE.MathUtils.smoothstep(slipRatio, 0.15, 0.65) *
+            THREE.MathUtils.smoothstep(excessSpeed, 1, 5);
           tireSounds[i].slip = Math.max(lateralSlip, longitudinalSlip);
           tireSounds[i].speed = Math.hypot(across, excessSpeed);
-          tireSounds[i].load = load / (settings.massKg * 9.81 / 4);
+          tireSounds[i].load = load / ((settings.massKg * 9.81) / 4);
         }
         // Normal acceleration needs a small amount of slip, not tire smoke.
-        if (rear) burnout = Math.max(burnout, THREE.MathUtils.smoothstep(slipRatio, 0.18, 0.65)
-          * THREE.MathUtils.smoothstep(excessSpeed, 1, 4));
+        if (rear)
+          burnout = Math.max(
+            burnout,
+            THREE.MathUtils.smoothstep(slipRatio, 0.18, 0.65) *
+              THREE.MathUtils.smoothstep(excessSpeed, 1, 4),
+          );
       }
       vector.setValue(
         tireForward.x * longitudinalForce,
@@ -484,18 +615,27 @@ export function createVehiclePhysics({
       body.applyForce(vector, forceOffset);
       // Approximate suspension roll-center geometry for our custom lateral forces.
       // Bullet's rollInfluence only affects its disabled built-in tire model.
-      const rollCenterOffset = -tireOffset.dot(suspensionUp) * suspension.lateralForceHeightFraction;
+      const rollCenterOffset =
+        -tireOffset.dot(suspensionUp) * suspension.lateralForceHeightFraction;
       forceOffset.setValue(
         tireOffset.x + suspensionUp.x * rollCenterOffset,
         tireOffset.y + suspensionUp.y * rollCenterOffset,
         tireOffset.z + suspensionUp.z * rollCenterOffset,
       );
-      vector.setValue(tireLateral.x * lateralForce, tireLateral.y * lateralForce, tireLateral.z * lateralForce);
+      vector.setValue(
+        tireLateral.x * lateralForce,
+        tireLateral.y * lateralForce,
+        tireLateral.z * lateralForce,
+      );
       body.applyForce(vector, forceOffset);
     }
-    const drag = settings.drag.linearResistance
-      + 0.5 * settings.drag.airDensityKgM3 * settings.drag.coefficient * settings.drag.frontalAreaM2
-      * Math.hypot(linear.x(), linear.z());
+    const drag =
+      settings.drag.linearResistance +
+      0.5 *
+        settings.drag.airDensityKgM3 *
+        settings.drag.coefficient *
+        settings.drag.frontalAreaM2 *
+        Math.hypot(linear.x(), linear.z());
     vector.setValue(-linear.x() * drag, 0, -linear.z() * drag);
     body.applyCentralForce(vector);
     world.stepSimulation(fixedStep, 0);
@@ -510,7 +650,6 @@ export function createVehiclePhysics({
     }
   }
 
-
   /**
    * Replays recorded motion through the live world: the chassis body is placed at `from` and given
    * the velocity that carries it to `to`, so cones and signs react as they did when it was driven.
@@ -520,7 +659,12 @@ export function createVehiclePhysics({
     replayTo.copy(centerOfMass).applyQuaternion(to.quaternion).add(to.position);
     vector.setValue(replayFrom.x, replayFrom.y, replayFrom.z);
     replayTransform.setOrigin(vector);
-    replayRotation.setValue(from.quaternion.x, from.quaternion.y, from.quaternion.z, from.quaternion.w);
+    replayRotation.setValue(
+      from.quaternion.x,
+      from.quaternion.y,
+      from.quaternion.z,
+      from.quaternion.w,
+    );
     replayTransform.setRotation(replayRotation);
     body.setCenterOfMassTransform(replayTransform);
     body.getMotionState().setWorldTransform(replayTransform);
@@ -528,9 +672,10 @@ export function createVehiclePhysics({
     vector.setValue(replayTo.x, replayTo.y, replayTo.z);
     body.setLinearVelocity(vector);
     replaySpin.copy(from.quaternion).invert().premultiply(to.quaternion);
-    if (replaySpin.w < 0) replaySpin.set(-replaySpin.x, -replaySpin.y, -replaySpin.z, -replaySpin.w);
+    if (replaySpin.w < 0)
+      replaySpin.set(-replaySpin.x, -replaySpin.y, -replaySpin.z, -replaySpin.w);
     const halfSin = Math.hypot(replaySpin.x, replaySpin.y, replaySpin.z);
-    const rate = halfSin > 1e-9 ? 2 * Math.atan2(halfSin, replaySpin.w) / (halfSin * dt) : 0;
+    const rate = halfSin > 1e-9 ? (2 * Math.atan2(halfSin, replaySpin.w)) / (halfSin * dt) : 0;
     vector.setValue(replaySpin.x * rate, replaySpin.y * rate, replaySpin.z * rate);
     body.setAngularVelocity(vector);
     body.clearForces();
@@ -558,11 +703,18 @@ export function createVehiclePhysics({
     return velocity;
   }
 
-  function addPlugin<T extends PhysicsPlugin>(createPlugin: (context: PhysicsPluginContext) => T): T {
+  function addPlugin<T extends PhysicsPlugin>(
+    createPlugin: (context: PhysicsPluginContext) => T,
+  ): T {
     if (disposed) throw new Error('Cannot add a plugin to disposed vehicle physics');
     const plugin = createPlugin({
-      Ammo, world, dispatcher, vehicleBody: body,
-      get laps() { return laps; },
+      Ammo,
+      world,
+      dispatcher,
+      vehicleBody: body,
+      get laps() {
+        return laps;
+      },
       createRigidBody: rigidBody,
       setBodyEnabled(body, enabled) {
         if (disposed) throw new Error('Cannot toggle a body in disposed vehicle physics');
@@ -613,15 +765,43 @@ export function createVehiclePhysics({
   }
 
   return {
-    step, stepReplay, captureReplayVisuals, interpolateReplay, reset, setCourseDirection, addPlugin, dispose, captureVisuals, interpolate, fixedStep, wheelContacts, tireSounds,
+    step,
+    stepReplay,
+    captureReplayVisuals,
+    interpolateReplay,
+    reset,
+    setCourseDirection,
+    addPlugin,
+    dispose,
+    captureVisuals,
+    interpolate,
+    fixedStep,
+    wheelContacts,
+    tireSounds,
     tireAngles: tireAngles as readonly number[],
-    get engine() { return drivetrain.state; },
-    get burnout() { return burnout; },
-    get steering() { return steering; },
-    get reversing() { return reversing; },
-    get spawnBrakeHeld() { return spawnBrakeHeld; },
-    get linearVelocity() { return linearVelocity; },
-    get simulationVelocity() { return currentVelocity; },
-    get brakestand() { return brakestand; },
+    get engine() {
+      return drivetrain.state;
+    },
+    get burnout() {
+      return burnout;
+    },
+    get steering() {
+      return steering;
+    },
+    get reversing() {
+      return reversing;
+    },
+    get spawnBrakeHeld() {
+      return spawnBrakeHeld;
+    },
+    get linearVelocity() {
+      return linearVelocity;
+    },
+    get simulationVelocity() {
+      return currentVelocity;
+    },
+    get brakestand() {
+      return brakestand;
+    },
   };
 }
