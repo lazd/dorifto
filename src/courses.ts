@@ -185,7 +185,8 @@ export function readCourseReverse(parameters: URLSearchParams) {
 export function courseSpawn(definition: CourseDefinition) {
   const route = courseRoute(definition);
   // Spawn on the approach side of the same physical start line in either direction.
-  const t = definition.reverse ? 1 - 2 * startDistance / route.getLength() : 0;
+  const length = route.getLength();
+  const t = THREE.MathUtils.euclideanModulo(courseStartDistance(definition, length) - 15, length) / length;
   const position = route.getPointAt(t);
   const tangent = route.getTangentAt(t);
   return { position: [position.x, position.z] as const, heading: Math.atan2(tangent.x, tangent.z) };

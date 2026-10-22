@@ -564,7 +564,8 @@ parameters, and settings. The preference
 also carries over when selecting or generating another course.
 
 Both directions use the same pavement, terrain, banking, and physical start/finish
-location. Reversed spawn places the car on the other approach to the line, facing
+location. Spawn/reset places the car 15 m before the line in either direction.
+Reversed spawn places the car on the other approach to the line, facing
 the new driving direction. Lap gates, turn arrows, and camera look-ahead follow
 that direction; lap timing still requires a complete forward lap.
 
@@ -743,8 +744,8 @@ corners so the offset road edges do not fold over; no hand-drawn edges are neede
 Space markers generously and avoid abrupt reversals or crossings.
 The shared curve automatically generates the asphalt ribbon, cones, 16 cm white
 boundary lines, turn-warning arrows, and a combined checkered start/finish line 5 m
-after the curve's start. Spawn/reset position and heading come from the curve's
-start near the first marker and its tangent. There are no per-course cone, arrow, line, or spawn
+after the curve's start. Spawn/reset position is 15 m before the line along the
+curve, with heading taken from its tangent. There are no per-course cone, arrow, line, or spawn
 coordinates to maintain. `generateCourse` uses the same definition and renderer.
 
 ## Sound

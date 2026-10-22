@@ -77,9 +77,9 @@ test('reverse spawn approaches the unchanged physical start line in the opposite
     const reverseLine = backward.getPointAt(courseStartDistance(backwardDefinition, backward.getLength()) / backward.getLength());
     assert.ok(line.distanceTo(reverseLine) < 1e-7);
     const spawn = courseSpawn(backwardDefinition);
-    const expected = forward.getPointAt(2 * startDistance / length);
+    const expected = forward.getPointAt((startDistance + 15) / length);
     assert.ok(Math.hypot(spawn.position[0] - expected.x, spawn.position[1] - expected.z) < 1e-7);
-    const tangent = forward.getTangentAt(2 * startDistance / length);
+    const tangent = forward.getTangentAt((startDistance + 15) / length);
     assert.ok(Math.sin(spawn.heading) * tangent.x + Math.cos(spawn.heading) * tangent.z < -0.999999);
   }
 });
@@ -109,12 +109,12 @@ test('lap gates accept complete reversed laps and reject driving the wrong way',
       const directed = { ...definition, reverse };
       const route = courseRoute(directed);
       const length = route.getLength();
-      const origin = reverse ? length - 2 * startDistance : 0;
+      const origin = courseStartDistance(directed, length) - 15;
       function drive(direction) {
         const timer = new LapTimer(directed);
         timer.reset(route.getPointAt(origin / length));
         const spacing = 0.75;
-        for (let distance = spacing; distance < length + startDistance * 3; distance += spacing) {
+        for (let distance = spacing; distance < length + 30; distance += spacing) {
           const t = ((origin + direction * distance) / length % 1 + 1) % 1;
           timer.update(route.getPointAt(t), 1 / 60);
         }
