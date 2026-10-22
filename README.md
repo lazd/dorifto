@@ -7,13 +7,21 @@ runtime CDN dependencies.
 ## UI and game state
 
 The toolbar's **Settings** button opens sound, drive mode, time of day, camera
-style, cabin head motion, map orientation, cones, and grass tufts controls in a modal dialog. Changes apply immediately. Close with **Close**,
+style, mirror resolution, cabin head motion, map orientation, cones, and grass tufts controls in a modal dialog. Changes apply immediately. Close with **Close**,
 Escape, or a backdrop click; driving inputs are disabled while it is open.
 **Cones** can be shown everywhere (`?cones=all`), limited to corners
-(`?cones=corners`), or turned off (`?cones=off`). Hidden cones are also removed
+(`?cones=corners`, the default), or turned off (`?cones=off`). Hidden cones are also removed
 from physics;
 **Grass tufts** off (`?grass=off`) hides the decorative blades. Both help
 performance on long imported tracks, which carry hundreds of cones.
+**Settings > Camera > Mirror resolution** defaults to **Low** (512×256,
+`?mirror-resolution=low`). **Medium** (1024×512, `?mirror-resolution=medium`)
+gives nearby cabin mirrors more detail without using full-screen render targets.
+**High** (`?mirror-resolution=high`) uses drawing-buffer-resolution reflections
+for nearby mirrors. Distant mirrors stay at 512×256 in every mode.
+Changes apply immediately and are retained in the URL. Older `?low-res-mirrors=on`
+and `?low-res-mirrors=off` links still select Low and High respectively;
+`mirror-resolution` takes precedence when both parameters are present.
 Chase views place the Settings/Tuning/Help buttons at the bottom center and the
 tachometer and minimap in the bottom corners, with course selection above the map
 and the lap number and times below the map drawing. Expanding the course disclosure
@@ -61,8 +69,8 @@ A persistent minimap shows the current lap number on the left
 with the best time directly underneath, including in cabin view. There is
 no separate lap timing panel. It shows the complete course, a white start/finish line, and an amber arrow
 for the car's live position and heading. It follows course changes automatically;
-**Settings > Map orientation** selects **North up** (default, `?minimap=north-up`)
-or **Follow heading** (`?minimap=heading-up`). Follow heading rotates the course
+**Settings > Map orientation** selects **North up** (`?minimap=north-up`)
+or **Follow heading** (default, `?minimap=heading-up`). Follow heading rotates the course
 so the car always points up, fitting the entire course at any angle. The lap
 times stay upright. The choice is retained in the URL across reloads and course changes.
 

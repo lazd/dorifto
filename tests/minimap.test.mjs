@@ -15,6 +15,8 @@ let minimapMarkerTransform;
 let minimapViewTransform;
 let createGameState;
 let isMinimapOrientation;
+let isMirrorResolution;
+let readMirrorResolution;
 
 before(async () => {
   server = await createServer({
@@ -24,7 +26,8 @@ before(async () => {
   ({ courses, courseRoute, courseSpawn, startDistance, generateCourse } = await server.ssrLoadModule('/src/courses.ts'));
   ({ generateCustomCourse, defaultCourseWeights } = await server.ssrLoadModule('/src/course-generation.ts'));
   ({ createMinimapLayout, minimapMarkerTransform, minimapViewTransform } = await server.ssrLoadModule('/src/minimap.ts'));
-  ({ createGameState, isMinimapOrientation } = await server.ssrLoadModule('/src/game-state.ts'));
+  ({ createGameState, isMinimapOrientation, isMirrorResolution, readMirrorResolution } =
+    await server.ssrLoadModule('/src/game-state.ts'));
 });
 
 after(async () => {
@@ -97,10 +100,34 @@ test('marker tracks actual position, including off-track, and points in each wor
     minimapMarkerTransform(layout, offTrack, { x: 0, z: -1 }));
 });
 
-test('map orientation defaults to north up and validates setting values', () => {
-  assert.equal(createGameState().getState().minimapOrientation, 'north-up');
+test('map orientation defaults to follow heading and validates setting values', () => {
+  assert.equal(createGameState().getState().minimapOrientation, 'heading-up');
   for (const value of ['north-up', 'heading-up']) assert.equal(isMinimapOrientation(value), true);
   for (const value of ['', 'north', 'heading', 'on']) assert.equal(isMinimapOrientation(value), false);
+});
+
+test('performance settings default to low-resolution mirrors and corner-only cones', () => {
+  const state = createGameState().getState();
+  assert.equal(state.mirrorResolution, 'low');
+  assert.equal(state.coneMode, 'corners');
+});
+
+test('mirror resolution accepts three levels and preserves legacy URL choices', () => {
+  assert.equal(readMirrorResolution(new URLSearchParams()), 'low');
+  for (const value of ['low', 'medium', 'high']) {
+    assert.equal(isMirrorResolution(value), true);
+    assert.equal(readMirrorResolution(new URLSearchParams({ 'mirror-resolution': value })), value);
+  }
+  for (const value of ['', 'ultra', 'on', 'off']) {
+    assert.equal(isMirrorResolution(value), false);
+    assert.throws(() => readMirrorResolution(new URLSearchParams({ 'mirror-resolution': value })),
+      /Invalid mirror resolution/);
+  }
+  assert.equal(readMirrorResolution(new URLSearchParams('low-res-mirrors=on')), 'low');
+  assert.equal(readMirrorResolution(new URLSearchParams('low-res-mirrors=off')), 'high');
+  assert.equal(readMirrorResolution(new URLSearchParams('mirror-resolution=medium&low-res-mirrors=off')), 'medium');
+  assert.throws(() => readMirrorResolution(new URLSearchParams('low-res-mirrors=invalid')),
+    /Invalid low-res-mirrors option/);
 });
 
 test('follow heading counter-rotates the map while keeping the car upright at its original size', () => {

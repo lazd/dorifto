@@ -5,6 +5,7 @@ import {
   isCameraStyle,
   isGhostMode,
   isMinimapOrientation,
+  isMirrorResolution,
   isTimeOfDay,
   type GameState,
 } from "./game-state";
@@ -668,6 +669,7 @@ export function bindGameUI(store: Store<GameState>, reportError: (error: unknown
       store.update(write(value));
       const url = new URL(location.href);
       url.searchParams.set(parameter, input.value);
+      if (parameter === "mirror-resolution") url.searchParams.delete("low-res-mirrors");
       if (parameter === "mode" && isDriveMode(value)) {
         url.searchParams.set("preset", store.getState().selectedTuningPresets[value] ?? "custom");
       }
@@ -709,6 +711,13 @@ export function bindGameUI(store: Store<GameState>, reportError: (error: unknown
     isMinimapOrientation,
   );
   const isToggle = (value: string): value is "on" | "off" => value === "on" || value === "off";
+  select<GameState["mirrorResolution"]>(
+    "#mirror-resolution",
+    "mirror-resolution",
+    (state) => state.mirrorResolution,
+    (mirrorResolution) => ({ mirrorResolution }),
+    isMirrorResolution,
+  );
   select<"on" | "off">(
     "#cabin-head-motion",
     "head-motion",

@@ -4,6 +4,7 @@ import { Reflector } from "three/addons/objects/Reflector.js";
 import { RectAreaLightUniformsLib } from "three/addons/lights/RectAreaLightUniformsLib.js";
 import { ConvexHull } from "three/addons/math/ConvexHull.js";
 import { idleRpm, redlineRpm } from "./drivetrain";
+import type { GameState } from "./game-state";
 
 type StandardMesh = THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>;
 
@@ -266,6 +267,7 @@ export async function loadCar() {
   }
 
   // Replace the flat mirror-glass mesh with live planar reflections.
+  let mirrorResolution: GameState["mirrorResolution"] = "low";
   const mirrors: Reflector[] = [];
   const mirrorMounts: {
     mirror: Reflector;
@@ -324,12 +326,11 @@ export async function loadCar() {
       const eye = new THREE.Vector3();
       const size = new THREE.Vector2();
       mirror.onBeforeRender = function (...args) {
-        // The reflection texture spans the whole viewport, so mirrors seen up close from
-        // the cabin need screen resolution to stay sharp. Off-screen mirrors are culled
-        // and skip this pass entirely.
+        // Only nearby mirrors use higher resolutions; distant mirrors keep a fixed budget.
         const [renderer, , camera] = args;
         const close = mirror.getWorldPosition(eye).distanceToSquared(camera.position) < 2 ** 2;
-        if (close) renderer.getDrawingBufferSize(size);
+        if (close && mirrorResolution === "high") renderer.getDrawingBufferSize(size);
+        else if (close && mirrorResolution === "medium") size.set(1024, 512);
         else size.set(512, 256);
         const target = mirror.getRenderTarget();
         if (target.width !== size.x || target.height !== size.y) target.setSize(size.x, size.y);
@@ -619,6 +620,9 @@ export async function loadCar() {
     setReversing,
     setHazards,
     setLighting,
+    setMirrorResolution(resolution: GameState["mirrorResolution"]) {
+      mirrorResolution = resolution;
+    },
     setSteering,
     setGauges,
     setDashLight,

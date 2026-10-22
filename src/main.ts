@@ -10,7 +10,7 @@ import { LapTimer, formatLapTime } from './laps';
 import { VehicleAudio } from './audio';
 import {
   createGameState, defaultTuningPresets, isCameraStyle, isGhostMode, isMinimapOrientation, isTimeOfDay,
-  type SavedRunOption,
+  readMirrorResolution, type SavedRunOption,
 } from './game-state';
 import { loadTuningPresets } from './tuning-presets';
 import { bindGameUI, bindGameActions, bindCoursePicker, bindLapRecorder, element } from './ui';
@@ -53,14 +53,14 @@ async function start() {
   const profiles = requestedPreset
     ? { ...gameState.getState().profiles, [requestedMode]: { ...requestedPreset.tuning } }
     : gameState.getState().profiles;
-  const requestedMinimap = new URL(location.href).searchParams.get('minimap') ?? 'north-up';
+  const requestedMinimap = new URL(location.href).searchParams.get('minimap') ?? gameState.getState().minimapOrientation;
   if (!isMinimapOrientation(requestedMinimap)) throw new Error(`Unknown map orientation: ${requestedMinimap}`);
   const readToggle = (name: string) => {
     const value = new URL(location.href).searchParams.get(name) ?? 'on';
     if (value !== 'on' && value !== 'off') throw new Error(`Invalid ${name} option: ${value}`);
     return value === 'on';
   };
-  const coneMode = new URL(location.href).searchParams.get('cones') ?? 'all';
+  const coneMode = new URL(location.href).searchParams.get('cones') ?? gameState.getState().coneMode;
   if (coneMode !== 'all' && coneMode !== 'on' && coneMode !== 'corners' && coneMode !== 'off')
     throw new Error(`Invalid cones option: ${coneMode}`);
   const requestedConeMode = coneMode === 'on' ? 'all' : coneMode;
@@ -70,6 +70,7 @@ async function start() {
     driveMode: requestedMode, profiles, selectedTuningPresets, cameraStyle: requestedCamera,
     minimapOrientation: requestedMinimap,
     cabinHeadMotion: readToggle('head-motion'),
+    mirrorResolution: readMirrorResolution(new URL(location.href).searchParams),
     coneMode: requestedConeMode, showGrass: readToggle('grass'), ghostMode: requestedGhost,
     turnSignMode: readTurnSignMode(new URL(location.href).searchParams.get('signs')),
   });
@@ -126,7 +127,8 @@ async function start() {
   lighting.apply(selectedTime);
   car.setLighting(selectedTime !== 'noon', selectedTime === 'night');
   let appliedTime = selectedTime;
-  gameState.subscribe(({ timeOfDay }) => {
+  gameState.subscribe(({ timeOfDay, mirrorResolution }) => {
+    car.setMirrorResolution(mirrorResolution);
     if (timeOfDay === appliedTime) return;
     appliedTime = timeOfDay;
     lighting.apply(timeOfDay);

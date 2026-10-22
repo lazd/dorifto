@@ -19,6 +19,22 @@ export function isMinimapOrientation(value: string): value is GameState['minimap
   return value === 'north-up' || value === 'heading-up';
 }
 
+export function isMirrorResolution(value: string): value is GameState['mirrorResolution'] {
+  return value === 'low' || value === 'medium' || value === 'high';
+}
+
+export function readMirrorResolution(params: URLSearchParams): GameState['mirrorResolution'] {
+  const value = params.get('mirror-resolution');
+  if (value !== null) {
+    if (!isMirrorResolution(value)) throw new Error(`Invalid mirror resolution: ${value}`);
+    return value;
+  }
+  const legacy = params.get('low-res-mirrors');
+  if (legacy === null || legacy === 'on') return 'low';
+  if (legacy === 'off') return 'high';
+  throw new Error(`Invalid low-res-mirrors option: ${legacy}`);
+}
+
 export function isGhostMode(value: string): value is GameState['ghostMode'] {
   return value === 'fastest' || value === 'previous' || value === 'off';
 }
@@ -71,6 +87,7 @@ export interface GameState {
   tuningPresets: readonly TuningPreset[];
   cameraStyle: 'corner' | 'classic' | 'cabin';
   cabinHeadMotion: boolean;
+  mirrorResolution: 'low' | 'medium' | 'high';
   minimapOrientation: 'north-up' | 'heading-up';
   timeOfDay: 'noon' | 'sunset' | 'night';
   helpOpen: boolean;
@@ -108,9 +125,9 @@ export function createGameState(storage?: Storage) {
     selectedTuningPresets: { drift: 'drift-default', grip: 'grip-default' },
     tuningPresets,
     cameraStyle: 'corner', timeOfDay: 'noon', helpOpen: false, tuningOpen: false, settingsOpen: false,
-    minimapOrientation: 'north-up', cabinHeadMotion: true,
+    minimapOrientation: 'heading-up', cabinHeadMotion: true, mirrorResolution: 'low',
     customCourseOpen: false, courseMenuOpen: false, courseWeights: { ...defaultCourseWeights },
-    courseReverse: false, coneMode: 'all', showGrass: true, turnSignMode: 'several',
+    courseReverse: false, coneMode: 'corners', showGrass: true, turnSignMode: 'several',
     ghostMode: 'fastest', lapRecorder: { mode: 'off', runs: [], selectedRun: null },
     focused: true, controllerStatus: '',
     sound: { running: false, muted: false, failed: false, error: null },

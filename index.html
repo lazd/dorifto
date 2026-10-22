@@ -246,7 +246,7 @@
             ><span>Map orientation</span>
             <select id="minimap-orientation">
               <option value="north-up">North up</option>
-              <option value="heading-up">Follow heading</option>
+              <option value="heading-up" selected>Follow heading</option>
             </select></label
           >
           <label
@@ -271,6 +271,14 @@
             </select></label
           >
           <label
+            ><span>Mirror resolution</span>
+            <select id="mirror-resolution">
+              <option value="low" selected>Low (512 × 256)</option>
+              <option value="medium">Medium (1024 × 512)</option>
+              <option value="high">High (full resolution)</option>
+            </select></label
+          >
+          <label
             ><span>Cabin head motion</span>
             <select id="cabin-head-motion">
               <option value="on">On</option>
@@ -286,7 +294,7 @@
             ><span>Cones</span>
             <select id="show-cones">
               <option value="all">On</option>
-              <option value="corners">Corners only</option>
+              <option value="corners" selected>Corners only</option>
               <option value="off">Off</option>
             </select></label
           >
