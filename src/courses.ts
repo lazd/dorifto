@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { terrainBaseHeight } from './terrain-profile';
 
 export const startDistance = 5;
+const spawnDistance = 30;
 
 export interface CourseDefinition {
   id: string;
@@ -186,7 +187,7 @@ export function courseSpawn(definition: CourseDefinition) {
   const route = courseRoute(definition);
   // Spawn on the approach side of the same physical start line in either direction.
   const length = route.getLength();
-  const t = THREE.MathUtils.euclideanModulo(courseStartDistance(definition, length) - 15, length) / length;
+  const t = THREE.MathUtils.euclideanModulo(courseStartDistance(definition, length) - spawnDistance, length) / length;
   const position = route.getPointAt(t);
   const tangent = route.getTangentAt(t);
   return { position: [position.x, position.z] as const, heading: Math.atan2(tangent.x, tangent.z) };
