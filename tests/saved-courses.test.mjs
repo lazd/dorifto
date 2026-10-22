@@ -88,6 +88,29 @@ test('custom generation parameters are captured independently of later slider ch
   assert.deepEqual(loadSavedCourses(storage)[0].generation.weights, defaultCourseWeights);
 });
 
+test('retains zero elevation and banking and upgrades older custom preferences without changing terrain', () => {
+  const storage = memoryStorage();
+  const flat = generateCustomCourse(42, { ...defaultCourseWeights, elevation: 0, banking: 0 });
+  const saved = saveCourse(storage, flat, 'Flat');
+  assert.deepEqual(loadSavedCourses(storage), JSON.parse(JSON.stringify([saved])));
+  const { banking, ...legacyWeights } = defaultCourseWeights;
+  const legacy = {
+    ...saved, flat: false, elevationScale: 0.5,
+    generation: { ...saved.generation, weights: legacyWeights },
+  };
+  delete legacy.bankingScale;
+  storage.setItem(savedCoursesStorageKey, JSON.stringify([legacy]));
+  const [restored] = loadSavedCourses(storage);
+  assert.deepEqual(restored.generation.weights, defaultCourseWeights);
+  assert.equal(restored.bankingScale, undefined);
+  assert.equal(restored.elevationScale, legacy.elevationScale);
+  assert.deepEqual(restored.points, JSON.parse(JSON.stringify(legacy.points)));
+  for (const bankingScale of [-1, '1', null]) {
+    storage.setItem(savedCoursesStorageKey, JSON.stringify([{ ...saved, bankingScale }]));
+    assert.throws(() => loadSavedCourses(storage), /invalid format/);
+  }
+});
+
 test('rejects invalid generation metadata but accepts older courses without it', () => {
   const storage = memoryStorage();
   const course = { id: 'saved-test', name: 'Test', width: 10, points: [[0, 0], [100, 0], [0, 100]] };

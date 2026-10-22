@@ -86,16 +86,18 @@ test('validates every weight and seed rather than clamping or silently defaultin
   }
 });
 
-test('serializes length and five weights, preserves zero, and removes obsolete hairpins', () => {
-  const original = { ...defaultCourseWeights, length: 3100, elevation: 0, tightCorners: 1, chicanes: 0.13 };
+test('serializes generation preferences, preserves zero, and removes obsolete hairpins', () => {
+  const original = { ...defaultCourseWeights, length: 3100, elevation: 0, banking: 0, tightCorners: 1, chicanes: 0.13 };
   const parameters = new URLSearchParams('course=custom&seed=123&camera=cabin&reverse=1&hairpins=0.8');
   writeCourseWeights(parameters, original);
   assert.equal(parameters.has('hairpins'), false);
   assert.equal(courseGenerationFields.some(({ key }) => key === 'hairpins'), false);
   assert.deepEqual(readCourseWeights(parameters), original);
   assert.deepEqual(readCourseWeights(new URLSearchParams()), defaultCourseWeights);
-  for (const value of ['', ' ', 'not-a-number', '-0.1', '1.1', 'Infinity']) {
-    assert.throws(() => readCourseWeights(new URLSearchParams({ elevation: value })));
+  for (const key of ['elevation', 'banking']) {
+    for (const value of ['', ' ', 'not-a-number', '-0.1', '1.1', 'Infinity']) {
+      assert.throws(() => readCourseWeights(new URLSearchParams({ [key]: value })));
+    }
   }
   for (const value of ['', ' ', 'not-a-number', '999', '5001', 'Infinity']) {
     assert.throws(() => readCourseWeights(new URLSearchParams({ length: value })));
@@ -113,6 +115,75 @@ test('seed plus weights is deterministic without changing named layouts or input
   assert.notDeepEqual(generateCustomCourse(2380708672, preferences).points, first.points);
   assert.deepEqual(courses, snapshot);
   assert.deepEqual(preferences, defaultCourseWeights);
+});
+
+test('banking controls the real terrain independently of elevation and layout', async (t) => {
+  const previousDocument = globalThis.document;
+  const context = {
+    createImageData: (width, height) => ({ data: new Uint8ClampedArray(width * height * 4) }),
+    getImageData: (_x, _y, width, height) => ({ data: new Uint8ClampedArray(width * height * 4) }),
+    putImageData() {}, beginPath() {}, ellipse() {}, fill() {}, moveTo() {}, lineTo() {}, stroke() {},
+  };
+  globalThis.document = { createElement: () => ({ getContext: () => context }) };
+  t.after(() => {
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+  });
+  const { CourseTerrain } = await server.ssrLoadModule('/src/terrain.ts');
+  const flat = generateCustomCourse(42, { ...defaultCourseWeights, length: 1000, elevation: 0, banking: 0 });
+  const route = courseRoute(flat);
+  const slopes = [];
+  for (const banking of [0, 0.5, 1]) {
+    const definition = generateCustomCourse(42, { ...flat.generation.weights, banking });
+    assert.deepEqual(definition.points, flat.points);
+    assert.equal(definition.elevationScale, 0);
+    assert.equal(definition.flat, banking === 0);
+    const terrain = new CourseTerrain(definition);
+    try {
+      const measured = [];
+      for (let i = 0; i < 200; i++) {
+        const point = route.getPointAt(i / 200);
+        const tangent = route.getTangentAt(i / 200);
+        const left = terrain.heightAt(point.x + tangent.z * 6, point.z - tangent.x * 6);
+        const right = terrain.heightAt(point.x - tangent.z * 6, point.z + tangent.x * 6);
+        measured.push((left - right) / 12);
+      }
+      slopes.push(measured);
+      if (banking === 0) assert.ok(terrain.heights.every((height) => height === 0));
+      if (banking === 1) {
+        const count = Math.ceil(route.getLength());
+        for (const offset of [-6, 0, 6]) {
+          const heights = Array.from({ length: count }, (_, i) => {
+            const point = route.getPointAt(i / count);
+            const tangent = route.getTangentAt(i / count);
+            return terrain.heightAt(point.x + tangent.z * offset, point.z - tangent.x * offset);
+          });
+          const grades = heights.map((height, i) => heights[(i + 1) % count] - height);
+          const peakGrade = Math.max(...grades.map(Math.abs));
+          const peakChange = Math.max(...grades.map((grade, i) => Math.abs(grades[(i + 1) % count] - grade)));
+          assert.ok(peakGrade < 0.1, `banking ramp at offset ${offset}: grade ${peakGrade}`);
+          assert.ok(peakChange < 0.03, `banking bump at offset ${offset}: grade change ${peakChange}`);
+        }
+      }
+    } finally {
+      terrain.mesh.traverse((object) => {
+        object.geometry?.dispose();
+        object.material?.map?.dispose();
+        object.material?.normalMap?.dispose();
+        object.material?.dispose();
+      });
+    }
+  }
+  const peak = Math.max(...slopes[2].map(Math.abs));
+  assert.ok(peak > 0.5 && peak <= 0.66, `maximum banking slope ${peak}`);
+  const apex = slopes[2].findIndex((slope) => Math.abs(slope) === peak);
+  const before = route.getTangentAt((apex / 200 - 0.005 + 1) % 1);
+  const after = route.getTangentAt((apex / 200 + 0.005) % 1);
+  const bend = before.z * after.x - before.x * after.z;
+  assert.ok(slopes[2][apex] * bend < 0, 'banking must raise the outside and lower the inside');
+  for (let i = 0; i < slopes[2].length; i++) {
+    assert.ok(Math.abs(slopes[1][i] * 2 - slopes[2][i]) < 1e-6);
+  }
 });
 
 test('each preference has a measurable effect on actual centerline geometry', () => {
@@ -142,14 +213,16 @@ test('each preference has a measurable effect on actual centerline geometry', ()
 });
 
 test('all 32 feature extremes at short, medium, and long lengths retain safe geometry', () => {
-  const fields = courseGenerationFields.filter(({ key }) => key !== 'length');
+  const fields = courseGenerationFields.filter(({ key }) => key !== 'length' && key !== 'banking');
   const mixes = [1000, 3000, 5000].flatMap((length) =>
     Array.from({ length: 32 }, (_, mask) => ({
-      length, ...Object.fromEntries(fields.map(({ key }, i) => [key, (mask >> i) & 1])),
+      length, banking: defaultCourseWeights.banking,
+      ...Object.fromEntries(fields.map(({ key }, i) => [key, (mask >> i) & 1])),
     })));
   for (let i = 0; i < 16; i++) {
     mixes.push({
       length: 1000 + i * 250,
+      banking: defaultCourseWeights.banking,
       ...Object.fromEntries(fields.map(({ key }, j) => [key, ((i * 17 + j * 23) % 101) / 100])),
     });
   }

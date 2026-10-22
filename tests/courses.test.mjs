@@ -85,6 +85,18 @@ test('rejects invalid unsigned 32-bit seeds', () => {
   }
 });
 
+test('random banking is deterministic and moderately above the legacy profile', () => {
+  const scales = new Set();
+  for (const seed of [0, 1, 42, 123, 456, 789]) {
+    const definition = generateCourse(seed);
+    assert.ok(definition.bankingScale >= 1.2 && definition.bankingScale <= 2);
+    assert.equal(generateCourse(seed).bankingScale, definition.bankingScale);
+    scales.add(definition.bankingScale);
+  }
+  assert.equal(scales.size, 6);
+  assert.ok(courses.filter(({ id }) => id !== 'sweeper').every((course) => course.bankingScale === undefined));
+});
+
 test('keeps Hillside fixed and generation deterministic without mutating course markers', () => {
   const hillside = courses.find((course) => course.id === 'hillside');
   const snapshot = structuredClone(courses);
@@ -98,6 +110,7 @@ test('keeps Hillside fixed and generation deterministic without mutating course 
 
 test('excludes retired courses and defaults to Sweeper Circuit', () => {
   assert.equal(courses[0].id, 'sweeper');
+  assert.equal(courses[0].bankingScale, 3);
   assert.ok(!courses.some(({ id }) => id === 'autocross' || id === 'drift-test'));
 });
 

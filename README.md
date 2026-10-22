@@ -815,6 +815,8 @@ between their marked road edges, with an extra sampling margin.
 Existing random seed links now use this generator and therefore produce new layouts;
 the named Hillside Circuit stays fixed.
 These are geometric limits, not an autopilot: slow down for the tighter bends.
+Banking varies deterministically with the seed, favoring moderate banking around
+6° (a 4.5–7.4° cap depending on the seed), rather than extreme slopes.
 
 ### Custom generation
 
@@ -841,7 +843,7 @@ The course menu's delete button removes the selected saved course and switches t
 the default course. Deletion is disabled for built-in and unsaved generated courses.
 
 **Custom course** opens a dialog with a **1–5 km course length** slider (100 m
-steps), five independent preference sliders from **0 to 1** (0.01 steps),
+steps), six independent preference sliders from **0 to 1** (0.01 steps),
 numeric readouts, and **Restore defaults**. Adjusting sliders does
 not change the current course. **Generate course** builds a new seeded layout in
 place, resets the driving session, and closes the dialog on success. Generation
@@ -861,11 +863,23 @@ Short layouts use somewhat smaller sweepers and kinks to leave room for straight
 | Preference       | Default | Effect                                                                                                                                         |
 | ---------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
 | Course length    | 2.0 km  | Targets a lap between 1 and 5 km.                                                                                                              |
-| Elevation change | 0.50    | Scales climbs, descents, and banking. Zero makes the entire terrain flat; one targets up to 20 m centerline relief, capped at 12% grade.       |
+| Elevation change | 0.50    | Scales climbs and descents independently of banking. Zero flattens the centerline; one targets up to 20 m centerline relief, capped at 12% grade. |
+| Turn banking     | 0.10    | Scales inward corner banking independently of elevation. Zero removes banking; one allows up to 33°. Set both elevation and banking to zero for entirely flat terrain. |
 | Straightaways    | 0.50    | Lengthens the main straight and the straights between corner complexes, with fewer complexes per lap.                                          |
 | Tight corners    | 0.35    | Adds 90° corners and 155–185° hairpins, typically around 25–40 m radius. This also controls hairpins; there is no separate hairpin preference. |
 | Sweeping corners | 0.70    | Adds broad, flowing bends around 95–140 m radius, plus more high-speed kinks.                                                                  |
 | Chicanes         | 0.35    | Adds tight left-right chicanes and longer two- or three-bend esses.                                                                            |
+
+Banking changes the terrain cross-slope, not the layout, and is retained in custom
+course links and saved courses. Sweeper Loop sets `bankingScale: 3` in its course
+definition for stronger banking with smooth transitions (up to about 11° on
+sustained turns). Other built-in courses and imported racetracks keep their
+existing banking profiles.
+Generated banking is smoothly blended along 150 m of the closed route, including
+across the start/finish seam. This rolls the pavement gradually into and out of
+each turn, raising the outside relative to the inside without changing centerline
+elevation. Short bends and quick left-right transitions receive less banking so
+they do not become abrupt ramps; the maximum angle requires a sustained corner.
 
 Custom layouts are assembled like real road courses: a main straight followed by
 a shuffled sequence of corner complexes (hairpins, 90° corners, medium corners,
@@ -879,9 +893,11 @@ target distance. The shared closed B-spline smooths the tangent-connected
 straights and arcs.
 Layouts retain the 17.5 m road width and
 clearance checks, but allow centerline radii down to 22 m for tighter features.
-Length (in metres), all five preferences, and the seed are stored in the URL, for example
-`?course=custom&seed=123&length=2000&elevation=0.5&straightaways=0.5&tightCorners=0.35&sweepingCorners=0.7&chicanes=0.35`.
-Old links without a length use 2 km; obsolete `hairpins` parameters are ignored
+Length (in metres), all six preferences, and the seed are stored in the URL, for example
+`?course=custom&seed=123&length=2000&elevation=0.5&banking=0.1&straightaways=0.5&tightCorners=0.35&sweepingCorners=0.7&chicanes=0.35`.
+Old links without a length use 2 km; links without banking use 0.10.
+Previously saved courses retain their existing terrain banking.
+Obsolete `hairpins` parameters are ignored
 and removed when a course URL is written. Existing custom seeds now use the new layouts.
 Reloading that link recreates the layout and slider values. Preferences remain
 available when reopening the dialog or switching courses within the same page.

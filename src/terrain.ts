@@ -38,16 +38,20 @@ export class CourseTerrain {
       const bend = Math.atan2(before.z * after.x - before.x * after.z, before.dot(after));
       return { a, b, bank: -THREE.MathUtils.clamp(bend / 10 * 2.5, -0.065, 0.065) };
     });
-    if (definition.elevation) {
-      // GPS stitching can introduce tiny S-bends. Spread banking transitions over
-      // 50 m so those bends do not produce opposing ramps across the road.
-      const bankRadius = Math.max(1, Math.round(25 / (length / count)));
+    if (definition.elevation || definition.bankingScale !== undefined) {
+      // Generated corners need gradual roll-in/out, especially at high banking.
+      // Keep the existing 50 m GPS filter for imported elevation profiles.
+      const generatedBanking = !definition.elevation && definition.bankingScale !== undefined;
+      const bankRadius = Math.max(1, Math.round((generatedBanking ? 75 : 25) / (length / count)));
+      const weights = Array.from({ length: bankRadius * 2 + 1 }, (_, i) => generatedBanking
+        ? (1 - ((i - bankRadius) / bankRadius) ** 2) ** 3
+        : bankRadius + 1 - Math.abs(i - bankRadius));
       const banks = this.segments.map(({ bank }) => bank);
       this.segments.forEach((segment, i) => {
         let weightedBank = 0;
         let totalWeight = 0;
         for (let offset = -bankRadius; offset <= bankRadius; offset++) {
-          const weight = bankRadius + 1 - Math.abs(offset);
+          const weight = weights[offset + bankRadius];
           weightedBank += banks[THREE.MathUtils.euclideanModulo(i + offset, count)] * weight;
           totalWeight += weight;
         }
@@ -78,6 +82,8 @@ export class CourseTerrain {
     });
     this.heights = new Float32Array(this.columns * this.rows);
     const positions: number[] = [];
+    const elevationScale = definition.elevationScale ?? 1;
+    const bankingScale = definition.bankingScale ?? elevationScale;
     const uvs: number[] = [];
     const colors: number[] = [];
     const vegetation: number[] = [];
@@ -99,11 +105,11 @@ export class CourseTerrain {
         // Elevation follows the centerline, not the hillside's cross-slope:
         // positive turns lower the inside (+across) and raise the outside.
         const road = (profile ? courseProfileHeight(profile, near.fraction) : terrainBaseHeight(near.x, near.z))
-          + near.bank * near.across;
+          * elevationScale + near.bank * near.across * bankingScale;
         // Imported tracks settle into ground interpolated from nearby course heights.
         const ground = surroundings ? surroundings(px, pz) + 0.35 * (hills - 12) : base + hills;
         const height = definition.flat ? 0
-          : THREE.MathUtils.lerp(road, ground, blend) * (definition.elevationScale ?? 1);
+          : THREE.MathUtils.lerp(road, ground * elevationScale, blend);
         const i = z * this.columns + x;
         roadDistances[i] = this.padRadius !== undefined ? Math.hypot(px, pz) - this.padRadius
           : near.distance - this.halfWidth;

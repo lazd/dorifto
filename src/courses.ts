@@ -22,6 +22,8 @@ export interface CourseDefinition {
   coneSpacing?: number;
   flat?: boolean;
   elevationScale?: number;
+  /** Multiplier for turn banking, independent of elevation. Omitted preserves legacy scaling. */
+  bankingScale?: number;
   padRadius?: number;
   reverse?: boolean;
   generation?:
@@ -387,7 +389,10 @@ export function generateCourse(seed: number): CourseDefinition {
     radii.sort((a, b) => a - b);
     const medianRadius = radii[Math.floor(radii.length / 2)];
     if (medianRadius < 60 || medianRadius > 110) continue;
-    if (courseHasClearance(route, definition.width)) return definition;
+    if (courseHasClearance(route, definition.width)) {
+      definition.bankingScale = 1.2 + (random() + random()) * 0.4;
+      return definition;
+    }
   }
   throw new Error(`Unable to generate a navigable course for seed ${seed}`);
 }
@@ -406,6 +411,7 @@ export const courses: readonly CourseDefinition[] = [
     name: "Sweeper Loop",
     width: 17.5,
     coneSpacing: 6,
+    bankingScale: 3,
     points: [
       [0, 0],
       [0, 30],
@@ -425,6 +431,7 @@ export const courses: readonly CourseDefinition[] = [
     id: "hillside",
     name: "Hillside Circuit",
     width: 17.5,
+    bankingScale: 3,
     points: hillsidePoints,
   },
   {

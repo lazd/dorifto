@@ -4,7 +4,8 @@ import { terrainBaseHeight } from './terrain-profile';
 
 export const courseGenerationFields = [
   { key: 'length', label: 'Course length', min: 1000, max: 5000, step: 100, description: 'Target lap distance, from 1 to 5 km.' },
-  { key: 'elevation', label: 'Elevation change', min: 0, max: 1, step: 0.01, description: 'Flat pavement to rolling climbs and descents.' },
+  { key: 'elevation', label: 'Elevation change', min: 0, max: 1, step: 0.01, description: 'Flat centerline to rolling climbs and descents, independent of banking.' },
+  { key: 'banking', label: 'Turn banking', min: 0, max: 1, step: 0.01, description: 'Unbanked turns to steep banking up to 33°, independent of elevation.' },
   { key: 'straightaways', label: 'Straightaways', min: 0, max: 1, step: 0.01, description: 'Longer straights and fewer corner complexes.' },
   { key: 'tightCorners', label: 'Tight corners', min: 0, max: 1, step: 0.01, description: 'More 90° corners and hairpins, around 25-40 m radius.' },
   { key: 'sweepingCorners', label: 'Sweeping corners', min: 0, max: 1, step: 0.01, description: 'More broad, flowing bends around 95-140 m radius.' },
@@ -14,7 +15,7 @@ export const courseGenerationFields = [
 export type CourseGenerationWeights = Readonly<Record<typeof courseGenerationFields[number]['key'], number>>;
 
 export const defaultCourseWeights: CourseGenerationWeights = {
-  length: 2000, elevation: 0.5, straightaways: 0.5, tightCorners: 0.35,
+  length: 2000, elevation: 0.5, banking: 0.1, straightaways: 0.5, tightCorners: 0.35,
   sweepingCorners: 0.7, chicanes: 0.35,
 };
 
@@ -347,7 +348,8 @@ export function generateCustomCourse(seed: number, weights: CourseGenerationWeig
       maxGrade = Math.max(maxGrade, Math.abs(terrainBaseHeight(after.x, after.z) - height) / outgoing.length());
     }
     if (!navigable || !courseHasClearance(route, definition.width)) continue;
-    definition.flat = weights.elevation === 0;
+    definition.flat = weights.elevation === 0 && weights.banking === 0;
+    definition.bankingScale = weights.banking * 10;
     definition.elevationScale = weights.elevation * Math.min(20 / (maxHeight - minHeight), 0.12 / maxGrade);
     return definition;
   }

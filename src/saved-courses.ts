@@ -1,5 +1,5 @@
 import type { CourseDefinition } from './courses';
-import { courseGenerationFields } from './course-generation';
+import { courseGenerationFields, defaultCourseWeights } from './course-generation';
 
 export const savedCoursesStorageKey = 'dorifto:courses';
 
@@ -13,7 +13,8 @@ function isGeneration(value: unknown): boolean {
     return false;
   const weights = generation.weights as Record<string, unknown>;
   return courseGenerationFields.every(({ key, min, max }) =>
-    typeof weights[key] === 'number' && Number.isFinite(weights[key]) && weights[key] >= min && weights[key] <= max);
+    key === 'banking' && weights[key] === undefined
+    || typeof weights[key] === 'number' && Number.isFinite(weights[key]) && weights[key] >= min && weights[key] <= max);
 }
 
 function isCourse(value: unknown): value is CourseDefinition {
@@ -25,8 +26,10 @@ function isCourse(value: unknown): value is CourseDefinition {
     && Array.isArray(course.points) && course.points.length >= 3
     && course.points.every((point: unknown) => Array.isArray(point) && point.length === 2
       && point.every((coordinate: unknown) => typeof coordinate === 'number' && Number.isFinite(coordinate)))
-    && ['coneSpacing', 'elevationScale', 'padRadius'].every((key) =>
+    && ['coneSpacing', 'padRadius'].every((key) =>
       course[key] === undefined || typeof course[key] === 'number' && Number.isFinite(course[key]) && course[key] > 0)
+    && ['elevationScale', 'bankingScale'].every((key) =>
+      course[key] === undefined || typeof course[key] === 'number' && Number.isFinite(course[key]) && course[key] >= 0)
     && (course.flat === undefined || typeof course.flat === 'boolean')
     && (course.reverse === undefined || typeof course.reverse === 'boolean')
     && (course.generation === undefined || isGeneration(course.generation))
@@ -47,7 +50,13 @@ export function loadSavedCourses(storage: Pick<Storage, 'getItem'>): CourseDefin
     throw new Error('Saved courses have an invalid format');
   if (new Set(parsed.map(({ id }) => id)).size !== parsed.length)
     throw new Error('Saved courses contain duplicate IDs');
-  return parsed;
+  return parsed.map((course) => course.generation?.type === 'custom' ? {
+    ...course,
+    generation: {
+      ...course.generation,
+      weights: { ...course.generation.weights, banking: course.generation.weights.banking ?? defaultCourseWeights.banking },
+    },
+  } : course);
 }
 
 export function saveCourse(
