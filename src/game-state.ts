@@ -1,4 +1,5 @@
 import { driveModes, type DriveMode } from './drive-modes';
+import { idleRpm } from './drivetrain';
 import { createStore } from './store';
 import { defaultCourseWeights, type CourseGenerationWeights } from './course-generation';
 
@@ -71,7 +72,7 @@ export function createGameState() {
     sound: { running: false, muted: false, failed: false, error: null },
     status: { message: 'Loading car and physics...', error: false, visible: true },
     telemetry: {
-      speed: 0, rpm: 850, gear: 1, limiter: false,
+      speed: 0, rpm: idleRpm, gear: 1, limiter: false,
       lap: 0, current: 0, last: null, best: null, cones: 0, lastCones: null, driving: 'brakes-held',
     },
   });

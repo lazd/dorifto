@@ -1,7 +1,8 @@
 class VehicleSoundProcessor extends AudioWorkletProcessor {
-  constructor() {
+  constructor(options) {
     super();
-    this.target = { rpm: 850, load: 0, boost: 0, cut: 0, limiter: 0 };
+    this.idleRpm = options.processorOptions.idleRpm;
+    this.target = { rpm: this.idleRpm, load: 0, boost: 0, cut: 0, limiter: 0 };
     this.state = { ...this.target };
     this.phase = 0;
     this.crankPhase = 0;
@@ -32,7 +33,7 @@ class VehicleSoundProcessor extends AudioWorkletProcessor {
     this.limiterSmoothing = 1 - Math.exp(-1 / (sampleRate * 0.003));
     this.squealAttack = 1 - Math.exp(-1 / (sampleRate * 0.14));
     this.squealRelease = 1 - Math.exp(-1 / (sampleRate * 0.08));
-    this.pulseDecay = Math.exp(-1 / (sampleRate * 0.0035));
+    this.pulseDecay = Math.exp(-1 / (sampleRate * 0.006));
     this.blowDecay = Math.exp(-1 / (sampleRate * 0.16));
     this.impactDecay = Math.exp(-1 / (sampleRate * 0.055));
     this.port.onmessage = ({ data }) => {
@@ -40,7 +41,7 @@ class VehicleSoundProcessor extends AudioWorkletProcessor {
         this.blow = 0;
         this.pulse = 0;
         this.impact = 0;
-        this.target = { rpm: 850, load: 0, boost: 0, cut: 0, limiter: 0 };
+        this.target = { rpm: this.idleRpm, load: 0, boost: 0, cut: 0, limiter: 0 };
         this.state = { ...this.target };
         this.turboX1 = this.turboX2 = this.turboY1 = this.turboY2 = 0;
         for (const tire of this.tires) {
@@ -110,15 +111,15 @@ class VehicleSoundProcessor extends AudioWorkletProcessor {
       const cycle = this.phase * Math.PI * 2;
       const crank = this.crankPhase * Math.PI * 2;
       const bankPulse = Math.sin(crank * 3 + Math.sin(crank) * 0.15);
-      const firing = (this.pulse - 0.15) * 0.6 + Math.sin(cycle) * 0.2
-        + Math.sin(crank) * 0.48 + Math.sin(crank * 2) * 0.28
-        + Math.sin(crank * 3) * 0.18;
+      const firing = (this.pulse - 0.15) * 0.68 + Math.sin(cycle) * 0.18
+        + Math.sin(crank) * 0.56 + Math.sin(crank * 2) * 0.32
+        + Math.sin(crank * 3) * 0.12;
       const combustion = firing * (0.24 + state.load * 0.55)
-        + this.noiseLow * state.load * 0.45 + bankPulse * state.load * 0.08;
+        + this.noiseLow * state.load * 0.32 + bankPulse * state.load * 0.13;
       this.exhaust += (combustion - this.exhaust)
         * Math.min(0.65, (380 + state.rpm * 0.08) / sampleRate * 6.28);
-      this.exhaustBody += (this.exhaust - this.exhaustBody) * (220 / sampleRate * 6.28);
-      engine[i] = (Math.tanh(this.exhaust * (2 + state.load)) * 0.65 + this.exhaustBody * 0.55)
+      this.exhaustBody += (this.exhaust - this.exhaustBody) * (175 / sampleRate * 6.28);
+      engine[i] = (Math.tanh(this.exhaust * (2 + state.load)) * 0.62 + this.exhaustBody * 0.78)
         * (1 - state.cut * 0.75) * (1 - limiterCut * 0.88);
 
       const whistleNoise = turboB * (noise - this.turboX2)

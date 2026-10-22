@@ -3,7 +3,7 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { Reflector } from "three/addons/objects/Reflector.js";
 import { RectAreaLightUniformsLib } from "three/addons/lights/RectAreaLightUniformsLib.js";
 import { ConvexHull } from "three/addons/math/ConvexHull.js";
-import { redlineRpm } from "./drivetrain";
+import { idleRpm, redlineRpm } from "./drivetrain";
 
 type StandardMesh = THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>;
 
@@ -539,8 +539,8 @@ export async function loadCar() {
     rotateRpmNeedle(-degrees(TACH_DEG_PER_RPM * THREE.MathUtils.clamp(rpm, 0, 9200)));
     rotateBoostNeedle(degrees(BOOST_DEG_PER_MMHG * THREE.MathUtils.clamp(boostMmHg, -760, 760)));
     const targetOilPressure = THREE.MathUtils.mapLinear(
-      THREE.MathUtils.clamp(rpm, 850, redlineRpm),
-      850,
+      THREE.MathUtils.clamp(rpm, idleRpm, redlineRpm),
+      idleRpm,
       redlineRpm,
       2,
       5,

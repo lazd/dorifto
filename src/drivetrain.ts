@@ -1,13 +1,14 @@
-import { vehicleSettings } from './vehicle-settings';
+import { vehicleSettings } from "./vehicle-settings";
 
-export const redlineRpm = 7200;
+export const redlineRpm = 7500;
 export const downshiftRpm = 4000;
-const ratios = [2.97, 2.10, 1.46, 1.00, 0.80, 0.63];
+export const idleRpm = 750;
+const ratios = [2.97, 2.1, 1.46, 1.0, 0.8, 0.63];
 const finalDrive = 3.692;
 const reverseRatio = 3.369;
 
 const radiansToRpm = 60 / (2 * Math.PI);
-const idleSpeed = 850 / radiansToRpm;
+const idleSpeed = idleRpm / radiansToRpm;
 const engineInertia = vehicleSettings.engineInertiaKgM2;
 export const wheelInertia = vehicleSettings.wheelInertiaKgM2;
 const clamp = (value: number, low = 0, high = 1) => Math.max(low, Math.min(high, value));
@@ -39,7 +40,13 @@ export interface DrivetrainState {
 
 export class Drivetrain {
   readonly state: DrivetrainState = {
-    rpm: 850, gear: 1, throttle: 0, load: 0, boost: 0, shifting: false, limiterCut: false,
+    rpm: idleRpm,
+    gear: 1,
+    throttle: 0,
+    load: 0,
+    boost: 0,
+    shifting: false,
+    limiterCut: false,
   };
   private engineSpeed = idleSpeed;
   private gearIndex = 0;
@@ -57,7 +64,13 @@ export class Drivetrain {
     this.previousPedal = 0;
     this.liftingOffThrottle = false;
     Object.assign(this.state, {
-      rpm: 850, gear: 1, throttle: 0, load: 0, boost: 0, shifting: false, limiterCut: false,
+      rpm: idleRpm,
+      gear: 1,
+      throttle: 0,
+      load: 0,
+      boost: 0,
+      shifting: false,
+      limiterCut: false,
     });
   }
 
@@ -74,7 +87,13 @@ export class Drivetrain {
     const load = this.getEngineLoad(throttle, input.speedLimited);
     this.updateBoost(dt, throttle);
     const engineTorque = this.getEngineTorque(input, throttle, load);
-    const wheelTorque = this.transferClutchTorque(dt, engineTorque, shaftSpeed, ratio, clutchCapacity);
+    const wheelTorque = this.transferClutchTorque(
+      dt,
+      engineTorque,
+      shaftSpeed,
+      ratio,
+      clutchCapacity,
+    );
     this.updateState(throttle, load);
     return wheelTorque * direction;
   }
@@ -97,7 +116,8 @@ export class Drivetrain {
   private determineGear(): number {
     const gear = this.gearIndex + 1;
     if (this.state.rpm < downshiftRpm && gear > 1) return gear - 1;
-    if (!this.liftingOffThrottle && this.state.rpm >= redlineRpm && gear < ratios.length) return gear + 1;
+    if (!this.liftingOffThrottle && this.state.rpm >= redlineRpm && gear < ratios.length)
+      return gear + 1;
     return gear;
   }
 
@@ -106,8 +126,10 @@ export class Drivetrain {
     const wheelRpm = Math.max(0, input.wheelSpeed) * ratio * radiansToRpm;
     const roadRpm = Math.max(0, input.roadWheelSpeed) * ratio * radiansToRpm;
     // Avoid stationary-wheelspin upshifts and mechanically unsafe downshifts.
-    return (gear > this.gearIndex + 1 && roadRpm >= downshiftRpm)
-      || (gear < this.gearIndex + 1 && wheelRpm < 6000);
+    return (
+      (gear > this.gearIndex + 1 && roadRpm >= downshiftRpm) ||
+      (gear < this.gearIndex + 1 && wheelRpm < 6000)
+    );
   }
 
   private updateShifting(dt: number, input: DrivetrainInput) {
@@ -133,9 +155,11 @@ export class Drivetrain {
     const shaftRpm = shaftSpeed * radiansToRpm;
     const shiftEngagement = 1 - smoothstep(this.shiftTime, 0, 0.12);
     const launchEngagement = Math.max(
-      smoothstep(this.state.rpm, 2500, 4400), smoothstep(shaftRpm, 1400, 2400),
+      smoothstep(this.state.rpm, 2500, 4400),
+      smoothstep(shaftRpm, 1400, 2400),
     );
-    return input.handbrake ? 0
+    return input.handbrake
+      ? 0
       : Math.max(560, input.peakTorque * 1.25) * launchEngagement * shiftEngagement;
   }
 
@@ -153,32 +177,45 @@ export class Drivetrain {
   private updateBoost(dt: number, throttle: number) {
     const state = this.state;
     const boostTarget = throttle * smoothstep(state.rpm, 1700, 4500);
-    state.boost += (boostTarget - state.boost) * (1 - Math.exp(-dt * (boostTarget > state.boost ? 2 : 10)));
+    state.boost +=
+      (boostTarget - state.boost) * (1 - Math.exp(-dt * (boostTarget > state.boost ? 2 : 10)));
   }
 
   private getEngineTorque(input: DrivetrainInput, throttle: number, load: number): number {
     const state = this.state;
-    const torqueCurve = (0.65 + 0.35 * smoothstep(state.rpm, 1000, 4000))
-      * (1 - 0.18 * smoothstep(state.rpm, 5500, 7500));
-    const combustion = load * Math.min(
-      input.peakTorque * torqueCurve * (0.8 + state.boost * 0.2),
-      input.peakPower / Math.max(this.engineSpeed, idleSpeed),
-    );
+    const torqueCurve =
+      (0.65 + 0.35 * smoothstep(state.rpm, 1000, 4000)) *
+      (1 - 0.18 * smoothstep(state.rpm, 5500, 7500));
+    const combustion =
+      load *
+      Math.min(
+        input.peakTorque * torqueCurve * (0.8 + state.boost * 0.2),
+        input.peakPower / Math.max(this.engineSpeed, idleSpeed),
+      );
     const drag = (22 + this.engineSpeed * 0.055) * (1 - load * 0.85);
     const idleTorque = clamp(drag + (idleSpeed - this.engineSpeed) * 3, 0, 120) * (1 - throttle);
     return combustion + idleTorque - drag;
   }
 
-  private transferClutchTorque(dt: number, engineTorque: number, shaftSpeed: number,
-    ratio: number, clutchCapacity: number): number {
-    const freeSpeed = this.engineSpeed + engineTorque / engineInertia * dt;
+  private transferClutchTorque(
+    dt: number,
+    engineTorque: number,
+    shaftSpeed: number,
+    ratio: number,
+    clutchCapacity: number,
+  ): number {
+    const freeSpeed = this.engineSpeed + (engineTorque / engineInertia) * dt;
     const efficiency = freeSpeed >= shaftSpeed ? 0.9 : 1 / 0.9;
     // Solve the locking impulse using engine and reflected wheel inertia.
     // A viscous coupling would keep wasting power in clutch slip even at speed.
-    const inverseInertia = 1 / engineInertia + ratio * ratio * efficiency / (2 * wheelInertia);
-    const clutchTorque = clamp((freeSpeed - shaftSpeed) / (dt * inverseInertia), -clutchCapacity, clutchCapacity);
-    this.engineSpeed = Math.max(0, freeSpeed - clutchTorque / engineInertia * dt);
-    return clutchTorque * ratio * efficiency / 2;
+    const inverseInertia = 1 / engineInertia + (ratio * ratio * efficiency) / (2 * wheelInertia);
+    const clutchTorque = clamp(
+      (freeSpeed - shaftSpeed) / (dt * inverseInertia),
+      -clutchCapacity,
+      clutchCapacity,
+    );
+    this.engineSpeed = Math.max(0, freeSpeed - (clutchTorque / engineInertia) * dt);
+    return (clutchTorque * ratio * efficiency) / 2;
   }
 
   private updateState(throttle: number, load: number) {
