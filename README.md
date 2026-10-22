@@ -293,8 +293,9 @@ and nearby objects behind all three brake lenses.
 Brake and reverse spill uses soft, narrow rearward beams with reduced intensity
 and a 4 m range to limit bumper highlights without dimming the illuminated lenses.
 All four clear lenses in the center rear panel glow warm white and cast a subtle
-white light only in reverse. Headlight inserts glow warm white behind their
-covers, with reduced beam intensity to avoid washing out the road.
+white light only in reverse. Headlight inserts have a subdued, slightly amber
+warm-white glow behind their covers, with reduced beam intensity to avoid
+washing out the road.
 Headlights retain the original non-glowing covers at half their original tint
 opacity over their warm-white low-beam inserts; window tint is unchanged.
 The inner rectangular high-beam sections remain tinted and unlit; only the

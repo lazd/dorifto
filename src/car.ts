@@ -145,7 +145,7 @@ export async function loadCar() {
   const sideMarkers = emissive(/^Fenderlight(LEFT|RIGHT)_/, 0xff8800);
   const rearCornerMarkers = emissive(/^(Cornerglass|Cornerlightbulb)_/, 0xff1008);
   const frontPosition = emissive(/^BulbsPos_/, 0xfff3dc);
-  const projectors = emissive(/^(Projectorglass|BulbHL)_/, 0xffe8c8);
+  const projectors = emissive(/^(Projectorglass|BulbHL)_/, 0xffe2b8);
   const gaugeFaces = emissive(/^gaugeface[12]_Gauges_0$/, 0xd7f5df, true);
   const odometer = emissive(/^Odo_Odometer_0$/, 0xd7f5df, true);
   const gaugeNeedles = emissive(/_Gaugered_0$/, 0xff3820);
@@ -223,7 +223,7 @@ export async function loadCar() {
 
   const headlights = sideBounds(/^Projectorglass_/).map((box) => {
     const lamp = box.getCenter(new THREE.Vector3());
-    const light = new THREE.SpotLight(0xffe8c8, 800, 65, Math.PI / 7, 0.55, 1.2);
+    const light = new THREE.SpotLight(0xffe2b8, 550, 65, Math.PI / 7, 0.55, 1.2);
     light.name = "headlight-beam";
     light.position.set(lamp.x, lamp.y, meshBounds(/^hlglass_/).max.z + 0.05);
     light.target.position.set(lamp.x * 1.5, lamp.y - 1.1, light.position.z + 20);
@@ -247,7 +247,7 @@ export async function loadCar() {
     setHazards(hazardsActive);
     setIntensity(rearCornerMarkers, enabled ? 1.5 : 0);
     setIntensity(frontPosition, enabled ? 2 : 0);
-    setIntensity(projectors, enabled ? 2.4 : 0);
+    setIntensity(projectors, enabled ? 1.8 : 0);
     setIntensity(gaugeFaces, enabled ? 0.5 : 0);
     setIntensity(odometer, enabled ? 0.35 : 0);
     setIntensity(gaugeNeedles, enabled ? 0.9 : 0);
