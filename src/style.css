@@ -660,8 +660,19 @@ dialog h2 {
   gap: 8px;
 }
 .lap-recorder[hidden],
+.lap-recorder [hidden],
 .editable-picker[hidden] {
   display: none;
+}
+#lap-replay-controls:not([hidden]) {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: #10191fdd;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
 }
 .chase-view .lap-recorder {
   left: auto;

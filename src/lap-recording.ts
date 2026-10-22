@@ -164,6 +164,35 @@ export class RunRecording {
     return best;
   }
 
+  replayLapAt(t: number) {
+    const { lap } = this.timingAt(t);
+    const index = lap - 1;
+    const time = this.lapTimes[index] ?? null;
+    return {
+      lap, time,
+      fastest: time !== null && this.bestLap !== null && time === this.lapTimes[this.bestLap],
+      previous: index > 0 ? this.lapStarts[index - 1] : null,
+      next: this.lapStarts[index + 1] ?? null,
+    };
+  }
+
+  /** Copy only one completed lap, keeping neighboring samples for interpolation at the line. */
+  extractLap(index: number) {
+    const time = this.lapTimes[index];
+    const start = this.lapStarts[index];
+    if (time === undefined || start === undefined || !this.count)
+      throw new Error('Completed lap not found');
+    const first = Math.max(0, Math.floor((start - this.firstTime) / this.interval) - 1);
+    const end = Math.min(this.count, Math.ceil((start + time - this.firstTime) / this.interval) + 2);
+    const lap = new RunRecording(
+      this.firstTime + first * this.interval - start,
+      this.interval, this.data.slice(first * frameStride, end * frameStride), end - first,
+    );
+    lap.lapStarts.push(0);
+    lap.completeLap(time, time, this.lapCones[index]);
+    return lap;
+  }
+
   /** Lap timing as the HUD would have shown it at time `t`. */
   timingAt(t: number) {
     let lap = 0;
@@ -277,6 +306,53 @@ export function applyCarPose(
 // ---- Persistence -----------------------------------------------------------
 
 const storagePrefix = 'dorifto.laps.v1';
+const recordPrefix = 'dorifto.record.v1';
+
+interface StoredRecord {
+  time: number;
+  cones: number;
+  firstTime: number;
+  interval: number;
+  frames: string;
+}
+
+function readRecord(key: string, storage: Storage): StoredRecord | null {
+  const text = storage.getItem(`${recordPrefix}:${key}`);
+  if (text === null) return null;
+  const record: StoredRecord = JSON.parse(text);
+  if (!record || !Number.isFinite(record.time) || record.time <= 0
+    || !Number.isFinite(record.firstTime) || !Number.isFinite(record.interval) || record.interval <= 0
+    || !Number.isInteger(record.cones) || record.cones < 0 || typeof record.frames !== 'string')
+    throw new Error('Corrupt record lap');
+  return record;
+}
+
+export async function loadRecordLap(key: string, storage: Storage = localStorage) {
+  const stored = readRecord(key, storage);
+  if (!stored) return null;
+  const { data, count } = decodeFrames(await transform(fromBase64(stored.frames), new DecompressionStream('deflate')));
+  if (!count) throw new Error('Empty record lap');
+  const lap = new RunRecording(stored.firstTime, stored.interval, data, count);
+  lap.lapStarts.push(0);
+  lap.completeLap(stored.time, stored.time, stored.cones);
+  return lap;
+}
+
+/** Stored independently from saved runs; recheck after compression so a slower async save cannot win. */
+export async function saveRecordLap(key: string, lap: RunRecording, storage: Storage = localStorage) {
+  const time = lap.lapTimes[0];
+  if (!lap.count || !Number.isFinite(time) || time <= 0) throw new Error('Invalid record lap');
+  const previous = readRecord(key, storage);
+  if (previous && previous.time <= time) return false;
+  const frames = toBase64(await transform(encodeFrames(lap), new CompressionStream('deflate')));
+  const latest = readRecord(key, storage);
+  if (latest && latest.time <= time) return false;
+  const record: StoredRecord = {
+    time, cones: lap.lapCones[0], firstTime: lap.firstTime, interval: lap.interval, frames,
+  };
+  storage.setItem(`${recordPrefix}:${key}`, JSON.stringify(record));
+  return true;
+}
 
 function hashString(text: string) {
   let hash = 0x811c9dc5;

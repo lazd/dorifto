@@ -225,7 +225,7 @@ export function bindGameActions(actions: {
 
 export function bindLapRecorder(
   store: Store<GameState>,
-  actions: { press: () => void; select: (id: string) => void; remove: (id: string) => void },
+  actions: { press: () => void; select: (id: string) => void; remove: (id: string) => void; seek: (time: number) => void },
 ) {
   const container = element(".lap-recorder");
   const button = element<HTMLButtonElement>("#lap-recorder-button");
@@ -233,6 +233,17 @@ export function bindLapRecorder(
   const picker = element(".editable-picker");
   const runs = element<HTMLSelectElement>("#lap-replay-run");
   const remove = element<HTMLButtonElement>("#lap-replay-delete");
+  const replayControls = element("#lap-replay-controls");
+  const replayTime = bindText("#lap-replay-time");
+  const previous = element<HTMLButtonElement>("#lap-replay-previous");
+  const next = element<HTMLButtonElement>("#lap-replay-next");
+  for (const [button, direction] of [[previous, "previous"], [next, "next"]] as const) {
+    button.addEventListener("click", () => {
+      const time = store.getState().lapRecorder.replayLap?.[direction];
+      if (time !== null && time !== undefined) actions.seek(time);
+      button.blur();
+    });
+  }
   button.addEventListener("click", () => {
     actions.press();
     button.blur();
@@ -254,6 +265,13 @@ export function bindLapRecorder(
   let shownRuns: GameState["lapRecorder"]["runs"] | null = null;
   store.subscribe(({ lapRecorder }) => {
     const { mode } = lapRecorder;
+    const lap = lapRecorder.replayLap;
+    replayControls.hidden = mode !== "replay";
+    previous.disabled = lap?.previous == null;
+    next.disabled = lap?.next == null;
+    replayTime(lap ? lap.lap
+      ? `Lap ${lap.lap} · ${lap.time === null ? "Partial lap" : formatLapTime(lap.time)}${lap.fastest ? " 🏆" : ""}`
+      : "Launch" : "");
     if (container.hidden !== (mode === "off")) container.hidden = mode === "off";
     if (button.dataset.mode !== mode) button.dataset.mode = mode;
     label(text[mode][0]);

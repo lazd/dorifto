@@ -428,7 +428,20 @@ Sixteen ordered gates around the course require a full forward lap, preventing
 extra laps from reversing across the line or cutting directly back to the start.
 Crossings must be within the paved corridor. Timing uses fixed physics time and
 interpolates the crossing within a step; hidden-tab pauses do not add lap time.
-Reset clears all lap times. Reloading or changing courses also starts a new session.
+Reset clears session lap times. Reloading or changing courses also starts a new session.
+
+Runs are recorded automatically from launch. Stop recording to save and replay a
+run, or use the play button before the start line to watch a saved run. During
+replay, the lap controls show the current lap's completed time (or "Partial lap"
+for an unfinished lap), with a trophy for the fastest lap in that run. The arrows
+jump to the previous or next lap, including the first lap from the launch.
+
+Every completed lap can set an all-time record, saved locally for that map layout
+and direction, regardless of tuning or drive mode. Records survive resets, reloads,
+and deletion of saved replay runs. **Ghost car → Record lap** races that record
+from the first start-line crossing and restarts it each lap. A faster lap replaces
+the record and becomes the ghost for subsequent laps. **Fastest lap** and
+**Previous lap** still use only the current run, starting on lap 2.
 
 ## Drive modes
 

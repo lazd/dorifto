@@ -36,7 +36,7 @@ export function readMirrorResolution(params: URLSearchParams): GameState['mirror
 }
 
 export function isGhostMode(value: string): value is GameState['ghostMode'] {
-  return value === 'fastest' || value === 'previous' || value === 'off';
+  return value === 'fastest' || value === 'previous' || value === 'record' || value === 'off';
 }
 
 export interface SavedRunOption { id: string; label: string }
@@ -100,9 +100,14 @@ export interface GameState {
   coneMode: 'all' | 'corners' | 'off';
   showGrass: boolean;
   turnSignMode: TurnSignMode;
-  ghostMode: 'fastest' | 'previous' | 'off';
+  ghostMode: 'fastest' | 'previous' | 'record' | 'off';
   /** off: nothing to show; ready: saved laps can be replayed; recording: run in progress; replay: watching. */
-  lapRecorder: Readonly<{ mode: 'off' | 'ready' | 'recording' | 'replay'; runs: readonly SavedRunOption[]; selectedRun: string | null }>;
+  lapRecorder: Readonly<{
+    mode: 'off' | 'ready' | 'recording' | 'replay';
+    runs: readonly SavedRunOption[];
+    selectedRun: string | null;
+    replayLap: Readonly<{ lap: number; time: number | null; fastest: boolean; previous: number | null; next: number | null }> | null;
+  }>;
   focused: boolean;
   controllerStatus: string;
   sound: Readonly<{ running: boolean; muted: boolean; failed: boolean; error: string | null }>;
@@ -128,7 +133,7 @@ export function createGameState(storage?: Storage) {
     minimapOrientation: 'heading-up', cabinHeadMotion: true, mirrorResolution: 'low',
     customCourseOpen: false, courseMenuOpen: false, courseWeights: { ...defaultCourseWeights },
     courseReverse: false, coneMode: 'corners', showGrass: true, turnSignMode: 'several',
-    ghostMode: 'fastest', lapRecorder: { mode: 'off', runs: [], selectedRun: null },
+    ghostMode: 'fastest', lapRecorder: { mode: 'off', runs: [], selectedRun: null, replayLap: null },
     focused: true, controllerStatus: '',
     sound: { running: false, muted: false, failed: false, error: null },
     status: { message: 'Loading car and physics...', error: false, visible: true },

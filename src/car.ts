@@ -439,7 +439,7 @@ export async function loadCar() {
     }
   }
 
-  for (const mesh of named(/^(visors_|Frontplate_ext_plate_rear_0$|165_T_Plastico_0$)/))
+  for (const mesh of named(/^(visors_|Frontplate_ext_plate_rear_0$|165_T_Plastico_0$)|_Defrost_0$/))
     mesh.removeFromParent();
 
   // Re-parent interior parts under pivots so they can rotate about their real hubs.

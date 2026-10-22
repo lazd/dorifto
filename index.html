@@ -69,6 +69,11 @@
         <span class="lap-recorder-icon" aria-hidden="true"></span>
         <span id="lap-recorder-label">REC</span>
       </button>
+      <span id="lap-replay-controls" hidden>
+        <button id="lap-replay-previous" class="keycap" type="button" aria-label="Previous lap" title="Previous lap">←</button>
+        <span id="lap-replay-time"></span>
+        <button id="lap-replay-next" class="keycap" type="button" aria-label="Next lap" title="Next lap">→</button>
+      </span>
       <span class="editable-picker">
         <select id="lap-replay-run" aria-label="Saved laps to replay"></select>
         <button
@@ -254,6 +259,7 @@
             <select id="ghost-mode">
               <option value="fastest">Fastest lap</option>
               <option value="previous">Previous lap</option>
+              <option value="record">Record lap</option>
               <option value="off">Off</option>
             </select></label
           >
@@ -382,7 +388,11 @@
         Recording captures your launch and shows once you cross the start/finish line. From the
         second lap, a ghost car drives your fastest (or previous) lap of the run. Press the record
         button to stop: the course resets, the laps are saved, and the replay plays. Before crossing
-        the line, press play to watch saved laps. Resetting the car discards an unsaved run.
+        the line, press play to watch saved laps. Replays show each lap's total time, with a 🏆
+        for the fastest lap of the run; use the arrows to skip to the previous or next lap.
+        Resetting the car discards an unsaved run, but completed record laps are saved automatically
+        for each map and direction. Choose Record lap in the ghost setting to race the all-time
+        record from your first lap. Beating it replaces the ghost with your new record.
       </p>
     </dialog>
     <script type="module" src="/src/main.ts"></script>

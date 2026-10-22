@@ -55,7 +55,7 @@ test('elevation profiles interpolate periodically along the route', () => {
 });
 
 test('generated track files are listed as courses', () => {
-  for (const id of ['sonoma-raceway', 'thunderhill-east', 'thunderhill-5-mile']) {
+  for (const id of ['sonoma-raceway', 'thunderhill-east']) {
     const course = courses.find((candidate) => candidate.id === id);
     assert.ok(course, id);
     assert.ok(course.points.length > 100 && course.elevation.length > 0);

@@ -25,7 +25,7 @@ import { readTurnSignMode } from './turn-sign';
 import { createGhostCar } from './ghost-car';
 import {
   RunRecording, applyCarPose, captureCarPose, createReplayFrame, deleteRun, listSavedRuns, loadRun,
-  replayStorageKey, sampleSteps, saveRun, type RunSummary,
+  loadRecordLap, replayStorageKey, sampleSteps, saveRecordLap, saveRun, type RunSummary,
 } from './lap-recording';
 import './style.css';
 
@@ -205,6 +205,8 @@ async function start() {
   let savedRuns: RunSummary[] = [];
   let runOptions: readonly SavedRunOption[] = [];
   let selectedRun: string | null = null;
+  let recordLap: RunRecording | null = null;
+  let recordLoad = 0;
   const recordFrame = createReplayFrame();
   const playbackFrame = createReplayFrame();
   const ghostFrame = createReplayFrame();
@@ -216,9 +218,11 @@ async function start() {
 
   function syncLapRecorder() {
     const mode = replay ? 'replay' : run?.started ? 'recording' : savedRuns.length ? 'ready' : 'off';
+    const replayLap = replay ? replay.recording.replayLapAt(replay.time) : null;
     const current = gameState.getState().lapRecorder;
-    if (current.mode === mode && current.runs === runOptions && current.selectedRun === selectedRun) return;
-    gameState.update({ lapRecorder: { mode, runs: runOptions, selectedRun } });
+    if (current.mode === mode && current.runs === runOptions && current.selectedRun === selectedRun
+      && current.replayLap?.lap === replayLap?.lap) return;
+    gameState.update({ lapRecorder: { mode, runs: runOptions, selectedRun, replayLap } });
   }
 
   function runLabel({ createdAt, laps: times }: RunSummary) {
@@ -248,7 +252,45 @@ async function start() {
     }, 5000);
   }
 
+  function keepRecord(lap: RunRecording) {
+    if (recordLap && recordLap.lapTimes[0] <= lap.lapTimes[0]) return;
+    recordLap = lap;
+    void saveRecordLap(storageKey, lap).catch((error) => reportLapError('Unable to save record lap:', error));
+  }
+
+  async function refreshRecordLap() {
+    const key = storageKey;
+    const generation = ++recordLoad;
+    recordLap = null;
+    try {
+      let loaded = await loadRecordLap(key);
+      const bestSaved = savedRuns.reduce<RunSummary | null>((best, saved) => {
+        if (!saved.laps.length) return best;
+        return !best || Math.min(...saved.laps) < Math.min(...best.laps) ? saved : best;
+      }, null);
+      if (bestSaved && (!loaded || Math.min(...bestSaved.laps) < loaded.lapTimes[0])) {
+        const saved = await loadRun(key, bestSaved.id);
+        const index = saved.bestLap;
+        if (index !== null) {
+          loaded = saved.extractLap(index);
+          await saveRecordLap(key, loaded);
+        }
+      }
+      if (generation === recordLoad && key === storageKey && loaded) keepRecord(loaded);
+    } catch (error) {
+      reportLapError('Unable to load record lap:', error);
+    }
+  }
+
+  function keepRunRecord() {
+    const index = run?.bestLap;
+    if (run && index !== null && index !== undefined
+      && (!recordLap || run.lapTimes[index] < recordLap.lapTimes[0]))
+      keepRecord(run.extractLap(index));
+  }
+
   function clearLapRecording() {
+    keepRunRecord();
     run = null;
     replay = null;
     ghost.visible = false;
@@ -265,10 +307,21 @@ async function start() {
     clearLapRecording();
   }
 
-  function startReplay(recording: RunRecording) {
+  function startReplay(recording: RunRecording, time = 0) {
     reset();
-    replay = { recording, time: 0 };
-    recording.read(0, playbackFrame);
+    // Rebuild displaced cones and signs when seeking instead of carrying a future world state back.
+    let elapsed = 0;
+    while (elapsed < time) {
+      const step = Math.min(fixedStep, time - elapsed);
+      recording.read(elapsed, replayBefore);
+      recording.read(elapsed + step, replayAfter);
+      physics.stepReplay(replayBefore, replayAfter, step);
+      physics.captureReplayVisuals();
+      elapsed += step;
+    }
+    physics.interpolateReplay(1);
+    replay = { recording, time };
+    recording.read(time, playbackFrame);
     applyCarPose(playbackFrame, car.chassis, car.wheels, car.hubs);
     forward.set(0, 0, 1).applyQuaternion(playbackFrame.quaternion);
     drivingCamera.reset(Math.atan2(forward.x, forward.z));
@@ -328,19 +381,22 @@ async function start() {
     wheelContacts.forEach((contact, i) => { recordFrame.contacts[i] = contact; });
     physics.tireSounds.forEach((tire, i) => Object.assign(recordFrame.tires[i], tire));
     run.push(recordFrame);
+    keepRunRecord();
   }
 
   function updateGhost(alpha: number) {
     const mode = gameState.getState().ghostMode;
-    const index = !run || mode === 'off' || laps.lap < 2 ? null
+    const source = mode === 'record' ? recordLap : run;
+    const index = mode === 'record' ? laps.lap > 0 && recordLap ? 0 : null
+      : !run || mode === 'off' || laps.lap < 2 ? null
       : mode === 'fastest' ? run.bestLap : run.lapTimes.length - 1;
     // laps.current matches the newest physics state; the drawn car lags it by the interpolation remainder.
     const lapTime = Math.max(laps.current - (1 - alpha) * fixedStep, 0);
-    if (run === null || index === null || index < 0 || lapTime > run.lapTimes[index]) {
+    if (source === null || index === null || index < 0 || lapTime > source.lapTimes[index]) {
       ghost.visible = false;
       return;
     }
-    run.read(run.lapStarts[index] + lapTime, ghostFrame);
+    source.read(source.lapStarts[index] + lapTime, ghostFrame);
     applyCarPose(ghostFrame, ghost.chassis, ghost.wheels);
     ghost.fadeNear(car.chassis.position);
     ghost.visible = true;
@@ -382,6 +438,7 @@ async function start() {
     });
     car.setBraking(playbackFrame.braking);
     car.setReversing(playbackFrame.reversing);
+    syncLapRecorder();
     return replayVelocity;
   }
 
@@ -411,6 +468,7 @@ async function start() {
       storageKey = replayStorageKey({ ...nextDefinition, reverse });
       refreshSavedRuns();
       gameState.update({ courseReverse: reverse, status: { visible: false, error: false, message: '' } });
+      await refreshRecordLap();
       return nextDefinition;
     } catch (error) {
       physics.captureVisuals(true);
@@ -457,6 +515,7 @@ async function start() {
     else url.searchParams.delete('reverse');
     history.replaceState(null, '', url);
     gameState.update({ courseReverse: reverse, status: { visible: false, error: false, message: '' } });
+    await refreshRecordLap();
   }
 
   bindCoursePicker(courses, definition, changeCourse, changeCourseDirection, (error) => {
@@ -532,6 +591,9 @@ async function start() {
   bindGameActions({ sound: (muted) => audio.setMuted(muted), clearInput: () => controls.clear() });
   bindLapRecorder(gameState, {
     press: pressLapRecorder,
+    seek(time) {
+      if (replay && !changingCourse) startReplay(replay.recording, time);
+    },
     select(id) {
       selectedRun = id;
       syncLapRecorder();
@@ -634,6 +696,7 @@ async function start() {
 
   reset();
   gameState.update({ status: { visible: false, error: false, message: '' } });
+  await refreshRecordLap();
   renderer.setAnimationLoop((time) => {
     try {
       frame(time);
