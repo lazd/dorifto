@@ -1,7 +1,7 @@
 import { driveModes, isDriveMode, type DriveMode } from "./drive-modes";
 import { createDrivingTuning } from "./drift-tuning";
 import { redlineRpm } from "./drivetrain";
-import { isCameraStyle, isMinimapOrientation, isTimeOfDay, type GameState } from "./game-state";
+import { isCameraStyle, isGhostMode, isMinimapOrientation, isTimeOfDay, type GameState } from "./game-state";
 import { formatLapTime } from "./laps";
 import type { Store } from "./store";
 import { isTurnSignMode } from "./turn-sign";
@@ -202,6 +202,55 @@ export function bindGameActions(actions: {
     history.replaceState(null, "", url);
   });
   element("#drift-tuning").addEventListener("focusin", actions.clearInput);
+}
+
+export function bindLapRecorder(
+  store: Store<GameState>,
+  actions: { press: () => void; select: (id: string) => void; remove: (id: string) => void },
+) {
+  const container = element(".lap-recorder");
+  const button = element<HTMLButtonElement>("#lap-recorder-button");
+  const label = bindText("#lap-recorder-label");
+  const picker = element(".lap-replay-picker");
+  const runs = element<HTMLSelectElement>("#lap-replay-run");
+  const remove = element<HTMLButtonElement>("#lap-replay-delete");
+  button.addEventListener("click", () => {
+    actions.press();
+    button.blur();
+  });
+  runs.addEventListener("change", () => {
+    actions.select(runs.value);
+    runs.blur();
+  });
+  remove.addEventListener("click", () => {
+    if (runs.value && confirm("Delete these saved laps?")) actions.remove(runs.value);
+    remove.blur();
+  });
+  const text = {
+    off: ["", ""],
+    ready: ["REPLAY", "Play saved laps"],
+    recording: ["REC", "Stop recording, save laps and replay them"],
+    replay: ["REPLAY", "Stop replay"],
+  } as const;
+  let shownRuns: GameState["lapRecorder"]["runs"] | null = null;
+  store.subscribe(({ lapRecorder }) => {
+    const { mode } = lapRecorder;
+    if (container.hidden !== (mode === "off")) container.hidden = mode === "off";
+    if (button.dataset.mode !== mode) button.dataset.mode = mode;
+    label(text[mode][0]);
+    if (button.title !== text[mode][1]) {
+      button.title = text[mode][1];
+      button.setAttribute("aria-label", text[mode][1]);
+    }
+    const picking = mode === "ready";
+    if (picker.hidden !== !picking) picker.hidden = !picking;
+    if (shownRuns !== lapRecorder.runs) {
+      shownRuns = lapRecorder.runs;
+      runs.replaceChildren(...lapRecorder.runs.map((run) => new Option(run.label, run.id)));
+    }
+    const selected = lapRecorder.selectedRun ?? "";
+    if (runs.value !== selected) runs.value = selected;
+  });
 }
 
 export function bindCoursePicker(
@@ -466,6 +515,13 @@ export function bindGameUI(store: Store<GameState>, reportError: (error: unknown
     (state) => state.turnSignMode,
     (turnSignMode) => ({ turnSignMode }),
     isTurnSignMode,
+  );
+  select<GameState["ghostMode"]>(
+    "#ghost-mode",
+    "ghost",
+    (state) => state.ghostMode,
+    (ghostMode) => ({ ghostMode }),
+    isGhostMode,
   );
   select<"on" | "off">(
     "#show-grass",

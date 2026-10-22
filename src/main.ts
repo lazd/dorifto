@@ -6,10 +6,10 @@ import { createCourse } from './course';
 import { courses, courseSpawn, generateCourse, readCourseReverse, type CourseDefinition } from './courses';
 import { generateCustomCourse, readCourseWeights, writeCourseWeights, type CourseGenerationWeights } from './course-generation';
 import { isDriveMode } from './drive-modes';
-import { LapTimer } from './laps';
+import { LapTimer, formatLapTime } from './laps';
 import { VehicleAudio } from './audio';
-import { createGameState, isCameraStyle, isMinimapOrientation, isTimeOfDay } from './game-state';
-import { bindGameUI, bindGameActions, bindCoursePicker, element } from './ui';
+import { createGameState, isCameraStyle, isGhostMode, isMinimapOrientation, isTimeOfDay, type SavedRunOption } from './game-state';
+import { bindGameUI, bindGameActions, bindCoursePicker, bindLapRecorder, element } from './ui';
 import { createDrivingCamera } from './camera';
 import { createLighting } from './lighting';
 import { createTireEffects } from './tire-effects';
@@ -18,6 +18,11 @@ import { createPhysicsResources, createVehiclePhysics } from './vehicle-physics'
 import { createConePhysics } from './cone-physics';
 import { createTurnSignPhysics } from './turn-sign-physics';
 import { readTurnSignMode } from './turn-sign';
+import { createGhostCar } from './ghost-car';
+import {
+  RunRecording, applyCarPose, captureCarPose, createReplayFrame, deleteRun, listSavedRuns, loadRun,
+  replayStorageKey, sampleSteps, saveRun, type RunSummary,
+} from './lap-recording';
 import './style.css';
 
 const gameState = createGameState();
@@ -39,11 +44,13 @@ async function start() {
   if (coneMode !== 'all' && coneMode !== 'on' && coneMode !== 'corners' && coneMode !== 'off')
     throw new Error(`Invalid cones option: ${coneMode}`);
   const requestedConeMode = coneMode === 'on' ? 'all' : coneMode;
+  const requestedGhost = new URL(location.href).searchParams.get('ghost') ?? 'fastest';
+  if (!isGhostMode(requestedGhost)) throw new Error(`Invalid ghost option: ${requestedGhost}`);
   gameState.update({
     driveMode: requestedMode, cameraStyle: requestedCamera,
     minimapOrientation: requestedMinimap,
     cabinHeadMotion: readToggle('head-motion'),
-    coneMode: requestedConeMode, showGrass: readToggle('grass'),
+    coneMode: requestedConeMode, showGrass: readToggle('grass'), ghostMode: requestedGhost,
     turnSignMode: readTurnSignMode(new URL(location.href).searchParams.get('signs')),
   });
   const settingsUrl = new URL(location.href);
@@ -102,6 +109,7 @@ async function start() {
   });
 
   scene.add(car.chassis, ...car.wheels, ...car.hubs);
+  const ghost = createGhostCar(scene, car);
   const controls = new DrivingControls();
   const audio = new VehicleAudio((sound) => {
     gameState.update({ sound: { ...gameState.getState().sound, ...sound } });
@@ -161,6 +169,65 @@ async function start() {
   const tireEffects = createTireEffects(scene, car, terrain, course.isAsphalt);
   const forward = new THREE.Vector3();
 
+  // Lap recording: a run is captured from launch, shown once it crosses the start/finish line, and discarded by any reset.
+  let run: RunRecording | null = null;
+  let runOrigin = 0;
+  let runSteps = 0;
+  let replay: { recording: RunRecording; time: number } | null = null;
+  let storageKey = replayStorageKey({ ...definition, reverse: requestedReverse });
+  let savedRuns: RunSummary[] = [];
+  let runOptions: readonly SavedRunOption[] = [];
+  let selectedRun: string | null = null;
+  const recordFrame = createReplayFrame();
+  const playbackFrame = createReplayFrame();
+  const ghostFrame = createReplayFrame();
+  const replayBefore = createReplayFrame();
+  const replayAfter = createReplayFrame();
+  const replayVelocity = new THREE.Vector3();
+  const replayFlatVelocity = new THREE.Vector3();
+  const replayEngine = { rpm: 0, gear: 1, throttle: 0, load: 0, boost: 0, shifting: false, limiterCut: false };
+
+  function syncLapRecorder() {
+    const mode = replay ? 'replay' : run?.started ? 'recording' : savedRuns.length ? 'ready' : 'off';
+    const current = gameState.getState().lapRecorder;
+    if (current.mode === mode && current.runs === runOptions && current.selectedRun === selectedRun) return;
+    gameState.update({ lapRecorder: { mode, runs: runOptions, selectedRun } });
+  }
+
+  function runLabel({ createdAt, laps: times }: RunSummary) {
+    const date = new Date(createdAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    const count = `${times.length} lap${times.length === 1 ? '' : 's'}`;
+    return times.length ? `${date} · ${count} · best ${formatLapTime(Math.min(...times))}` : `${date} · partial lap`;
+  }
+
+  function refreshSavedRuns() {
+    try {
+      savedRuns = listSavedRuns(storageKey);
+    } catch (error) {
+      console.error('Unable to read saved laps:', error);
+      savedRuns = [];
+    }
+    if (!savedRuns.some((saved) => saved.id === selectedRun)) selectedRun = savedRuns.at(-1)?.id ?? null;
+    runOptions = savedRuns.map((saved) => ({ id: saved.id, label: runLabel(saved) })).reverse();
+    syncLapRecorder();
+  }
+
+  function reportLapError(message: string, error: unknown) {
+    console.error(message, error);
+    const status = { visible: true, error: true, message: `${message} ${error instanceof Error ? error.message : String(error)}` };
+    gameState.update({ status });
+    setTimeout(() => {
+      if (gameState.getState().status === status) gameState.update({ status: { visible: false, error: false, message: '' } });
+    }, 5000);
+  }
+
+  function clearLapRecording() {
+    run = null;
+    replay = null;
+    ghost.visible = false;
+    syncLapRecorder();
+  }
+
   function reset() {
     controls.clear();
     audio.reset();
@@ -168,12 +235,119 @@ async function start() {
     physics.reset();
     drivingCamera.reset(spawn.heading);
     tireEffects.reset();
+    clearLapRecording();
+  }
+
+  function startReplay(recording: RunRecording) {
+    reset();
+    replay = { recording, time: 0 };
+    recording.read(0, playbackFrame);
+    applyCarPose(playbackFrame, car.chassis, car.wheels, car.hubs);
+    forward.set(0, 0, 1).applyQuaternion(playbackFrame.quaternion);
+    drivingCamera.reset(Math.atan2(forward.x, forward.z));
+    syncLapRecorder();
+  }
+
+  function stopRecording(finished: RunRecording) {
+    const key = storageKey;
+    startReplay(finished);
+    saveRun(key, finished).then((saved) => {
+      if (key !== storageKey) return;
+      selectedRun = saved.id;
+      refreshSavedRuns();
+    }, (error) => reportLapError('Unable to save laps:', error));
+  }
+
+  async function playSavedRun(id: string) {
+    const key = storageKey;
+    try {
+      const recording = await loadRun(key, id);
+      if (key === storageKey && !run?.started && !replay && !changingCourse) startReplay(recording);
+    } catch (error) {
+      reportLapError('Unable to load saved laps:', error);
+    }
+  }
+
+  function pressLapRecorder() {
+    if (changingCourse) return;
+    if (replay) reset();
+    else if (run?.started) stopRecording(run);
+    else if (selectedRun) void playSavedRun(selectedRun);
+  }
+
+  function recordStep() {
+    if (!run) {
+      if (physics.spawnBrakeHeld) return;
+      runOrigin = laps.elapsedTime;
+      run = new RunRecording();
+      runSteps = 0;
+    }
+    if (!run.started && laps.lap) {
+      run.lapStarts.push(laps.lapStartedAt - runOrigin);
+      syncLapRecorder();
+    }
+    if (run.lapStarts.length < laps.lap && laps.last !== null)
+      run.completeLap(laps.lapStartedAt - runOrigin, laps.last, laps.lastCones ?? 0);
+    if (runSteps++ % sampleSteps) return;
+    captureCarPose(recordFrame, car.chassis, car.hubs, physics.tireAngles);
+    const { engine, wheelContacts } = physics;
+    Object.assign(recordFrame, {
+      rpm: engine.rpm, gear: engine.gear, throttle: engine.throttle, load: engine.load, boost: engine.boost,
+      shifting: engine.shifting, limiterCut: engine.limiterCut, steering: physics.steering,
+      braking: physics.spawnBrakeHeld || (!physics.reversing && controls.brake > 0),
+      reversing: physics.reversing, handbrake: controls.handbrake,
+      burnout: physics.burnout > 0.1 && (wheelContacts[2] || wheelContacts[3]),
+    });
+    wheelContacts.forEach((contact, i) => { recordFrame.contacts[i] = contact; });
+    physics.tireSounds.forEach((tire, i) => Object.assign(recordFrame.tires[i], tire));
+    run.push(recordFrame);
+  }
+
+  function updateGhost(alpha: number) {
+    const mode = gameState.getState().ghostMode;
+    const index = !run || mode === 'off' || laps.lap < 2 ? null
+      : mode === 'fastest' ? run.bestLap : run.lapTimes.length - 1;
+    // laps.current matches the newest physics state; the drawn car lags it by the interpolation remainder.
+    const lapTime = Math.max(laps.current - (1 - alpha) * fixedStep, 0);
+    if (run === null || index === null || index < 0 || lapTime > run.lapTimes[index]) {
+      ghost.visible = false;
+      return;
+    }
+    run.read(run.lapStarts[index] + lapTime, ghostFrame);
+    applyCarPose(ghostFrame, ghost.chassis, ghost.wheels);
+    ghost.fadeNear(car.chassis.position);
+    ghost.visible = true;
+  }
+
+  /** Poses the car from the replay and returns its velocity, or null once the replay has finished. */
+  function updateReplay(dt: number) {
+    if (!replay) return null;
+    const { recording } = replay;
+    if (replay.time >= recording.duration) {
+      reset();
+      return null;
+    }
+    replay.time = Math.min(replay.time + dt, recording.duration);
+    recording.read(replay.time, playbackFrame);
+    applyCarPose(playbackFrame, car.chassis, car.wheels, car.hubs);
+    const h = recording.interval / 2;
+    recording.read(replay.time - h, replayBefore);
+    recording.read(replay.time + h, replayAfter);
+    replayVelocity.subVectors(replayAfter.position, replayBefore.position).divideScalar(2 * h);
+    Object.assign(replayEngine, {
+      rpm: playbackFrame.rpm, gear: playbackFrame.gear, throttle: playbackFrame.throttle, load: playbackFrame.load,
+      boost: playbackFrame.boost, shifting: playbackFrame.shifting, limiterCut: playbackFrame.limiterCut,
+    });
+    car.setBraking(playbackFrame.braking);
+    car.setReversing(playbackFrame.reversing);
+    return replayVelocity;
   }
 
   async function loadCourse(build: () => CourseDefinition, updateUrl: (url: URL) => void, reverse: boolean) {
     changingCourse = true;
     controls.clear();
     audio.reset();
+    clearLapRecording();
     gameState.update({ status: { visible: true, error: false, message: 'Building course…' } });
     try {
       await new Promise<void>((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
@@ -192,6 +366,8 @@ async function start() {
       else url.searchParams.delete('reverse');
       history.replaceState(null, '', url);
       activeDefinition = nextDefinition;
+      storageKey = replayStorageKey({ ...nextDefinition, reverse });
+      refreshSavedRuns();
       gameState.update({ courseReverse: reverse, status: { visible: false, error: false, message: '' } });
       return nextDefinition;
     } catch (error) {
@@ -232,6 +408,8 @@ async function start() {
     drivingCamera = nextCamera;
     reset();
     lastTime = 0;
+    storageKey = replayStorageKey(directed);
+    refreshSavedRuns();
     const url = new URL(location.href);
     if (reverse) url.searchParams.set('reverse', '1');
     else url.searchParams.delete('reverse');
@@ -310,6 +488,22 @@ async function start() {
     physics.captureVisuals(true);
   });
   bindGameActions({ sound: (muted) => audio.setMuted(muted), clearInput: () => controls.clear() });
+  bindLapRecorder(gameState, {
+    press: pressLapRecorder,
+    select(id) {
+      selectedRun = id;
+      syncLapRecorder();
+    },
+    remove(id) {
+      try {
+        deleteRun(storageKey, id);
+      } catch (error) {
+        reportLapError('Unable to delete saved laps:', error);
+      }
+      refreshSavedRuns();
+    },
+  });
+  refreshSavedRuns();
   window.addEventListener('resize', () => {
     camera.aspect = innerWidth / innerHeight;
     camera.updateProjectionMatrix();
@@ -331,20 +525,35 @@ async function start() {
     if (controls.cameraRequested) cycleCamera();
     if (controls.timeOfDayRequested) cycleTimeOfDay();
     if (controls.resetRequested) reset();
+    if (controls.recordRequested) pressLapRecorder();
     const dt = lastTime ? Math.min((time - lastTime) / 1000, 0.05) : fixedStep;
     lastTime = time;
-    accumulator += dt;
-    while (accumulator >= fixedStep) {
-      physics.step();
-      physics.captureVisuals();
-      accumulator -= fixedStep;
+    const replayVelocity3d = updateReplay(dt);
+    const replaying = replayVelocity3d !== null;
+    let velocity: THREE.Vector3;
+    if (replayVelocity3d) {
+      accumulator = 0;
+      velocity = replayFlatVelocity.copy(replayVelocity3d).setY(0);
+    } else {
+      accumulator += dt;
+      while (accumulator >= fixedStep) {
+        physics.step();
+        physics.captureVisuals();
+        recordStep();
+        accumulator -= fixedStep;
+      }
+      velocity = physics.interpolate(accumulator / fixedStep);
+      updateGhost(accumulator / fixedStep);
     }
-    const velocity = physics.interpolate(accumulator / fixedStep);
     const speed = velocity.length();
-    const { engine, reversing, spawnBrakeHeld, wheelContacts, burnout } = physics;
-    audio.update({ drivetrain: engine, tires: physics.tireSounds });
+    const engine = replaying ? replayEngine : physics.engine;
+    const reversing = replaying ? playbackFrame.reversing : physics.reversing;
+    const wheelContacts = replaying ? playbackFrame.contacts : physics.wheelContacts;
+    const handbrake = replaying ? playbackFrame.handbrake : controls.handbrake;
+    const spawnBrakeHeld = !replaying && physics.spawnBrakeHeld;
+    audio.update({ drivetrain: engine, tires: replaying ? playbackFrame.tires : physics.tireSounds });
     const cameraState = gameState.getState();
-    drivingCamera.update(dt, physics.linearVelocity, cameraState.driveMode, cameraState.cameraStyle, reversing, cameraState.cabinHeadMotion);
+    drivingCamera.update(dt, replayVelocity3d ?? physics.linearVelocity, cameraState.driveMode, cameraState.cameraStyle, reversing, cameraState.cabinHeadMotion);
     lighting.update(car.chassis.position, controls.mapView ? camera.far : undefined);
     forward.set(0, 0, 1).applyQuaternion(car.chassis.quaternion);
     forward.y = 0;
@@ -353,28 +562,31 @@ async function start() {
     // Manifold pressure: closed-throttle vacuum through to full turbo boost.
     const manifoldMmHg = THREE.MathUtils.lerp(-550, 0, engine.load) * (1 - engine.boost) + 650 * engine.boost;
     car.setGauges(Math.abs(forward.dot(velocity)) * 3.6, engine.rpm, manifoldMmHg, dt);
-    car.setSteering(physics.steering);
-    car.setDashLight('brake', controls.handbrake);
+    car.setSteering(replaying ? playbackFrame.steering : physics.steering);
+    car.setDashLight('brake', handbrake);
     car.setDashLight('abs', cameraState.driveMode === 'drift');
     const slip = speed > 3 ? 1 - Math.abs(forward.dot(velocity) / speed) : 0;
-    const sliding = speed > 3 && (controls.handbrake || slip > 0.045);
-    const burningOut = burnout > 0.1 && (wheelContacts[2] || wheelContacts[3]);
+    const sliding = speed > 3 && (handbrake || slip > 0.045);
+    const burningOut = replaying ? playbackFrame.burnout
+      : physics.burnout > 0.1 && (wheelContacts[2] || wheelContacts[3]);
     tireEffects.update(dt, velocity, camera, wheelContacts, sliding, burningOut);
+    const timing = replay ? replay.recording.timingAt(replay.time)
+      : { lap: laps.lap, current: laps.current, last: laps.last, best: laps.best, lastCones: laps.lastCones };
+    const braking = replaying ? playbackFrame.braking && !reversing : controls.brake > 0;
     gameState.update({
       controllerStatus: controls.controllerStatus,
       telemetry: {
         speed, rpm: engine.rpm, gear: engine.gear, limiter: engine.limiterCut,
-        lap: laps.lap, current: laps.current, last: laps.last, best: laps.best,
-        cones: laps.conesHit, lastCones: laps.lastCones,
+        ...timing, cones: replaying ? 0 : laps.conesHit,
         driving: spawnBrakeHeld ? 'brakes-held'
-          : controls.handbrake ? 'handbrake'
-          : physics.brakestand ? 'brakestand'
-          : reversing ? 'reverse' : controls.brake > 0 ? 'braking'
+          : handbrake ? 'handbrake'
+          : !replaying && physics.brakestand ? 'brakestand'
+          : reversing ? 'reverse' : braking ? 'braking'
           : burningOut ? 'burnout' : sliding ? 'sliding' : 'driving',
       },
     });
-    if (!terrain.contains(car.chassis.position.x, car.chassis.position.z)
-      || car.chassis.position.y < terrain.heightAt(car.chassis.position.x, car.chassis.position.z) - 5) reset();
+    if (!replaying && (!terrain.contains(car.chassis.position.x, car.chassis.position.z)
+      || car.chassis.position.y < terrain.heightAt(car.chassis.position.x, car.chassis.position.z) - 5)) reset();
     tireEffects.captureDepth(renderer, scene, camera);
     renderer.render(scene, camera);
   }

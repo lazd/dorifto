@@ -57,6 +57,18 @@
         </div>
       </div>
     </aside>
+    <div class="lap-recorder" hidden>
+      <button id="lap-recorder-button" type="button" data-mode="off">
+        <span class="lap-recorder-icon" aria-hidden="true"></span>
+        <span id="lap-recorder-label">REC</span>
+      </button>
+      <span class="lap-replay-picker">
+        <select id="lap-replay-run" aria-label="Saved laps to replay"></select>
+        <button id="lap-replay-delete" type="button" aria-label="Delete saved laps" title="Delete saved laps">
+          <kbd>🗑️</kbd>
+        </button>
+      </span>
+    </div>
     <aside class="telemetry" aria-label="Driving information">
       <div
         id="tachometer"
@@ -210,6 +222,14 @@
           </select></label
         >
         <label
+          >Ghost car
+          <select id="ghost-mode">
+            <option value="fastest">Fastest lap</option>
+            <option value="previous">Previous lap</option>
+            <option value="off">Off</option>
+          </select></label
+        >
+        <label
           >Cones
           <select id="show-cones">
             <option value="all">On</option>
@@ -288,11 +308,20 @@
         <dd>Cycle camera: corner-aware chase, classic chase, in-cabin (once per press)</dd>
         <dt>Y / Triangle</dt>
         <dd>Toggle Grip / Drift mode (once per press)</dd>
-        <dt>D-pad Left</dt>
+        <dt>D-pad Down</dt>
         <dd>Cycle time of day: noon, sunset, night (once per press)</dd>
         <dt>Start / Menu / Options</dt>
         <dd>Reset</dd>
+        <dt>D-pad Left</dt>
+        <dd>Stop recording and replay, or play saved laps before the start line</dd>
       </dl>
+      <h3>Lap recording</h3>
+      <p>
+        Recording starts when you cross the start/finish line. From the second lap, a ghost car
+        drives your fastest (or previous) lap of the run. Press the record button to stop: the course
+        resets, the laps are saved, and the replay plays. Before crossing the line, press play to
+        watch saved laps. Resetting the car discards an unsaved run.
+      </p>
     </dialog>
     <script type="module" src="/src/main.ts"></script>
   </body>

@@ -594,3 +594,97 @@ dialog h2 {
   font-weight: normal;
   font-size: 12px;
 }
+.lap-recorder {
+  position: fixed;
+  z-index: 2;
+  left: 28px;
+  bottom: 28px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.lap-recorder[hidden],
+.lap-replay-picker[hidden] {
+  display: none;
+}
+.chase-view .lap-recorder {
+  left: auto;
+  bottom: auto;
+  right: 28px;
+  top: 28px;
+  flex-direction: row-reverse;
+}
+#lap-recorder-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px 8px 10px;
+  border: 1px solid #9ee8d533;
+  border-radius: 999px;
+  background: #10191fdd;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  font-variant-numeric: tabular-nums;
+}
+#lap-recorder-button:hover,
+#lap-recorder-button:focus-visible {
+  background: #18272e;
+  outline: none;
+  border-color: #9ee8d5;
+}
+.lap-recorder-icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+/* Ready: play triangle. Recording: pulsing red dot. Replay: stop square. */
+[data-mode="ready"] .lap-recorder-icon {
+  background: #9ee8d5;
+  clip-path: polygon(15% 0, 100% 50%, 15% 100%);
+}
+[data-mode="recording"] .lap-recorder-icon {
+  border-radius: 50%;
+  background: #ff3b30;
+  box-shadow: 0 0 8px #ff3b30aa;
+  animation: lap-recording-pulse 1.2s ease-in-out infinite;
+}
+#lap-recorder-button[data-mode="recording"] {
+  border-color: #ff3b3066;
+  color: #ffd2cf;
+}
+[data-mode="replay"] .lap-recorder-icon {
+  border-radius: 2px;
+  background: #eef6f5;
+  transform: scale(0.8);
+}
+@keyframes lap-recording-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-mode="recording"] .lap-recorder-icon {
+    animation: none;
+  }
+}
+.lap-replay-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+}
+.lap-replay-picker select {
+  margin: 0;
+  max-width: 300px;
+}
+@media (max-width: 800px), (max-height: 600px) {
+  .lap-recorder {
+    left: 12px;
+    bottom: 12px;
+  }
+  .chase-view .lap-recorder {
+    right: 12px;
+    top: 12px;
+  }
+}

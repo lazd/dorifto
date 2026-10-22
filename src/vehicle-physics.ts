@@ -534,6 +534,7 @@ export function createVehiclePhysics({
 
   return {
     step, reset, setCourseDirection, addPlugin, dispose, captureVisuals, interpolate, fixedStep, wheelContacts, tireSounds,
+    tireAngles: tireAngles as readonly number[],
     get engine() { return drivetrain.state; },
     get burnout() { return burnout; },
     get steering() { return steering; },

@@ -18,6 +18,12 @@ export function isMinimapOrientation(value: string): value is GameState['minimap
   return value === 'north-up' || value === 'heading-up';
 }
 
+export function isGhostMode(value: string): value is GameState['ghostMode'] {
+  return value === 'fastest' || value === 'previous' || value === 'off';
+}
+
+export interface SavedRunOption { id: string; label: string }
+
 export function defaultTuning(mode: DriveMode) {
   const preset = driveModes[mode];
   return {
@@ -50,6 +56,9 @@ export interface GameState {
   coneMode: 'all' | 'corners' | 'off';
   showGrass: boolean;
   turnSignMode: TurnSignMode;
+  ghostMode: 'fastest' | 'previous' | 'off';
+  /** off: nothing to show; ready: saved laps can be replayed; recording: run in progress; replay: watching. */
+  lapRecorder: Readonly<{ mode: 'off' | 'ready' | 'recording' | 'replay'; runs: readonly SavedRunOption[]; selectedRun: string | null }>;
   focused: boolean;
   controllerStatus: string;
   sound: Readonly<{ running: boolean; muted: boolean; failed: boolean; error: string | null }>;
@@ -70,6 +79,7 @@ export function createGameState() {
     minimapOrientation: 'north-up', cabinHeadMotion: true,
     customCourseOpen: false, courseMenuOpen: false, courseWeights: { ...defaultCourseWeights },
     courseReverse: false, coneMode: 'all', showGrass: true, turnSignMode: 'several',
+    ghostMode: 'fastest', lapRecorder: { mode: 'off', runs: [], selectedRun: null },
     focused: true, controllerStatus: '',
     sound: { running: false, muted: false, failed: false, error: null },
     status: { message: 'Loading car and physics...', error: false, visible: true },

@@ -36,6 +36,16 @@ export class LapTimer {
     this.previous.copy(position);
   }
 
+  /** Seconds since reset, advanced once per physics step. */
+  get elapsedTime() {
+    return this.elapsed;
+  }
+
+  /** Time (on the `elapsedTime` clock) the current lap started at its exact line crossing. */
+  get lapStartedAt() {
+    return this.startedAt;
+  }
+
   get conesHit() {
     return this.hitCones.size;
   }

@@ -17,7 +17,9 @@ export class DrivingControls {
   cameraRequested = false;
   driveModeRequested = false;
   timeOfDayRequested = false;
+  recordRequested = false;
   controllerStatus = "";
+  private recordHeld = false;
   private resetHeld = false;
   private cameraHeld = false;
   private driveModeHeld = false;
@@ -49,6 +51,7 @@ export class DrivingControls {
     this.cameraRequested = false;
     this.driveModeRequested = false;
     this.timeOfDayRequested = false;
+    this.recordRequested = false;
   }
 
   poll(enabled = true, steeringExpo = 0) {
@@ -72,9 +75,13 @@ export class DrivingControls {
     const driveModePressed = Boolean(pad?.buttons[3]?.pressed);
     this.driveModeRequested = driveModePressed && !this.driveModeHeld;
     this.driveModeHeld = driveModePressed;
-    const timeOfDayPressed = Boolean(pad?.buttons[14]?.pressed);
+    const timeOfDayPressed = Boolean(pad?.buttons[13]?.pressed);
     this.timeOfDayRequested = timeOfDayPressed && !this.timeOfDayHeld;
     this.timeOfDayHeld = timeOfDayPressed;
+    // D-pad left: same as tapping the lap recorder button.
+    const recordPressed = Boolean(pad?.buttons[14]?.pressed);
+    this.recordRequested = recordPressed && !this.recordHeld;
+    this.recordHeld = recordPressed;
     const mapViewPressed = Boolean(pad?.buttons[1]?.pressed);
     if (mapViewPressed && !this.mapViewHeld) this.mapView = !this.mapView;
     this.mapViewHeld = mapViewPressed;
