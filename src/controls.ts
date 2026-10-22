@@ -31,7 +31,14 @@ export class DrivingControls {
   private mapViewHeld = false;
   private focused = document.hasFocus();
 
+  private setCursorHidden(hidden: boolean) {
+    document.documentElement.style.cursor = hidden ? "none" : "";
+    document.body.style.cursor = hidden ? "none" : "";
+  }
+
   constructor() {
+    window.addEventListener("mousemove", () => this.setCursorHidden(false));
+    window.addEventListener("mousedown", () => this.setCursorHidden(false));
     window.addEventListener("blur", () => {
       this.focused = false;
       this.clear();
@@ -122,5 +129,9 @@ export class DrivingControls {
     this.cameraY = axis(3);
     this.mapZoom = this.mapView ? axis(1) : 0;
     this.lookBehind = Boolean(pad?.buttons[11]?.pressed);
+    const padActive =
+      Boolean(pad?.buttons.some((button) => button.pressed)) ||
+      Boolean(pad?.axes.some((value) => Math.abs(value) > 0.2));
+    if (this.keys.size > 0 || padActive) this.setCursorHidden(true);
   }
 }
