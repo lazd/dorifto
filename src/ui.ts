@@ -21,6 +21,7 @@ import {
 import { formatLapTime } from "./laps";
 import type { Store } from "./store";
 import { isTurnSignMode } from "./turn-sign";
+import { isStereoStation, stereoStations } from "./stereo";
 import {
   courseGenerationFields,
   defaultCourseWeights,
@@ -791,6 +792,15 @@ export function bindGameUI(store: Store<GameState>, reportError: (error: unknown
       if (input.value !== value) input.value = value;
     });
   }
+  const stationPicker = element<HTMLSelectElement>("#stereo-station");
+  stationPicker.replaceChildren(...stereoStations.map(({ id, name }) => new Option(name, id)));
+  select<GameState["stereoStation"]>(
+    "#stereo-station",
+    "station",
+    (state) => state.stereoStation,
+    (stereoStation) => ({ stereoStation }),
+    isStereoStation,
+  );
   select<DriveMode>(
     "#drive-mode",
     "mode",

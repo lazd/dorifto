@@ -8,6 +8,7 @@ import { generateCustomCourse, readCourseWeights, writeCourseWeights, type Cours
 import { isDriveMode } from './drive-modes';
 import { LapTimer, formatLapTime } from './laps';
 import { VehicleAudio } from './audio';
+import { CarStereo, isStereoStation } from './stereo';
 import {
   createGameState, defaultTuningPresets, isCameraStyle, isGhostMode, isMinimapOrientation, isTimeOfDay,
   readMirrorResolution, type SavedRunOption,
@@ -39,6 +40,9 @@ async function start() {
   if (!isCameraStyle(requestedCamera)) throw new Error(`Unknown camera style: ${requestedCamera}`);
   const requestedMode = new URL(location.href).searchParams.get('mode') ?? 'drift';
   if (!isDriveMode(requestedMode)) throw new Error(`Unknown drive mode: ${requestedMode}`);
+  const requestedStation = new URL(location.href).searchParams.get('station') ?? 'groovesalad';
+  if (!isStereoStation(requestedStation)) throw new Error(`Unknown stereo station: ${requestedStation}`);
+  gameState.update({ stereoStation: requestedStation });
   const requestedPresetId = new URL(location.href).searchParams.get('preset') ?? `${requestedMode}-default`;
   const matchedPreset = requestedPresetId === 'custom' ? null
     : gameState.getState().tuningPresets.find(({ id, mode }) =>
@@ -148,6 +152,21 @@ async function start() {
       ...gameState.getState().sound, error: error instanceof Error ? error.message : String(error),
     } });
   }, new URL(location.href).searchParams.get('sound') === 'off');
+  const stereo = new CarStereo((powered) => {
+    car.setStereo(powered);
+    const { status } = gameState.getState();
+    if (powered && status.error && status.message.startsWith('Stereo unavailable:')) {
+      gameState.update({ status: { visible: false, error: false, message: '' } });
+    }
+  }, (error) => {
+    console.error('Stereo unavailable:', error);
+    gameState.update({ status: {
+      visible: true, error: true,
+      message: `Stereo unavailable: ${error instanceof Error ? error.message : String(error)} Press S to retry.`,
+    } });
+  }, gameState.getState().sound.muted);
+  gameState.subscribe(({ stereoStation }) => stereo.setStation(stereoStation));
+  if (new URL(location.href).searchParams.has('station')) stereo.turnOn();
   let dialogOpen = false;
   gameState.subscribe((state) => {
     const open = state.helpOpen || state.tuningOpen || state.settingsOpen || state.customCourseOpen
@@ -157,7 +176,7 @@ async function start() {
     controls.clear();
   });
   const keys = controls.keys;
-  const controlKeys = new Set(['ArrowLeft', 'ArrowRight', 'KeyX', 'KeyZ', 'Space', 'KeyR', 'KeyC', 'KeyD', 'KeyM', 'KeyW']);
+  const controlKeys = new Set(['ArrowLeft', 'ArrowRight', 'KeyX', 'KeyZ', 'Space', 'KeyR', 'KeyC', 'KeyD', 'KeyM', 'KeyW', 'KeyS']);
   let accumulator = 0;
   let lastTime = 0;
   let changingCourse = false;
@@ -580,6 +599,15 @@ async function start() {
     history.replaceState(null, '', url);
   }
 
+  function pressStereo(direction: 'previous' | 'next' = 'next') {
+    const stereoStation = stereo.press(direction);
+    gameState.update({ stereoStation });
+    const url = new URL(location.href);
+    if (stereo.isPowered) url.searchParams.set('station', stereoStation);
+    else url.searchParams.delete('station');
+    history.replaceState(null, '', url);
+  }
+
   window.addEventListener('keydown', (event) => {
     if (dialogOpen) return;
     if (event.target instanceof HTMLSelectElement || event.target instanceof HTMLInputElement) return;
@@ -596,6 +624,8 @@ async function start() {
       if (!event.repeat) controls.mapView = !controls.mapView;
     } else if (event.code === 'KeyW') {
       if (!event.repeat) cycleTimeOfDay();
+    } else if (event.code === 'KeyS') {
+      if (!event.repeat) pressStereo();
     } else keys.add(event.code);
   });
   window.addEventListener('keyup', (event) => {
@@ -616,7 +646,13 @@ async function start() {
     accumulator = 0;
     physics.captureVisuals(true);
   });
-  bindGameActions({ sound: (muted) => audio.setMuted(muted), clearInput: () => controls.clear() });
+  bindGameActions({
+    sound: (muted) => {
+      audio.setMuted(muted);
+      stereo.setMuted(muted);
+    },
+    clearInput: () => controls.clear(),
+  });
   bindLapRecorder(gameState, {
     press: pressLapRecorder,
     seek(time) {
@@ -658,8 +694,14 @@ async function start() {
     if (controls.timeOfDayRequested) cycleTimeOfDay();
     if (controls.resetRequested) reset();
     if (controls.recordRequested) pressLapRecorder();
-    if (controls.previousLapRequested) seekReplayLap('previous');
-    if (controls.nextLapRequested) seekReplayLap('next');
+    if (controls.previousLapRequested) {
+      if (replay) seekReplayLap('previous');
+      else pressStereo('previous');
+    }
+    if (controls.nextLapRequested) {
+      if (replay) seekReplayLap('next');
+      else pressStereo('next');
+    }
     const dt = lastTime ? Math.min((time - lastTime) / 1000, 0.05) : fixedStep;
     lastTime = time;
     const replayVelocity3d = updateReplay(dt);

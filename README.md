@@ -226,6 +226,7 @@ simulation continues. Settings remains in the main footer.
 | D                   | Toggle Grip / Drift mode (once per press)                          |
 | M                   | Toggle the bird's-eye map view of the whole course                 |
 | W                   | Cycle Noon / Sunset / Night (once per press)                       |
+| S                   | Turn on the stereo / next station / off after the last station     |
 
 Map view switches instantly in both directions, without an animated camera flight.
 
@@ -252,7 +253,7 @@ the keyboard controls. The first connected standard-mapped controller is used.
 | Y / Triangle (north face button)     | Toggle Grip / Drift mode (once per press)                          |
 | D-pad Down                           | Cycle Noon / Sunset / Night (once per press)                       |
 | D-pad Up                             | Stop recording and replay, or play saved laps before the start line |
-| D-pad Left / Right                   | Skip to the previous / next lap during replay                      |
+| D-pad Left / Right                   | Stereo previous / next (including Off); previous / next lap during replay |
 
 Both triggers together allow brakestand behavior only below 4 km/h. LT alone brakes forward
 motion, then engages reverse only near a stop; release LT to leave reverse.
@@ -403,7 +404,10 @@ mode and switches off in Grip mode. `car.setDashLight()` can switch any lamp
 Unlit warning lamps use blank dark gray masks that respond to cabin lighting
 and blend into the surrounding panel without revealing the warning symbols.
 At sunset and night, the gauge markings and odometer have a subdued green-white
-backlight and the red needles glow. Gauge illumination switches off at noon.
+backlight and the red needles glow. A small warm-white light softly illuminates
+the gauge cluster whenever the headlights are on. Gauge illumination switches off at noon.
+The left climate-control and right gauge-side pod labels also brighten with neutral-white backlighting when
+the headlights are on, retaining their original label colors rather than glowing green.
 A very dim warm light gently illuminates the cabin at night only.
 Oil pressure reads about 2 at idle and rises toward 5 at redline, with a gradual,
 frame-rate-independent response that lags behind both rising and falling RPM.
@@ -792,14 +796,40 @@ coordinates to maintain. `generateCourse` uses the same definition and renderer.
 
 ## Sound
 
-Audio is synthesized in real time with Web Audio and an AudioWorklet; no recorded
-sound assets or external audio services are used. Audio attempts to start immediately
+Vehicle audio is synthesized in real time with Web Audio and an AudioWorklet; no recorded
+vehicle sound assets are used. Vehicle audio attempts to start immediately
 on initialization. If browser autoplay policy blocks it, a click or keypress retries
 the unlock; controller-only players may need to click the page once. The Sound
 dropdown in Settings defaults to On and selects On/Off explicitly. Off is saved as
 `?sound=off`, so muted sound survives reloads and course changes.
 Audio is not muted on window blur, hidden tabs, or while dialogs are open.
 Browser autoplay and background-tab suspension policies still apply.
+
+Press **S** to turn on the stereo, illuminate its green display with a soft green
+glow on the nearby console, and stream
+[SomaFM Groove Salad](https://somafm.com/groovesalad.pls) by default. Settings
+**Stereo station** lists Groove Salad,
+[Metal Detector](https://somafm.com/metal.pls), and
+[Secret Agent](https://somafm.com/secretagent.pls). Changing stations while powered on
+switches the live stream immediately; while off, it selects what **S** will play.
+The choice is saved in the URL as `?station=groovesalad`, `?station=metal`, or
+`?station=secretagent`.
+With a `station` query parameter, the stereo attempts to play that station on load.
+If the browser blocks autoplay, a click or keypress retries playback without
+advancing the station. Without the parameter, the stereo stays off until requested.
+Streaming requires an internet connection. Each further **S** press selects
+the next station: Groove Salad → Metal Detector → Secret Agent → Off.
+The next press starts again at Groove Salad. Turning off stops the stream and
+extinguishes the green display and console light. Holding **S**
+does not repeatedly change stations.
+Outside replay, gamepad **D-pad Left / Right** also turns on the selected station;
+subsequent presses select the previous / next station, with Off between the first
+and last stations.
+During replay these buttons retain their previous / next lap controls.
+Settings **Sound: Off** mutes both the vehicle and stereo. Playback continues across
+car resets and course changes. Turning the stereo off removes the `station`
+parameter so it stays off after reloading. Stream failures
+appear in the status message and turn off the display; press **S** to retry.
 
 The four-stroke V6 voice combines combustion pulses, exhaust harmonics, and noise.
 It reads RPM, combustion load, boost, gear shifts and limiter cuts directly from

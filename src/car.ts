@@ -159,6 +159,67 @@ export async function loadCar() {
   const odometer = emissive(/^Odo_Odometer_0$/, 0xd7f5df, true);
   const gaugeNeedles = emissive(/_Gaugered_0$/, 0xff3820);
 
+  function splitSurface(
+    pattern: RegExp,
+    name: string,
+    contains: (x: number, y: number, z: number) => boolean,
+  ) {
+    const [source] = named(pattern);
+    if (!source) throw new Error(`Missing ${name} geometry.`);
+    const geometry = source.geometry;
+    const positions = geometry.getAttribute("position");
+    const indices = geometry.getIndex();
+    if (!indices) throw new Error(`Missing ${name} indices.`);
+    const selected: number[] = [];
+    const remaining: number[] = [];
+    for (let i = 0; i < indices.count; i += 3) {
+      const triangle = [0, 1, 2].map((offset) => indices.getX(i + offset));
+      const included = triangle.every((index) =>
+        contains(positions.getX(index), positions.getY(index), positions.getZ(index)),
+      );
+      (included ? selected : remaining).push(...triangle);
+    }
+    if (!selected.length) throw new Error(`Missing ${name} surface.`);
+    const surface = source.clone(false);
+    surface.name = name;
+    surface.geometry = geometry.clone().setIndex(selected).toNonIndexed();
+    source.geometry = geometry.clone().setIndex(remaining).toNonIndexed();
+    for (const part of [surface.geometry, source.geometry]) {
+      part.computeBoundingBox();
+      part.computeBoundingSphere();
+    }
+    surface.material = source.material.clone();
+    source.parent!.add(surface);
+    return surface;
+  }
+  // Radioface also includes the gauge cover, clock and A/C glass; the stereo is at +X.
+  const stereoDisplay = splitSurface(/^intglass_Radioface_0$/, "stereo-display", (x) => x > 0);
+  const stereoMaterial = stereoDisplay.material;
+  stereoMaterial.emissive.set(0x42ff88);
+  stereoMaterial.emissiveIntensity = 0;
+  stereoMaterial.toneMapped = false;
+  const stereoBounds = new THREE.Box3().setFromObject(stereoDisplay);
+  const stereoLight = new THREE.PointLight(0x42ff88, 0.025, 0.45, 2);
+  stereoLight.name = "stereo-glow";
+  stereoLight.position.copy(stereoBounds.getCenter(new THREE.Vector3()));
+  stereoLight.position.z = stereoBounds.min.z - 0.025;
+  chassis.worldToLocal(stereoLight.position);
+  stereoLight.visible = false;
+  chassis.add(stereoLight);
+
+  // The label atlas is shared by cabin buttons; isolate the two gauge-side pods.
+  const podLabels = splitSurface(
+    /^Intbuttons_Interiorbuttons_0$/,
+    "gauge-pod-labels",
+    (x, y, z) =>
+      ((x > -0.21 && x < -0.1) || (x > -0.65 && x < -0.56)) &&
+      y > 0.57 && y < 0.71 && z > 0.2 && z < 0.27,
+  );
+  podLabels.material.emissive.set(0xffffff);
+  podLabels.material.emissiveMap = podLabels.material.map;
+  podLabels.material.emissiveIntensity = 0;
+  podLabels.material.toneMapped = false;
+
   function rearSpot(box: THREE.Box3, color: number) {
     const light = new THREE.SpotLight(color, 0, 4, Math.PI / 5, 0.9, 2);
     light.position.copy(box.getCenter(new THREE.Vector3()));
@@ -250,6 +311,15 @@ export async function loadCar() {
   cabinLight.visible = false;
   chassis.add(cabinLight);
 
+  const gaugeBounds = meshBounds(/^gaugeface[12]_Gauges_0$/);
+  const gaugeLight = new THREE.PointLight(0xffd9b0, 0.025, 0.45, 2);
+  gaugeLight.name = "gauge-glow";
+  gaugeLight.position.copy(gaugeBounds.getCenter(new THREE.Vector3()));
+  gaugeLight.position.z = gaugeBounds.min.z - 0.025;
+  chassis.worldToLocal(gaugeLight.position);
+  gaugeLight.visible = false;
+  chassis.add(gaugeLight);
+
   function setLighting(enabled: boolean, night: boolean) {
     headlightsOn = enabled;
     setBraking(brakingActive);
@@ -260,8 +330,10 @@ export async function loadCar() {
     setIntensity(gaugeFaces, enabled ? 0.5 : 0);
     setIntensity(odometer, enabled ? 0.35 : 0);
     setIntensity(gaugeNeedles, enabled ? 0.9 : 0);
+    podLabels.material.emissiveIntensity = enabled ? 0.6 : 0;
     for (const material of headlightCovers) material.opacity = enabled ? 0.2 : 0.6;
     cabinLight.visible = night;
+    gaugeLight.visible = enabled;
     for (const light of headlights) light.visible = enabled;
     for (const light of underglow) light.visible = night;
   }
@@ -620,6 +692,10 @@ export async function loadCar() {
     setReversing,
     setHazards,
     setLighting,
+    setStereo(powered: boolean) {
+      stereoMaterial.emissiveIntensity = powered ? 1.5 : 0;
+      stereoLight.visible = powered;
+    },
     setMirrorResolution(resolution: GameState["mirrorResolution"]) {
       mirrorResolution = resolution;
     },
