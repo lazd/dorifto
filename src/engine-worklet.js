@@ -97,8 +97,7 @@ class VehicleSoundProcessor extends AudioWorkletProcessor {
       this.random ^= this.random << 5;
       const noise = (this.random >>> 0) / 2147483648 - 1;
       this.noiseLow += (noise - this.noiseLow) * 0.04;
-      // A four-stroke V6 fires three times per revolution. Each firing excites
-      // an exhaust pulse; alternating amplitudes keep it from sounding like a pure tone.
+      // A four-stroke V6 fires three evenly spaced times per crankshaft revolution.
       const limiterCut = state.limiter;
       const audibleRpm = state.rpm;
       this.phase += audibleRpm / 60 * 3 / sampleRate;
@@ -110,12 +109,12 @@ class VehicleSoundProcessor extends AudioWorkletProcessor {
       this.pulse *= this.pulseDecay;
       const cycle = this.phase * Math.PI * 2;
       const crank = this.crankPhase * Math.PI * 2;
-      const bankPulse = Math.sin(crank * 3 + Math.sin(crank) * 0.15);
-      const firing = (this.pulse - 0.15) * 0.68 + Math.sin(cycle) * 0.18
-        + Math.sin(crank) * 0.56 + Math.sin(crank * 2) * 0.32
-        + Math.sin(crank * 3) * 0.12;
+      const firing = (this.pulse - 0.15) * 0.73 + Math.sin(cycle) * 0.21
+        + Math.sin(crank) * 0.28 + Math.sin(crank * 2) * 0.16
+        + Math.sin(crank * 3) * 0.06;
       const combustion = firing * (0.24 + state.load * 0.55)
-        + this.noiseLow * state.load * 0.32 + bankPulse * state.load * 0.13;
+        + this.noiseLow * state.load * 0.26
+        + Math.sin(crank * 3 + Math.sin(crank) * 0.15) * state.load * 0.065;
       this.exhaust += (combustion - this.exhaust)
         * Math.min(0.65, (380 + state.rpm * 0.08) / sampleRate * 6.28);
       this.exhaustBody += (this.exhaust - this.exhaustBody) * (175 / sampleRate * 6.28);
