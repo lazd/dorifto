@@ -87,15 +87,21 @@ export function createMinimap(container: HTMLElement, definition: CourseDefiniti
   start.setAttribute('class', 'minimap-start');
   const marker = document.createElementNS(namespace, 'path');
   marker.setAttribute('class', 'minimap-marker');
-  marker.setAttribute('d', 'M0,-8 L5.5,6 L0,3 L-5.5,6 Z');
+  const markerPath = 'M0,-8 L5.5,6 L0,3 L-5.5,6 Z';
+  marker.setAttribute('d', markerPath);
+  const ghostMarker = document.createElementNS(namespace, 'path');
+  ghostMarker.setAttribute('class', 'minimap-marker minimap-ghost');
+  ghostMarker.setAttribute('d', markerPath);
+  ghostMarker.setAttribute('visibility', 'hidden');
   const map = document.createElementNS(namespace, 'g');
-  map.append(pad, road, start, marker);
+  map.append(pad, road, start, ghostMarker, marker);
   svg.append(map);
   container.append(svg);
   let layout: ReturnType<typeof createMinimapLayout>;
   function setCourse(next: CourseDefinition) {
     layout = createMinimapLayout(next);
-    svg.setAttribute('aria-label', `${next.name}: bird's-eye course map with live car position and heading`);
+    svg.setAttribute('aria-label', `${next.name}: bird's-eye course map with live car and ghost positions and headings`);
+    ghostMarker.setAttribute('visibility', 'hidden');
     road.setAttribute('d', layout.path);
     road.setAttribute('stroke-width', String(layout.roadWidth));
     start.setAttribute('d', layout.startLine);
@@ -109,9 +115,15 @@ export function createMinimap(container: HTMLElement, definition: CourseDefiniti
   setCourse(definition);
   return {
     setCourse,
-    update(position: MapPoint, forward: MapPoint, orientation: GameState['minimapOrientation']) {
+    update(
+      position: MapPoint, forward: MapPoint, orientation: GameState['minimapOrientation'],
+      ghost?: { position: MapPoint; forward: MapPoint } | null,
+    ) {
       map.setAttribute('transform', minimapViewTransform(forward, orientation));
       marker.setAttribute('transform', minimapMarkerTransform(layout, position, forward, orientation));
+      ghostMarker.setAttribute('visibility', ghost ? 'visible' : 'hidden');
+      if (ghost)
+        ghostMarker.setAttribute('transform', minimapMarkerTransform(layout, ghost.position, ghost.forward, orientation));
     },
   };
 }

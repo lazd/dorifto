@@ -488,6 +488,8 @@ export function bindCoursePicker(
   changeDirection: (reverse: boolean) => Promise<void>,
   reportError: (error: unknown) => void,
   store: Store<GameState>,
+  saveCourse: (name: string) => { id: string; name: string },
+  deleteCourse: (id: string) => Promise<{ id: string; name: string }>,
 ) {
   const input = element<HTMLSelectElement>("#course");
   const button = element<HTMLButtonElement>("#random-course");
@@ -499,20 +501,56 @@ export function bindCoursePicker(
   const customStatus = bindText("#custom-course-status");
   const customError = bindText("#custom-course-error");
   const courseName = bindText("#course-name");
+  const saveForm = element<HTMLFormElement>("#save-course-form");
+  const saveName = element<HTMLInputElement>("#save-course-name");
+  const saveButton = element<HTMLButtonElement>("#save-course");
+  const saveStatus = bindText("#save-course-status");
+  const deleteButton = element<HTMLButtonElement>("#delete-course");
+  const generatedOption = new Option("", "");
+  generatedOption.hidden = true;
+  generatedOption.disabled = true;
+  input.add(generatedOption);
+  const builtInGroup = document.createElement("optgroup");
+  builtInGroup.label = "Built-in courses";
+  const savedGroup = document.createElement("optgroup");
+  savedGroup.label = "Saved courses";
+  input.append(builtInGroup, savedGroup);
+  function syncCourseSelection() {
+    const generated = selected.id === "random" || selected.id === "custom";
+    generatedOption.text = generated ? selected.name : "";
+    input.value = generated ? "" : selected.id;
+  }
+  function syncSaveCourse() {
+    saveForm.hidden = selected.id !== "random" && selected.id !== "custom";
+    saveName.value = selected.name;
+    saveStatus("");
+    deleteButton.disabled = !selected.id.startsWith("saved-");
+  }
+  syncSaveCourse();
+  saveForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    if (changing) return;
+    try {
+      const saved = saveCourse(saveName.value);
+      savedGroup.append(new Option(saved.name, saved.id));
+      selected = saved;
+      syncCourseSelection();
+      courseName(saved.name);
+      syncSaveCourse();
+      saveButton.blur();
+    } catch (error) {
+      saveStatus(error instanceof Error ? error.message : String(error));
+      reportError(error);
+    }
+  });
   courseName(selected.name);
-  for (const course of options) input.add(new Option(course.name, course.id));
-  const randomOption = new Option(
-    selected.id === "random" ? selected.name : "Random Circuit",
-    "random",
-  );
-  input.add(randomOption);
-  const customOption = new Option(
-    selected.id === "custom" ? selected.name : "Custom Circuit",
-    "custom",
-  );
-  input.add(customOption);
-  input.value = selected.id;
+  for (const course of options) {
+    const group = course.id.startsWith("saved-") ? savedGroup : builtInGroup;
+    group.append(new Option(course.name, course.id));
+  }
+  syncCourseSelection();
   const setBusy = (busy: boolean) => {
+    deleteButton.disabled = busy || !selected.id.startsWith("saved-");
     input.disabled =
       button.disabled =
       reverse.disabled =
@@ -520,11 +558,33 @@ export function bindCoursePicker(
       generateButton.disabled =
       resetButton.disabled =
       fieldset.disabled =
+      saveButton.disabled =
+      saveName.disabled =
         busy;
   };
   setBusy(false);
   reverse.checked = store.getState().courseReverse;
   let changing = false;
+  deleteButton.addEventListener("click", async () => {
+    if (changing || !selected.id.startsWith("saved-")) return;
+    changing = true;
+    setBusy(true);
+    const id = selected.id;
+    try {
+      selected = await deleteCourse(id);
+      const option = Array.from(input.options).find((option) => option.value === id);
+      option?.remove();
+      syncCourseSelection();
+      courseName(selected.name);
+      syncSaveCourse();
+    } catch (error) {
+      reportError(error);
+    } finally {
+      setBusy(false);
+      changing = false;
+      deleteButton.blur();
+    }
+  });
   const selectCourse = async (id: string) => {
     if (changing) return;
     changing = true;
@@ -543,8 +603,7 @@ export function bindCoursePicker(
         weights,
       );
       courseName(selected.name);
-      randomOption.text = selected.id === "random" ? selected.name : "Random Circuit";
-      customOption.text = selected.id === "custom" ? selected.name : "Custom Circuit";
+      syncSaveCourse();
       closeCustom = id === "custom";
     } catch (error) {
       reportError(error);
@@ -552,7 +611,7 @@ export function bindCoursePicker(
         customError(error instanceof Error ? error.message : String(error));
       }
     } finally {
-      input.value = selected.id;
+      syncCourseSelection();
       setBusy(false);
       customStatus("");
       changing = false;
@@ -587,12 +646,6 @@ export function bindCoursePicker(
     void reverseCourse();
   });
   input.addEventListener("change", () => {
-    if (input.value === "custom") {
-      input.value = selected.id;
-      customError("");
-      store.update({ customCourseOpen: true, courseMenuOpen: false });
-      return;
-    }
     void selectCourse(input.value);
   });
 }

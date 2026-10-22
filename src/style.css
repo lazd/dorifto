@@ -108,10 +108,6 @@ h1 span {
 #course-menu {
   flex-shrink: 0;
 }
-.minimap:focus-visible {
-  outline: 2px solid #9ee8d5;
-  outline-offset: -2px;
-}
 #course-name {
   order: 2;
   flex-shrink: 0;
@@ -140,6 +136,22 @@ h1 span {
   display: block;
   margin-right: 0;
   padding: 8px;
+}
+.course-generation-actions {
+  display: flex;
+  gap: 8px;
+}
+.course-generation-actions > button {
+  flex: 1;
+  min-width: 0;
+}
+#save-course-form:not([hidden]) {
+  display: grid;
+  gap: 8px;
+}
+#save-course-name {
+  min-width: 0;
+  width: 100%;
 }
 .minimap {
   display: flex;
@@ -187,6 +199,10 @@ h1 span {
   stroke: #10191f;
   stroke-width: 1.5;
   stroke-linejoin: round;
+}
+.minimap-ghost {
+  fill: #9ee8ff;
+  fill-opacity: 0.65;
 }
 .minimap-lap,
 .minimap-timing {
@@ -401,24 +417,52 @@ footer.loaded:not(:focus-within) {
   font-size: 12px;
   color: #d2dedc;
 }
-.course-direction {
+.checkbox {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  padding: 0 1px;
 }
-.course-direction input {
-  margin: 0;
+input {
   accent-color: #9ee8d5;
+  font: inherit;
+}
+input[type="checkbox"] {
+  appearance: none;
+  display: inline-grid;
+  place-content: center;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  border: 1px solid #525c59;
+  border-radius: 4px;
+  background: #10191fe1;
+  cursor: pointer;
+}
+input[type="checkbox"]::before {
+  content: "";
+  width: 5px;
+  height: 9px;
+  border: solid #9ee8d5;
+  border-width: 0 2px 2px 0;
+  transform: translateY(-1px) rotate(45deg);
+  visibility: hidden;
+}
+input[type="checkbox"]:checked::before {
+  visibility: visible;
 }
 button {
   color: inherit;
   font: inherit;
   background: transparent;
-  border: 0;
+  border: 1px solid transparent;
   padding: 0;
   cursor: pointer;
 }
-button:disabled {
+button:disabled,
+input:disabled,
+select:disabled {
   opacity: 0.5;
   cursor: default;
 }
@@ -429,12 +473,13 @@ button.keycap {
   margin-right: 4px;
   border: 1px solid #525c59;
   border-radius: 4px;
-  background: #10191f99;
+  background: #10191fe1;
   font: inherit;
   color: #fff;
 }
-select {
-  margin-left: 6px;
+select,
+input:not([type="range"]):not([type="checkbox"]):not([type="radio"]) {
+  min-width: 0;
   padding: 5px 8px;
   color: #eef6f5;
   background: #18272e;
@@ -442,9 +487,27 @@ select {
   border-radius: 4px;
   font: inherit;
 }
-button.keycap:hover:not(:disabled),
-button.keycap:focus-visible {
-  background: #397d70;
+select {
+  margin-left: 6px;
+}
+input::placeholder {
+  color: #aebfbd;
+}
+input[type="range"]:not(:disabled) {
+  cursor: pointer;
+}
+button:not(:disabled):not(:focus):hover,
+select:not(:disabled):not(:focus):hover,
+input:not([type="range"]):not(:disabled):not(:focus):hover,
+#lap-recorder-button:not(:disabled):not(:focus):hover {
+  background: #18272e;
+  border-color: #9ee8d5;
+}
+button:focus-visible,
+select:focus-visible,
+input:focus-visible {
+  outline: 2px solid #9ee8d5;
+  outline-offset: 2px;
 }
 .credit {
   font-size: 10px;
@@ -511,10 +574,6 @@ dialog .dialog-close {
   font-size: 28px;
   line-height: 1;
 }
-.dialog-close button:hover,
-.dialog-close button:focus-visible {
-  background: #397d70;
-}
 dialog h2 {
   padding-right: 36px;
 }
@@ -565,17 +624,10 @@ dialog h2 {
 .tuning-preset-picker {
   margin: 12px 18px;
 }
-.tuning-preset-picker > input {
-  min-width: 0;
-  margin: 0;
-  padding: 5px 8px;
-  color: #eef6f5;
-  background: #18272e;
-  border: 1px solid #adc3bd55;
-  border-radius: 4px;
-  font: inherit;
-}
 #tuning-preset-status:empty {
+  display: none;
+}
+#save-course-status:empty {
   display: none;
 }
 #tuning-preset-status[data-error="true"] {
@@ -617,9 +669,6 @@ dialog h2 {
 .slider-dialog input,
 .slider-dialog small {
   grid-column: 1 / -1;
-}
-.slider-dialog input {
-  accent-color: #9ee8d5;
 }
 .slider-dialog small {
   color: #aebfbd;
@@ -693,12 +742,6 @@ dialog h2 {
   font-weight: 700;
   letter-spacing: 0.14em;
   font-variant-numeric: tabular-nums;
-}
-#lap-recorder-button:hover,
-#lap-recorder-button:focus-visible {
-  background: #18272e;
-  outline: none;
-  border-color: #9ee8d5;
 }
 .lap-recorder-icon {
   width: 14px;

@@ -11,6 +11,7 @@ let generateCourse;
 let generateCustomCourse;
 let defaultCourseWeights;
 let createMinimapLayout;
+let createMinimap;
 let minimapMarkerTransform;
 let minimapViewTransform;
 let createGameState;
@@ -25,13 +26,57 @@ before(async () => {
   });
   ({ courses, courseRoute, courseSpawn, startDistance, generateCourse } = await server.ssrLoadModule('/src/courses.ts'));
   ({ generateCustomCourse, defaultCourseWeights } = await server.ssrLoadModule('/src/course-generation.ts'));
-  ({ createMinimapLayout, minimapMarkerTransform, minimapViewTransform } = await server.ssrLoadModule('/src/minimap.ts'));
+  ({ createMinimap, createMinimapLayout, minimapMarkerTransform, minimapViewTransform } = await server.ssrLoadModule('/src/minimap.ts'));
   ({ createGameState, isMinimapOrientation, isMirrorResolution, readMirrorResolution } =
     await server.ssrLoadModule('/src/game-state.ts'));
 });
 
 after(async () => {
   await server?.close();
+});
+
+test('ghost marker follows its own pose in both map orientations and hides when inactive or changing course', () => {
+  class Element {
+    attributes = new Map();
+    children = [];
+    setAttribute(name, value) { this.attributes.set(name, value); }
+    getAttribute(name) { return this.attributes.get(name); }
+    append(...children) { this.children.push(...children); }
+  }
+  const originalDocument = globalThis.document;
+  globalThis.document = { createElementNS: () => new Element() };
+  try {
+    const container = new Element();
+    const minimap = createMinimap(container, courses[0]);
+    const map = container.children[0].children[0];
+    const ghost = map.children[3];
+    const player = map.children[4];
+    const layout = createMinimapLayout(courses[0]);
+    const position = { x: 10, z: 20 };
+    const forward = { x: 1, z: 0 };
+    const pose = { position: { x: -20, z: 30 }, forward: { x: 0, z: -1 } };
+    assert.equal(ghost.getAttribute('visibility'), 'hidden');
+    for (const orientation of ['north-up', 'heading-up']) {
+      minimap.update(position, forward, orientation, pose);
+      assert.equal(ghost.getAttribute('visibility'), 'visible');
+      assert.equal(ghost.getAttribute('transform'), minimapMarkerTransform(layout, pose.position, pose.forward, orientation));
+      assert.equal(player.getAttribute('transform'), minimapMarkerTransform(layout, position, forward, orientation));
+      assert.equal(map.getAttribute('transform'), minimapViewTransform(forward, orientation));
+    }
+    minimap.update(position, forward, 'north-up', null);
+    assert.equal(ghost.getAttribute('visibility'), 'hidden');
+    minimap.update(position, forward, 'north-up', pose);
+    minimap.setCourse(courses[1]);
+    assert.equal(ghost.getAttribute('visibility'), 'hidden');
+    minimap.update(position, forward, 'heading-up', pose);
+    assert.equal(ghost.getAttribute('transform'),
+      minimapMarkerTransform(createMinimapLayout(courses[1]), pose.position, pose.forward, 'heading-up'));
+    minimap.update(position, forward, 'heading-up');
+    assert.equal(ghost.getAttribute('visibility'), 'hidden');
+  } finally {
+    if (originalDocument === undefined) delete globalThis.document;
+    else globalThis.document = originalDocument;
+  }
 });
 
 test('fits every course type inside the minimap without distorting its ground-plane coordinates', () => {

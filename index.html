@@ -39,28 +39,49 @@
             >Course
             <select id="course" aria-label="Course" disabled></select
           ></label>
-          <label class="course-direction">
+          <label class="checkbox">
             <input id="reverse-course" type="checkbox" disabled /> Reverse course
           </label>
-          <button
-            id="custom-course"
-            class="keycap"
-            type="button"
-            aria-haspopup="dialog"
-            aria-controls="custom-course-dialog"
-            disabled
-          >
-            Custom course
-          </button>
-          <button
-            id="random-course"
-            class="keycap"
-            type="button"
-            title="Generate a new course"
-            disabled
-          >
-            Random course
-          </button>
+          <div class="course-generation-actions">
+            <button
+              id="custom-course"
+              class="keycap"
+              type="button"
+              aria-label="Custom course"
+              title="Custom course"
+              aria-haspopup="dialog"
+              aria-controls="custom-course-dialog"
+              disabled
+            >
+              🛠️
+            </button>
+            <button
+              id="random-course"
+              class="keycap"
+              type="button"
+              aria-label="Random course"
+              title="Generate a new course"
+              disabled
+            >
+              ♻️
+            </button>
+            <button
+              id="delete-course"
+              class="keycap"
+              type="button"
+              aria-label="Delete course"
+              title="Delete course"
+              disabled
+            >
+              🗑️
+            </button>
+          </div>
+          <form id="save-course-form" hidden>
+            <label for="save-course-name">Course name</label>
+            <input id="save-course-name" type="text" required placeholder="Name this course" />
+            <button id="save-course" class="keycap" type="submit">Save course</button>
+            <span id="save-course-status" role="status"></span>
+          </form>
         </div>
       </div>
     </aside>
@@ -70,9 +91,25 @@
         <span id="lap-recorder-label">REC</span>
       </button>
       <span id="lap-replay-controls" hidden>
-        <button id="lap-replay-previous" class="keycap" type="button" aria-label="Previous lap" title="Previous lap">←</button>
+        <button
+          id="lap-replay-previous"
+          class="keycap"
+          type="button"
+          aria-label="Previous lap"
+          title="Previous lap"
+        >
+          ←
+        </button>
         <span id="lap-replay-time"></span>
-        <button id="lap-replay-next" class="keycap" type="button" aria-label="Next lap" title="Next lap">→</button>
+        <button
+          id="lap-replay-next"
+          class="keycap"
+          type="button"
+          aria-label="Next lap"
+          title="Next lap"
+        >
+          →
+        </button>
       </span>
       <span class="editable-picker">
         <select id="lap-replay-run" aria-label="Saved laps to replay"></select>
@@ -388,11 +425,11 @@
         Recording captures your launch and shows once you cross the start/finish line. From the
         second lap, a ghost car drives your fastest (or previous) lap of the run. Press the record
         button to stop: the course resets, the laps are saved, and the replay plays. Before crossing
-        the line, press play to watch saved laps. Replays show each lap's total time, with a 🏆
-        for the fastest lap of the run; use the arrows to skip to the previous or next lap.
-        Resetting the car discards an unsaved run, but completed record laps are saved automatically
-        for each map and direction. Choose Record lap in the ghost setting to race the all-time
-        record from your first lap. Beating it replaces the ghost with your new record.
+        the line, press play to watch saved laps. Replays show each lap's total time, with a 🏆 for
+        the fastest lap of the run; use the arrows to skip to the previous or next lap. Resetting
+        the car discards an unsaved run, but completed record laps are saved automatically for each
+        map and direction. Choose Record lap in the ghost setting to race the all-time record from
+        your first lap. Beating it replaces the ghost with your new record.
       </p>
     </dialog>
     <script type="module" src="/src/main.ts"></script>

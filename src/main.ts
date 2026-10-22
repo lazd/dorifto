@@ -13,6 +13,7 @@ import {
   readMirrorResolution, type SavedRunOption,
 } from './game-state';
 import { loadTuningPresets } from './tuning-presets';
+import { deleteSavedCourse, loadSavedCourses, saveCourse } from './saved-courses';
 import { bindGameUI, bindGameActions, bindCoursePicker, bindLapRecorder, element } from './ui';
 import { createDrivingCamera } from './camera';
 import { createLighting } from './lighting';
@@ -85,6 +86,7 @@ async function start() {
     history.replaceState(null, '', settingsUrl);
   }
   const courseUrl = new URL(location.href);
+  const availableCourses = [...courses, ...loadSavedCourses(localStorage)];
   const requestedCourse = courseUrl.searchParams.get('course');
   const requestedReverse = readCourseReverse(courseUrl.searchParams);
   const requestedWeights = requestedCourse === 'custom' ? readCourseWeights(courseUrl.searchParams)
@@ -101,7 +103,7 @@ async function start() {
   }
   const definition = requestedCourse === 'custom' ? generateCustomCourse(seed, requestedWeights)
     : requestedCourse === 'random' ? generateCourse(seed)
-    : requestedCourse ? courses.find((course) => course.id === requestedCourse) : courses[0];
+    : requestedCourse ? availableCourses.find((course) => course.id === requestedCourse) : courses[0];
   if (!definition) throw new Error(`Unknown course: ${requestedCourse}`);
   const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -195,6 +197,8 @@ async function start() {
   });
   const tireEffects = createTireEffects(scene, car, terrain, course.isAsphalt);
   const forward = new THREE.Vector3();
+  const ghostForward = new THREE.Vector3();
+  const minimapGhost = { position: ghost.chassis.position, forward: ghostForward };
 
   // Lap recording: a run is captured from launch, shown once it crosses the start/finish line, and discarded by any reset.
   let run: RunRecording | null = null;
@@ -474,7 +478,7 @@ async function start() {
     return loadCourse(() => {
       const nextDefinition = id === 'custom' && seed !== undefined ? generateCustomCourse(seed, customWeights)
         : id === 'random' && seed !== undefined ? generateCourse(seed)
-        : courses.find((course) => course.id === id);
+        : availableCourses.find((course) => course.id === id);
       if (!nextDefinition) throw new Error(`Unknown course: ${id}`);
       return nextDefinition;
     }, (url) => {
@@ -507,13 +511,41 @@ async function start() {
     await refreshRecordLap();
   }
 
-  bindCoursePicker(courses, definition, changeCourse, changeCourseDirection, (error) => {
+  bindCoursePicker(availableCourses, definition, changeCourse, changeCourseDirection, (error) => {
     console.error('Unable to change course:', error);
     gameState.update({ status: {
       visible: true, error: true,
       message: `Unable to change course: ${error instanceof Error ? error.message : String(error)}`,
     } });
-  }, gameState);
+  }, gameState, (name) => {
+    const saved = saveCourse(localStorage, activeDefinition, name);
+    availableCourses.push(saved);
+    activeDefinition = saved;
+    minimap.setCourse(saved);
+    storageKey = replayStorageKey({ ...saved, reverse: gameState.getState().courseReverse });
+    ++recordLoad;
+    if (recordLap)
+      void saveRecordLap(storageKey, recordLap).catch((error) => reportLapError('Unable to save record lap:', error));
+    refreshSavedRuns();
+    const url = new URL(location.href);
+    url.searchParams.set('course', saved.id);
+    url.searchParams.delete('seed');
+    writeCourseWeights(url.searchParams);
+    history.replaceState(null, '', url);
+    return saved;
+  }, async (id) => {
+    if (!loadSavedCourses(localStorage).some((course) => course.id === id))
+      throw new Error('Only saved courses can be deleted');
+    const fallback = await changeCourse(courses[0].id);
+    try {
+      deleteSavedCourse(localStorage, id);
+    } catch (error) {
+      await changeCourse(id);
+      throw error;
+    }
+    availableCourses.splice(availableCourses.findIndex((course) => course.id === id), 1);
+    return fallback;
+  });
 
   function cycleCamera() {
     const styles = ['corner', 'classic', 'cabin'] as const;
@@ -650,7 +682,8 @@ async function start() {
     forward.set(0, 0, 1).applyQuaternion(car.chassis.quaternion);
     forward.y = 0;
     forward.normalize();
-    minimap.update(car.chassis.position, forward, cameraState.minimapOrientation);
+    ghostForward.set(0, 0, 1).applyQuaternion(ghost.chassis.quaternion);
+    minimap.update(car.chassis.position, forward, cameraState.minimapOrientation, ghost.visible ? minimapGhost : null);
     // Manifold pressure: closed-throttle vacuum through to full turbo boost.
     const manifoldMmHg = THREE.MathUtils.lerp(-550, 0, engine.load) * (1 - engine.boost) + 650 * engine.boost;
     car.setGauges(Math.abs(forward.dot(velocity)) * 3.6, engine.rpm, manifoldMmHg, dt);

@@ -441,7 +441,9 @@ Every completed lap can set an all-time record, saved locally for that map layou
 and direction, regardless of tuning or drive mode. Records survive resets, reloads,
 and deletion of saved replay runs. **Ghost car → Record lap** races that record
 from the first start-line crossing and restarts it each lap. A faster lap replaces
-the record and becomes the ghost for subsequent laps. **Fastest lap** and
+the record and becomes the ghost for subsequent laps. A cyan arrow on the minimap
+tracks the active ghost's position and heading alongside the player's gold arrow.
+**Fastest lap** and
 **Previous lap** still use only the current run, starting on lap 2.
 
 ## Drive modes
@@ -709,6 +711,16 @@ the named Hillside Circuit stays fixed.
 These are geometric limits, not an autopilot: slow down for the tighter bends.
 
 ### Custom generation
+
+After generating a random or custom course, open the course menu to enter a name
+and choose **Save course**. The exact course layout is stored in localStorage,
+added to and selected in the **Course** dropdown, including after reloading.
+The save controls disappear once the saved course is selected. Saved courses are
+local to this browser; their `?course=saved-…` links require the same local data.
+The dropdown separates **Built-in courses** and **Saved courses** into groups;
+use the generation buttons to create random or custom courses.
+The course menu's delete button removes the selected saved course and switches to
+the default course. Deletion is disabled for built-in and unsaved generated courses.
 
 **Custom course** opens a dialog with a **1–5 km course length** slider (100 m
 steps), five independent preference sliders from **0 to 1** (0.01 steps),
