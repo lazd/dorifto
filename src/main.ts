@@ -319,7 +319,10 @@ async function start() {
     ghost.visible = true;
   }
 
-  /** Poses the car from the replay and returns its velocity, or null once the replay has finished. */
+  /**
+   * Steps the world along the replay so cones and signs fly again, poses the car, and returns its
+   * velocity, or null once the replay has finished.
+   */
   function updateReplay(dt: number) {
     if (!replay) return null;
     const { recording } = replay;
@@ -327,12 +330,24 @@ async function start() {
       reset();
       return null;
     }
-    replay.time = Math.min(replay.time + dt, recording.duration);
-    recording.read(replay.time, playbackFrame);
+    accumulator += dt;
+    while (accumulator >= fixedStep) {
+      recording.read(replay.time, replayBefore);
+      replay.time += fixedStep;
+      recording.read(replay.time, replayAfter);
+      physics.stepReplay(replayBefore, replayAfter, fixedStep);
+      physics.captureReplayVisuals();
+      accumulator -= fixedStep;
+    }
+    const alpha = accumulator / fixedStep;
+    physics.interpolateReplay(alpha);
+    // Draw the car at the same moment as the interpolated cones and signs.
+    const shownTime = Math.max(replay.time - (1 - alpha) * fixedStep, 0);
+    recording.read(shownTime, playbackFrame);
     applyCarPose(playbackFrame, car.chassis, car.wheels, car.hubs);
     const h = recording.interval / 2;
-    recording.read(replay.time - h, replayBefore);
-    recording.read(replay.time + h, replayAfter);
+    recording.read(shownTime - h, replayBefore);
+    recording.read(shownTime + h, replayAfter);
     replayVelocity.subVectors(replayAfter.position, replayBefore.position).divideScalar(2 * h);
     Object.assign(replayEngine, {
       rpm: playbackFrame.rpm, gear: playbackFrame.gear, throttle: playbackFrame.throttle, load: playbackFrame.load,
@@ -532,7 +547,6 @@ async function start() {
     const replaying = replayVelocity3d !== null;
     let velocity: THREE.Vector3;
     if (replayVelocity3d) {
-      accumulator = 0;
       velocity = replayFlatVelocity.copy(replayVelocity3d).setY(0);
     } else {
       accumulator += dt;

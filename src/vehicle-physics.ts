@@ -13,6 +13,11 @@ import { Drivetrain, wheelInertia, type DrivetrainInput } from './drivetrain';
 import { vehicleSettings } from './vehicle-settings';
 import { createPhysicsVisuals, type PhysicsPlugin, type PhysicsPluginContext } from './physics-plugin';
 
+export interface ChassisPose {
+  position: THREE.Vector3;
+  quaternion: THREE.Quaternion;
+}
+
 interface VehiclePhysicsOptions {
   Ammo: typeof AmmoFactory;
   resources: ReturnType<typeof createPhysicsResources>;
@@ -189,6 +194,12 @@ export function createVehiclePhysics({
   const antiRollOffset = new THREE.Vector3();
   const resetTransform = new Ammo.btTransform();
   resetTransform.setIdentity();
+  const replayTransform = new Ammo.btTransform();
+  replayTransform.setIdentity();
+  const replayRotation = new Ammo.btQuaternion(0, 0, 0, 1);
+  const replayFrom = new THREE.Vector3();
+  const replayTo = new THREE.Vector3();
+  const replaySpin = new THREE.Quaternion();
   function setCourseDirection(nextSpawn: ReturnType<typeof courseSpawn>, nextLaps: LapTimer) {
     const spawnNormal = terrain.normalAt(nextSpawn.position[0], nextSpawn.position[1]);
     const spawnForward = new THREE.Vector3(Math.sin(nextSpawn.heading), 0, Math.cos(nextSpawn.heading))
@@ -470,6 +481,43 @@ export function createVehiclePhysics({
   }
 
 
+  /**
+   * Replays recorded motion through the live world: the chassis body is placed at `from` and given
+   * the velocity that carries it to `to`, so cones and signs react as they did when it was driven.
+   */
+  function stepReplay(from: ChassisPose, to: ChassisPose, dt: number) {
+    replayFrom.copy(centerOfMass).applyQuaternion(from.quaternion).add(from.position);
+    replayTo.copy(centerOfMass).applyQuaternion(to.quaternion).add(to.position);
+    vector.setValue(replayFrom.x, replayFrom.y, replayFrom.z);
+    replayTransform.setOrigin(vector);
+    replayRotation.setValue(from.quaternion.x, from.quaternion.y, from.quaternion.z, from.quaternion.w);
+    replayTransform.setRotation(replayRotation);
+    body.setCenterOfMassTransform(replayTransform);
+    body.getMotionState().setWorldTransform(replayTransform);
+    replayTo.sub(replayFrom).divideScalar(dt);
+    vector.setValue(replayTo.x, replayTo.y, replayTo.z);
+    body.setLinearVelocity(vector);
+    replaySpin.copy(from.quaternion).invert().premultiply(to.quaternion);
+    if (replaySpin.w < 0) replaySpin.set(-replaySpin.x, -replaySpin.y, -replaySpin.z, -replaySpin.w);
+    const halfSin = Math.hypot(replaySpin.x, replaySpin.y, replaySpin.z);
+    const rate = halfSin > 1e-9 ? 2 * Math.atan2(halfSin, replaySpin.w) / (halfSin * dt) : 0;
+    vector.setValue(replaySpin.x * rate, replaySpin.y * rate, replaySpin.z * rate);
+    body.setAngularVelocity(vector);
+    body.clearForces();
+    world.updateSingleAabb(body);
+    for (const plugin of plugins) plugin.beforeStep?.(dt);
+    world.stepSimulation(dt, 0);
+    for (const plugin of plugins) plugin.afterStep?.(dt);
+  }
+
+  function captureReplayVisuals() {
+    for (const plugin of plugins) plugin.captureVisuals?.(false);
+  }
+
+  function interpolateReplay(alpha: number) {
+    for (const plugin of plugins) plugin.interpolate?.(alpha);
+  }
+
   function interpolate(alpha: number) {
     car.setBraking(spawnBrakeHeld || (!reversing && controls.brake > 0));
     car.setReversing(reversing);
@@ -523,6 +571,8 @@ export function createVehiclePhysics({
     Ammo.destroy(groundShape);
     heightData.release();
     Ammo.destroy(resetTransform);
+    Ammo.destroy(replayTransform);
+    Ammo.destroy(replayRotation);
     Ammo.destroy(forceOffset);
     Ammo.destroy(vector);
     Ammo.destroy(world);
@@ -533,7 +583,7 @@ export function createVehiclePhysics({
   }
 
   return {
-    step, reset, setCourseDirection, addPlugin, dispose, captureVisuals, interpolate, fixedStep, wheelContacts, tireSounds,
+    step, stepReplay, captureReplayVisuals, interpolateReplay, reset, setCourseDirection, addPlugin, dispose, captureVisuals, interpolate, fixedStep, wheelContacts, tireSounds,
     tireAngles: tireAngles as readonly number[],
     get engine() { return drivetrain.state; },
     get burnout() { return burnout; },
