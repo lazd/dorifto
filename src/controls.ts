@@ -10,6 +10,7 @@ export class DrivingControls {
   handbrake = false;
   cameraX = 0;
   cameraY = 0;
+  mapZoom = 0;
   lookBehind = false;
   mapView = false;
   resetRequested = false;
@@ -42,6 +43,7 @@ export class DrivingControls {
     this.keys.clear();
     this.steer = this.throttle = this.brake = this.reverse = 0;
     this.cameraX = this.cameraY = 0;
+    this.mapZoom = 0;
     this.handbrake = this.lookBehind = false;
     this.resetRequested = false;
     this.cameraRequested = false;
@@ -100,6 +102,7 @@ export class DrivingControls {
       this.keys.has("Space") || Boolean(pad?.buttons[5]?.pressed || pad?.buttons[2]?.pressed);
     this.cameraX = axis(2);
     this.cameraY = axis(3);
+    this.mapZoom = this.mapView ? axis(1) : 0;
     this.lookBehind = Boolean(pad?.buttons[11]?.pressed);
   }
 }

@@ -233,6 +233,8 @@ the keyboard controls. The first connected standard-mapped controller is used.
 | R2 / RT                              | Analog accelerator                                                 |
 | L2 / LT                              | Analog brake; reverse near a stop                                  |
 | Left stick horizontal                | Analog steering                                                    |
+| Left stick vertical (map view)       | Up: zoom in; down: zoom out                                        |
+| Right stick                          | Camera orbit/height; pan up/down/left/right in map view            |
 | R1 / RB or Xbox X (west face button) | Handbrake                                                          |
 | R3 (right-stick click, hold)         | Look behind; release to return                                     |
 | B / Circle (east face button)        | Toggle the bird's-eye map view (once per press)                    |
@@ -250,6 +252,10 @@ rescaled deadzone to avoid drift, and trigger values control torque/brake force
 proportionally. Keyboard inputs remain available alongside the controller.
 Disconnecting releases controller inputs immediately, and losing focus releases
 all controls until the game regains focus.
+
+In map view, push the left stick up to zoom in or down to zoom out, and use the
+right stick to pan in any direction. Release either stick to stop; map framing
+is retained when toggling the map and restored to the whole course on reset.
 
 Build speed, turn, then tap the handbrake and counter-steer. The camera follows
 the direction of travel smoothly rather than locking to the car's rotation,

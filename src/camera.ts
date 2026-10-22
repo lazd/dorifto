@@ -77,6 +77,9 @@ export function createDrivingCamera(
   const mapCenter = mapBounds.getCenter(new THREE.Vector3());
   const mapSize = mapBounds.getSize(new THREE.Vector3());
   const mapPosition = new THREE.Vector3();
+  const mapOffset = new THREE.Vector3();
+  const mapTarget = new THREE.Vector3();
+  let mapZoom = 1;
   const mapQuaternion = new THREE.Quaternion();
   const mapMatrix = new THREE.Matrix4();
   const mapUp = new THREE.Vector3(0, 0, 1);
@@ -86,6 +89,8 @@ export function createDrivingCamera(
 
   function reset(heading: number) {
     mapShown = false;
+    mapOffset.set(0, 0, 0);
+    mapZoom = 1;
     cameraYaw = cameraPitch = 0;
     slideCameraAmount = outsideOffset = cameraTurnRate = 0;
     previousTravel.set(0, 0, 0);
@@ -163,16 +168,18 @@ export function createDrivingCamera(
       .lerp(travelVelocity, tune.cameraTravelBlend * THREE.MathUtils.smoothstep(speed, 0.5, 3))
       .normalize();
     cameraDirection.lerp(travel, 1 - Math.exp(-tune.cameraDirectionResponse * dt)).normalize();
+    const cameraX = controls.mapView ? 0 : controls.cameraX;
+    const cameraY = controls.mapView ? 0 : controls.cameraY;
     const yawResponse =
-      !controls.lookBehind && controls.cameraX === 0 ? tune.cameraRecenterResponse : 9;
-    const pitchResponse = controls.cameraY === 0 ? tune.cameraRecenterResponse : 9;
+      !controls.lookBehind && cameraX === 0 ? tune.cameraRecenterResponse : 9;
+    const pitchResponse = cameraY === 0 ? tune.cameraRecenterResponse : 9;
     cameraYaw = THREE.MathUtils.damp(
       cameraYaw,
-      controls.lookBehind ? Math.PI : -controls.cameraX * 0.45,
+      controls.lookBehind ? Math.PI : -cameraX * 0.45,
       yawResponse,
       dt,
     );
-    cameraPitch = THREE.MathUtils.damp(cameraPitch, -controls.cameraY * 0.8, pitchResponse, dt);
+    cameraPitch = THREE.MathUtils.damp(cameraPitch, -cameraY * 0.8, pitchResponse, dt);
     const cabin = cameraStyle === "cabin";
     if (cameraStyle !== previousCameraStyle) {
       camera.fov = cabin ? 75 : 55;
@@ -224,8 +231,8 @@ export function createDrivingCamera(
       const manualCamera =
         controls.lookBehind ||
         Math.abs(cameraYaw) > 0.1 ||
-        Math.abs(controls.cameraX) > 0 ||
-        Math.abs(controls.cameraY) > 0;
+        Math.abs(cameraX) > 0 ||
+        Math.abs(cameraY) > 0;
       const cornerCamera = cameraStyle === "corner" && !manualCamera && !reversing;
       const slideAngle =
         speed > 3 ? Math.acos(THREE.MathUtils.clamp(forward.dot(travelVelocity), -1, 1)) : 0;
@@ -298,7 +305,7 @@ export function createDrivingCamera(
     }
     previousCameraStyle = cameraStyle;
     mapShown = controls.mapView;
-    if (mapShown) showMap();
+    if (mapShown) showMap(dt);
     else setClipping(near);
   }
 
@@ -309,14 +316,20 @@ export function createDrivingCamera(
     camera.updateProjectionMatrix();
   }
 
-  function showMap() {
+  function showMap(dt: number) {
     chasePosition.copy(camera.position);
     chaseQuaternion.copy(camera.quaternion);
     const halfHeight = Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2);
+    mapZoom = THREE.MathUtils.clamp(mapZoom * Math.exp(controls.mapZoom * dt), 0.02, 4);
     const height =
-      1.1 * Math.max(mapSize.z / 2 / halfHeight, mapSize.x / 2 / (halfHeight * camera.aspect));
-    mapPosition.set(mapCenter.x, mapBounds.max.y + height, mapCenter.z);
-    mapMatrix.lookAt(mapPosition, mapCenter, mapUp);
+      mapZoom * 1.1 * Math.max(mapSize.z / 2 / halfHeight, mapSize.x / 2 / (halfHeight * camera.aspect));
+    const panSpeed = height * halfHeight;
+    // With +Z at the top of this view, screen-right points toward -X.
+    mapOffset.x -= controls.cameraX * panSpeed * dt;
+    mapOffset.z -= controls.cameraY * panSpeed * dt;
+    mapTarget.copy(mapCenter).add(mapOffset);
+    mapPosition.set(mapTarget.x, mapBounds.max.y + height, mapTarget.z);
+    mapMatrix.lookAt(mapPosition, mapTarget, mapUp);
     mapQuaternion.setFromRotationMatrix(mapMatrix);
     camera.position.copy(mapPosition);
     camera.quaternion.copy(mapQuaternion);
