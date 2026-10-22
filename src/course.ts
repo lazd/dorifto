@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { CourseDefinition } from './courses';
-import { courseCornerAt, courseRoute, startDistance } from './courses';
+import { courseCornerAt, courseKerbSegments, courseRoute, startDistance } from './courses';
 import { surfaceMaterial } from './surfaces';
 import { CourseTerrain } from './terrain';
 import { courseTurnSignPlacements, createTurnSignFactory, type TurnSignMode } from './turn-sign';
@@ -245,17 +245,12 @@ function buildCourse(scene: THREE.Group, definition: CourseDefinition) {
   const curbRed = new THREE.MeshStandardMaterial({ color: 0xbc2823, roughness: 0.85, side: THREE.DoubleSide });
   const curbWhite = new THREE.MeshStandardMaterial({ color: 0xe6e3d7, roughness: 0.85, side: THREE.DoubleSide });
   const curbPositions: number[][] = [[], []];
-  for (let distance = 0; distance < length; distance += 2) {
-    if (definition.padRadius !== undefined) break;
-    const t = (distance + 1) / length;
-    const before = route.getTangentAt(THREE.MathUtils.euclideanModulo(t - 4 / length, 1));
-    const after = route.getTangentAt((t + 4 / length) % 1);
-    const bend = Math.atan2(before.z * after.x - before.x * after.z, before.dot(after));
-    if (Math.abs(bend) < 8 / 65) continue;
-    const curb = ribbon(Math.sign(bend) * (definition.width / 2 + 0.4), 0.8, 0.024,
-      curbRed, distance / length, Math.min(distance + 2, length) / length);
+  const kerbs = definition.padRadius === undefined ? courseKerbSegments(route) : [];
+  for (const { distance, endDistance, direction } of kerbs) {
+    const curb = ribbon(direction * (definition.width / 2 + 0.4), 0.8, 0.024,
+      curbRed, distance / length, endDistance / length);
     const positions = curb.geometry.getAttribute('position');
-    curbPositions[Math.floor(distance / 2) % 2].push(...Array.from(positions.array));
+    curbPositions[Math.round(distance / (length / Math.ceil(length / 2))) % 2].push(...Array.from(positions.array));
     scene.remove(curb);
     curb.geometry.dispose();
   }

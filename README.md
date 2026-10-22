@@ -119,6 +119,14 @@ pose snapshots/interpolation; synchronize meshes from bodies before capturing.
 is destroyed, so it should release plugin-owned shapes and temporary allocations.
 Register plugins before the initial reset; registration does not reset the world.
 
+Red/white inside kerbs follow sustained bend runs, using smoothed curvature,
+a 140 m peak-radius threshold, and at least 12 degrees of heading change over
+16 m or more. Short same-side holes are bridged; entry/exit transitions extend
+up to 4 m only while the road is still bending, with runs trimmed where the
+radius widens beyond 180 m. Wide sweepers, isolated spline
+kinks, and straights stay unkerbed. Kerbs follow the inside of each bend,
+including direction changes in chicanes; skidpads remain unkerbed.
+
 Yellow turn signs have dynamic 8 kg post-and-board collision bodies. They start
 asleep until struck, then tumble freely. Only hard car-to-sign contacts trigger
 an impulse-scaled metallic crash with a brief low-end punch, ragged crunch, and faint,
@@ -129,6 +137,7 @@ Hidden signs and the inactive direction's signs leave physics entirely; showing
 them again restores their starting positions. Shared visual/collision dimensions
 live in `src/turn-sign.ts`.
 **Settings > Turn signs** selects one of four densities, persisted in `?signs=`:
+
 - `off`: no visible signs or sign collisions.
 - `few`: three signs around each turn entry, at 6 m spacing.
 - `several` (default): runs from the approach to 6 m before the apex, estimated
@@ -224,7 +233,6 @@ the keyboard controls. The first connected standard-mapped controller is used.
 | R2 / RT                              | Analog accelerator                                                 |
 | L2 / LT                              | Analog brake; reverse near a stop                                  |
 | Left stick horizontal                | Analog steering                                                    |
-| Right stick                          | Small camera orbit/height adjustment; release to recenter          |
 | R1 / RB or Xbox X (west face button) | Handbrake                                                          |
 | R3 (right-stick click, hold)         | Look behind; release to return                                     |
 | B / Circle (east face button)        | Toggle the bird's-eye map view (once per press)                    |

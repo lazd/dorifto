@@ -114,6 +114,63 @@ export function courseCornerAt(route: THREE.Curve<THREE.Vector3>, distance: numb
   return Math.abs(bend) > 12 / 75;
 }
 
+export function courseKerbSegments(route: THREE.Curve<THREE.Vector3>) {
+  const length = route.getLength();
+  const count = Math.ceil(length / 2);
+  const spacing = length / count;
+  const wrap = (index: number) => THREE.MathUtils.euclideanModulo(index, count);
+  const curvature = Array.from({ length: count }, (_, index) => {
+    const distance = (index + 0.5) * spacing;
+    const before = route.getTangentAt(THREE.MathUtils.euclideanModulo(distance - 12, length) / length);
+    const after = route.getTangentAt(THREE.MathUtils.euclideanModulo(distance + 12, length) / length);
+    return Math.atan2(before.z * after.x - before.x * after.z, before.dot(after)) / 24;
+  });
+  const directions = curvature.map((value) => Math.abs(value) >= 1 / 180 ? Math.sign(value) : 0);
+  // Close short holes inside the same bend, without joining opposite sides of a chicane.
+  for (let index = 0; index < count; index++) {
+    if (!directions[index]) continue;
+    for (let gap = 1; gap <= 4; gap++) {
+      const next = wrap(index + gap);
+      if (!directions[next]) continue;
+      if (directions[next] === directions[index]) {
+        for (let step = 1; step < gap; step++) directions[wrap(index + step)] = directions[index];
+      }
+      break;
+    }
+  }
+  const accepted = Array<number>(count).fill(0);
+  const visited = new Set<number>();
+  for (let index = 0; index < count; index++) {
+    const direction = directions[index];
+    if (!direction || visited.has(index)) continue;
+    let start = index;
+    for (let step = 0; step < count - 1 && directions[wrap(start - 1)] === direction; step++) start = wrap(start - 1);
+    const run: number[] = [];
+    let heading = 0;
+    let peak = 0;
+    for (let step = 0; step < count; step++) {
+      const current = wrap(start + step);
+      if (directions[current] !== direction) break;
+      visited.add(current);
+      run.push(current);
+      heading += Math.max(0, curvature[current] * direction) * spacing;
+      peak = Math.max(peak, Math.abs(curvature[current]));
+    }
+    if (run.length * spacing < 16 || heading < THREE.MathUtils.degToRad(12) || peak < 1 / 140) continue;
+    for (const current of run) accepted[current] = direction;
+    for (const [edge, step] of [[run[0], -1], [run[run.length - 1], 1]]) {
+      for (let extension = 1; extension * spacing <= 4; extension++) {
+        const current = wrap(edge + extension * step);
+        if (curvature[current] * direction < 1 / 1000 || directions[current]) break;
+        accepted[current] = direction;
+      }
+    }
+  }
+  return accepted.map((direction, index) => ({
+    distance: index * spacing, endDistance: (index + 1) * spacing, direction,
+  })).filter(({ direction }) => direction !== 0);
+}
+
 export function courseStartDistance(definition: CourseDefinition, length: number) {
   return definition.reverse ? length - startDistance : startDistance;
 }
