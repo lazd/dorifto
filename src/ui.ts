@@ -4,6 +4,7 @@ import { redlineRpm } from "./drivetrain";
 import { isCameraStyle, isMinimapOrientation, isTimeOfDay, type GameState } from "./game-state";
 import { formatLapTime } from "./laps";
 import type { Store } from "./store";
+import { isTurnSignMode } from "./turn-sign";
 import {
   courseGenerationFields,
   defaultCourseWeights,
@@ -459,12 +460,12 @@ export function bindGameUI(store: Store<GameState>, reportError: (error: unknown
     (coneMode) => ({ coneMode }),
     (value): value is GameState["coneMode"] => value === "all" || value === "corners" || value === "off",
   );
-  select<"on" | "off">(
+  select<GameState["turnSignMode"]>(
     "#show-turn-signs",
     "signs",
-    (state) => (state.showTurnSigns ? "on" : "off"),
-    (value) => ({ showTurnSigns: value === "on" }),
-    isToggle,
+    (state) => state.turnSignMode,
+    (turnSignMode) => ({ turnSignMode }),
+    isTurnSignMode,
   );
   select<"on" | "off">(
     "#show-grass",

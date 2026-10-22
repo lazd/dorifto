@@ -1,9 +1,9 @@
 import * as THREE from 'three';
 import type { CourseDefinition } from './courses';
-import { courseCornerAt, courseRoute, courseTurns, startDistance } from './courses';
+import { courseCornerAt, courseRoute, startDistance } from './courses';
 import { surfaceMaterial } from './surfaces';
 import { CourseTerrain } from './terrain';
-import { createTurnSignFactory } from './turn-sign';
+import { courseTurnSignPlacements, createTurnSignFactory, type TurnSignMode } from './turn-sign';
 
 export const coneDimensions = {
   height: 0.595,
@@ -200,46 +200,45 @@ function buildCourse(scene: THREE.Group, definition: CourseDefinition) {
       scene.add(tile);
     }
   }
-  const turnSignGroups = [false, true].map((reverse) => {
+  const signVariants = [false, true].flatMap((reverse) =>
+    (['few', 'several', 'many'] as const).map((mode) => ({ reverse, mode })));
+  const turnSignGroups = signVariants.map(({ reverse, mode }) => {
     const group = new THREE.Group();
-    group.name = reverse ? 'reverse-turn-signs' : 'forward-turn-signs';
+    group.name = `${reverse ? 'reverse' : 'forward'}-${mode}-turn-signs`;
     const signRoute = reverse ? courseRoute({ ...definition, reverse: true }) : route;
-    const turns = courseTurns(signRoute);
+    const turns = courseTurnSignPlacements(signRoute, mode, (x, z) => terrain.heightAt(x, z));
     if (!turns.length) {
       scene.add(group);
       return group;
     }
     const createSign = createTurnSignFactory();
     for (const { distance, direction } of turns) {
-      for (const approachOffset of [-6, 0, 6]) {
-        const signDistance = THREE.MathUtils.euclideanModulo(distance + approachOffset, signRoute.getLength());
-        const t = signDistance / signRoute.getLength();
-        const position = signRoute.getPointAt(t);
-        const tangent = signRoute.getTangentAt(t);
-        across.set(tangent.z, 0, -tangent.x).normalize();
-        position.addScaledVector(across, -direction * (definition.width / 2 + 3.5));
+      const t = distance / signRoute.getLength();
+      const position = signRoute.getPointAt(t);
+      const tangent = signRoute.getTangentAt(t);
+      across.set(tangent.z, 0, -tangent.x).normalize();
+      position.addScaledVector(across, -direction * (definition.width / 2 + 3.5));
 
-        const sign = createSign(direction);
-        sign.position.copy(position);
-        sign.position.y = terrain.heightAt(position.x, position.z);
-        sign.rotation.y = Math.atan2(-tangent.x, -tangent.z);
-        group.add(sign);
-      }
+      const sign = createSign(direction);
+      sign.position.copy(position);
+      sign.position.y = terrain.heightAt(position.x, position.z);
+      sign.rotation.y = Math.atan2(-tangent.x, -tangent.z);
+      group.add(sign);
     }
     scene.add(group);
     return group;
   });
-  let turnSignsEnabled = true;
+  let turnSignMode: TurnSignMode = 'several';
   let directionReverse = definition.reverse ?? false;
   function setDirection(reverse: boolean) {
     directionReverse = reverse;
     turnSignGroups.forEach((group, i) => {
-      group.visible = turnSignsEnabled && i === Number(reverse);
+      group.visible = signVariants[i].mode === turnSignMode && signVariants[i].reverse === reverse;
     });
   }
-  function setTurnSignsEnabled(enabled: boolean) {
-    if (enabled === turnSignsEnabled) return;
-    turnSignsEnabled = enabled;
+  function setTurnSignMode(mode: TurnSignMode) {
+    if (mode === turnSignMode) return;
+    turnSignMode = mode;
     setDirection(directionReverse);
   }
   setDirection(definition.reverse ?? false);
@@ -275,7 +274,7 @@ function buildCourse(scene: THREE.Group, definition: CourseDefinition) {
     turnSignGroups,
     terrain,
     setDirection,
-    setTurnSignsEnabled,
+    setTurnSignMode,
     isAsphalt: (position: THREE.Vector3) => terrain.isAsphalt(position),
   };
 }

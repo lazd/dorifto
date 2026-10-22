@@ -1,4 +1,96 @@
 import * as THREE from 'three';
+import { courseTurns } from './courses';
+
+export type TurnSignMode = 'off' | 'few' | 'several' | 'many';
+
+export function isTurnSignMode(value: string): value is TurnSignMode {
+  return value === 'off' || value === 'few' || value === 'several' || value === 'many';
+}
+
+export function readTurnSignMode(value: string | null): TurnSignMode {
+  if (value === null || value === 'on') return 'several';
+  if (!isTurnSignMode(value)) throw new Error(`Invalid signs option: ${value}`);
+  return value;
+}
+
+export function courseCrestWarnings(
+  route: THREE.Curve<THREE.Vector3>,
+  heightAt: (x: number, z: number) => number,
+) {
+  const length = route.getLength();
+  const count = Math.ceil(length / 3);
+  const spacing = length / count;
+  const pointAt = (distance: number) =>
+    route.getPointAt(THREE.MathUtils.euclideanModulo(distance, length) / length);
+  const height = (distance: number) => {
+    const point = pointAt(distance);
+    return heightAt(point.x, point.z);
+  };
+  const warnings: { distance: number; direction: number }[] = [];
+  for (let i = 0; i < count; i++) {
+    const crest = i * spacing;
+    const top = height(crest);
+    if (top < height(crest - spacing) || top <= height(crest + spacing)) continue;
+    const blind = [12, 30].some((approachDistance) => {
+      const approach = height(crest - approachDistance);
+      const beyond = height(crest + approachDistance * 2);
+      if ((top - approach) / approachDistance < 0.015
+        || (top - beyond) / (approachDistance * 2) < 0.015) return false;
+      // A driver's eye on the approach cannot see the road beyond this crest.
+      const sightline = THREE.MathUtils.lerp(approach + 1.1, beyond, 1 / 3);
+      return top >= sightline + 0.15;
+    });
+    if (!blind) continue;
+    const before = route.getTangentAt(THREE.MathUtils.euclideanModulo(crest - 8, length) / length);
+    let bend = 0;
+    for (const ahead of [15, 30, 45]) {
+      const after = route.getTangentAt(THREE.MathUtils.euclideanModulo(crest + ahead, length) / length);
+      const angle = Math.atan2(before.z * after.x - before.x * after.z, before.dot(after));
+      if (Math.abs(angle) > Math.abs(bend)) bend = angle;
+    }
+    if (Math.abs(bend) < THREE.MathUtils.degToRad(8)) continue;
+    warnings.push({ distance: crest, direction: Math.sign(bend) });
+  }
+  return warnings;
+}
+
+export function courseTurnSignPlacements(
+  route: THREE.Curve<THREE.Vector3>,
+  mode: TurnSignMode = 'several',
+  heightAt?: (x: number, z: number) => number,
+) {
+  if (mode === 'off') return [];
+  const length = route.getLength();
+  const placements = courseTurns(route).flatMap(({ distance, direction, apexDistance, exitDistance }) => {
+    if (mode === 'few') {
+      return [-6, 0, 6].map((offset) => ({
+        distance: THREE.MathUtils.euclideanModulo(distance + offset, length), direction,
+      }));
+    }
+    const start = distance - 6;
+    const span = mode === 'many'
+      ? THREE.MathUtils.euclideanModulo(exitDistance - start, length)
+      : Math.max(0, THREE.MathUtils.euclideanModulo(apexDistance - start, length) - 6);
+    const intervals = Math.max(2, Math.ceil(span / 8));
+    return Array.from({ length: intervals + 1 }, (_, index) => ({
+      distance: THREE.MathUtils.euclideanModulo(start + span * index / intervals, length),
+      direction,
+    }));
+  });
+  if (heightAt) {
+    for (const { distance, direction } of courseCrestWarnings(route, heightAt)) {
+      for (const offset of [-12, -6, 0]) {
+        const signDistance = THREE.MathUtils.euclideanModulo(distance + offset, length);
+        if (placements.some((sign) => {
+          const gap = Math.abs(sign.distance - signDistance);
+          return sign.direction === direction && Math.min(gap, length - gap) < 5;
+        })) continue;
+        placements.push({ distance: signDistance, direction });
+      }
+    }
+  }
+  return placements;
+}
 
 export const turnSignDimensions = {
   boardWidth: 0.8,

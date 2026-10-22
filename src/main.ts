@@ -17,6 +17,7 @@ import { createMinimap } from './minimap';
 import { createPhysicsResources, createVehiclePhysics } from './vehicle-physics';
 import { createConePhysics } from './cone-physics';
 import { createTurnSignPhysics } from './turn-sign-physics';
+import { readTurnSignMode } from './turn-sign';
 import './style.css';
 
 const gameState = createGameState();
@@ -42,7 +43,8 @@ async function start() {
     driveMode: requestedMode, cameraStyle: requestedCamera,
     minimapOrientation: requestedMinimap,
     cabinHeadMotion: readToggle('head-motion'),
-    coneMode: requestedConeMode, showGrass: readToggle('grass'), showTurnSigns: readToggle('signs'),
+    coneMode: requestedConeMode, showGrass: readToggle('grass'),
+    turnSignMode: readTurnSignMode(new URL(location.href).searchParams.get('signs')),
   });
   const settingsUrl = new URL(location.href);
   if (settingsUrl.searchParams.has('transmission')) {
@@ -132,9 +134,9 @@ async function start() {
       physics = createVehiclePhysics({ Ammo, resources: physicsResources, car, course, spawn, controls, gameState, laps });
       const conePhysics = physics.addPlugin((context) => createConePhysics(context, { course, audio }));
       const drivingCamera = createDrivingCamera(camera, car, controls, nextDefinition, course.terrain);
-      const { coneMode, showGrass, showTurnSigns } = gameState.getState();
+      const { coneMode, showGrass, turnSignMode } = gameState.getState();
       conePhysics.setEnabled(coneMode !== 'off', coneMode === 'corners');
-      course.setTurnSignsEnabled(showTurnSigns);
+      course.setTurnSignMode(turnSignMode);
       physics.addPlugin((context) => createTurnSignPhysics(context, course.turnSignGroups, audio));
       course.terrain.grass.visible = showGrass;
       physics.reset();
@@ -151,9 +153,9 @@ async function start() {
   let { course, terrain, spawn, laps, physics, conePhysics, drivingCamera } = createCourseSession({ ...definition, reverse: requestedReverse });
   const minimap = createMinimap(element('#minimap'), definition);
   const { fixedStep } = physics;
-  gameState.subscribe(({ coneMode, showGrass, showTurnSigns }) => {
+  gameState.subscribe(({ coneMode, showGrass, turnSignMode }) => {
     conePhysics.setEnabled(coneMode !== 'off', coneMode === 'corners');
-    course.setTurnSignsEnabled(showTurnSigns);
+    course.setTurnSignMode(turnSignMode);
     terrain.grass.visible = showGrass;
   });
   const tireEffects = createTireEffects(scene, car, terrain, course.isAsphalt);

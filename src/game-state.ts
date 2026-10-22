@@ -2,6 +2,7 @@ import { driveModes, type DriveMode } from './drive-modes';
 import { idleRpm } from './drivetrain';
 import { createStore } from './store';
 import { defaultCourseWeights, type CourseGenerationWeights } from './course-generation';
+import type { TurnSignMode } from './turn-sign';
 
 export const wattsPerHorsepower = 745.699872;
 
@@ -48,7 +49,7 @@ export interface GameState {
   courseReverse: boolean;
   coneMode: 'all' | 'corners' | 'off';
   showGrass: boolean;
-  showTurnSigns: boolean;
+  turnSignMode: TurnSignMode;
   focused: boolean;
   controllerStatus: string;
   sound: Readonly<{ running: boolean; muted: boolean; failed: boolean; error: string | null }>;
@@ -68,7 +69,7 @@ export function createGameState() {
     cameraStyle: 'corner', timeOfDay: 'noon', helpOpen: false, tuningOpen: false, settingsOpen: false,
     minimapOrientation: 'north-up', cabinHeadMotion: true,
     customCourseOpen: false, courseMenuOpen: false, courseWeights: { ...defaultCourseWeights },
-    courseReverse: false, coneMode: 'all', showGrass: true, showTurnSigns: true,
+    courseReverse: false, coneMode: 'all', showGrass: true, turnSignMode: 'several',
     focused: true, controllerStatus: '',
     sound: { running: false, muted: false, failed: false, error: null },
     status: { message: 'Loading car and physics...', error: false, visible: true },

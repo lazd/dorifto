@@ -128,6 +128,26 @@ Reset restores their placed poses.
 Hidden signs and the inactive direction's signs leave physics entirely; showing
 them again restores their starting positions. Shared visual/collision dimensions
 live in `src/turn-sign.ts`.
+**Settings > Turn signs** selects one of four densities, persisted in `?signs=`:
+- `off`: no visible signs or sign collisions.
+- `few`: three signs around each turn entry, at 6 m spacing.
+- `several` (default): runs from the approach to 6 m before the apex, estimated
+  at half the bend's accumulated heading change.
+- `many`: runs from the approach through the entire bend to its exit.
+
+Several/Many use at most 8 m between signs and at least three per turn.
+Longer bends receive more signs, and reverse courses have their own runs.
+Existing `?signs=on` links map to Several. Inactive density/direction groups
+are hidden and removed from physics; switching modes restores the selected
+signs to their placed poses.
+All enabled sign modes also warn of blind hill crests, even when the upcoming
+bend is too gentle for the normal turn detector. Crest warnings use the actual
+terrain height and a 1.1 m driver-eye sightline from 12–30 m before the crest
+to the road 24–60 m beyond it,
+then check the next 45 m for a direction change of at least 8 degrees.
+Up to three signs guide drivers on the approach to the crest; nearby existing
+chevrons are reused instead of adding overlapping signs. Reverse directions are
+evaluated independently. Flat roads and straight crests do not add warnings.
 
 Edit `vehicleSettings` in `src/vehicle-settings.ts` and reload to change the
 vehicle's physical setup. Defaults are 2,900 lb (1,315 kg), 50/50 static

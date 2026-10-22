@@ -76,22 +76,32 @@ export function courseTurns(route: THREE.Curve<THREE.Vector3>) {
   const straight = curvature.findIndex((_, i) => !bending(i));
   if (straight < 0) return [];
   // A turn is a sustained bend that changes heading by 45 degrees and tightens below a 70 m radius.
-  const turns: { distance: number; direction: number }[] = [];
+  const turns: { distance: number; direction: number; apexDistance: number; exitDistance: number }[] = [];
   for (let entry = straight + 1; entry <= straight + count; entry++) {
     if (!bending(entry) || (bending(entry - 1) && Math.sign(at(entry - 1)) === Math.sign(at(entry)))) continue;
     const direction = Math.sign(at(entry));
     let heading = 0;
     let peak = 0;
+    const headings: number[] = [];
     for (let i = entry; bending(i) && Math.sign(at(i)) === direction && i - entry < count; i++) {
       heading += Math.abs(at(i)) * spacing;
+      headings.push(heading);
       peak = Math.max(peak, Math.abs(at(i)));
     }
     if (heading < Math.PI / 4 || peak < 1 / 70) continue;
     const distance = THREE.MathUtils.euclideanModulo(entry * spacing - 4, length);
+    // Half the heading change gives broad, constant-radius bends a stable apex too.
+    const apexIndex = headings.findIndex((value) => value >= heading / 2);
+    const previousHeading = apexIndex === 0 ? 0 : headings[apexIndex - 1];
+    const apexFraction = (heading / 2 - previousHeading) / (headings[apexIndex] - previousHeading);
+    const apexDistance = THREE.MathUtils.euclideanModulo(
+      (entry + apexIndex + apexFraction - 0.5) * spacing, length,
+    );
+    const exitDistance = THREE.MathUtils.euclideanModulo((entry + headings.length) * spacing, length);
     if (turns.every((turn) => {
       const gap = Math.abs(turn.distance - distance);
       return Math.min(gap, length - gap) > 24;
-    })) turns.push({ distance, direction });
+    })) turns.push({ distance, direction, apexDistance, exitDistance });
   }
   return turns.sort((a, b) => a.distance - b.distance);
 }
