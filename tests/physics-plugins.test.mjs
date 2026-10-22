@@ -12,6 +12,18 @@ let createConePhysics;
 let createPhysicsVisuals;
 let createTurnSignPhysics;
 let createConfigurationState;
+let createPhysicsSimulation;
+let createPhysicsInit;
+let physicsStep;
+let snapshotStride;
+let poseStride;
+let vehiclePoseCount;
+let courseSpawn;
+let courses;
+let RunRecording;
+let createReplayFrame;
+let replayData;
+let createPhysicsClient;
 
 before(async () => {
   server = await createServer({
@@ -23,6 +35,11 @@ before(async () => {
   ({ createPhysicsVisuals } = await server.ssrLoadModule('/src/physics-plugin.ts'));
   ({ createTurnSignPhysics } = await server.ssrLoadModule('/src/turn-sign-physics.ts'));
   ({ createConfigurationState } = await server.ssrLoadModule('/src/configuration-state.ts'));
+  ({ createPhysicsSimulation } = await server.ssrLoadModule('/src/physics-simulation.ts'));
+  ({ createPhysicsClient } = await server.ssrLoadModule('/src/physics-client.ts'));
+  ({ createPhysicsInit, physicsStep, snapshotStride, poseStride, vehiclePoseCount, replayData } = await server.ssrLoadModule('/src/physics-messages.ts'));
+  ({ courses, courseSpawn } = await server.ssrLoadModule('/src/courses.ts'));
+  ({ RunRecording, createReplayFrame } = await server.ssrLoadModule('/src/lap-recording.ts'));
   Ammo = await AmmoFactory.call({});
 });
 
@@ -72,6 +89,153 @@ function fixture(slopeX = 0, slopeZ = 0) {
   });
   return { physics, course, laps, hits, car, controls, configurationState };
 }
+
+function workerFixture() {
+  const { physics, car, course, controls, configurationState } = fixture();
+  physics.dispose();
+  const definition = courses[0];
+  const spawn = courseSpawn(definition);
+  const { heights, columns, rows, spacing, minHeight, maxHeight } = course.terrain;
+  const terrain = {
+    heights, columns, rows, spacing, minHeight, maxHeight,
+    minX: spawn.position[0] - columns * spacing / 2,
+    minZ: spawn.position[1] - rows * spacing / 2,
+    segments: [], halfWidth: definition.width / 2, padRadius: Infinity,
+  };
+  configurationState.update({ coneMode: 'off' });
+  const configuration = configurationState.getState();
+  const sceneCourse = { ...course, terrain: { physicsData: () => terrain }, turnSignGroups: [new THREE.Group()] };
+  const data = structuredClone(createPhysicsInit(definition, car, sceneCourse, configuration));
+  const input = {
+    controls, configuration, signs: [true],
+    lights: { highBeams: true, headlights: true, fogLights: true, leftSignal: true, rightSignal: false },
+  };
+  const simulation = createPhysicsSimulation(Ammo, data);
+  return { simulation, input, data, definition, car, course: sceneCourse, controls, configurationState };
+}
+
+test('worker client bounds in-flight advances, ignores pre-reset replies, preserves snap samples, and surfaces failures', async (t) => {
+  const fixture = workerFixture();
+  let worker;
+  const previousWorker = globalThis.Worker;
+  globalThis.Worker = class {
+    requests = [];
+    constructor() { worker = this; }
+    postMessage(message, transfer) { this.requests.push(structuredClone(message, { transfer })); }
+    terminate() { this.terminated = true; }
+    reply() {
+      const snapshot = fixture.simulation.handle(this.requests.shift());
+      const transfer = [snapshot.buffer, ...snapshot.records.flatMap(({ sample }) => sample ? [sample.buffer] : [])];
+      const response = structuredClone(snapshot, { transfer });
+      this.onmessage({ data: response });
+      return response;
+    }
+  };
+  t.after(() => {
+    if (previousWorker === undefined) delete globalThis.Worker;
+    else globalThis.Worker = previousWorker;
+    fixture.simulation.dispose();
+  });
+  const errors = [];
+  const client = createPhysicsClient({
+    ...fixture, audio: { hitCone() {}, hitTurnSign() {} },
+    lights: () => fixture.input.lights, onError: (error) => errors.push(error),
+  });
+  t.after(() => client.dispose());
+  worker.reply();
+  await client.ready;
+  fixture.controls.throttle = 1;
+  client.advance(physicsStep * 2);
+  client.advance(physicsStep);
+  assert.equal(worker.requests.length, 1);
+  client.reset();
+  worker.reply();
+  assert.equal(client.takeRecords().length, 0, 'discard samples from the old revision');
+  assert.equal(client.spawnBrakeHeld, true);
+  assert.equal(client.laps.elapsedTime, 0);
+  client.advance(physicsStep);
+  assert.equal(worker.requests.length, 1, 'wait for the reset before advancing again');
+  worker.reply();
+  client.advance(physicsStep * 4);
+  client.captureVisuals(true);
+  const live = worker.reply();
+  assert.ok(live.records.length > 0);
+  worker.reply();
+  assert.equal(client.takeRecords().length, live.records.length, 'a visibility snap must not discard in-flight recording samples');
+  client.advance(physicsStep);
+  worker.onmessage({ data: { type: 'error', revision: 1, message: 'simulation failed' } });
+  assert.match(errors[0].message, /simulation failed/);
+  assert.equal(worker.terminated, true);
+});
+
+test('worker batches preserve fixed-step timing, transferable poses, and simulation-tick recording', () => {
+  const { simulation, input, data } = workerFixture();
+  try {
+    const initial = simulation.handle({ type: 'init', data, revision: 0 });
+    assert.equal(initial.count, vehiclePoseCount + data.cones.length);
+    input.controls.throttle = 1;
+    const batch = simulation.handle({
+      type: 'advance', dt: physicsStep * 6, input, recycled: [initial.buffer], revision: 0,
+    });
+    assert.equal(batch.buffer, initial.buffer, 'reuse the returned snapshot buffer');
+    assert.equal(batch.count, vehiclePoseCount, 'sleeping/disabled props are not resent');
+    assert.equal(batch.records.length, 6);
+    assert.ok(Math.abs(batch.laps.elapsedTime - physicsStep * 6) < 1e-10);
+    const samples = batch.records.filter(({ sample }) => sample);
+    assert.equal(samples.length, 2, 'record every four physics ticks, not every rendered frame');
+    const recording = new RunRecording();
+    for (const { sample } of samples) recording.pushSample(sample);
+    const frame = createReplayFrame();
+    recording.read(0, frame);
+    assert.equal(frame.highBeams, true);
+    assert.equal(frame.headlights, true);
+    assert.equal(frame.fogLights, true);
+    assert.equal(frame.leftSignal, true);
+    assert.equal(frame.rightSignal, false);
+    const transferred = structuredClone(batch, { transfer: [batch.buffer] });
+    assert.equal(batch.buffer.byteLength, 0);
+    assert.ok(new Float32Array(transferred.buffer).subarray(0, transferred.count * snapshotStride).every(Number.isFinite));
+    const snap = simulation.handle({ type: 'snap', input, revision: 0 });
+    assert.equal(snap.laps.elapsedTime, transferred.laps.elapsedTime, 'visibility snaps do not advance time');
+    assert.equal(snap.count, initial.count);
+  } finally {
+    simulation.dispose();
+  }
+});
+
+test('worker resets, direction changes, and replay share the live physics world without recording replay steps', () => {
+  const { simulation, input, data, definition } = workerFixture();
+  try {
+    simulation.handle({ type: 'init', data, revision: 0 });
+    input.controls.throttle = 1;
+    const live = simulation.handle({ type: 'advance', dt: physicsStep * 6, input, recycled: [], revision: 0 });
+    const recording = new RunRecording();
+    for (const { sample } of live.records) if (sample) recording.pushSample(sample);
+    simulation.handle({ type: 'replay', recording: replayData(recording), time: 0, input, revision: 1 });
+    const replay = simulation.handle({ type: 'advance', dt: physicsStep * 2, input, recycled: [], revision: 1 });
+    assert.equal(replay.replayTime, physicsStep * 2);
+    assert.equal(replay.records.length, 0);
+    input.controls.throttle = 0;
+    const reverse = { ...definition, reverse: true };
+    const directed = simulation.handle({
+      type: 'direction', definition: reverse, spawn: courseSpawn(reverse), input, revision: 2,
+    });
+    assert.equal(directed.revision, 2);
+    assert.equal(directed.replayTime, null);
+    assert.equal(directed.telemetry.spawnBrakeHeld, true);
+    assert.equal(directed.laps.elapsedTime, 0);
+    const pose = new Float32Array(directed.buffer);
+    assert.ok(Math.abs(pose[1 + poseStride] - courseSpawn(reverse).position[0]) < 1e-4);
+    assert.ok(Math.abs(pose[3 + poseStride] - courseSpawn(reverse).position[1]) < 1e-4);
+    const reset = simulation.handle({ type: 'reset', input, revision: 3 });
+    assert.equal(reset.revision, 3);
+    assert.equal(reset.count, vehiclePoseCount + data.cones.length);
+    assert.equal(reset.records.length, 0);
+    assert.equal(reset.telemetry.engine.throttle, 0);
+  } finally {
+    simulation.dispose();
+  }
+});
 
 test('static tire friction holds on banks and hills but releases under throttle', () => {
   for (const [slopeX, slopeZ] of [[0.3, 0], [-0.3, 0], [0, 0.2], [0.2, -0.15]]) {

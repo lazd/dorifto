@@ -1,8 +1,8 @@
 # Dorifto
 
 A small Three.js + Ammo.js driving playground built with TypeScript and Vite.
-Ammo.js is installed through the `ammojs-typed` npm distribution; there are no
-runtime CDN dependencies.
+Ammo.js is installed through the `ammojs-typed` npm distribution and runs in a
+dedicated Web Worker; there are no runtime CDN dependencies.
 
 ## UI and game state
 
@@ -95,8 +95,15 @@ times stay upright. The choice is retained in the URL across reloads and course 
 
 ## Runtime modules
 
-- `src/main.ts`: app startup, module wiring, input events, fixed-step scheduling,
+- `src/main.ts`: app startup, module wiring, input events,
   telemetry publication, and rendering.
+- `src/physics-client.ts`: worker lifecycle, bounded advance requests, snapshot
+  interpolation, collision audio delivery, and simulation-tick recording delivery.
+- `src/physics-worker.ts`: worker entry point, Ammo initialization, and error reporting.
+- `src/physics-simulation.ts`: worker-local vehicle/prop poses, 120 Hz scheduling,
+  lap timing, replay collisions, and sparse transferable snapshots.
+- `src/physics-messages.ts`: typed worker commands, snapshots, and scene-data serialization.
+- `src/terrain-query.ts`: shared, render-independent heightfield and pavement queries.
 - `src/camera.ts`: cabin and chase cameras, controller look, course look-ahead,
   camera smoothing, and reset framing.
 - `src/minimap.ts`: top-down course outline and live position/heading HUD.
@@ -119,9 +126,39 @@ times stay upright. The choice is retained in the URL across reloads and course 
 Each runtime module owns its working state; the entry point coordinates updates
 without sharing its local variables with the camera, physics, or effects.
 
+### Physics worker
+
+Each course session owns a dedicated module worker. Ammo, the drivetrain, custom
+tire/suspension forces, cone/sign bodies, collision detection, and lap timing run
+there. Course loading sends plain car collision/wheel data, prop placements, and
+the terrain heightfield/surface segments; no meshes, materials, DOM, audio nodes,
+or Ammo pointers cross the boundary. The worker uses lightweight Three.js pose
+objects and math, not a renderer.
+
+Rendering requests elapsed time with the latest controls, tuning, lights, and prop
+visibility. Only one advance batch is in flight at a time; pending time is capped
+at 50 ms, matching the render loop's existing long-frame limit. The worker retains
+the 1/120 s fixed step and fractional remainder. It does not run ahead when the
+tab stops rendering. Visibility changes clear pending time and snap interpolation.
+
+Snapshots contain the last two fixed-step poses in recycled transferable buffers.
+Unchanged props are omitted after their final resting pose has been delivered.
+The main thread interpolates poses without waiting for the worker, then updates
+cameras, lights, audio, UI, and tire effects. Impact sounds arrive as impulse
+events. Recording samples are encoded at 30 Hz in the worker, with per-step lap
+crossings, so rendering/message frequency cannot skip samples or shift lap times.
+Replay poses drive the same worker-owned world, preserving prop collisions.
+
+Resets, replay starts/seeks, and direction changes invalidate older replies.
+Course replacement terminates the previous worker, releasing its entire Ammo
+heap, including allocations the upstream build cannot explicitly free. Worker
+startup/runtime/message errors are shown through the normal fatal-error UI;
+there is no silent main-thread fallback. SharedArrayBuffer and cross-origin
+isolation headers are not required.
+
 ### Physics object plugins
 
-Register object physics explicitly after creating a world:
+Register object physics explicitly inside `src/physics-simulation.ts`: after creating a world:
 
 ```ts
 const conePhysics = physics.addPlugin((context) => createConePhysics(context, { course, audio }));
@@ -140,8 +177,11 @@ broadphase proxy, and passing them to Bullet can corrupt world collision detecti
 Optional hooks run in registration order: `beforeStep(dt)` before simulation,
 `afterStep(dt)` after collision detection and before lap updates, `reset()` during
 vehicle reset, `captureVisuals(snap)` after each fixed step or forced snap, and
-`interpolate(alpha)` during rendering. `createPhysicsVisuals` provides reusable
-pose snapshots/interpolation; synchronize meshes from bodies before capturing.
+`interpolate(alpha)` for in-process interpolation. `createPhysicsVisuals` provides
+reusable pose snapshots/interpolation; synchronize pose objects from bodies before
+capturing. In the app, the worker captures these poses and `physics-client.ts`
+interpolates the actual meshes. Plugins emit audio events instead of playing
+sounds in the worker.
 `dispose()` runs once after managed bodies are destroyed but before the world
 is destroyed, so it should release plugin-owned shapes and temporary allocations.
 Register plugins before the initial reset; registration does not reset the world.

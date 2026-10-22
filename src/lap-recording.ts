@@ -81,7 +81,7 @@ const Flag = {
   HeadlightsOn: 16384, HeadlightsSet: 32768,
 } as const;
 
-function writeFrame(target: Float32Array, offset: number, frame: ReplayFrame) {
+export function writeFrame(target: Float32Array, offset: number, frame: ReplayFrame) {
   frame.position.toArray(target, offset + POSITION);
   frame.quaternion.toArray(target, offset + QUATERNION);
   frame.wheels.forEach((wheel, i) => {
@@ -152,13 +152,24 @@ export class RunRecording {
   }
 
   push(frame: ReplayFrame) {
+    this.reserveFrame();
+    writeFrame(this.data, this.count * frameStride, frame);
+    this.count++;
+  }
+
+  pushSample(sample: Float32Array) {
+    if (sample.length !== frameStride) throw new Error('Invalid recorded physics sample');
+    this.reserveFrame();
+    this.data.set(sample, this.count * frameStride);
+    this.count++;
+  }
+
+  private reserveFrame() {
     if ((this.count + 1) * frameStride > this.data.length) {
       const grown = new Float32Array(this.data.length * 2);
       grown.set(this.data);
       this.data = grown;
     }
-    writeFrame(this.data, this.count * frameStride, frame);
-    this.count++;
   }
 
   /** Whether the car has crossed the start/finish line, i.e. the run is a real lap attempt. */

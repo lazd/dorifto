@@ -3,6 +3,7 @@ import { courseProfileHeight, courseRoute, courseShoulderWidth } from './courses
 import type { CourseDefinition } from './courses';
 import { surfaceMaterial } from './surfaces';
 import { terrainBaseHeight } from './terrain-profile';
+import { TerrainSurface, heightAt, normalAt, type TerrainQueryData } from './terrain-query';
 
 type Point = { x: number; z: number };
 
@@ -18,7 +19,7 @@ export class CourseTerrain {
   readonly minHeight: number;
   readonly maxHeight: number;
   private readonly segments;
-  private readonly buckets = new Map<string, number[]>();
+  private readonly surface: TerrainSurface;
   private readonly halfWidth: number;
   private readonly padRadius?: number;
 
@@ -70,16 +71,7 @@ export class CourseTerrain {
     this.minZ = Math.floor((bounds.min.z - 200) / this.spacing) * this.spacing;
     this.columns = Math.ceil((bounds.max.x + 200 - this.minX) / this.spacing) + 1;
     this.rows = Math.ceil((bounds.max.z + 200 - this.minZ) / this.spacing) + 1;
-    this.segments.forEach(({ a, b }, i) => {
-      for (let x = Math.floor((Math.min(a.x, b.x) - 50) / 16); x <= Math.floor((Math.max(a.x, b.x) + 50) / 16); x++) {
-        for (let z = Math.floor((Math.min(a.z, b.z) - 50) / 16); z <= Math.floor((Math.max(a.z, b.z) + 50) / 16); z++) {
-          const key = `${x},${z}`;
-          const bucket = this.buckets.get(key) ?? [];
-          bucket.push(i);
-          this.buckets.set(key, bucket);
-        }
-      }
-    });
+    this.surface = new TerrainSurface(this.segments, this.halfWidth, this.padRadius);
     this.heights = new Float32Array(this.columns * this.rows);
     const positions: number[] = [];
     const elevationScale = definition.elevationScale ?? 1;
@@ -311,30 +303,7 @@ export class CourseTerrain {
   }
 
   private nearest(x: number, z: number) {
-    let distance = 50;
-    let across = 0;
-    let bank = 0;
-    let centerX = x;
-    let centerZ = z;
-    let fraction = 0;
-    for (const i of this.buckets.get(`${Math.floor(x / 16)},${Math.floor(z / 16)}`) ?? []) {
-      const segment = this.segments[i];
-      const dx = segment.b.x - segment.a.x;
-      const dz = segment.b.z - segment.a.z;
-      const t = THREE.MathUtils.clamp(((x - segment.a.x) * dx + (z - segment.a.z) * dz) / (dx * dx + dz * dz), 0, 1);
-      const ox = x - segment.a.x - t * dx;
-      const oz = z - segment.a.z - t * dz;
-      const d = Math.hypot(ox, oz);
-      if (d < distance) {
-        distance = d;
-        centerX = segment.a.x + t * dx;
-        centerZ = segment.a.z + t * dz;
-        across = (ox * dz - oz * dx) / Math.hypot(dx, dz);
-        bank = THREE.MathUtils.lerp(segment.bank, this.segments[(i + 1) % this.segments.length].bank, t);
-        fraction = (i + t) / this.segments.length;
-      }
-    }
-    return { distance, across, bank, fraction, x: centerX, z: centerZ };
+    return this.surface.nearest(x, z);
   }
 
   contains(x: number, z: number) {
@@ -344,30 +313,20 @@ export class CourseTerrain {
   }
 
   heightAt(x: number, z: number) {
-    const gx = THREE.MathUtils.clamp((x - this.minX) / this.spacing, 0, this.columns - 1.000001);
-    const gz = THREE.MathUtils.clamp((z - this.minZ) / this.spacing, 0, this.rows - 1.000001);
-    const ix = Math.floor(gx);
-    const iz = Math.floor(gz);
-    const u = gx - ix;
-    const v = gz - iz;
-    const i = iz * this.columns + ix;
-    const a = this.heights[i];
-    const b = this.heights[i + 1];
-    const c = this.heights[i + this.columns];
-    const d = this.heights[i + this.columns + 1];
-    return u + v <= 1 ? a + (b - a) * u + (c - a) * v
-      : d + (c - d) * (1 - u) + (b - d) * (1 - v);
+    return heightAt(this, x, z);
   }
 
   normalAt(x: number, z: number) {
-    const delta = 0.3;
-    return new THREE.Vector3(this.heightAt(x - delta, z) - this.heightAt(x + delta, z),
-      2 * delta, this.heightAt(x, z - delta) - this.heightAt(x, z + delta)).normalize();
+    return normalAt(this, x, z);
   }
 
   isAsphalt(position: THREE.Vector3) {
-    if (this.padRadius !== undefined) return Math.hypot(position.x, position.z) <= this.padRadius;
-    return this.nearest(position.x, position.z).distance <= this.halfWidth;
+    return this.surface.isAsphalt(position);
+  }
+
+  physicsData(): TerrainQueryData {
+    const { spacing, columns, rows, minX, minZ, heights, minHeight, maxHeight, segments, halfWidth, padRadius } = this;
+    return { spacing, columns, rows, minX, minZ, heights, minHeight, maxHeight, segments, halfWidth, padRadius };
   }
 
   // Split paint and pavement at the heightfield's triangle edges, avoiding

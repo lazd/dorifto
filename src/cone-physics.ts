@@ -1,9 +1,10 @@
 import type { VehicleAudio } from './audio';
-import { coneDimensions, type createCourse } from './course';
+import type * as THREE from 'three';
+import { coneDimensions } from './course';
 import { createPhysicsVisuals, type PhysicsPluginContext, type PhysicsPlugin } from './physics-plugin';
 
 interface ConePhysicsOptions {
-  course: Pick<ReturnType<typeof createCourse>, 'cones' | 'cornerCones'>;
+  course: { cones: THREE.Object3D[]; cornerCones: THREE.Object3D[] };
   audio: Pick<VehicleAudio, 'hitCone'>;
 }
 

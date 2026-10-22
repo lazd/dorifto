@@ -1,12 +1,11 @@
 import * as THREE from 'three';
-import AmmoFactory from 'ammojs-typed';
 import { carLightLayers, loadCar } from './car';
 import { DrivingControls, updateVehicleLights } from './controls';
 import { createCourse } from './course';
 import { courses, courseSpawn, generateCourse, readCourseReverse, type CourseDefinition } from './courses';
 import { courseGenerationFields, defaultCourseWeights, generateCustomCourse, readCourseWeights, writeCourseWeights, type CourseGenerationWeights } from './course-generation';
 import { isDriveMode } from './drive-modes';
-import { LapTimer, formatLapTime } from './laps';
+import { formatLapTime } from './laps';
 import { VehicleAudio } from './audio';
 import { CarStereo, isStereoStationSelection } from './stereo';
 import {
@@ -21,14 +20,13 @@ import { createDrivingCamera } from './camera';
 import { createLighting } from './lighting';
 import { createTireEffects } from './tire-effects';
 import { createMinimap } from './minimap';
-import { createPhysicsResources, createVehiclePhysics } from './vehicle-physics';
-import { createConePhysics } from './cone-physics';
-import { createTurnSignPhysics } from './turn-sign-physics';
+import { createPhysicsClient } from './physics-client';
+import type { PhysicsRecord } from './physics-messages';
 import { readTurnSignMode } from './turn-sign';
 import { createGhostCar } from './ghost-car';
 import {
-  RunRecording, applyCarPose, captureCarPose, createReplayFrame, deleteRun, listSavedRuns, loadRun,
-  loadRecordLap, replayStorageKey, sampleSteps, saveRecordLap, saveRun, type RunSummary,
+  RunRecording, applyCarPose, createReplayFrame, deleteRun, listSavedRuns, loadRun,
+  loadRecordLap, replayStorageKey, saveRecordLap, saveRun, type RunSummary,
 } from './lap-recording';
 import './style.css';
 
@@ -150,8 +148,7 @@ async function start() {
   const requestedTime = readOption('time', 'noon', isTimeOfDay);
   configurationState.update({ timeOfDay: requestedTime });
   lighting.apply(requestedTime);
-  // The upstream Emscripten factory writes to `this`; ESM calls have no receiver.
-  const [Ammo, car] = await Promise.all([AmmoFactory.call({}), loadCar()]);
+  const car = await loadCar();
   // The picker may change while the model is loading.
   const selectedTime = configurationState.getState().timeOfDay;
   lighting.apply(selectedTime);
@@ -219,29 +216,40 @@ async function start() {
   let dialogOpen = false;
   const keys = controls.keys;
   const controlKeys = new Set(['ArrowLeft', 'ArrowRight', 'KeyX', 'KeyZ', 'Space', 'KeyR', 'KeyC', 'KeyD', 'KeyM', 'KeyW', 'KeyS', 'KeyF', 'KeyH']);
-  let accumulator = 0;
   let lastTime = 0;
   let changingCourse = false;
-  const physicsResources = createPhysicsResources(Ammo);
 
-  function createCourseSession(nextDefinition: CourseDefinition) {
+  async function createCourseSession(nextDefinition: CourseDefinition) {
     const course = createCourse(scene, nextDefinition);
-    let physics: ReturnType<typeof createVehiclePhysics> | undefined;
+    let physics: ReturnType<typeof createPhysicsClient> | undefined;
     try {
       const spawn = courseSpawn(nextDefinition);
-      const laps = new LapTimer(nextDefinition);
-      physics = createVehiclePhysics({ Ammo, resources: physicsResources, car, course, spawn, controls, configurationState, laps });
-      const conePhysics = physics.addPlugin((context) => createConePhysics(context, { course, audio }));
-      const drivingCamera = createDrivingCamera(camera, car, controls, nextDefinition, course.terrain);
       const { coneMode, showGrass, turnSignMode } = configurationState.getState();
-      conePhysics.setEnabled(coneMode !== 'off', coneMode === 'corners');
       course.setTurnSignMode(turnSignMode);
-      physics.addPlugin((context) => createTurnSignPhysics(context, course.turnSignGroups, audio));
       course.terrain.grass.visible = showGrass;
-      physics.reset();
+      physics = createPhysicsClient({
+        car, course, definition: nextDefinition, controls, configurationState, audio,
+        lights: () => ({
+          headlights: vehicleLights.headlights, fogLights: vehicleLights.fogLights,
+          highBeams: controls.highBeams, leftSignal: controls.leftSignal, rightSignal: controls.rightSignal,
+        }),
+        onError(error) {
+          audio.silence();
+          renderer.setAnimationLoop(null);
+          showError(error);
+        },
+      });
+      physics.setCones(coneMode !== 'off', coneMode === 'corners');
+      await physics.ready;
+      const latest = configurationState.getState();
+      physics.setCones(latest.coneMode !== 'off', latest.coneMode === 'corners');
+      course.setTurnSignMode(latest.turnSignMode);
+      course.terrain.grass.visible = latest.showGrass;
+      const laps = physics.laps;
+      const drivingCamera = createDrivingCamera(camera, car, controls, nextDefinition, course.terrain);
       drivingCamera.reset(spawn.heading);
       lighting.setupMaterials();
-      return { course, terrain: course.terrain, spawn, laps, physics, conePhysics, drivingCamera };
+      return { course, terrain: course.terrain, spawn, laps, physics, drivingCamera };
     } catch (error) {
       physics?.dispose();
       course.dispose();
@@ -250,11 +258,11 @@ async function start() {
   }
 
   let activeDefinition = definition;
-  let { course, terrain, spawn, laps, physics, conePhysics, drivingCamera } = createCourseSession({ ...definition, reverse: requestedReverse });
+  let { course, terrain, spawn, laps, physics, drivingCamera } = await createCourseSession({ ...definition, reverse: requestedReverse });
   const minimap = createMinimap(element('#minimap'), definition);
   const { fixedStep } = physics;
   configurationState.subscribe(({ coneMode }) => {
-    conePhysics.setEnabled(coneMode !== 'off', coneMode === 'corners');
+    physics.setCones(coneMode !== 'off', coneMode === 'corners');
   }, ['coneMode']);
   configurationState.subscribe(({ turnSignMode }) => {
     course.setTurnSignMode(turnSignMode);
@@ -270,8 +278,8 @@ async function start() {
 
   // Lap recording: a run is captured from launch, shown once it crosses the start/finish line, and discarded by any reset.
   let run: RunRecording | null = null;
+  let cameraNeedsReset = false;
   let runOrigin = 0;
-  let runSteps = 0;
   let replay: { recording: RunRecording; time: number } | null = null;
   let storageKey = replayStorageKey({ ...definition, reverse: requestedReverse });
   let savedRuns: RunSummary[] = [];
@@ -279,7 +287,6 @@ async function start() {
   let selectedRun: string | null = null;
   let recordLap: RunRecording | null = null;
   let recordLoad = 0;
-  const recordFrame = createReplayFrame();
   const playbackFrame = createReplayFrame();
   const ghostFrame = createReplayFrame();
   const replayBefore = createReplayFrame();
@@ -372,9 +379,8 @@ async function start() {
   function reset() {
     controls.clear();
     audio.reset();
-    accumulator = 0;
     physics.reset();
-    drivingCamera.reset(spawn.heading);
+    cameraNeedsReset = true;
     tireEffects.reset();
     clearLapRecording();
   }
@@ -382,8 +388,10 @@ async function start() {
   function startReplay(recording: RunRecording, time = 0) {
     reset();
     replay = { recording, time };
+    physics.startReplay(recording, time);
     recording.read(time, playbackFrame);
     applyCarPose(playbackFrame, car.chassis, car.wheels, car.hubs);
+    cameraNeedsReset = false;
     forward.set(0, 0, 1).applyQuaternion(playbackFrame.quaternion);
     drivingCamera.reset(Math.atan2(forward.x, forward.z));
     syncLapRecorder();
@@ -422,36 +430,19 @@ async function start() {
     if (time !== null) startReplay(replay.recording, time);
   }
 
-  function recordStep() {
+  function recordStep({ laps: timing, sample }: PhysicsRecord) {
     if (!run) {
-      if (physics.spawnBrakeHeld) return;
-      runOrigin = laps.elapsedTime;
+      runOrigin = timing.elapsedTime;
       run = new RunRecording();
-      runSteps = 0;
     }
-    if (!run.started && laps.lap) {
-      run.lapStarts.push(laps.lapStartedAt - runOrigin);
+    if (!run.started && timing.lap) {
+      run.lapStarts.push(timing.lapStartedAt - runOrigin);
       syncLapRecorder();
     }
-    if (run.lapStarts.length < laps.lap && laps.last !== null)
-      run.completeLap(laps.lapStartedAt - runOrigin, laps.last, laps.lastCones ?? 0);
-    if (runSteps++ % sampleSteps) return;
-    captureCarPose(recordFrame, car.chassis, car.hubs, physics.tireAngles);
-    const { engine, wheelContacts } = physics;
-    Object.assign(recordFrame, {
-      rpm: engine.rpm, gear: engine.gear, throttle: engine.throttle, load: engine.load, boost: engine.boost,
-      shifting: engine.shifting, limiterCut: engine.limiterCut, steering: physics.steering,
-      braking: physics.spawnBrakeHeld || (!physics.reversing && controls.brake > 0),
-      reversing: physics.reversing, handbrake: controls.handbrake,
-      highBeams: controls.highBeams,
-      headlights: vehicleLights.headlights,
-      fogLights: vehicleLights.fogLights,
-      leftSignal: controls.leftSignal, rightSignal: controls.rightSignal,
-      burnout: physics.burnout > 0.1 && (wheelContacts[2] || wheelContacts[3]),
-    });
-    wheelContacts.forEach((contact, i) => { recordFrame.contacts[i] = contact; });
-    physics.tireSounds.forEach((tire, i) => Object.assign(recordFrame.tires[i], tire));
-    run.push(recordFrame);
+    if (run.lapStarts.length < timing.lap && timing.last !== null)
+      run.completeLap(timing.lapStartedAt - runOrigin, timing.last, timing.lastCones ?? 0);
+    if (!sample) return;
+    run.pushSample(sample);
     keepRunRecord();
   }
 
@@ -484,17 +475,10 @@ async function start() {
       reset();
       return null;
     }
-    accumulator += dt;
-    while (accumulator >= fixedStep) {
-      recording.read(replay.time, replayBefore);
-      replay.time += fixedStep;
-      recording.read(replay.time, replayAfter);
-      physics.stepReplay(replayBefore, replayAfter, fixedStep);
-      physics.captureReplayVisuals();
-      accumulator -= fixedStep;
-    }
-    const alpha = accumulator / fixedStep;
-    physics.interpolateReplay(alpha);
+    physics.advance(dt);
+    replay.time = physics.replayTime ?? replay.time;
+    const alpha = physics.interpolationAlpha();
+    physics.interpolateReplay();
     // Draw the car at the same moment as the interpolated cones and signs.
     const shownTime = Math.max(replay.time - (1 - alpha) * fixedStep, 0);
     recording.read(shownTime, playbackFrame);
@@ -522,11 +506,11 @@ async function start() {
     try {
       await new Promise<void>((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
       const nextDefinition = build();
-      const next = createCourseSession({ ...nextDefinition, reverse });
+      const next = await createCourseSession({ ...nextDefinition, reverse });
       minimap.setCourse(nextDefinition);
       const previousPhysics = physics;
       const previousCourse = course;
-      ({ course, terrain, spawn, laps, physics, conePhysics, drivingCamera } = next);
+      ({ course, terrain, spawn, laps, physics, drivingCamera } = next);
       tireEffects.setCourse(terrain, course.isAsphalt);
       previousPhysics.dispose();
       previousCourse.dispose();
@@ -547,7 +531,7 @@ async function start() {
       drivingCamera.reset(spawn.heading);
       throw error;
     } finally {
-      accumulator = lastTime = 0;
+      lastTime = 0;
       changingCourse = false;
     }
   }
@@ -571,14 +555,12 @@ async function start() {
   async function changeCourseDirection(reverse: boolean) {
     const directed = { ...activeDefinition, reverse };
     const nextSpawn = courseSpawn(directed);
-    const nextLaps = new LapTimer(directed);
     const nextCamera = createDrivingCamera(camera, car, controls, directed, terrain);
-    physics.setCourseDirection(nextSpawn, nextLaps);
     course.setDirection(reverse);
     spawn = nextSpawn;
-    laps = nextLaps;
     drivingCamera = nextCamera;
     reset();
+    physics.setCourseDirection(nextSpawn, directed);
     lastTime = 0;
     storageKey = replayStorageKey(directed);
     refreshSavedRuns();
@@ -698,7 +680,6 @@ async function start() {
   document.addEventListener('visibilitychange', () => {
     keys.clear();
     lastTime = 0;
-    accumulator = 0;
     physics.captureVisuals(true);
   });
   bindGameActions({
@@ -766,6 +747,12 @@ async function start() {
     }
     const dt = lastTime ? Math.min((time - lastTime) / 1000, 0.05) : fixedStep;
     lastTime = time;
+    for (const record of physics.takeRecords()) recordStep(record);
+    if (cameraNeedsReset && !physics.resetting) {
+      physics.interpolate(1);
+      drivingCamera.reset(spawn.heading);
+      cameraNeedsReset = false;
+    }
     const replayVelocity3d = updateReplay(dt);
     const replaying = replayVelocity3d !== null;
     const frameHeadlights = replaying
@@ -778,15 +765,10 @@ async function start() {
     if (replayVelocity3d) {
       velocity = replayFlatVelocity.copy(replayVelocity3d).setY(0);
     } else {
-      accumulator += dt;
-      while (accumulator >= fixedStep) {
-        physics.step();
-        physics.captureVisuals();
-        recordStep();
-        accumulator -= fixedStep;
-      }
-      velocity = physics.interpolate(accumulator / fixedStep);
-      updateGhost(accumulator / fixedStep);
+      physics.advance(dt);
+      const alpha = physics.interpolationAlpha();
+      velocity = physics.interpolate(alpha);
+      updateGhost(alpha);
     }
     const speed = velocity.length();
     const engine = replaying ? replayEngine : physics.engine;

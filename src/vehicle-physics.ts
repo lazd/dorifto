@@ -1,7 +1,6 @@
 import * as THREE from 'three';
 import type AmmoFactory from 'ammojs-typed';
 import type { loadCar } from './car';
-import type { createCourse } from './course';
 import type { courseSpawn } from './courses';
 import type { DrivingControls } from './controls';
 import type { LapTimer } from './laps';
@@ -12,6 +11,16 @@ import { driveModes } from './drive-modes';
 import { Drivetrain, wheelInertia, type DrivetrainInput } from './drivetrain';
 import { vehicleSettings } from './vehicle-settings';
 import { createPhysicsVisuals, type PhysicsPlugin, type PhysicsPluginContext } from './physics-plugin';
+import type { HeightfieldData } from './terrain-query';
+
+export type PhysicsControls = Pick<DrivingControls, 'throttle' | 'brake' | 'reverse' | 'steer' | 'handbrake'>;
+export type PhysicsConfiguration = Pick<ConfigurationState, 'driveMode' | 'profiles' | 'coneMode'>;
+export type PhysicsCar = Pick<Awaited<ReturnType<typeof loadCar>>, 'centers' | 'radii' | 'collisionVertices'
+  | 'setBraking' | 'setReversing' | 'setHazards'> & {
+    chassis: THREE.Object3D;
+    wheels: THREE.Object3D[];
+    hubs: THREE.Object3D[];
+  };
 
 export interface ChassisPose {
   position: THREE.Vector3;
@@ -21,11 +30,17 @@ export interface ChassisPose {
 interface VehiclePhysicsOptions {
   Ammo: typeof AmmoFactory;
   resources: ReturnType<typeof createPhysicsResources>;
-  car: Awaited<ReturnType<typeof loadCar>>;
-  course: ReturnType<typeof createCourse>;
+  car: PhysicsCar;
+  course: {
+    terrain: HeightfieldData & {
+      heightAt(x: number, z: number): number;
+      normalAt(x: number, z: number): THREE.Vector3;
+    };
+    isAsphalt(position: THREE.Vector3): boolean;
+  };
   spawn: ReturnType<typeof courseSpawn>;
-  controls: DrivingControls;
-  configurationState: Store<ConfigurationState>;
+  controls: PhysicsControls;
+  configurationState: Pick<Store<PhysicsConfiguration>, 'getState'>;
   laps: LapTimer;
 }
 
@@ -606,6 +621,7 @@ export function createVehiclePhysics({
     get reversing() { return reversing; },
     get spawnBrakeHeld() { return spawnBrakeHeld; },
     get linearVelocity() { return linearVelocity; },
+    get simulationVelocity() { return currentVelocity; },
     get brakestand() { return brakestand; },
   };
 }
