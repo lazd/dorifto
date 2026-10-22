@@ -625,9 +625,10 @@ add no per-frame cloud rendering passes.
 Sky, fog, ambient illumination, reflections, and exposure change together.
 At sunset and night, reflective materials use the visible sky, so the car
 reflects the actual clouds and sky colors. Noon retains the original neutral
-studio reflections and paint settings. The studio map is generated once, and
-Three.js caches the roughness-filtered sky maps until the time of day changes;
-no extra per-frame scene captures are needed.
+studio reflections and paint settings. All three skies and their reflection maps
+are generated and warmed up during loading, then reused when switching time of day.
+Time-of-day car lights stay registered at zero intensity when off, avoiding
+scene-wide shader recompilation. No extra per-frame scene captures are needed.
 At Sunset and Night, headlights (beams and lens glow) switch on together with
 the running lights. At Noon they switch off by default; H or controller X / Square
 can override either setting. The two body brake lenses use a

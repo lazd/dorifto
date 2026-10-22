@@ -399,7 +399,7 @@ export async function loadCar() {
     light.name = "red-underglow";
     light.position.set(strip.x, -0.38, strip.z);
     light.rotation.x = -Math.PI / 2;
-    light.visible = false;
+    light.intensity = 0;
     chassis.add(light);
     underglow.push(light);
   }
@@ -460,7 +460,7 @@ export async function loadCar() {
       glow.scale.set(Math.max(size.x, 0.09) * 3, Math.max(size.y, 0.07) * 3, 1);
       glow.visible = false;
       chassis.add(light, light.target, glow);
-      return { light, glow };
+      return { light, glow, intensity };
     });
   }
   const headlights = headlightPair(/^Projectorglass_/, {
@@ -489,7 +489,13 @@ export async function loadCar() {
   function updateHeadlights() {
     setIntensity(projectors, headlightsOn ? 8 : 0);
     setIntensity(highBeamLenses, highBeamsOn ? 8 : 0);
-    for (const { light, glow } of headlights) light.visible = glow.visible = headlightsOn;
+    for (const { light, glow, intensity } of headlights) {
+      light.visible = true;
+      light.intensity = headlightsOn ? intensity : 0;
+      light.shadow.autoUpdate = headlightsOn;
+      light.shadow.needsUpdate = headlightsOn || light.shadow.map === null;
+      glow.visible = headlightsOn;
+    }
     for (const { light, glow } of highBeams) light.visible = glow.visible = highBeamsOn;
     updateFrontShadows();
     for (const material of headlightCovers)
@@ -504,7 +510,7 @@ export async function loadCar() {
   const cabinLight = new THREE.PointLight(0xffd9b0, 0.06, 1.4, 2);
   cabinLight.name = "cabin-ambient";
   cabinLight.position.set(0, 0.62, -0.15);
-  cabinLight.visible = false;
+  cabinLight.intensity = 0;
   chassis.add(cabinLight);
 
   const gaugeBounds = meshBounds(/^gaugeface[12]_Gauges_0$/);
@@ -513,7 +519,7 @@ export async function loadCar() {
   gaugeLight.position.copy(gaugeBounds.getCenter(new THREE.Vector3()));
   gaugeLight.position.z = gaugeBounds.min.z - 0.025;
   chassis.worldToLocal(gaugeLight.position);
-  gaugeLight.visible = false;
+  gaugeLight.intensity = 0;
   chassis.add(gaugeLight);
 
   function setLighting(enabled: boolean, night: boolean) {
@@ -527,9 +533,9 @@ export async function loadCar() {
     setIntensity(odometer, enabled ? 0.35 : 0);
     setIntensity(gaugeNeedles, enabled ? 0.9 : 0);
     podLabels.material.emissiveIntensity = enabled ? 0.6 : 0;
-    cabinLight.visible = night;
-    gaugeLight.visible = enabled;
-    for (const light of underglow) light.visible = night;
+    cabinLight.intensity = night ? 0.06 : 0;
+    gaugeLight.intensity = enabled ? 0.025 : 0;
+    for (const light of underglow) light.intensity = night ? 18 : 0;
   }
 
   // Replace the flat mirror-glass mesh with live planar reflections.

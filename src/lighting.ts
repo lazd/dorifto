@@ -43,7 +43,6 @@ export function createLighting(scene: THREE.Scene, renderer: THREE.WebGLRenderer
   const environment = new RoomEnvironment();
   const noonEnvironment = pmrem.fromScene(environment, 0.04).texture;
   environment.dispose();
-  pmrem.dispose();
   const ambient = new THREE.HemisphereLight();
   scene.add(ambient);
   const sun = new THREE.DirectionalLight();
@@ -56,19 +55,18 @@ export function createLighting(scene: THREE.Scene, renderer: THREE.WebGLRenderer
   sun.shadow.normalBias = 0.035;
   scene.add(sun, sun.target);
 
-  const skyCanvas = document.createElement('canvas');
-  skyCanvas.width = 2048;
-  skyCanvas.height = 1024;
-  const skyContext = skyCanvas.getContext('2d');
-  if (!skyContext) throw new Error('Unable to create sky texture');
-  const cloudCanvas = document.createElement('canvas');
-  cloudCanvas.width = 1024;
-  cloudCanvas.height = 512;
-  const cloudContext = cloudCanvas.getContext('2d');
-  if (!cloudContext) throw new Error('Unable to create cloud texture');
-  const paintClouds = createCloudLayer(cloudCanvas.width, cloudCanvas.height);
-  let sky: THREE.CanvasTexture | undefined;
-  const applyTimeOfDay = (time: GameState['timeOfDay']) => {
+  const paintClouds = createCloudLayer(1024, 512);
+  const createSky = (time: GameState['timeOfDay']) => {
+    const skyCanvas = document.createElement('canvas');
+    skyCanvas.width = 2048;
+    skyCanvas.height = 1024;
+    const skyContext = skyCanvas.getContext('2d');
+    if (!skyContext) throw new Error('Unable to create sky texture');
+    const cloudCanvas = document.createElement('canvas');
+    cloudCanvas.width = 1024;
+    cloudCanvas.height = 512;
+    const cloudContext = cloudCanvas.getContext('2d');
+    if (!cloudContext) throw new Error('Unable to create cloud texture');
     const preset = daylight[time];
     const gradient = skyContext.createLinearGradient(0, 0, 0, skyCanvas.height);
     gradient.addColorStop(0, preset.sky);
@@ -107,14 +105,24 @@ export function createLighting(scene: THREE.Scene, renderer: THREE.WebGLRenderer
     }
     cloudContext.putImageData(new ImageData(paintClouds(preset), cloudCanvas.width, cloudCanvas.height), 0, 0);
     skyContext.drawImage(cloudCanvas, 0, 0, skyCanvas.width, skyCanvas.height);
-    // Replacing the texture invalidates Three's cached equirectangular conversion.
-    const previousSky = sky;
-    sky = new THREE.CanvasTexture(skyCanvas);
+    const sky = new THREE.CanvasTexture(skyCanvas);
     sky.colorSpace = THREE.SRGBColorSpace;
     sky.mapping = THREE.EquirectangularReflectionMapping;
-    scene.background = sky;
-    scene.environment = time === 'noon' ? noonEnvironment : sky;
-    previousSky?.dispose();
+    return {
+      sky,
+      environment: time === 'noon' ? noonEnvironment : pmrem.fromEquirectangular(sky).texture,
+    };
+  };
+  const skies = {
+    noon: createSky('noon'),
+    sunset: createSky('sunset'),
+    night: createSky('night'),
+  };
+  pmrem.dispose();
+  const applyTimeOfDay = (time: GameState['timeOfDay']) => {
+    const preset = daylight[time];
+    scene.background = skies[time].sky;
+    scene.environment = skies[time].environment;
     fog.color.set(preset.horizon);
     ambient.color.set(preset.ambient);
     ambient.groundColor.set(preset.ground);

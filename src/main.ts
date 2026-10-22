@@ -816,6 +816,15 @@ async function start() {
     // Offscreen targets use different output and tone-mapping shaders than the game canvas.
     renderer.setRenderTarget(null);
     ghost.visible = true;
+    for (const time of ['noon', 'sunset', 'night'] as const) {
+      lighting.apply(time);
+      car.setLighting(time !== 'noon', time === 'night');
+      await renderer.compileAsync(scene, warmupCamera);
+      renderer.render(scene, warmupCamera);
+    }
+    lighting.apply(appliedTime);
+    car.setLighting(shownHeadlights, appliedTime === 'night');
+    ghost.visible = true;
     await renderer.compileAsync(scene, warmupCamera);
     const depth = tireEffects.captureDepth(renderer, scene, warmupCamera, true);
     renderer.render(scene, warmupCamera);
@@ -826,6 +835,8 @@ async function start() {
     renderer.getContext().finish();
   } finally {
     ghost.visible = false;
+    lighting.apply(appliedTime);
+    car.setLighting(shownHeadlights, appliedTime === 'night');
     renderer.setRenderTarget(previousTarget);
   }
   gameState.update({ status: { visible: false, error: false, message: '' } });
