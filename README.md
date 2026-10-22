@@ -221,6 +221,8 @@ simulation continues. Settings remains in the main footer.
 | X (hold)            | Brake, then reverse near a stop                                    |
 | X + Z               | Brakestand (front brakes hold, rear tires spin)                    |
 | Space               | Lock the rear wheels / initiate a slide                            |
+| F                   | Flash high beams; hold 1 second to toggle high beams on/off         |
+| H                   | Tap to toggle headlights; hold 1 second to toggle fog lights        |
 | R                   | Reset the car, cones, smoke, and tire marks                        |
 | C                   | Cycle corner-aware chase, classic chase, in-cabin (once per press) |
 | D                   | Toggle Grip / Drift mode (once per press)                          |
@@ -244,7 +246,10 @@ the keyboard controls. The first connected standard-mapped controller is used.
 | Left stick horizontal                | Analog steering                                                    |
 | Left stick vertical (map view)       | Up: zoom in; down: zoom out                                        |
 | Right stick                          | Camera orbit/height; pan up/down/left/right in map view            |
-| R1 / RB or Xbox X (west face button) | Handbrake                                                          |
+| Right stick left / right (hold 1 s)  | Corresponding turn signal flashes four times; camera still pans (not in map view) |
+| R1 / RB                              | Handbrake                                                          |
+| X / Square (west face button)        | Tap to toggle headlights; hold 1 second to toggle fog lights        |
+| L1 / LB                              | Flash high beams; hold 1 second to toggle high beams on/off         |
 | R3 (right-stick click, hold)         | Look behind; move right stick to pan; release to return            |
 | B / Circle (east face button)        | Toggle the bird's-eye map view (once per press)                    |
 | RT + LT                              | Brakestand                                                         |
@@ -360,19 +365,58 @@ particle collisions against the model. The depth pass also prevents
 tracks drawing over the smoke. This extra pass runs only while
 puffs are alive and follows the drawing-buffer resolution on resize. Smoke is
 excluded from side-mirror reflection passes, whose camera depth differs.
-Silver headlight interiors contain softly glowing warm-white projectors with real,
-shadow-casting spotlights at intensity 800 and a slightly warm `#ffe8c8` tint
-illuminating the surface ahead. The two rear brake lenses and spoiler
+Silver headlight interiors contain bright emissive warm-white projectors with real,
+shadow-casting spotlights at intensity 550 and a warm `#ffe2b8` tint.
+Press F or L1 / LB to flash the rectangular inboard high beams, even at noon.
+Release before one second for a momentary flash, or hold for one second to
+toggle high beams on/off. H or controller X / Square turns headlights on immediately
+when pressed from off; releasing before one second leaves just the headlights on.
+If headlights are already on, a short press turns both headlights and fog lights off
+on release. Holding for one second toggles fog lights immediately,
+without waiting for release, and always leaves headlights on.
+This enables both pairs from off, adds fog lights
+to headlights alone, or turns off just fog lights when both are on.
+Each hold toggles only once, and latched lights stay on after release.
+Changing time of day restores the automatic headlight setting (off at noon,
+on at sunset/night) and switches fog lights off; H / B can override that setting
+until the next change.
+Controller B / Circle still toggles map view; X / Square no longer applies the handbrake.
+Clearing driving inputs (including focus loss or opening a dialog) cancels pending
+holds, high beams, and turn signals, but preserves the selected headlights and fog lights.
+Disconnecting a controller cancels its pending hold.
+Their reflectors and bulbs use the same warm-white emission as the projectors,
+with stronger, longer-range beams aimed slightly higher (0.25 m down over 20 m,
+versus 1.1 m for low beams). A blue dashboard indicator follows both flashed
+and latched high beams.
+The lower fog lights have the same warm-white lens emission and halos, with
+shorter, wider shadow-casting beams aimed farther down and outward
+(3 m down over 20 m, versus 1.1 m for low beams).
+When all three front pairs are on, the high and fog beams take priority for
+shadow casting; the low beams still illuminate the scene. This caps front shadow
+maps at four, keeping the night scene within WebGL's 16 fragment-texture-unit minimum.
+All three pairs have soft additive, forward-facing lens halos rendered as scene geometry,
+so their glow also appears in live mirrors without a separate bloom pass.
+The halos are depth-tested, do not write depth, and cannot show through cars or walls.
+Headlights, high beams and fog lights are preserved in lap recordings; older recordings
+use the current headlight setting and default the high beams and fog lights to off.
+The two rear brake lenses and spoiler
 brake strip glow red
 while the foot brake is pressed (keyboard X or controller LT when braking)
 or the initial spawn brake hold is active.
 They stay unlit while coasting, engine braking, or using LT to reverse;
 bumper reflectors remain unchanged. Front and rear turn-signal lenses are clear
 instead of amber beneath their existing tinted covers.
+Hold the right stick at least halfway left or right for one second to trigger
+four flashes on that side's front, rear, side marker, and dashboard arrow
+(0.4 seconds on, 0.4 seconds off). Camera panning still works. Release or change
+direction before another one-second hold to trigger again; keeping the stick
+held does not repeat the sequence. Map panning does not trigger signals.
+Turn-signal states are preserved in lap recordings.
 After the car's center is off the pavement for more than three continuous
 seconds, the front and rear turn signals flash amber together (0.4 seconds on,
 0.4 seconds off). Returning to pavement or resetting switches the hazards off
 and restarts the delay. Unlit signals retain their clear lenses and smoked covers.
+Automatic hazards take priority over manual turn signals, including their off phase.
 Rear brake and reverse covers have 35% smoked tint when off and become
 clear independently when their lamps are on; turn-signal covers stay tinted and
 window glass is unchanged. This keeps the unlit lenses subdued without washing
@@ -407,7 +451,7 @@ Unlit warning lamps use blank dark gray masks that respond to cabin lighting
 and blend into the surrounding panel without revealing the warning symbols.
 At sunset and night, the gauge markings and odometer have a subdued green-white
 backlight and the red needles glow. A small warm-white light softly illuminates
-the gauge cluster whenever the headlights are on. Gauge illumination switches off at noon.
+the gauge cluster whenever the headlights are on, including when manually enabled at noon.
 The left climate-control and right gauge-side pod labels also brighten with neutral-white backlighting when
 the headlights are on, retaining their original label colors rather than glowing green.
 A very dim warm light gently illuminates the cabin at night only.
@@ -451,6 +495,8 @@ and deletion of saved replay runs. **Ghost car → Record lap** races that recor
 from the first start-line crossing and restarts it each lap. A faster lap replaces
 the record and becomes the ghost for subsequent laps. A cyan arrow on the minimap
 tracks the active ghost's position and heading alongside the player's gold arrow.
+The ghost fades out near your car in cabin view. Chase views fade it only slightly,
+to 70% of its normal opacity when the cars overlap.
 **Fastest lap** and
 **Previous lap** still use only the current run, starting on lap 2.
 
@@ -573,7 +619,8 @@ studio reflections and paint settings. The studio map is generated once, and
 Three.js caches the roughness-filtered sky maps until the time of day changes;
 no extra per-frame scene captures are needed.
 At Sunset and Night, headlights (beams and lens glow) switch on together with
-the running lights. At Noon they switch off. The two body brake lenses use a
+the running lights. At Noon they switch off by default; H or controller X / Square
+can override either setting. The two body brake lenses use a
 dark red base and low emission as running lights, with a pronounced jump to
 full red emission when braking so brake application stays visible at Sunset/Night. They brighten
 when braking; the spoiler strip remains brake-only. Front turn signals glow dim amber

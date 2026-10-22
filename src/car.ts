@@ -112,17 +112,17 @@ export async function loadCar() {
     return mesh.material;
   });
 
+  function emissiveMaterial(mesh: StandardMesh, color: number, useMap = false) {
+    const material = mesh.material.clone();
+    material.emissive.set(color);
+    if (useMap) material.emissiveMap = material.map;
+    material.emissiveIntensity = 0;
+    material.toneMapped = false;
+    mesh.material = material;
+    return material;
+  }
   function emissive(pattern: RegExp, color: number, useMap = false) {
-    const materials: THREE.MeshStandardMaterial[] = [];
-    for (const mesh of named(pattern)) {
-      const material = mesh.material.clone();
-      material.emissive.set(color);
-      if (useMap) material.emissiveMap = material.map;
-      material.emissiveIntensity = 0;
-      material.toneMapped = false;
-      mesh.material = material;
-      materials.push(material);
-    }
+    const materials = named(pattern).map((mesh) => emissiveMaterial(mesh, color, useMap));
     if (!materials.length) throw new Error(`Missing car light geometry: ${pattern}`);
     return materials;
   }
@@ -145,29 +145,55 @@ export async function loadCar() {
       throw new Error(`Missing paired car light geometry: ${pattern}`);
     return sides;
   }
+  function signalLenses(pattern: RegExp) {
+    const sides = { left: [] as THREE.MeshStandardMaterial[], right: [] as THREE.MeshStandardMaterial[] };
+    const point = new THREE.Vector3();
+    for (const mesh of named(pattern)) {
+      const box = new THREE.Box3().setFromObject(mesh);
+      if (box.min.x < 0 && box.max.x > 0) {
+        const left = splitSurface(
+          mesh,
+          `${mesh.name}-left`,
+          (x, y, z) => point.set(x, y, z).applyMatrix4(mesh.matrixWorld).x > 0,
+        );
+        sides.left.push(emissiveMaterial(left, 0xff8800));
+        sides.right.push(emissiveMaterial(mesh, 0xff8800));
+      } else {
+        const side = box.getCenter(point).x > 0 ? "left" : "right";
+        sides[side].push(emissiveMaterial(mesh, 0xff8800));
+      }
+    }
+    if (!sides.left.length || !sides.right.length)
+      throw new Error(`Missing paired turn-signal geometry: ${pattern}`);
+    return sides;
+  }
 
   const tailLamps = emissive(/^tailbrake_/, 0xffffff, true);
   const brakeLenses = emissive(/^184_001_001_BrakeRefraction_0$/, 0xff1008);
   const rearPositionBulbs = emissive(/^Positionbulbrear_/, 0xff1008);
   const thirdBrakeLight = emissive(/^(thirdrefraction|brakebulbrear)_/, 0xff1008);
   const reverseLenses = emissive(/^(RevRefraction|Reversebulbs)_/, 0xfff6df);
-  const rearSignals = emissive(/^(Indrefraction|IndRrear|IndLRear)_/, 0xff8800);
-  const frontSignals = emissive(/^Ind[LR]_Indicatorbulb_0$/, 0xff8800);
-  const sideMarkers = emissive(/^Fenderlight(LEFT|RIGHT)_/, 0xff8800);
+  const rearSignals = signalLenses(/^(Indrefraction|IndRrear|IndLRear)_/);
+  const frontSignals = signalLenses(/^Ind[LR]_Indicatorbulb_0$/);
+  const sideMarkers = signalLenses(/^Fenderlight(LEFT|RIGHT)_/);
   const rearCornerMarkers = emissive(/^(Cornerglass|Cornerlightbulb)_/, 0xff1008);
   const frontPosition = emissive(/^BulbsPos_/, 0xfff3dc);
-  const projectors = emissive(/^(Projectorglass|BulbHL)_/, 0xffe2b8);
+  const projectors = emissive(/^Projectorglass_/, 0xffe2b8);
+  const highBeamLenses = emissive(/^(LightsInside_004_001_LightChrome|BulbHL_Bulb)_0$/, 0xffe2b8);
+  const fogLenses = emissive(
+    /^(FogGlass_FogGlass|Bulbfogs_Bulb|LightsInside_003_001_LightChrome)_0$/, 0xffe2b8,
+  );
   const gaugeFaces = emissive(/^gaugeface[12]_Gauges_0$/, 0xd7f5df, true);
   const odometer = emissive(/^Odo_Odometer_0$/, 0xd7f5df, true);
   const gaugeNeedles = emissive(/_Gaugered_0$/, 0xff3820);
 
   function splitSurface(
-    pattern: RegExp,
+    pattern: RegExp | StandardMesh,
     name: string,
     contains: (x: number, y: number, z: number) => boolean,
     wholeComponents = false,
   ) {
-    const [source] = named(pattern);
+    const source = pattern instanceof RegExp ? named(pattern)[0] : pattern;
     if (!source) throw new Error(`Missing ${name} geometry.`);
     const geometry = source.geometry;
     const positions = geometry.getAttribute("position");
@@ -310,18 +336,36 @@ export async function loadCar() {
   );
 
   let headlightsOn = false;
+  let highBeamsOn = false;
+  let fogLightsOn = false;
   let brakingActive = false;
   let hazardsActive = false;
+  let hazardsEnabled = false;
+  let leftSignalActive = false;
+  let rightSignalActive = false;
   const setIntensity = (materials: THREE.MeshStandardMaterial[], intensity: number) => {
     for (const material of materials) material.emissiveIntensity = intensity;
   };
-  function setHazards(illuminated: boolean) {
+  function updateSignals() {
+    for (const side of ["left", "right"] as const) {
+      const illuminated = hazardsEnabled ? hazardsActive
+        : side === "left" ? leftSignalActive : rightSignalActive;
+      setIntensity(rearSignals[side], illuminated ? 3 : 0);
+      setIntensity(frontSignals[side], illuminated ? 3 : headlightsOn ? 0.8 : 0);
+      setIntensity(sideMarkers[side], illuminated ? 2 : headlightsOn ? 0.9 : 0);
+      setDashLight(side === "left" ? "leftSignal" : "rightSignal", illuminated);
+    }
+  }
+  function setHazards(illuminated: boolean, enabled = illuminated) {
     hazardsActive = illuminated;
-    setIntensity(rearSignals, illuminated ? 3 : 0);
-    setIntensity(frontSignals, illuminated ? 3 : headlightsOn ? 0.8 : 0);
-    setIntensity(sideMarkers, illuminated ? 2 : headlightsOn ? 0.9 : 0);
-    setDashLight("leftSignal", illuminated);
-    setDashLight("rightSignal", illuminated);
+    hazardsEnabled = enabled;
+    updateSignals();
+  }
+  function setTurnSignals(left: boolean, right: boolean) {
+    if (leftSignalActive === left && rightSignalActive === right) return;
+    leftSignalActive = left;
+    rightSignalActive = right;
+    updateSignals();
   }
   function setReversing(reversing: boolean) {
     setIntensity(reverseLenses, reversing ? 4 : 0);
@@ -360,20 +404,103 @@ export async function loadCar() {
     underglow.push(light);
   }
 
-  const headlights = sideBounds(/^Projectorglass_/).map((box) => {
-    const lamp = box.getCenter(new THREE.Vector3());
-    const light = new THREE.SpotLight(0xffe2b8, 550, 65, Math.PI / 7, 0.55, 1.2);
-    light.name = "headlight-beam";
-    light.position.set(lamp.x, lamp.y, meshBounds(/^hlglass_/).max.z + 0.05);
-    light.target.position.set(lamp.x * 1.5, lamp.y - 1.1, light.position.z + 20);
-    light.castShadow = true;
-    light.shadow.mapSize.set(512, 512);
-    light.shadow.camera.near = 0.08;
-    light.shadow.camera.far = 65;
-    light.shadow.normalBias = 0.02;
-    chassis.add(light, light.target);
-    return light;
+  const headlightFront = meshBounds(/^hlglass_/).max.z + 0.015;
+  const glowGeometry = new THREE.PlaneGeometry(1, 1);
+  const glowMaterial = new THREE.ShaderMaterial({
+    uniforms: { color: { value: new THREE.Color(0xffe2b8) } },
+    vertexShader: `
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform vec3 color;
+      varying vec2 vUv;
+      void main() {
+        float radius = length((vUv - 0.5) * 2.0);
+        float halo = pow(max(0.0, 1.0 - radius), 3.0);
+        gl_FragColor = vec4(color, halo * 0.65);
+      }
+    `,
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    toneMapped: false,
   });
+  function headlightPair(
+    pattern: RegExp,
+    { name, intensity, range, angle, drop, spread, front }: {
+      name: string;
+      intensity: number;
+      range: number;
+      angle: number;
+      drop: number;
+      spread: number;
+      front: number;
+    },
+  ) {
+    return sideBounds(pattern).map((box) => {
+      const lamp = box.getCenter(new THREE.Vector3());
+      const light = new THREE.SpotLight(0xffe2b8, intensity, range, angle, 0.55, 1.2);
+      light.name = name;
+      light.position.set(lamp.x, lamp.y, front + 0.035);
+      light.target.position.set(lamp.x * spread, lamp.y - drop, light.position.z + 20);
+      light.castShadow = true;
+      light.shadow.mapSize.set(512, 512);
+      light.shadow.camera.near = 0.08;
+      light.shadow.camera.far = range;
+      light.shadow.normalBias = 0.02;
+      light.visible = false;
+      const glow = new THREE.Mesh(glowGeometry, glowMaterial);
+      glow.name = `${name}-glow`;
+      glow.position.set(lamp.x, lamp.y, front);
+      const size = box.getSize(new THREE.Vector3());
+      glow.scale.set(Math.max(size.x, 0.09) * 3, Math.max(size.y, 0.07) * 3, 1);
+      glow.visible = false;
+      chassis.add(light, light.target, glow);
+      return { light, glow };
+    });
+  }
+  const headlights = headlightPair(/^Projectorglass_/, {
+    name: "headlight-beam", intensity: 550, range: 65, angle: Math.PI / 7,
+    drop: 1.1, spread: 1.5, front: headlightFront,
+  });
+  const highBeams = headlightPair(/^LightsInside_004_001_LightChrome_0$/, {
+    name: "high-beam", intensity: 900, range: 100, angle: Math.PI / 9,
+    drop: 0.25, spread: 1.15, front: headlightFront,
+  });
+  const fogLights = headlightPair(/^FogGlass_/, {
+    name: "fog-light", intensity: 350, range: 35, angle: Math.PI / 5,
+    drop: 3, spread: 5, front: meshBounds(/^FogGlass_/).max.z + 0.015,
+  });
+  function setFogLights(enabled: boolean) {
+    if (fogLightsOn === enabled) return;
+    fogLightsOn = enabled;
+    setIntensity(fogLenses, enabled ? 8 : 0);
+    for (const { light, glow } of fogLights) light.visible = glow.visible = enabled;
+    updateFrontShadows();
+  }
+  function updateFrontShadows() {
+    // Leave texture units for the environment, material maps, underglow, and rear lamps.
+    for (const { light } of headlights) light.castShadow = !(highBeamsOn && fogLightsOn);
+  }
+  function updateHeadlights() {
+    setIntensity(projectors, headlightsOn ? 8 : 0);
+    setIntensity(highBeamLenses, highBeamsOn ? 8 : 0);
+    for (const { light, glow } of headlights) light.visible = glow.visible = headlightsOn;
+    for (const { light, glow } of highBeams) light.visible = glow.visible = highBeamsOn;
+    updateFrontShadows();
+    for (const material of headlightCovers)
+      material.opacity = headlightsOn || highBeamsOn ? 0.2 : 0.6;
+    setDashLight("highBeam", highBeamsOn);
+  }
+  function setHighBeams(enabled: boolean) {
+    if (highBeamsOn === enabled) return;
+    highBeamsOn = enabled;
+    updateHeadlights();
+  }
   const cabinLight = new THREE.PointLight(0xffd9b0, 0.06, 1.4, 2);
   cabinLight.name = "cabin-ambient";
   cabinLight.position.set(0, 0.62, -0.15);
@@ -392,18 +519,16 @@ export async function loadCar() {
   function setLighting(enabled: boolean, night: boolean) {
     headlightsOn = enabled;
     setBraking(brakingActive);
-    setHazards(hazardsActive);
+    updateSignals();
     setIntensity(rearCornerMarkers, enabled ? 2.5 : 0);
     setIntensity(frontPosition, enabled ? 3.5 : 0);
-    setIntensity(projectors, enabled ? 8 : 0);
+    updateHeadlights();
     setIntensity(gaugeFaces, enabled ? 0.5 : 0);
     setIntensity(odometer, enabled ? 0.35 : 0);
     setIntensity(gaugeNeedles, enabled ? 0.9 : 0);
     podLabels.material.emissiveIntensity = enabled ? 0.6 : 0;
-    for (const material of headlightCovers) material.opacity = enabled ? 0.2 : 0.6;
     cabinLight.visible = night;
     gaugeLight.visible = enabled;
-    for (const light of headlights) light.visible = enabled;
     for (const light of underglow) light.visible = night;
   }
 
@@ -785,7 +910,10 @@ export async function loadCar() {
     setBraking,
     setReversing,
     setHazards,
+    setTurnSignals,
     setLighting,
+    setHighBeams,
+    setFogLights,
     setStereo(powered: boolean) {
       stereoPowered = powered;
       radioReadout.setText(powered ? stereoStationId : " ");

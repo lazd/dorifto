@@ -1,6 +1,23 @@
 const STICK_DEADZONE = 0.0;
 const TRIGGER_DEADZONE = 0.0;
 
+type LightingRequest = "press" | "tap" | "hold";
+
+export function updateVehicleLights(
+  state: { headlights: boolean; fogLights: boolean; headlightsAtPress: boolean },
+  request: LightingRequest,
+) {
+  if (request === "press")
+    return { ...state, headlights: true, headlightsAtPress: state.headlights };
+  if (request === "hold")
+    return { ...state, headlights: true, fogLights: !state.fogLights };
+  return {
+    ...state,
+    headlights: !state.headlightsAtPress,
+    fogLights: state.headlightsAtPress ? false : state.fogLights,
+  };
+}
+
 export class DrivingControls {
   readonly keys = new Set<string>();
   steer = 0;
@@ -8,6 +25,9 @@ export class DrivingControls {
   brake = 0;
   reverse = 0;
   handbrake = false;
+  highBeams = false;
+  leftSignal = false;
+  rightSignal = false;
   cameraX = 0;
   cameraY = 0;
   mapZoom = 0;
@@ -15,6 +35,7 @@ export class DrivingControls {
   mapView = false;
   resetRequested = false;
   cameraRequested = false;
+  lightingRequested: LightingRequest | null = null;
   driveModeRequested = false;
   timeOfDayRequested = false;
   recordRequested = false;
@@ -29,6 +50,17 @@ export class DrivingControls {
   private driveModeHeld = false;
   private timeOfDayHeld = false;
   private mapViewHeld = false;
+  private highBeamPressedAt: number | null = null;
+  private highBeamToggled = false;
+  private highBeamsLatched = false;
+  private headlightsPressedAt: number | null = null;
+  private headlightsGamepadHeld = false;
+  private lightingHoldTriggered = false;
+  private signalHoldDirection = 0;
+  private signalHeldAt = 0;
+  private signalTriggered = false;
+  private signalDirection = 0;
+  private signalStartedAt = 0;
   private focused = document.hasFocus();
 
   private setCursorHidden(hidden: boolean) {
@@ -58,6 +90,17 @@ export class DrivingControls {
     this.cameraX = this.cameraY = 0;
     this.mapZoom = 0;
     this.handbrake = this.lookBehind = false;
+    this.highBeams = false;
+    this.highBeamPressedAt = null;
+    this.highBeamToggled = this.highBeamsLatched = false;
+    this.headlightsPressedAt = null;
+    this.headlightsGamepadHeld = false;
+    this.lightingHoldTriggered = false;
+    this.lightingRequested = null;
+    this.leftSignal = this.rightSignal = false;
+    this.signalHoldDirection = this.signalDirection = 0;
+    this.signalHeldAt = this.signalStartedAt = 0;
+    this.signalTriggered = false;
     this.resetRequested = false;
     this.cameraRequested = false;
     this.driveModeRequested = false;
@@ -123,12 +166,59 @@ export class DrivingControls {
     this.throttle = Math.max(Number(this.keys.has("KeyZ")), trigger(7));
     this.brake = Math.max(Number(this.keys.has("KeyX")), trigger(6));
     this.reverse = this.brake;
-    this.handbrake =
-      this.keys.has("Space") || Boolean(pad?.buttons[5]?.pressed || pad?.buttons[2]?.pressed);
+    this.handbrake = this.keys.has("Space") || Boolean(pad?.buttons[5]?.pressed);
+    const highBeamPressed = this.keys.has("KeyF") || Boolean(pad?.buttons[4]?.pressed);
+    const now = performance.now();
+    if (highBeamPressed) {
+      this.highBeamPressedAt ??= now;
+      if (!this.highBeamToggled && now - this.highBeamPressedAt >= 1000) {
+        this.highBeamsLatched = !this.highBeamsLatched;
+        this.highBeamToggled = true;
+      }
+    } else {
+      this.highBeamPressedAt = null;
+      this.highBeamToggled = false;
+    }
+    this.highBeams = this.highBeamsLatched || (highBeamPressed && !this.highBeamToggled);
+    const headlightsPressed = this.keys.has("KeyH") || Boolean(pad?.buttons[2]?.pressed);
+    this.lightingRequested = null;
+    if (headlightsPressed) {
+      if (this.headlightsPressedAt === null) this.lightingRequested = "press";
+      this.headlightsPressedAt ??= now;
+      if (!this.lightingHoldTriggered && now - this.headlightsPressedAt >= 1000) {
+        this.lightingRequested = "hold";
+        this.lightingHoldTriggered = true;
+      }
+    } else {
+      if (this.headlightsPressedAt !== null && !this.lightingHoldTriggered &&
+        !(this.headlightsGamepadHeld && !pad)) {
+        this.lightingRequested = "tap";
+      }
+      this.headlightsPressedAt = null;
+      this.lightingHoldTriggered = false;
+    }
+    this.headlightsGamepadHeld = Boolean(pad?.buttons[2]?.pressed);
     this.cameraX = axis(2);
     this.cameraY = axis(3);
     this.mapZoom = this.mapView ? axis(1) : 0;
     this.lookBehind = Boolean(pad?.buttons[11]?.pressed);
+    const signalDirection = !this.mapView && Math.abs(this.cameraX) >= 0.5
+      ? Math.sign(this.cameraX) : 0;
+    if (signalDirection !== this.signalHoldDirection) {
+      this.signalHoldDirection = signalDirection;
+      this.signalHeldAt = now;
+      this.signalTriggered = false;
+    }
+    if (signalDirection && !this.signalTriggered && now - this.signalHeldAt >= 1000) {
+      this.signalDirection = signalDirection;
+      this.signalStartedAt = now;
+      this.signalTriggered = true;
+    }
+    const signalElapsed = now - this.signalStartedAt;
+    if (signalElapsed >= 3200) this.signalDirection = 0;
+    const signalOn = signalElapsed % 800 < 400;
+    this.leftSignal = this.signalDirection === -1 && signalOn;
+    this.rightSignal = this.signalDirection === 1 && signalOn;
     const padActive =
       Boolean(pad?.buttons.some((button) => button.pressed)) ||
       Boolean(pad?.axes.some((value) => Math.abs(value) > 0.2));

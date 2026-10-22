@@ -474,7 +474,7 @@ export function createVehiclePhysics({
     lapPosition.set(lapOrigin.x(), lapOrigin.y(), lapOrigin.z());
     laps.update(lapPosition, fixedStep);
     offTrackTime = isAsphalt(lapPosition) ? 0 : offTrackTime + fixedStep;
-    car.setHazards(offTrackTime > 3 && (offTrackTime - 3) % 0.8 < 0.4);
+    car.setHazards(offTrackTime > 3 && (offTrackTime - 3) % 0.8 < 0.4, offTrackTime > 3);
     for (let i = 0; i < 4; i++) {
       wheelContacts[i] = vehicle.getWheelInfo(i).get_m_raycastInfo().get_m_isInContact();
     }

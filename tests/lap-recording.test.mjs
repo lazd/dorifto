@@ -76,6 +76,29 @@ test('reports HUD lap timing and fastest lap from a run', () => {
   assert.equal(later.lastCones, 0);
 });
 
+test('all light states round-trip independently of each other and all four wheel-contact flags', () => {
+  const run = new recording.RunRecording();
+  const frame = recording.createReplayFrame();
+  frame.contacts.fill(true);
+  const lights = ['highBeams', 'fogLights', 'leftSignal', 'rightSignal'];
+  for (const headlights of [null, false, true]) {
+    frame.headlights = headlights;
+    for (let flags = 0; flags < 16; flags++) {
+      lights.forEach((light, i) => { frame[light] = Boolean(flags & (1 << i)); });
+      run.push(frame);
+    }
+  }
+  const { data, count } = recording.decodeFrames(recording.encodeFrames(run));
+  const decoded = new recording.RunRecording(0, run.interval, data, count);
+  const out = recording.createReplayFrame();
+  for (let sample = 0; sample < 48; sample++) {
+    decoded.read(sample * run.interval, out);
+    lights.forEach((light, i) => assert.equal(out[light], Boolean(sample & (1 << i)), light));
+    assert.equal(out.headlights, [null, false, true][Math.floor(sample / 16)]);
+    assert.deepEqual(out.contacts, [true, true, true, true]);
+  }
+});
+
 test('replay lap controls show completed time, fastest ties, launch and partial laps', () => {
   const run = sampleRun();
   run.lapStarts[0] = 0.1;

@@ -22,6 +22,12 @@ export interface ReplayFrame {
   shifting: boolean;
   limiterCut: boolean;
   handbrake: boolean;
+  highBeams: boolean;
+  /** Null in older recordings: use the current time-of-day headlight setting. */
+  headlights: boolean | null;
+  fogLights: boolean;
+  leftSignal: boolean;
+  rightSignal: boolean;
   burnout: boolean;
   contacts: boolean[];
   tires: ReplayTireState[];
@@ -32,7 +38,8 @@ export function createReplayFrame(): ReplayFrame {
     position: new THREE.Vector3(), quaternion: new THREE.Quaternion(),
     wheels: Array.from({ length: 4 }, () => ({ position: new THREE.Vector3(), quaternion: new THREE.Quaternion(), spin: 0 })),
     rpm: 0, gear: 1, throttle: 0, load: 0, boost: 0, steering: 0,
-    braking: false, reversing: false, shifting: false, limiterCut: false, handbrake: false, burnout: false,
+    braking: false, reversing: false, shifting: false, limiterCut: false, handbrake: false,
+    highBeams: false, headlights: null, fogLights: false, leftSignal: false, rightSignal: false, burnout: false,
     contacts: [false, false, false, false],
     tires: Array.from({ length: 4 }, () => ({ slip: 0, speed: 0, load: 0 })),
   };
@@ -68,7 +75,11 @@ export const frameStride = slots.length;
 const byteSizes: Record<SlotType, number> = { f32: 4, i8: 1, i16: 2, u8: 1, u16: 2 };
 const frameBytes = slots.reduce((sum, { type }) => sum + byteSizes[type], 0);
 
-const Flag = { Braking: 1, Reversing: 2, Shifting: 4, Limiter: 8, Handbrake: 16, Burnout: 32, Contact: 64 } as const;
+const Flag = {
+  Braking: 1, Reversing: 2, Shifting: 4, Limiter: 8, Handbrake: 16, Burnout: 32,
+  Contact: 64, HighBeams: 1024, FogLights: 2048, LeftSignal: 4096, RightSignal: 8192,
+  HeadlightsOn: 16384, HeadlightsSet: 32768,
+} as const;
 
 function writeFrame(target: Float32Array, offset: number, frame: ReplayFrame) {
   frame.position.toArray(target, offset + POSITION);
@@ -87,7 +98,11 @@ function writeFrame(target: Float32Array, offset: number, frame: ReplayFrame) {
   target[offset + STEERING] = frame.steering;
   let flags = (frame.braking ? Flag.Braking : 0) | (frame.reversing ? Flag.Reversing : 0)
     | (frame.shifting ? Flag.Shifting : 0) | (frame.limiterCut ? Flag.Limiter : 0)
-    | (frame.handbrake ? Flag.Handbrake : 0) | (frame.burnout ? Flag.Burnout : 0);
+    | (frame.handbrake ? Flag.Handbrake : 0) | (frame.burnout ? Flag.Burnout : 0)
+    | (frame.highBeams ? Flag.HighBeams : 0) | (frame.fogLights ? Flag.FogLights : 0)
+    | (frame.leftSignal ? Flag.LeftSignal : 0) | (frame.rightSignal ? Flag.RightSignal : 0)
+    | (frame.headlights === null ? 0 : Flag.HeadlightsSet)
+    | (frame.headlights ? Flag.HeadlightsOn : 0);
   frame.contacts.forEach((contact, i) => { if (contact) flags |= Flag.Contact << i; });
   target[offset + FLAGS] = flags;
   frame.tires.forEach((tire, i) => {
@@ -246,6 +261,11 @@ export class RunRecording {
     out.shifting = (flags & Flag.Shifting) !== 0;
     out.limiterCut = (flags & Flag.Limiter) !== 0;
     out.handbrake = (flags & Flag.Handbrake) !== 0;
+    out.highBeams = (flags & Flag.HighBeams) !== 0;
+    out.headlights = flags & Flag.HeadlightsSet ? (flags & Flag.HeadlightsOn) !== 0 : null;
+    out.fogLights = (flags & Flag.FogLights) !== 0;
+    out.leftSignal = (flags & Flag.LeftSignal) !== 0;
+    out.rightSignal = (flags & Flag.RightSignal) !== 0;
     out.burnout = (flags & Flag.Burnout) !== 0;
     out.contacts.forEach((_, i) => { out.contacts[i] = (flags & (Flag.Contact << i)) !== 0; });
     out.tires.forEach((tire, i) => {

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import AmmoFactory from 'ammojs-typed';
 import { loadCar } from './car';
-import { DrivingControls } from './controls';
+import { DrivingControls, updateVehicleLights } from './controls';
 import { createCourse } from './course';
 import { courses, courseSpawn, generateCourse, readCourseReverse, type CourseDefinition } from './courses';
 import { generateCustomCourse, readCourseWeights, writeCourseWeights, type CourseGenerationWeights } from './course-generation';
@@ -131,14 +131,22 @@ async function start() {
   // The picker may change while the model is loading.
   const selectedTime = gameState.getState().timeOfDay;
   lighting.apply(selectedTime);
-  car.setLighting(selectedTime !== 'noon', selectedTime === 'night');
+  let vehicleLights = {
+    headlights: selectedTime !== 'noon', fogLights: false, headlightsAtPress: false,
+  };
+  let shownHeadlights = vehicleLights.headlights;
+  car.setLighting(shownHeadlights, selectedTime === 'night');
   let appliedTime = selectedTime;
   gameState.subscribe(({ timeOfDay, mirrorResolution }) => {
     car.setMirrorResolution(mirrorResolution);
     if (timeOfDay === appliedTime) return;
     appliedTime = timeOfDay;
     lighting.apply(timeOfDay);
-    car.setLighting(timeOfDay !== 'noon', timeOfDay === 'night');
+    vehicleLights = {
+      headlights: timeOfDay !== 'noon', fogLights: false, headlightsAtPress: false,
+    };
+    shownHeadlights = vehicleLights.headlights;
+    car.setLighting(shownHeadlights, timeOfDay === 'night');
   });
 
   scene.add(car.chassis, ...car.wheels, ...car.hubs);
@@ -179,7 +187,7 @@ async function start() {
     controls.clear();
   });
   const keys = controls.keys;
-  const controlKeys = new Set(['ArrowLeft', 'ArrowRight', 'KeyX', 'KeyZ', 'Space', 'KeyR', 'KeyC', 'KeyD', 'KeyM', 'KeyW', 'KeyS']);
+  const controlKeys = new Set(['ArrowLeft', 'ArrowRight', 'KeyX', 'KeyZ', 'Space', 'KeyR', 'KeyC', 'KeyD', 'KeyM', 'KeyW', 'KeyS', 'KeyF', 'KeyH']);
   let accumulator = 0;
   let lastTime = 0;
   let changingCourse = false;
@@ -398,6 +406,10 @@ async function start() {
       shifting: engine.shifting, limiterCut: engine.limiterCut, steering: physics.steering,
       braking: physics.spawnBrakeHeld || (!physics.reversing && controls.brake > 0),
       reversing: physics.reversing, handbrake: controls.handbrake,
+      highBeams: controls.highBeams,
+      headlights: vehicleLights.headlights,
+      fogLights: vehicleLights.fogLights,
+      leftSignal: controls.leftSignal, rightSignal: controls.rightSignal,
       burnout: physics.burnout > 0.1 && (wheelContacts[2] || wheelContacts[3]),
     });
     wheelContacts.forEach((contact, i) => { recordFrame.contacts[i] = contact; });
@@ -420,7 +432,7 @@ async function start() {
     }
     source.read(source.lapStarts[index] + lapTime, ghostFrame);
     applyCarPose(ghostFrame, ghost.chassis, ghost.wheels);
-    ghost.fadeNear(car.chassis.position);
+    ghost.fadeNear(car.chassis.position, gameState.getState().cameraStyle === 'cabin');
     ghost.visible = true;
   }
 
@@ -692,6 +704,9 @@ async function start() {
     if (changingCourse) return;
     const { driveMode, profiles } = gameState.getState();
     controls.poll(!dialogOpen, profiles[driveMode].steeringExpo);
+    if (controls.lightingRequested && !replay) {
+      vehicleLights = updateVehicleLights(vehicleLights, controls.lightingRequested);
+    }
     if (controls.driveModeRequested) toggleDriveMode();
     if (controls.cameraRequested) cycleCamera();
     if (controls.timeOfDayRequested) cycleTimeOfDay();
@@ -709,6 +724,12 @@ async function start() {
     lastTime = time;
     const replayVelocity3d = updateReplay(dt);
     const replaying = replayVelocity3d !== null;
+    const frameHeadlights = replaying
+      ? playbackFrame.headlights ?? vehicleLights.headlights : vehicleLights.headlights;
+    if (shownHeadlights !== frameHeadlights) {
+      shownHeadlights = frameHeadlights;
+      car.setLighting(frameHeadlights, appliedTime === 'night');
+    }
     let velocity: THREE.Vector3;
     if (replayVelocity3d) {
       velocity = replayFlatVelocity.copy(replayVelocity3d).setY(0);
@@ -728,6 +749,12 @@ async function start() {
     const reversing = replaying ? playbackFrame.reversing : physics.reversing;
     const wheelContacts = replaying ? playbackFrame.contacts : physics.wheelContacts;
     const handbrake = replaying ? playbackFrame.handbrake : controls.handbrake;
+    car.setHighBeams(replaying ? playbackFrame.highBeams : controls.highBeams);
+    car.setFogLights(replaying ? playbackFrame.fogLights : vehicleLights.fogLights);
+    car.setTurnSignals(
+      replaying ? playbackFrame.leftSignal : controls.leftSignal,
+      replaying ? playbackFrame.rightSignal : controls.rightSignal,
+    );
     const spawnBrakeHeld = !replaying && physics.spawnBrakeHeld;
     audio.update({ drivetrain: engine, tires: replaying ? playbackFrame.tires : physics.tireSounds });
     const cameraState = gameState.getState();

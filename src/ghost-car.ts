@@ -72,10 +72,11 @@ export function createGhostCar(scene: THREE.Scene, car: Car) {
     wheels,
     get visible() { return root.visible; },
     set visible(visible: boolean) { root.visible = visible; },
-    /** Fade out when the ghost overlaps the player so it doesn't fill the cabin view. */
-    fadeNear(position: THREE.Vector3) {
+    /** Fade overlapping ghosts slightly in chase view and fully in cabin view. */
+    fadeNear(position: THREE.Vector3, cabinView: boolean) {
       const distance = chassis.position.distanceTo(position);
-      material.opacity = ghostOpacity * THREE.MathUtils.smoothstep(distance, 2.5, 7);
+      const fade = THREE.MathUtils.smoothstep(distance, 2.5, 7);
+      material.opacity = ghostOpacity * THREE.MathUtils.lerp(cabinView ? 0 : 0.7, 1, fade);
     },
   };
 }
