@@ -23,6 +23,13 @@ Mirrors render only in cabin view; both chase views skip mirror reflections enti
 Reflection cameras exclude the car's low beams, high beams, fog beams, and interior
 point lights. Cabin ambient, gauge glow, and stereo glow illuminate only cabin view;
 chase views skip those lights. Lamp lenses and displays still show their selected state.
+Cabin fill follows the time of day, with cool daylight at noon, warmer fill at sunset,
+and subdued illumination at night, without changing exterior exposure. Headlights
+also switch on a localized warm glow around the instrument cluster and steering column.
+Inactive warning lamps use unlit black masks so the cabin lights cannot reveal them.
+The steering-wheel badge has a clear-coated dark silver backing, polished black-chrome
+Z and rim, and a clear cover.
+The windshield's tint strip is visible only from outside, leaving the cabin view unobstructed.
 Choose **Off** (`?mirror-resolution=off`) to disable mirrors in cabin view as well.
 When reflections are disabled, the mirror glass remains a shiny silver surface
 using the scene's environment lighting, with no live reflection render passes.

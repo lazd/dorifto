@@ -16,6 +16,12 @@ const CAR_LENGTH_M = 4.31;
 const PAINT_COLOR = 0xe51b23;
 const WHEEL_COLOR = 0x111216;
 const INTERIOR_COLOR = 0x303030;
+const CABIN_LIGHTING = {
+  noon: { color: 0xd9edff, intensity: 3 },
+  sunset: { color: 0xffd9b0, intensity: 0.35 },
+  night: { color: 0xffd9b0, intensity: 0.06 },
+} satisfies Record<ConfigurationState['timeOfDay'], { color: number; intensity: number }>;
+const GAUGE_LIGHT_INTENSITY = 0.8;
 // Chassis offsets in meters: X is lateral, +Z is forward.
 const UNDERGLOW_SIDE_OFFSET = 0.55;
 const UNDERGLOW_FRONT_OFFSET = 1.85;
@@ -106,11 +112,50 @@ export async function loadCar(onProgress?: (fraction: number) => void) {
     /_(Leather|Smoothleather|PlasticInterior|Trim|carpetfabric|Darkfabric|Alcantara|Leatherboots)_0$/,
     { color: INTERIOR_COLOR, envMapIntensity: 0.45 },
   );
+  // Badge materials are shared with other trim; isolate these before changing their finish.
+  for (const [pattern, settings] of [
+    [
+      /^badgechrome_Interiorchrome_0$/,
+      { color: new THREE.Color(0x303236), metalness: 1, roughness: 0.08, envMapIntensity: 2 },
+    ],
+    [
+      /^badgeburgundy_Zbadgecolorint_0$/,
+      {
+        color: new THREE.Color(0x454a51),
+        metalness: 0.65,
+        roughness: 0.18,
+        envMapIntensity: 2,
+        clearcoat: 1,
+        clearcoatRoughness: 0.1,
+        transparent: false,
+        depthWrite: true,
+      },
+    ],
+    [
+      /^badgeglass_Insideglass_0$/,
+      {
+        color: new THREE.Color(0xffffff),
+        roughness: 0.08,
+        opacity: 0.08,
+        depthWrite: false,
+      },
+    ],
+  ] as const) {
+    const [badge] = named(pattern);
+    if (!badge) throw new Error(`Missing steering badge geometry: ${pattern}`);
+    badge.material = new THREE.MeshPhysicalMaterial({
+      side: badge.material.side,
+      transparent: badge.material.transparent,
+      depthWrite: badge.material.depthWrite,
+      ...settings,
+    });
+  }
   // The tinted glass is two shells (outer normals face out, inner face in). Draw both
   // only from outside, so the tint shows on the car but the cabin view is clear.
   for (const [pattern, side] of [
     [/^Windows_Windows_0$/, THREE.FrontSide],
     [/^WindowIn_WindowsIn_0$/, THREE.BackSide],
+    [/^sunvisoroem_Windshieldfade_0$/, THREE.FrontSide],
   ] as const) {
     const [glass] = named(pattern);
     if (!glass) throw new Error(`Missing ${pattern} in the car model.`);
@@ -556,24 +601,25 @@ export async function loadCar(onProgress?: (fraction: number) => void) {
     highBeamsOn = enabled;
     updateHeadlights();
   }
-  const cabinLight = new THREE.PointLight(0xffd9b0, 0.06, 1.4, 2);
+  const cabinLight = new THREE.PointLight(0xffd9b0, 0, 1.4, 2);
   cabinLight.layers.set(carLightLayers.interior);
   cabinLight.name = 'cabin-ambient';
   cabinLight.position.set(0, 0.62, -0.15);
-  cabinLight.intensity = 0;
   chassis.add(cabinLight);
 
   const gaugeBounds = meshBounds(/^gaugeface[12]_Gauges_0$/);
-  const gaugeLight = new THREE.PointLight(0xffd9b0, 0.025, 0.45, 2);
+  const gaugeLight = new THREE.PointLight(0xffd9b0, 0, 0.45, 2);
   gaugeLight.layers.set(carLightLayers.interior);
   gaugeLight.name = 'gauge-glow';
   gaugeLight.position.copy(gaugeBounds.getCenter(new THREE.Vector3()));
-  gaugeLight.position.z = gaugeBounds.min.z - 0.025;
+  // Sit ahead of the recessed faces so light also reaches the binnacle and column.
+  gaugeLight.position.z = gaugeBounds.min.z - 0.12;
   chassis.worldToLocal(gaugeLight.position);
-  gaugeLight.intensity = 0;
   chassis.add(gaugeLight);
 
-  function setLighting(enabled: boolean, night: boolean) {
+  function setLighting(enabled: boolean, time: ConfigurationState['timeOfDay']) {
+    const night = time === 'night';
+    const cabin = CABIN_LIGHTING[time];
     headlightsOn = enabled;
     setBraking(brakingActive);
     updateSignals();
@@ -584,8 +630,9 @@ export async function loadCar(onProgress?: (fraction: number) => void) {
     setIntensity(odometer, enabled ? 0.35 : 0);
     setIntensity(gaugeNeedles, enabled ? 0.9 : 0);
     podLabels.material.emissiveIntensity = enabled ? 0.6 : 0;
-    cabinLight.intensity = night ? 0.06 : 0;
-    gaugeLight.intensity = enabled ? 0.025 : 0;
+    cabinLight.color.set(cabin.color);
+    cabinLight.intensity = cabin.intensity;
+    gaugeLight.intensity = enabled ? GAUGE_LIGHT_INTENSITY : 0;
     for (const light of underglow) light.intensity = night ? 18 : 0;
   }
 
@@ -860,8 +907,7 @@ export async function loadCar(onProgress?: (fraction: number) => void) {
     new THREE.Vector3(-0.5365, 0.2157, 0.4039),
     gaugeAxis,
   )(-THREE.MathUtils.degToRad(FUEL_FULL_DEG));
-  // Lit warning lamps glow unshaded; unlit masks match the dark gray panel
-  // and respond to cabin lighting without revealing the warning symbols.
+  // Neither lit lamps nor blacked-out warning masks should respond to cabin lighting.
   const dashLightMeshes = {
     leftSignal: /^leftind_/,
     rightSignal: /^rightind_/,
@@ -874,13 +920,9 @@ export async function loadCar(onProgress?: (fraction: number) => void) {
   };
   type DashLight = keyof typeof dashLightMeshes;
   const dashLights = {} as Record<DashLight, THREE.Mesh[]>;
-  const unlitDashLight = new THREE.MeshStandardMaterial({
-    color: 0x282828,
-    roughness: 0.96,
-    metalness: 0,
+  const unlitDashLight = new THREE.MeshBasicMaterial({
+    color: 0x000000,
   });
-  const unlitCatalystLight = unlitDashLight.clone();
-  unlitCatalystLight.color.set(0x181818);
   let litDashLight: THREE.MeshBasicMaterial | undefined;
   for (const [light, pattern] of Object.entries(dashLightMeshes) as [DashLight, RegExp][]) {
     dashLights[light] = named(pattern);
@@ -890,8 +932,7 @@ export async function loadCar(onProgress?: (fraction: number) => void) {
     });
   }
   function setDashLight(light: DashLight, on: boolean) {
-    const unlitMaterial = light === 'catalyst' ? unlitCatalystLight : unlitDashLight;
-    for (const mesh of dashLights[light]) mesh.material = on ? litDashLight! : unlitMaterial;
+    for (const mesh of dashLights[light]) mesh.material = on ? litDashLight! : unlitDashLight;
   }
   for (const light of Object.keys(dashLights) as DashLight[]) setDashLight(light, false);
 

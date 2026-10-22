@@ -250,7 +250,7 @@ async function start() {
     headlightsAtPress: false,
   };
   let shownHeadlights = vehicleLights.headlights;
-  car.setLighting(shownHeadlights, selectedTime === 'night');
+  car.setLighting(shownHeadlights, selectedTime);
   let appliedTime = selectedTime;
   configurationState.subscribe(
     ({ cameraStyle, mirrorResolution }) => {
@@ -269,7 +269,7 @@ async function start() {
         headlightsAtPress: false,
       };
       shownHeadlights = vehicleLights.headlights;
-      car.setLighting(shownHeadlights, timeOfDay === 'night');
+      car.setLighting(shownHeadlights, timeOfDay);
     },
     ['timeOfDay'],
   );
@@ -1020,7 +1020,7 @@ async function start() {
       : vehicleLights.headlights;
     if (shownHeadlights !== frameHeadlights) {
       shownHeadlights = frameHeadlights;
-      car.setLighting(frameHeadlights, appliedTime === 'night');
+      car.setLighting(frameHeadlights, appliedTime);
     }
     let velocity: THREE.Vector3;
     if (replayVelocity3d) {
@@ -1158,7 +1158,7 @@ async function start() {
     car.setFogLights(vehicleLights.fogLights);
     car.setBraking(physics.spawnBrakeHeld);
     car.setReversing(physics.reversing);
-    car.setLighting(shownHeadlights, appliedTime === 'night');
+    car.setLighting(shownHeadlights, appliedTime);
     car.setStereo(stereo.isPowered);
     car.setDashLight('abs', configurationState.getState().driveMode === 'drift');
   }
@@ -1213,7 +1213,7 @@ async function start() {
     placeholderSky.needsUpdate = true;
     for (const [index, layout] of lightLayouts.entries()) {
       showLoading('Compiling shaders…', 0.45 + (0.4 * index) / lightLayouts.length);
-      car.setLighting(layout.headlights, appliedTime === 'night');
+      car.setLighting(layout.headlights, appliedTime);
       car.setHighBeams(layout.highBeams);
       car.setFogLights(layout.fogLights);
       car.setBraking(layout.rearLights === 'brake');
