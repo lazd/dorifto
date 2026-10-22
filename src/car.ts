@@ -540,9 +540,16 @@ export async function loadCar() {
 
   // Replace the flat mirror-glass mesh with live planar reflections.
   let mirrorResolution: GameState["mirrorResolution"] = "low";
+  let mirrorsEnabled = false;
+  const inactiveMirrorMaterial = new THREE.MeshStandardMaterial({
+    color: 0xdde4ee,
+    metalness: 1,
+    roughness: 0.12,
+  });
   const mirrors: Reflector[] = [];
   const mirrorMounts: {
     mirror: Reflector;
+    reflectionMaterial: THREE.Material | THREE.Material[];
     center: THREE.Vector3;
     normal: THREE.Vector3;
     orientation: THREE.Quaternion;
@@ -583,7 +590,7 @@ export async function loadCar() {
       );
       side.translate(-mirrorCenter.x, -mirrorCenter.y, -mirrorCenter.z);
       side.applyQuaternion(orientation.clone().invert());
-      side.deleteAttribute("normal");
+      side.computeVertexNormals();
       const mirror = new Reflector(side, {
         color: 0xe8efff,
         textureWidth: 512,
@@ -591,6 +598,8 @@ export async function loadCar() {
         clipBias: 0.003,
         multisample: 0,
       });
+      const reflectionMaterial = mirror.material;
+      mirror.material = inactiveMirrorMaterial;
       mirror.position.copy(mirrorCenter).addScaledVector(normal, 0.002);
       mirror.quaternion.copy(orientation);
       // Do not recursively render the other mirrors in a reflection pass.
@@ -598,6 +607,7 @@ export async function loadCar() {
       const eye = new THREE.Vector3();
       const size = new THREE.Vector2();
       mirror.onBeforeRender = function (...args) {
+        if (!mirrorsEnabled) return;
         // Only nearby mirrors use higher resolutions; distant mirrors keep a fixed budget.
         const [renderer, , camera] = args;
         const close = mirror.getWorldPosition(eye).distanceToSquared(camera.position) < 2 ** 2;
@@ -638,7 +648,7 @@ export async function loadCar() {
             0,
             -1,
           ).normalize();
-      mirrorMounts.push({ mirror, center: mirrorCenter, normal, orientation, sightLine });
+      mirrorMounts.push({ mirror, reflectionMaterial, center: mirrorCenter, normal, orientation, sightLine });
       chassis.add(mirror);
     }
     geometry.dispose();
@@ -933,8 +943,12 @@ export async function loadCar() {
     updateClock(date: Date) {
       clockReadout.setText(clockText(date));
     },
-    setMirrorResolution(resolution: GameState["mirrorResolution"]) {
+    setMirrors(cameraStyle: GameState["cameraStyle"], resolution: GameState["mirrorResolution"]) {
       mirrorResolution = resolution;
+      mirrorsEnabled = cameraStyle === "cabin" && resolution !== "off";
+      for (const { mirror, reflectionMaterial } of mirrorMounts) {
+        mirror.material = mirrorsEnabled ? reflectionMaterial : inactiveMirrorMaterial;
+      }
     },
     setSteering,
     setGauges,

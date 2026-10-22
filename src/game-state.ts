@@ -20,7 +20,7 @@ export function isMinimapOrientation(value: string): value is GameState['minimap
 }
 
 export function isMirrorResolution(value: string): value is GameState['mirrorResolution'] {
-  return value === 'low' || value === 'medium' || value === 'high';
+  return value === 'off' || value === 'low' || value === 'medium' || value === 'high';
 }
 
 export function readMirrorResolution(params: URLSearchParams): GameState['mirrorResolution'] {
@@ -87,7 +87,7 @@ export interface GameState {
   tuningPresets: readonly TuningPreset[];
   cameraStyle: 'corner' | 'classic' | 'cabin';
   cabinHeadMotion: boolean;
-  mirrorResolution: 'low' | 'medium' | 'high';
+  mirrorResolution: 'off' | 'low' | 'medium' | 'high';
   minimapOrientation: 'north-up' | 'heading-up';
   timeOfDay: 'noon' | 'sunset' | 'night';
   courseReverse: boolean;

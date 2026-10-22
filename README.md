@@ -18,7 +18,11 @@ performance on long imported tracks, which carry hundreds of cones.
 `?mirror-resolution=low`). **Medium** (1024×512, `?mirror-resolution=medium`)
 gives nearby cabin mirrors more detail without using full-screen render targets.
 **High** (`?mirror-resolution=high`) uses drawing-buffer-resolution reflections
-for nearby mirrors. Distant mirrors stay at 512×256 in every mode.
+for nearby mirrors. Distant cabin mirrors stay at 512×256.
+Mirrors render only in cabin view; both chase views skip mirror reflections entirely.
+Choose **Off** (`?mirror-resolution=off`) to disable mirrors in cabin view as well.
+When reflections are disabled, the mirror glass remains a shiny silver surface
+using the scene's environment lighting, with no live reflection render passes.
 Changes apply immediately and are retained in the URL. Older `?low-res-mirrors=on`
 and `?low-res-mirrors=off` links still select Low and High respectively;
 `mirror-resolution` takes precedence when both parameters are present.

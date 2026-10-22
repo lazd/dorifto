@@ -157,13 +157,13 @@ test('performance settings default to low-resolution mirrors and corner-only con
   assert.equal(state.coneMode, 'corners');
 });
 
-test('mirror resolution accepts three levels and preserves legacy URL choices', () => {
+test('mirror resolution accepts off and three levels and preserves legacy URL choices', () => {
   assert.equal(readMirrorResolution(new URLSearchParams()), 'low');
-  for (const value of ['low', 'medium', 'high']) {
+  for (const value of ['off', 'low', 'medium', 'high']) {
     assert.equal(isMirrorResolution(value), true);
     assert.equal(readMirrorResolution(new URLSearchParams({ 'mirror-resolution': value })), value);
   }
-  for (const value of ['', 'ultra', 'on', 'off']) {
+  for (const value of ['', 'ultra', 'on']) {
     assert.equal(isMirrorResolution(value), false);
     assert.throws(() => readMirrorResolution(new URLSearchParams({ 'mirror-resolution': value })),
       /Invalid mirror resolution/);
@@ -171,6 +171,7 @@ test('mirror resolution accepts three levels and preserves legacy URL choices', 
   assert.equal(readMirrorResolution(new URLSearchParams('low-res-mirrors=on')), 'low');
   assert.equal(readMirrorResolution(new URLSearchParams('low-res-mirrors=off')), 'high');
   assert.equal(readMirrorResolution(new URLSearchParams('mirror-resolution=medium&low-res-mirrors=off')), 'medium');
+  assert.equal(readMirrorResolution(new URLSearchParams('mirror-resolution=off&low-res-mirrors=on')), 'off');
   assert.throws(() => readMirrorResolution(new URLSearchParams('low-res-mirrors=invalid')),
     /Invalid low-res-mirrors option/);
 });

@@ -139,8 +139,8 @@ async function start() {
   let shownHeadlights = vehicleLights.headlights;
   car.setLighting(shownHeadlights, selectedTime === 'night');
   let appliedTime = selectedTime;
-  gameState.subscribe(({ timeOfDay, mirrorResolution }) => {
-    car.setMirrorResolution(mirrorResolution);
+  gameState.subscribe(({ timeOfDay, cameraStyle, mirrorResolution }) => {
+    car.setMirrors(cameraStyle, mirrorResolution);
     if (timeOfDay === appliedTime) return;
     appliedTime = timeOfDay;
     lighting.apply(timeOfDay);
