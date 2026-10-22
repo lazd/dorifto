@@ -173,6 +173,7 @@ export function createVehiclePhysics({
   const tireContacts = Array.from({ length: 4 }, () => ({
     forward: new THREE.Vector3(), lateral: new THREE.Vector3(), offset: new THREE.Vector3(),
     along: 0, across: 0, slipAngle: 0, load: 0, capacity: 0, lateralDemand: 0,
+    staticLateral: 0, staticLongitudinal: 0, staticBlend: 0,
     brakeTorque: 0, longitudinalForce: 0, lateralForce: 0, paved: true,
   }));
   const fixedStep = 1 / 120;
@@ -370,6 +371,12 @@ export function createVehiclePhysics({
       const surfaceGrip = paved ? 1 : 0.65;
       const capacity = load * (tune.friction * (rear ? tireTune.rearGrip : tireTune.frontGrip) + staticGrip) * surfaceGrip;
       const lateralDemand = -(rear ? tireTune.rearStiffness : tireTune.frontStiffness) * slipAngle * surfaceGrip;
+      // At low speed, solve for the contact force that cancels tangential
+      // velocity and gravity over this step, instead of requiring tire slip.
+      const contactMass = settings.massKg / 4;
+      const staticLateral = contactMass * (9.81 * tireLateral.y - across / fixedStep);
+      const staticLongitudinal = contactMass * (9.81 * tireForward.y - along / fixedStep);
+      const staticBlend = 1 - THREE.MathUtils.smoothstep(Math.hypot(along, across), 0.5, 2);
       const brakeTorque = rear && handbrake ? settings.brakes.handbrakeTorqueNm
         : brakeAmount * (rear ? brakestand ? 0 : settings.brakes.rearTorqueNm : settings.brakes.frontTorqueNm);
       const tire = tireContacts[i];
@@ -377,7 +384,8 @@ export function createVehiclePhysics({
       tire.lateral.copy(tireLateral);
       tire.offset.copy(tireOffset);
       Object.assign(tire, {
-        along, across, slipAngle, load, capacity, lateralDemand, brakeTorque, paved,
+        along, across, slipAngle, load, capacity, lateralDemand, staticLateral, staticLongitudinal, staticBlend,
+        brakeTorque, paved,
         longitudinalForce: 0, lateralForce: 0,
       });
     }
@@ -406,12 +414,19 @@ export function createVehiclePhysics({
         const slipRatio = (tireSpeeds[i] * car.radii[i] - along) / Math.max(Math.abs(along), braking ? 0.5 : 4);
         // Saturate both pure-slip demands before sharing the friction circle;
         // unbounded wheelspin demand would erase lateral force under throttle.
-        const driveDemand = capacity * Math.tanh(slipRatio * 8);
-        const lateral = capacity * Math.tanh(lateralDemand / Math.max(capacity, 1));
+        const staticBlend = tire.staticBlend
+          * (1 - THREE.MathUtils.smoothstep(Math.abs(tireSpeeds[i] * car.radii[i]), 0.5, 2));
+        const brakeCapacity = brakeTorque / car.radii[i];
+        const driveDemand = THREE.MathUtils.lerp(capacity * Math.tanh(slipRatio * 8),
+          THREE.MathUtils.clamp(tire.staticLongitudinal, -brakeCapacity, brakeCapacity),
+          brakeTorque > 0 ? staticBlend : 0);
+        const lateral = THREE.MathUtils.lerp(capacity * Math.tanh(lateralDemand / Math.max(capacity, 1)),
+          THREE.MathUtils.clamp(tire.staticLateral, -capacity, capacity), staticBlend);
         const combined = Math.hypot(driveDemand, lateral);
         // Round the friction-circle boundary without a separate breakaway drop.
         const utilization = combined / Math.max(capacity, 1);
-        const scale = 1 / (1 + utilization ** 8) ** (1 / 8);
+        const scale = THREE.MathUtils.lerp(1 / (1 + utilization ** 8) ** (1 / 8),
+          1 / Math.max(1, utilization), staticBlend);
         const fx = driveDemand * scale;
         const fy = lateral * scale;
         const torque = (rear ? engineTorque + (i === 2 ? differential : -differential) : 0) - fx * car.radii[i];

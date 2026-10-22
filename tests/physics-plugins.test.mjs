@@ -30,7 +30,7 @@ after(async () => {
   await server?.close();
 });
 
-function fixture() {
+function fixture(slopeX = 0, slopeZ = 0) {
   const car = {
     chassis: new THREE.Group(),
     wheels: Array.from({ length: 4 }, () => new THREE.Group()),
@@ -41,7 +41,7 @@ function fixture() {
     ],
     radii: [0.32, 0.32, 0.32, 0.32],
     collisionVertices: [-1, 1].flatMap((x) => [-1, 1].flatMap((y) =>
-      [-1, 1].map((z) => new THREE.Vector3(x * 0.75, y * 0.3, z * 2)))),
+      [-1, 1].map((z) => new THREE.Vector3(x * 0.75, y < 0 ? -0.1 : 0.3, z * 2)))),
     setBraking() {}, setReversing() {}, setHazards() {},
   };
   const cones = [new THREE.Group(), new THREE.Group()];
@@ -51,22 +51,76 @@ function fixture() {
   const course = {
     cones, cornerCones: [cones[0]],
     terrain: {
-      heights: new Float32Array(16 * 16),
+      heights: Float32Array.from({ length: 16 * 16 }, (_, i) =>
+        (i % 16 - 7.5) * 2 * slopeX + (Math.floor(i / 16) - 7.5) * 2 * slopeZ),
       columns: 16, rows: 16, spacing: 2, minX: -16, minZ: -16,
-      minHeight: -0.01, maxHeight: 0.01,
-      normalAt: () => new THREE.Vector3(0, 1, 0), heightAt: () => 0,
+      minHeight: -15 * (Math.abs(slopeX) + Math.abs(slopeZ)) - 0.01,
+      maxHeight: 15 * (Math.abs(slopeX) + Math.abs(slopeZ)) + 0.01,
+      normalAt: () => new THREE.Vector3(-slopeX, 1, -slopeZ).normalize(),
+      heightAt: (x, z) => (x + 1) * slopeX + (z + 1) * slopeZ,
     },
     isAsphalt: () => true,
   };
   const hits = [];
   const laps = { reset() {}, update() {}, hitCone(index) { hits.push(index); } };
+  const controls = { throttle: 0, brake: 0, reverse: 0, steer: 0, handbrake: false };
+  const configurationState = createConfigurationState();
   const physics = createVehiclePhysics({
     Ammo, resources: createPhysicsResources(Ammo), car, course, laps,
-    controls: { throttle: 0, brake: 0, reverse: 0, steer: 0, handbrake: false },
-    configurationState: createConfigurationState(), spawn: { position: [0, 0], heading: 0 },
+    controls,
+    configurationState, spawn: { position: [0, 0], heading: 0 },
   });
-  return { physics, course, laps, hits };
+  return { physics, course, laps, hits, car, controls, configurationState };
 }
+
+test('static tire friction holds on banks and hills but releases under throttle', () => {
+  for (const [slopeX, slopeZ] of [[0.3, 0], [-0.3, 0], [0, 0.2], [0.2, -0.15]]) {
+    const { physics, car, controls } = fixture(slopeX, slopeZ);
+    try {
+      physics.reset();
+      for (let i = 0; i < 600; i++) physics.step();
+      physics.captureVisuals(true);
+      const start = car.chassis.position.clone();
+      for (let i = 0; i < 1200; i++) physics.step();
+      physics.captureVisuals(true);
+      const drift = Math.hypot(car.chassis.position.x - start.x, car.chassis.position.z - start.z);
+      assert.ok(drift < 0.05, `slope ${slopeX}, ${slopeZ}: drifted ${drift} m in 10 seconds`);
+      controls.throttle = 1;
+      for (let i = 0; i < 120; i++) physics.step();
+      physics.captureVisuals(true);
+      assert.ok(car.chassis.position.distanceTo(start) > 0.2, 'throttle must release the parked car');
+    } finally {
+      physics.dispose();
+    }
+  }
+});
+
+test('static friction cannot hold beyond tire grip or stop freely rolling wheels', () => {
+  for (const release of ['grip', 'brakes']) {
+    const { physics, car, controls, configurationState } = fixture(0, 0.3);
+    try {
+      physics.reset();
+      for (let i = 0; i < 600; i++) physics.step();
+      physics.captureVisuals(true);
+      const start = car.chassis.position.clone();
+      if (release === 'grip') {
+        const { profiles } = configurationState.getState();
+        configurationState.update({
+          profiles: { ...profiles, drift: { ...profiles.drift, frontGrip: 0.01, rearGrip: 0.01 } },
+        });
+      } else {
+        controls.throttle = 1;
+        physics.step();
+        controls.throttle = 0;
+      }
+      for (let i = 0; i < 120; i++) physics.step();
+      physics.captureVisuals(true);
+      assert.ok(car.chassis.position.z < start.z - 0.2, `${release}: gravity must move the car downhill`);
+    } finally {
+      physics.dispose();
+    }
+  }
+});
 
 test('object plugins receive lifecycle hooks and managed bodies are freed before shapes', () => {
   const { physics, laps } = fixture();

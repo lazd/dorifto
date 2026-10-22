@@ -231,6 +231,7 @@ export class CourseTerrain {
     material.polygonOffsetFactor = 2;
     material.polygonOffsetUnits = 2;
     this.mesh = new THREE.Mesh(geometry, material);
+    this.mesh.castShadow = true;
     this.mesh.receiveShadow = true;
     const bladeGeometry = new THREE.BufferGeometry();
     bladeGeometry.setAttribute('position', new THREE.Float32BufferAttribute([

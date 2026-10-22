@@ -146,7 +146,7 @@ async function start() {
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 1500);
   camera.layers.enable(1);
-  const lighting = createLighting(scene, renderer);
+  const lighting = createLighting(scene, renderer, camera);
   const requestedTime = readOption('time', 'noon', isTimeOfDay);
   configurationState.update({ timeOfDay: requestedTime });
   lighting.apply(requestedTime);
@@ -240,6 +240,7 @@ async function start() {
       course.terrain.grass.visible = showGrass;
       physics.reset();
       drivingCamera.reset(spawn.heading);
+      lighting.setupMaterials();
       return { course, terrain: course.terrain, spawn, laps, physics, conePhysics, drivingCamera };
     } catch (error) {
       physics?.dispose();
@@ -262,6 +263,7 @@ async function start() {
     terrain.grass.visible = showGrass;
   }, ['showGrass']);
   const tireEffects = createTireEffects(scene, car, terrain, course.isAsphalt);
+  lighting.setupMaterials();
   const forward = new THREE.Vector3();
   const ghostForward = new THREE.Vector3();
   const minimapGhost = { position: ghost.chassis.position, forward: ghostForward };
@@ -801,7 +803,7 @@ async function start() {
     audio.update({ drivetrain: engine, tires: replaying ? playbackFrame.tires : physics.tireSounds });
     const cameraState = configurationState.getState();
     drivingCamera.update(dt, replayVelocity3d ?? physics.linearVelocity, cameraState.driveMode, cameraState.cameraStyle, reversing, cameraState.cabinHeadMotion);
-    lighting.update(car.chassis.position, controls.mapView ? camera.far : undefined);
+    lighting.update(controls.mapView ? camera.far : undefined);
     forward.set(0, 0, 1).applyQuaternion(car.chassis.quaternion);
     forward.y = 0;
     forward.normalize();
@@ -859,11 +861,21 @@ async function start() {
     ghost.visible = true;
     for (const time of ['noon', 'sunset', 'night'] as const) {
       lighting.apply(time);
-      car.setLighting(time !== 'noon', time === 'night');
-      await renderer.compileAsync(scene, warmupCamera);
-      renderer.render(scene, warmupCamera);
+      for (const headlights of [false, true]) {
+        car.setLighting(headlights, time === 'night');
+        for (const highBeams of [false, true]) {
+          car.setHighBeams(highBeams);
+          for (const fogLights of [false, true]) {
+            car.setFogLights(fogLights);
+            await renderer.compileAsync(scene, warmupCamera);
+            renderer.render(scene, warmupCamera);
+          }
+        }
+      }
     }
     lighting.apply(appliedTime);
+    car.setHighBeams(controls.highBeams);
+    car.setFogLights(vehicleLights.fogLights);
     car.setLighting(shownHeadlights, appliedTime === 'night');
     ghost.visible = true;
     await renderer.compileAsync(scene, warmupCamera);
@@ -877,6 +889,8 @@ async function start() {
   } finally {
     ghost.visible = false;
     lighting.apply(appliedTime);
+    car.setHighBeams(controls.highBeams);
+    car.setFogLights(vehicleLights.fogLights);
     car.setLighting(shownHeadlights, appliedTime === 'night');
     renderer.setRenderTarget(previousTarget);
   }

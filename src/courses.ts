@@ -431,7 +431,7 @@ export const courses: readonly CourseDefinition[] = [
     id: "hillside",
     name: "Hillside Circuit",
     width: 17.5,
-    bankingScale: 3,
+    bankingScale: 4,
     points: hillsidePoints,
   },
   {

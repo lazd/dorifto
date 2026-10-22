@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { CSM } from 'three/addons/csm/CSM.js';
 import type { ConfigurationState } from './configuration-state';
 import { createCloudLayer } from './clouds';
 
@@ -7,8 +8,8 @@ const daylight = {
   noon: {
     sky: '#78b5ec', horizon: '#b6d7ee', ground: '#656052',
     cloudLight: '#fffaf0', cloudShade: '#849bb8',
-    ambient: '#d9edff', ambientIntensity: 0.65, environmentIntensity: 0.65,
-    sun: '#ffefd4', sunIntensity: 2.4, sunOffset: [-20, 35, -12],
+    ambient: '#d9edff', ambientIntensity: 0.42, environmentIntensity: 0.4,
+    sun: '#ffefd4', sunIntensity: 2.8, sunOffset: [-35, 30, -20],
     exposure: 0.95,
   },
   sunset: {
@@ -34,7 +35,7 @@ const daylight = {
 }>;
 
 
-export function createLighting(scene: THREE.Scene, renderer: THREE.WebGLRenderer) {
+export function createLighting(scene: THREE.Scene, renderer: THREE.WebGLRenderer, camera: THREE.PerspectiveCamera) {
   const fogNear = 220;
   const fogFar = 650;
   const fog = new THREE.Fog(0x78b5ec, fogNear, fogFar);
@@ -45,15 +46,77 @@ export function createLighting(scene: THREE.Scene, renderer: THREE.WebGLRenderer
   environment.dispose();
   const ambient = new THREE.HemisphereLight();
   scene.add(ambient);
-  const sun = new THREE.DirectionalLight();
-  const shadowOffset = new THREE.Vector3();
-  sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
-  sun.shadow.camera.left = sun.shadow.camera.bottom = -24;
-  sun.shadow.camera.right = sun.shadow.camera.top = 24;
-  sun.shadow.camera.far = 100;
-  sun.shadow.normalBias = 0.035;
-  scene.add(sun, sun.target);
+  const csm = new CSM({
+    camera, parent: scene, cascades: 3, maxFar: 1500,
+    shadowMapSize: 2048, mode: 'custom',
+    customSplitsCallback: (_cascades, _near, far, breaks) => {
+      breaks.push(Math.min(30 / far, 1 / 3), Math.min(180 / far, 2 / 3), 1);
+    },
+    lightNear: 0.1, lightFar: 4000, lightMargin: 1000,
+  });
+  csm.fade = true;
+  csm.updateFrustums();
+  for (const light of csm.lights) light.shadow.normalBias = 0.035;
+  const shadowView = { value: new THREE.Matrix4() };
+  const projection = new THREE.Matrix4();
+  const materials = new WeakSet<THREE.Material>();
+
+  function setupMaterials() {
+    scene.traverse((object) => {
+      if (!(object instanceof THREE.Mesh)) return;
+      for (const material of Array.isArray(object.material) ? object.material : [object.material]) {
+        if (!(material instanceof THREE.MeshStandardMaterial || material instanceof THREE.MeshLambertMaterial
+          || material instanceof THREE.MeshPhongMaterial || material instanceof THREE.MeshToonMaterial)
+          || materials.has(material)) continue;
+        materials.add(material);
+        const compile = material.onBeforeCompile;
+        const cacheKey = material.customProgramCacheKey();
+        csm.setupMaterial(material);
+        const compileCSM = material.onBeforeCompile;
+        material.onBeforeCompile = function (shader, renderer) {
+          compile.call(this, shader, renderer);
+          compileCSM.call(this, shader, renderer);
+          shader.uniforms.csmShadowView = shadowView;
+          // Mirrors reuse the main view's shadow maps, so select cascades in that view too.
+          shader.vertexShader = `uniform mat4 csmShadowView;\nvarying float vCSMDepth;\n${shader.vertexShader}`
+            .replace('#include <project_vertex>', `
+              #include <project_vertex>
+              vec4 csmPosition = vec4(transformed, 1.0);
+              #ifdef USE_BATCHING
+                csmPosition = batchingMatrix * csmPosition;
+              #endif
+              #ifdef USE_INSTANCING
+                csmPosition = instanceMatrix * csmPosition;
+              #endif
+              vCSMDepth = -(csmShadowView * modelMatrix * csmPosition).z;
+            `);
+          shader.fragmentShader = `varying float vCSMDepth;\n${shader.fragmentShader}`
+            .replace('#include <lights_fragment_begin>',
+              THREE.ShaderChunk.lights_fragment_begin.replace('(vViewPosition.z)', 'vCSMDepth'));
+        };
+        material.customProgramCacheKey = () => `${cacheKey}-csm-main-view`;
+        material.needsUpdate = true;
+        material.addEventListener('dispose', () => { csm.shaders.delete(material); });
+      }
+    });
+  }
+
+  scene.onBeforeRender = (renderer, _scene, renderCamera) => {
+    // Depth captures and Reflector passes must not move the shared shadow maps.
+    if (!renderer.shadowMap.enabled || !renderer.shadowMap.autoUpdate
+      || !(renderCamera instanceof THREE.PerspectiveCamera)) return;
+    if (csm.camera !== renderCamera || !projection.equals(renderCamera.projectionMatrix)) {
+      csm.camera = renderCamera;
+      csm.updateFrustums();
+      projection.copy(renderCamera.projectionMatrix);
+    }
+    shadowView.value.copy(renderCamera.matrixWorldInverse);
+    csm.update();
+    for (const light of csm.lights) {
+      light.updateMatrixWorld();
+      light.target.updateMatrixWorld();
+    }
+  };
 
   const paintClouds = createCloudLayer(1024, 512);
   const createSky = (time: ConfigurationState['timeOfDay']) => {
@@ -128,21 +191,21 @@ export function createLighting(scene: THREE.Scene, renderer: THREE.WebGLRenderer
     ambient.groundColor.set(preset.ground);
     ambient.intensity = preset.ambientIntensity;
     scene.environmentIntensity = preset.environmentIntensity;
-    sun.color.set(preset.sun);
-    sun.intensity = preset.sunIntensity;
-    shadowOffset.fromArray(preset.sunOffset);
-    sun.position.copy(sun.target.position).add(shadowOffset);
+    csm.lightDirection.fromArray(preset.sunOffset).normalize().negate();
+    for (const light of csm.lights) {
+      light.color.set(preset.sun);
+      light.intensity = preset.sunIntensity;
+    }
     renderer.toneMappingExposure = preset.exposure;
   };
 
   return {
     apply: applyTimeOfDay,
+    setupMaterials,
     /** `clearDistance` pushes fog beyond that range, e.g. so the map view sees the whole course. */
-    update(position: THREE.Vector3, clearDistance?: number) {
+    update(clearDistance?: number) {
       fog.near = clearDistance ?? fogNear;
       fog.far = clearDistance === undefined ? fogFar : clearDistance * 2;
-      sun.position.copy(position).add(shadowOffset);
-      sun.target.position.copy(position);
     },
   };
 }

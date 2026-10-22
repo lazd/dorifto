@@ -366,6 +366,13 @@ demands saturate smoothly before the combined friction-circle limit. This
 simplified tire model preserves cornering authority under wheelspin instead of
 letting unbounded longitudinal demand crowd out virtually all lateral force.
 It is a game-oriented approximation, not a calibrated real-tire model.
+Near rest, tire contacts smoothly transition to static friction: contact forces
+oppose tangential velocity and gravity, bounded by the same load-dependent grip
+budget. Braked wheels can hold on hills and banked pavement without requiring
+continuous sliding; longitudinal holding is also limited by brake torque.
+Unbraked wheels remain free to roll downhill, and slopes beyond available grip
+still cause sliding. The usual combined-slip model takes over as road speed or
+wheelspin increases; there is no bank-specific lock or chassis velocity reset.
 Throttle redirects the available rear traction toward
 propulsion rather than applying a scripted shove. A rounded friction-circle
 boundary shares the load-dependent force budget between both axes:
@@ -432,6 +439,10 @@ shadow casting; the low beams still illuminate the scene. This caps front shadow
 maps at four, keeping the night scene within WebGL's 16 fragment-texture-unit minimum.
 All three pairs have soft additive, forward-facing lens halos rendered as scene geometry,
 so their glow also appears in live mirrors without a separate bloom pass.
+All headlight, high-beam, and fog-light combinations are compiled and rendered
+during the existing time-of-day startup warmup, before the game canvas becomes
+visible, to avoid first-toggle shader compilation. The selected light state is
+restored afterward.
 The halos are depth-tested, do not write depth, and cannot show through cars or walls.
 Headlights, high beams and fog lights are preserved in lap recordings; older recordings
 use the current headlight setting and default the high beams and fog lights to off.
@@ -646,7 +657,9 @@ jerking the view.
 ## Time of day
 
 The Time of day picker switches lighting live without resetting the car or lap.
-Noon has a blue sky and neutral daylight. Sunset uses a warm horizon, golden
+The Noon preset has a blue sky and early-afternoon (roughly 2 PM) lighting,
+with a lower sun and reduced ambient fill for longer, more pronounced shadows.
+Its existing `?time=noon` identifier is unchanged. Sunset uses a warm horizon, golden
 directional light, and a low sun angle for long shadows. Night uses a dark blue
 sky with soft cool ambient moonlight to reveal the car and nearby hills;
 the car's headlights remain the main illumination on the road.
@@ -774,6 +787,12 @@ cannot be dismissed; reload the page to restart.
 
 The driving corridor is textured asphalt with an 80 cm paved shoulder; everything
 outside it is textured dirt/gravel. Both receive shadows and headlights.
+The terrain also casts shadows; decorative grass tufts only receive them.
+The sun uses three cascaded 2048×2048 shadow maps following the camera, with
+splits at 30 m, 180 m, and 1500 m and blended transitions. This keeps nearby car
+shadows detailed while extending terrain shadows beyond the normal fog distance.
+Mirrors reuse the main view's shadow maps. Cascades add two sun shadow passes
+and use roughly three times the sun shadow-map memory of a single map.
 Each wheel checks its physics contact against the course corridor: dirt/gravel has
 65% of the selected mode's asphalt friction and cornering stiffness, reducing
 acceleration, braking, and cornering traction. The paved shoulder retains full
