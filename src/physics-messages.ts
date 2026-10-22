@@ -87,7 +87,7 @@ export interface PhysicsInput {
   signs: boolean[];
   lights: {
     highBeams: boolean;
-    headlights: boolean;
+    headlights: boolean | null;
     fogLights: boolean;
     leftSignal: boolean;
     rightSignal: boolean;

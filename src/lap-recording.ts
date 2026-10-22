@@ -27,7 +27,7 @@ export interface ReplayFrame {
   limiterCut: boolean;
   handbrake: boolean;
   highBeams: boolean;
-  /** Null in older recordings: use the current time-of-day headlight setting. */
+  /** Null means automatic: use the playback time-of-day headlight setting. */
   headlights: boolean | null;
   fogLights: boolean;
   leftSignal: boolean;

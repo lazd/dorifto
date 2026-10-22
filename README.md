@@ -513,8 +513,10 @@ or with mirrors off. The selected light and mirror settings are restored afterwa
 warmup does not start radio playback. Switching time of day for the first time
 compiles that sky's lighting variants, so it can briefly stutter.
 The halos are depth-tested, do not write depth, and cannot show through cars or walls.
-Headlights, high beams and fog lights are preserved in lap recordings; older recordings
-use the current headlight setting and default the high beams and fog lights to off.
+Manual headlight choices, high beams and fog lights are preserved in lap recordings.
+Automatic headlights follow the playback time of day, so daytime runs viewed at night
+have headlights on unless they were manually switched off. Older recordings without
+headlight state also follow the playback time of day and default high beams and fog lights to off.
 The two rear brake lenses and spoiler
 brake strip glow red
 while the foot brake is pressed (keyboard X or controller LT when braking)

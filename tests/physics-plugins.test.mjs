@@ -285,6 +285,33 @@ test('worker batches preserve fixed-step timing, transferable poses, and simulat
   }
 });
 
+test('worker recordings preserve automatic headlights and explicit on/off overrides', () => {
+  const { simulation, input, data } = workerFixture();
+  try {
+    simulation.handle({ type: 'init', data, revision: 0 });
+    input.controls.throttle = 1;
+    for (const headlights of [null, false, true, null]) {
+      input.lights.headlights = headlights;
+      const batch = simulation.handle({
+        type: 'advance',
+        dt: physicsStep * 4,
+        input,
+        recycled: [],
+        revision: 0,
+      });
+      const recording = new RunRecording();
+      for (const { sample } of batch.records) {
+        if (sample) recording.pushSample(sample);
+      }
+      const frame = createReplayFrame();
+      assert.ok(recording.read(0, frame));
+      assert.equal(frame.headlights, headlights);
+    }
+  } finally {
+    simulation.dispose();
+  }
+});
+
 test('worker resets, direction changes, and replay share the live physics world without recording replay steps', () => {
   const { simulation, input, data, definition } = workerFixture();
   try {

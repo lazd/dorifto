@@ -249,6 +249,7 @@ async function start() {
     fogLights: false,
     headlightsAtPress: false,
   };
+  let headlightsOverridden = false;
   let shownHeadlights = vehicleLights.headlights;
   car.setLighting(shownHeadlights, selectedTime);
   let appliedTime = selectedTime;
@@ -268,6 +269,7 @@ async function start() {
         fogLights: false,
         headlightsAtPress: false,
       };
+      headlightsOverridden = false;
       shownHeadlights = vehicleLights.headlights;
       car.setLighting(shownHeadlights, timeOfDay);
     },
@@ -373,7 +375,7 @@ async function start() {
         configurationState,
         audio,
         lights: () => ({
-          headlights: vehicleLights.headlights,
+          headlights: headlightsOverridden ? vehicleLights.headlights : null,
           fogLights: vehicleLights.fogLights,
           highBeams: controls.highBeams,
           leftSignal: controls.leftSignal,
@@ -991,6 +993,7 @@ async function start() {
     controls.poll(!dialogOpen, profiles[driveMode].steeringExpo, ui.dismissError);
     if (controls.lightingRequested && !replay) {
       vehicleLights = updateVehicleLights(vehicleLights, controls.lightingRequested);
+      headlightsOverridden = true;
     }
     if (controls.driveModeRequested) toggleDriveMode();
     if (controls.cameraRequested) cycleCamera();
@@ -1016,7 +1019,7 @@ async function start() {
     const replayVelocity3d = updateReplay(dt);
     const replaying = replayVelocity3d !== null;
     const frameHeadlights = replaying
-      ? (playbackFrame.headlights ?? vehicleLights.headlights)
+      ? (playbackFrame.headlights ?? appliedTime !== 'noon')
       : vehicleLights.headlights;
     if (shownHeadlights !== frameHeadlights) {
       shownHeadlights = frameHeadlights;
