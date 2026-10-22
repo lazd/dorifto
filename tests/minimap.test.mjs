@@ -52,6 +52,12 @@ test('ghost marker follows its own pose in both map orientations and hides when 
     const ghost = map.children[3];
     const player = map.children[4];
     const layout = createMinimapLayout(courses[0]);
+    const start = map.children[2];
+    assert.equal(start.getAttribute('stroke-width'), '3');
+    assert.equal(start.children[0].getAttribute('stroke'), '#000');
+    assert.equal(start.children[1].getAttribute('stroke'), '#fff');
+    assert.equal(start.children[1].getAttribute('stroke-dasharray'), '3 3');
+    for (const path of start.children) assert.equal(path.getAttribute('d'), layout.startLine);
     const position = { x: 10, z: 20 };
     const forward = { x: 1, z: 0 };
     const pose = { position: { x: -20, z: 30 }, forward: { x: 0, z: -1 } };

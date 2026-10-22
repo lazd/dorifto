@@ -193,11 +193,6 @@ h1 span {
   stroke-linecap: round;
   stroke-linejoin: round;
 }
-.minimap-start {
-  fill: none;
-  stroke: #eef6f5;
-  stroke-width: 2;
-}
 .minimap-marker {
   fill: #ffc56e;
   stroke: #10191f;

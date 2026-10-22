@@ -1,5 +1,6 @@
 import { courseRoute, startDistance, type CourseDefinition } from './courses';
 import type { ConfigurationState } from './configuration-state';
+import { createCourseMapGeometry, startLineStyle } from './course-map-geometry';
 
 const size = 180;
 const padding = 16;
@@ -14,44 +15,17 @@ interface MapPoint {
 export function createMinimapLayout(definition: CourseDefinition) {
   const route = courseRoute({ ...definition, reverse: false });
   const points = route.getSpacedPoints(Math.max(256, Math.ceil(route.getLength() / 2)));
-  let minX = Infinity;
-  let maxX = -Infinity;
-  let minZ = Infinity;
-  let maxZ = -Infinity;
-  const roadRadius = definition.width / 2;
-  for (const point of points) {
-    minX = Math.min(minX, point.x - roadRadius);
-    maxX = Math.max(maxX, point.x + roadRadius);
-    minZ = Math.min(minZ, point.z - roadRadius);
-    maxZ = Math.max(maxZ, point.z + roadRadius);
-  }
-  if (definition.padRadius !== undefined) {
-    minX = Math.min(minX, -definition.padRadius);
-    maxX = Math.max(maxX, definition.padRadius);
-    minZ = Math.min(minZ, -definition.padRadius);
-    maxZ = Math.max(maxZ, definition.padRadius);
-  }
-  const scale = (size - padding * 2) / Math.max(maxX - minX, maxZ - minZ);
-  const centerX = (minX + maxX) / 2;
-  const centerZ = (minZ + maxZ) / 2;
-  const project = (point: MapPoint) => ({
-    x: size / 2 + (point.x - centerX) * scale,
-    y: size / 2 + (point.z - centerZ) * scale,
-  });
-  const path = points.map((point, index) => {
-    const { x, y } = project(point);
-    return `${index ? 'L' : 'M'}${x.toFixed(2)},${y.toFixed(2)}`;
-  }).join(' ') + ' Z';
+  const { project, path, roadWidth, pad, startLine } = createCourseMapGeometry(
+    points, size, padding, definition.width,
+    { padRadius: definition.padRadius, minimumRoadWidth: 3 },
+  );
   const start = route.getPointAt(startDistance / route.getLength());
   const tangent = route.getTangentAt(startDistance / route.getLength());
-  const halfLine = Math.max(roadRadius, 3 / scale);
-  const startLeft = project({ x: start.x - tangent.z * halfLine, z: start.z + tangent.x * halfLine });
-  const startRight = project({ x: start.x + tangent.z * halfLine, z: start.z - tangent.x * halfLine });
   return {
     path, project,
-    roadWidth: Math.max(3, definition.width * scale),
-    startLine: `M${startLeft.x},${startLeft.y} L${startRight.x},${startRight.y}`,
-    pad: definition.padRadius === undefined ? undefined : { ...project({ x: 0, z: 0 }), radius: definition.padRadius * scale },
+    roadWidth,
+    startLine: startLine(start, tangent),
+    pad,
   };
 }
 
@@ -83,8 +57,16 @@ export function createMinimap(container: HTMLElement, definition: CourseDefiniti
   pad.setAttribute('class', 'minimap-pad');
   const road = document.createElementNS(namespace, 'path');
   road.setAttribute('class', 'minimap-road');
-  const start = document.createElementNS(namespace, 'path');
+  const start = document.createElementNS(namespace, 'g');
   start.setAttribute('class', 'minimap-start');
+  start.setAttribute('fill', 'none');
+  start.setAttribute('stroke-width', String(startLineStyle.width));
+  const startBase = document.createElementNS(namespace, 'path');
+  startBase.setAttribute('stroke', startLineStyle.dark);
+  const startStripes = document.createElementNS(namespace, 'path');
+  startStripes.setAttribute('stroke', startLineStyle.light);
+  startStripes.setAttribute('stroke-dasharray', startLineStyle.dashArray);
+  start.append(startBase, startStripes);
   const marker = document.createElementNS(namespace, 'path');
   marker.setAttribute('class', 'minimap-marker');
   const markerPath = 'M0,-8 L5.5,6 L0,3 L-5.5,6 Z';
@@ -104,7 +86,8 @@ export function createMinimap(container: HTMLElement, definition: CourseDefiniti
     ghostMarker.setAttribute('visibility', 'hidden');
     road.setAttribute('d', layout.path);
     road.setAttribute('stroke-width', String(layout.roadWidth));
-    start.setAttribute('d', layout.startLine);
+    startBase.setAttribute('d', layout.startLine);
+    startStripes.setAttribute('d', layout.startLine);
     pad.setAttribute('visibility', layout.pad ? 'visible' : 'hidden');
     if (layout.pad) {
       pad.setAttribute('cx', String(layout.pad.x));
