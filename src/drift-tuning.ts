@@ -1,5 +1,5 @@
 import { driveModes, type DriveMode } from './drive-modes';
-import { type DrivingTuning, type GameState } from './game-state';
+import { type DrivingTuning, type ConfigurationState } from './configuration-state';
 import type { Store } from './store';
 import { nextCustomPresetName, nextTuningPresetId, persistTuningPresets } from './tuning-presets';
 
@@ -26,7 +26,7 @@ const sliders: {
 
 export function createDrivingTuning(
   fieldset: HTMLFieldSetElement,
-  store: Store<GameState>,
+  store: Store<ConfigurationState>,
   onPresetChange: (mode: DriveMode, presetId: string | null) => void,
   reportError: (error: unknown) => void,
 ) {
@@ -111,5 +111,5 @@ export function createDrivingTuning(
     mode = state.driveMode;
     tuning = next;
     refresh.forEach((sync) => sync());
-  });
+  }, ['driveMode', 'profiles']);
 }

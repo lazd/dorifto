@@ -11,7 +11,7 @@ let createPhysicsResources;
 let createConePhysics;
 let createPhysicsVisuals;
 let createTurnSignPhysics;
-let createGameState;
+let createConfigurationState;
 
 before(async () => {
   server = await createServer({
@@ -22,7 +22,7 @@ before(async () => {
   ({ createConePhysics } = await server.ssrLoadModule('/src/cone-physics.ts'));
   ({ createPhysicsVisuals } = await server.ssrLoadModule('/src/physics-plugin.ts'));
   ({ createTurnSignPhysics } = await server.ssrLoadModule('/src/turn-sign-physics.ts'));
-  ({ createGameState } = await server.ssrLoadModule('/src/game-state.ts'));
+  ({ createConfigurationState } = await server.ssrLoadModule('/src/configuration-state.ts'));
   Ammo = await AmmoFactory.call({});
 });
 
@@ -63,7 +63,7 @@ function fixture() {
   const physics = createVehiclePhysics({
     Ammo, resources: createPhysicsResources(Ammo), car, course, laps,
     controls: { throttle: 0, brake: 0, reverse: 0, steer: 0, handbrake: false },
-    gameState: createGameState(), spawn: { position: [0, 0], heading: 0 },
+    configurationState: createConfigurationState(), spawn: { position: [0, 0], heading: 0 },
   });
   return { physics, course, laps, hits };
 }

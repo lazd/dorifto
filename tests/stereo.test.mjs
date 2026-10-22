@@ -25,6 +25,7 @@ function fixture(t, muted = false) {
     playCalls = 0;
     paused = true;
     playError = null;
+    attributes = new Map();
     play() {
       this.playCalls++;
       this.paused = false;
@@ -32,6 +33,8 @@ function fixture(t, muted = false) {
     }
     pause() { this.paused = true; }
     removeAttribute(name) { delete this[name]; }
+    setAttribute(name, value) { this.attributes.set(name, value); }
+    getAttribute(name) { return this.attributes.get(name) ?? null; }
     load() {}
     constructor() {
       super();
@@ -111,6 +114,7 @@ test('S retries blocked autoplay without advancing the station', async (t) => {
 test('stays off until requested and starts the playlist MP3 directly, only once', (t) => {
   const { stereo, audio, power, errors } = fixture(t);
   assert.equal(audio.preload, 'none');
+  assert.equal(audio.getAttribute('referrerpolicy'), 'no-referrer');
   assert.equal(audio.src, undefined);
   assert.equal(audio.playCalls, 0);
   assert.deepEqual(power, []);

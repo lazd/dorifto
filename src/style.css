@@ -75,6 +75,16 @@ h1 span {
   border-color: #ff927a;
   color: #ffb8a8;
 }
+#status:has(#status-close:not([hidden])) {
+  padding-right: 62px;
+}
+#status-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 36px;
+  height: 36px;
+}
 .telemetry {
   left: 32px;
   top: 28px;

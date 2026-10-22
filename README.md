@@ -53,14 +53,22 @@ is open. Custom-course slider preferences are local to the UI, initialized from
 the URL when applicable, and passed to course generation on demand.
 
 The dependency-free observable store in `src/store.ts` exposes `getState()`,
-`update(patch)`, and `subscribe(listener)` (returning an unsubscribe function).
+`update(patch)`, and `subscribe(listener, keys?)` (returning an unsubscribe function).
 Subscribers receive an initial snapshot, then one notification per changed patch.
+When keys are supplied, only changes to those fields notify the subscriber.
 Use immutable replacements for nested values rather than mutating snapshots.
 
-`src/game-state.ts` defines raw telemetry, settings, and independent drive-mode
-tuning profiles. Physics reads settings from this store; the frame loop publishes
-one telemetry batch per rendered frame, not per physics substep. Three.js and
-Ammo objects stay outside the store.
+`src/configuration-state.ts` owns settings and independent drive-mode tuning
+profiles, including stereo selection, mute, camera, course direction, cones,
+grass, signs, and ghost preferences. Physics and rendering read this store, but
+only settings changes write to it. Configuration subscribers watch their relevant
+fields; telemetry never notifies them.
+
+`src/game-state.ts` owns runtime telemetry, controller status, focus, audio
+health, loading/errors, and lap-recorder state. The frame loop publishes one
+telemetry batch per rendered frame, not per physics substep. Status, sound, and
+lap-recorder UI subscribe only to their own fields, so they do not run on
+telemetry updates. Three.js and Ammo objects stay outside both stores.
 
 `src/ui.ts` owns HUD formatting, DOM bindings, menus, and status/error rendering;
 `src/drift-tuning.ts` binds tuning inputs to profile updates. UI events update the
@@ -259,7 +267,7 @@ the keyboard controls. The first connected standard-mapped controller is used.
 | X / Square (west face button)        | Tap to toggle headlights; hold 1 second to toggle fog lights        |
 | L1 / LB                              | Flash high beams; hold 1 second to toggle high beams on/off         |
 | R3 (right-stick click, hold)         | Look behind; move right stick to pan; release to return            |
-| B / Circle (east face button)        | Toggle the bird's-eye map view (once per press)                    |
+| B / Circle (east face button)        | Dismiss a nonfatal error; otherwise toggle the bird's-eye map view (once per press) |
 | RT + LT                              | Brakestand                                                         |
 | Start / Menu / Options               | Reset (once per press)                                             |
 | View / Select / Back                 | Cycle corner-aware chase, classic chase, in-cabin (once per press) |
@@ -739,6 +747,11 @@ Course controls are disabled during loading, and failures appear in the status
 message without navigating away. The selection is encoded in `?course=sweeper` or
 `?course=hilly-drift`, so links can open a particular course.
 
+Nonfatal status errors can be dismissed with their close button, **Escape**, or
+**B / Circle** on a controller. Dismissing an error does not also toggle the map
+or close an open dialog. Fatal startup/runtime errors and graphics-context loss
+cannot be dismissed; reload the page to restart.
+
 The driving corridor is textured asphalt with an 80 cm paved shoulder; everything
 outside it is textured dirt/gravel. Both receive shadows and headlights.
 Each wheel checks its physics contact against the course corridor: dirt/gravel has
@@ -881,17 +894,17 @@ Browser autoplay and background-tab suspension policies still apply.
 Press **S** to turn on the stereo, illuminate its green display with a soft green
 glow on the nearby console, and stream
 [SomaFM Groove Salad](https://somafm.com/groovesalad.pls) by default. Settings
-**Stereo station** lists Groove Salad,
-[Metal Detector](https://somafm.com/metal.pls), and
-[Secret Agent](https://somafm.com/secretagent.pls). Changing stations while powered on
-switches the live stream immediately; while off, it selects what **S** will play.
-The choice is saved in the URL as `?station=groovesalad`, `?station=metal`, or
-`?station=secretagent`.
-With a `station` query parameter, the stereo attempts to play that station on load.
+**Stereo station** includes **Off**, Groove Salad, Secret Agent, Vaporwaves,
+Heavyweight Reggae, Underground 80s, and Metal Detector. Selecting a station
+powers on the stereo and switches the live stream immediately; selecting **Off**
+stops playback. The choice is saved in the URL using the station's display ID,
+such as `?station=grvesald`, `?station=metal`, or `?station=scrtagnt`.
+With a station ID in the query parameter, the stereo attempts to play that station
+on load; `?station=off` explicitly keeps it off.
 If the browser blocks autoplay, a click or keypress retries playback without
 advancing the station. Without the parameter, the stereo stays off until requested.
 Streaming requires an internet connection. Each further **S** press selects
-the next station: Groove Salad → Metal Detector → Secret Agent → Off.
+the next station in menu order, followed by Off.
 The next press starts again at Groove Salad. Turning off stops the stream and
 extinguishes the green display and console light. Holding **S**
 does not repeatedly change stations.
@@ -900,8 +913,9 @@ subsequent presses select the previous / next station, with Off between the firs
 and last stations.
 During replay these buttons retain their previous / next lap controls.
 Settings **Sound: Off** mutes both the vehicle and stereo. Playback continues across
-car resets and course changes. Turning the stereo off removes the `station`
-parameter so it stays off after reloading. Stream failures
+car resets and course changes. Turning the stereo off with a keyboard/controller
+removes the `station` parameter; choosing **Off** in Settings saves `station=off`.
+Both keep it off after reloading. Stream failures
 appear in the status message and turn off the display; press **S** to retry.
 
 The four-stroke V6 voice combines combustion pulses, exhaust harmonics, and noise.

@@ -10,8 +10,9 @@ import {
   isMinimapOrientation,
   isMirrorResolution,
   isTimeOfDay,
-  type GameState,
-} from "./game-state";
+  type ConfigurationState,
+} from "./configuration-state";
+import type { GameState } from "./game-state";
 import {
   nextCustomPresetName,
   nextTuningPresetId,
@@ -303,7 +304,7 @@ export function bindLapRecorder(
     }
     const selected = lapRecorder.selectedRun ?? "";
     if (runs.value !== selected) runs.value = selected;
-  });
+  }, ["lapRecorder"]);
 }
 
 function writeTuningPresetQuery(mode: DriveMode, presetId: string | null) {
@@ -313,14 +314,14 @@ function writeTuningPresetQuery(mode: DriveMode, presetId: string | null) {
   history.replaceState(null, "", url);
 }
 
-function bindTuningPresets(store: Store<GameState>, reportError: (error: unknown) => void) {
+function bindTuningPresets(store: Store<ConfigurationState>, reportError: (error: unknown) => void) {
   const title = bindText("#tuning-preset-title");
   const presetsSelect = element<HTMLSelectElement>("#tuning-preset");
   const editInput = element<HTMLInputElement>("#tuning-preset-edit-name");
   const edit = element<HTMLButtonElement>("#tuning-preset-edit");
   const remove = element<HTMLButtonElement>("#tuning-preset-delete");
-  let renderedMode: GameState["driveMode"] | null = null;
-  let renderedPresets: GameState["tuningPresets"] | null = null;
+  let renderedMode: ConfigurationState["driveMode"] | null = null;
+  let renderedPresets: ConfigurationState["tuningPresets"] | null = null;
   let editingPresetId: string | null = null;
 
   const showNameEditor = (preset: TuningPreset) => {
@@ -490,7 +491,7 @@ function bindTuningPresets(store: Store<GameState>, reportError: (error: unknown
     const selectedPreset = modePresets.find(({ id }) => id === selectedPresetId);
     remove.disabled = !selectedPreset || selectedPreset.readonly === true;
     edit.disabled = !selectedPreset || selectedPreset.readonly === true;
-  });
+  }, ["driveMode", "tuningPresets", "selectedTuningPresets"]);
 }
 
 export function bindCoursePicker(
@@ -503,7 +504,7 @@ export function bindCoursePicker(
   ) => Promise<{ id: string; name: string }>,
   changeDirection: (reverse: boolean) => Promise<void>,
   reportError: (error: unknown) => void,
-  store: Store<GameState>,
+  store: Store<ConfigurationState>,
   saveCourse: (name: string) => CourseDefinition,
   deleteCourse: (id: string) => Promise<{ id: string; name: string }>,
   getCourseWeights: () => CourseGenerationWeights,
@@ -748,7 +749,45 @@ function bindCourseWeights(
   return refreshWeights;
 }
 
-export function bindGameUI(store: Store<GameState>, reportError: (error: unknown) => void) {
+export function bindStatusUI(store: Store<GameState>) {
+  const status = element("#status");
+  const statusText = bindText("#status-message");
+  const close = element<HTMLButtonElement>("#status-close");
+  const footer = element("footer");
+  const dismissError = () => {
+    const current = store.getState().status;
+    if (!current.visible || !current.error || current.fatal) return false;
+    if (document.activeElement === close) close.blur();
+    store.update({ status: { visible: false, error: false, message: "" } });
+    return true;
+  };
+  close.addEventListener("click", dismissError);
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape" || !dismissError()) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  }, true);
+  store.subscribe((state) => {
+    const current = state.status;
+    if (status.hidden === current.visible) status.hidden = !current.visible;
+    if (status.classList.contains("error") !== current.error)
+      status.classList.toggle("error", current.error);
+    const role = current.error ? "alert" : "status";
+    if (status.getAttribute("role") !== role) status.setAttribute("role", role);
+    close.hidden = !current.visible || !current.error || Boolean(current.fatal);
+    const loaded = !current.visible && !current.error;
+    if (footer.classList.contains("loaded") !== loaded) footer.classList.toggle("loaded", loaded);
+    statusText(current.message);
+  }, ["status"]);
+  return dismissError;
+}
+
+export function bindGameUI(
+  configuration: Store<ConfigurationState>,
+  game: Store<GameState>,
+  reportError: (error: unknown) => void,
+) {
+  const dismissError = bindStatusUI(game);
   bindCourseDisclosure();
   const speed = bindText("#speed");
   const gear = bindText("#gear");
@@ -757,12 +796,9 @@ export function bindGameUI(store: Store<GameState>, reportError: (error: unknown
   const current = bindText("#lap-current");
   const best = bindText("#lap-best");
   const controller = bindText("#controller-status");
-  const status = element("#status");
-  const statusText = bindText("#status");
-  const footer = element("footer");
   createDrivingTuning(
     element("#drift-tuning-sliders"),
-    store,
+    configuration,
     writeTuningPresetQuery,
     reportError,
   );
@@ -785,8 +821,9 @@ export function bindGameUI(store: Store<GameState>, reportError: (error: unknown
   function select<Value extends string>(
     selector: string,
     parameter: string,
-    read: (state: Readonly<GameState>) => Value,
-    write: (value: Value) => Partial<GameState>,
+    key: keyof ConfigurationState,
+    read: (state: Readonly<ConfigurationState>) => Value,
+    write: (value: Value) => Partial<ConfigurationState>,
     valid: (value: string) => value is Value,
   ) {
     const input = element<HTMLSelectElement>(selector);
@@ -796,29 +833,30 @@ export function bindGameUI(store: Store<GameState>, reportError: (error: unknown
         reportError(new Error(`Unknown ${parameter}: ${value}`));
         return;
       }
-      store.update(write(value));
+      configuration.update(write(value));
       const url = new URL(location.href);
       url.searchParams.set(parameter, input.value);
       if (parameter === "mirror-resolution") url.searchParams.delete("low-res-mirrors");
       if (parameter === "mode" && isDriveMode(value)) {
-        url.searchParams.set("preset", store.getState().selectedTuningPresets[value] ?? "custom");
+        url.searchParams.set("preset", configuration.getState().selectedTuningPresets[value] ?? "custom");
       }
       history.replaceState(null, "", url);
       input.blur();
     });
-    store.subscribe((state) => {
+    configuration.subscribe((state) => {
       const value = read(state);
       if (input.value !== value) input.value = value;
-    });
+    }, [key]);
   }
   const stationPicker = element<HTMLSelectElement>("#stereo-station");
   stationPicker.replaceChildren(
     new Option("Off", "off"),
     ...stereoStations.map(({ id, name }) => new Option(name, id)),
   );
-  select<GameState["stereoStation"]>(
+  select<ConfigurationState["stereoStation"]>(
     "#stereo-station",
     "station",
+    "stereoStation",
     (state) => state.stereoStation,
     (stereoStation) => ({ stereoStation }),
     isStereoStationSelection,
@@ -826,36 +864,41 @@ export function bindGameUI(store: Store<GameState>, reportError: (error: unknown
   select<DriveMode>(
     "#drive-mode",
     "mode",
+    "driveMode",
     (state) => state.driveMode,
     (driveMode) => ({ driveMode }),
     isDriveMode,
   );
-  bindTuningPresets(store, reportError);
-  select<GameState["cameraStyle"]>(
+  bindTuningPresets(configuration, reportError);
+  select<ConfigurationState["cameraStyle"]>(
     "#camera-style",
     "camera",
+    "cameraStyle",
     (state) => state.cameraStyle,
     (cameraStyle) => ({ cameraStyle }),
     isCameraStyle,
   );
-  select<GameState["timeOfDay"]>(
+  select<ConfigurationState["timeOfDay"]>(
     "#time-of-day",
     "time",
+    "timeOfDay",
     (state) => state.timeOfDay,
     (timeOfDay) => ({ timeOfDay }),
     isTimeOfDay,
   );
-  select<GameState["minimapOrientation"]>(
+  select<ConfigurationState["minimapOrientation"]>(
     "#minimap-orientation",
     "minimap",
+    "minimapOrientation",
     (state) => state.minimapOrientation,
     (minimapOrientation) => ({ minimapOrientation }),
     isMinimapOrientation,
   );
   const isToggle = (value: string): value is "on" | "off" => value === "on" || value === "off";
-  select<GameState["mirrorResolution"]>(
+  select<ConfigurationState["mirrorResolution"]>(
     "#mirror-resolution",
     "mirror-resolution",
+    "mirrorResolution",
     (state) => state.mirrorResolution,
     (mirrorResolution) => ({ mirrorResolution }),
     isMirrorResolution,
@@ -863,28 +906,32 @@ export function bindGameUI(store: Store<GameState>, reportError: (error: unknown
   select<"on" | "off">(
     "#cabin-head-motion",
     "head-motion",
+    "cabinHeadMotion",
     (state) => (state.cabinHeadMotion ? "on" : "off"),
     (value) => ({ cabinHeadMotion: value === "on" }),
     isToggle,
   );
-  select<GameState["coneMode"]>(
+  select<ConfigurationState["coneMode"]>(
     "#show-cones",
     "cones",
+    "coneMode",
     (state) => state.coneMode,
     (coneMode) => ({ coneMode }),
-    (value): value is GameState["coneMode"] =>
+    (value): value is ConfigurationState["coneMode"] =>
       value === "all" || value === "corners" || value === "off",
   );
-  select<GameState["turnSignMode"]>(
+  select<ConfigurationState["turnSignMode"]>(
     "#show-turn-signs",
     "signs",
+    "turnSignMode",
     (state) => state.turnSignMode,
     (turnSignMode) => ({ turnSignMode }),
     isTurnSignMode,
   );
-  select<GameState["ghostMode"]>(
+  select<ConfigurationState["ghostMode"]>(
     "#ghost-mode",
     "ghost",
+    "ghostMode",
     (state) => state.ghostMode,
     (ghostMode) => ({ ghostMode }),
     isGhostMode,
@@ -892,11 +939,12 @@ export function bindGameUI(store: Store<GameState>, reportError: (error: unknown
   select<"on" | "off">(
     "#show-grass",
     "grass",
+    "showGrass",
     (state) => (state.showGrass ? "on" : "off"),
     (value) => ({ showGrass: value === "on" }),
     isToggle,
   );
-  const focus = () => store.update({ focused: document.hasFocus() && !document.hidden });
+  const focus = () => game.update({ focused: document.hasFocus() && !document.hidden });
   window.addEventListener("focus", focus);
   window.addEventListener("blur", focus);
   document.addEventListener("visibilitychange", focus);
@@ -904,12 +952,24 @@ export function bindGameUI(store: Store<GameState>, reportError: (error: unknown
   const sound = element<HTMLSelectElement>("#sound");
   const soundStatus = bindText("#sound-status");
   const telemetryPanel = element(".telemetry");
-  store.subscribe((state) => {
+  configuration.subscribe((state) => {
     // The cabin camera shows the car's own working gauges instead.
     telemetryPanel.hidden = state.cameraStyle === "cabin";
     const chaseView = state.cameraStyle !== "cabin";
     if (document.body.classList.contains("chase-view") !== chaseView)
       document.body.classList.toggle("chase-view", chaseView);
+  }, ["cameraStyle"]);
+  configuration.subscribe(({ muted }) => {
+    const soundValue = muted ? "off" : "on";
+    if (sound.value !== soundValue) sound.value = soundValue;
+  }, ["muted"]);
+  game.subscribe(({ sound: state }) => {
+    sound.disabled = state.failed;
+    soundStatus(
+      state.failed ? `Sound unavailable: ${state.error ?? "Reload to retry."}` : "",
+    );
+  }, ["sound"]);
+  game.subscribe((state) => {
     const t = state.telemetry;
     const mph = String(Math.round(Math.abs(t.speed) / 0.44704));
     speed(mph);
@@ -919,20 +979,6 @@ export function bindGameUI(store: Store<GameState>, reportError: (error: unknown
     current(formatLapTime(t.lap ? t.current : null));
     best(formatLapTime(t.best));
     controller(state.controllerStatus);
-    const soundValue = state.sound.muted ? "off" : "on";
-    if (sound.value !== soundValue) sound.value = soundValue;
-    sound.disabled = state.sound.failed;
-    soundStatus(
-      state.sound.failed ? `Sound unavailable: ${state.sound.error ?? "Reload to retry."}` : "",
-    );
-    if (status.hidden === state.status.visible) status.hidden = !state.status.visible;
-    if (status.classList.contains("error") !== state.status.error)
-      status.classList.toggle("error", state.status.error);
-    const role = state.status.error ? "alert" : "status";
-    if (status.getAttribute("role") !== role) status.setAttribute("role", role);
-    const loaded = !state.status.visible && !state.status.error;
-    if (footer.classList.contains("loaded") !== loaded) footer.classList.toggle("loaded", loaded);
-    statusText(state.status.message);
-  });
-  return { getCourseWeights, setCourseWeights };
+  }, ["telemetry", "controllerStatus"]);
+  return { getCourseWeights, setCourseWeights, dismissError };
 }

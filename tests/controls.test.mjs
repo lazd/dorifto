@@ -41,7 +41,7 @@ function rig(t) {
   const controls = new DrivingControls();
   return {
     controls, pad, document, listeners,
-    poll(ms = 0, enabled = true) { now += ms; controls.poll(enabled); },
+    poll(ms = 0, enabled = true, dismissError) { now += ms; controls.poll(enabled, 0, dismissError); },
     lightButton(pressed, keyboard = false) {
       if (keyboard) {
         if (pressed) controls.keys.add('KeyF');
@@ -163,6 +163,47 @@ test('combined inputs share a hold and disconnect cancels a pending lighting req
   r.poll(10);
   assert.equal(r.controls.highBeams, false);
   assert.equal(r.controls.lightingRequested, null, 'disconnect is not an intentional release');
+});
+
+test('Xbox B consumes error dismissal once per press instead of toggling the map', (t) => {
+  const r = rig(t);
+  let visible = true;
+  let requests = 0;
+  const dismiss = () => {
+    requests++;
+    if (!visible) return false;
+    visible = false;
+    return true;
+  };
+  r.pad.buttons[1] = { pressed: true };
+  r.poll(0, false, dismiss);
+  assert.equal(visible, false, 'errors can be dismissed while a dialog blocks driving');
+  assert.equal(r.controls.mapView, false);
+  r.poll(0, true, dismiss);
+  assert.equal(requests, 1, 'holding B does not toggle the map after dismissal');
+  r.pad.buttons[1].pressed = false;
+  r.poll(0, true, dismiss);
+  r.pad.buttons[1].pressed = true;
+  r.poll(0, true, dismiss);
+  assert.equal(requests, 2);
+  assert.equal(r.controls.mapView, true, 'normal map action resumes on the next press');
+});
+
+test('unfocused or hidden pages cannot dismiss errors with Xbox B', (t) => {
+  const r = rig(t);
+  let requests = 0;
+  const dismiss = () => { requests++; return true; };
+  r.listeners.blur();
+  r.pad.buttons[1] = { pressed: true };
+  r.poll(0, true, dismiss);
+  assert.equal(requests, 0);
+  r.pad.buttons[1].pressed = false;
+  r.poll(0, true, dismiss);
+  r.listeners.focus();
+  r.document.hidden = true;
+  r.pad.buttons[1].pressed = true;
+  r.poll(0, true, dismiss);
+  assert.equal(requests, 0);
 });
 
 test('Xbox B still toggles the map and RB still operates the e-brake', (t) => {

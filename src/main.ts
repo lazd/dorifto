@@ -4,15 +4,16 @@ import { loadCar } from './car';
 import { DrivingControls, updateVehicleLights } from './controls';
 import { createCourse } from './course';
 import { courses, courseSpawn, generateCourse, readCourseReverse, type CourseDefinition } from './courses';
-import { generateCustomCourse, readCourseWeights, writeCourseWeights, type CourseGenerationWeights } from './course-generation';
+import { courseGenerationFields, defaultCourseWeights, generateCustomCourse, readCourseWeights, writeCourseWeights, type CourseGenerationWeights } from './course-generation';
 import { isDriveMode } from './drive-modes';
 import { LapTimer, formatLapTime } from './laps';
 import { VehicleAudio } from './audio';
 import { CarStereo, isStereoStationSelection } from './stereo';
 import {
-  createGameState, defaultTuningPresets, isCameraStyle, isGhostMode, isMinimapOrientation, isTimeOfDay,
-  readMirrorResolution, type SavedRunOption,
-} from './game-state';
+  createConfigurationState, defaultTuningPresets, isCameraStyle, isGhostMode, isMinimapOrientation, isTimeOfDay,
+  readMirrorResolution, type ConfigurationState,
+} from './configuration-state';
+import { createGameState, type SavedRunOption } from './game-state';
 import { loadTuningPresets } from './tuning-presets';
 import { deleteSavedCourse, loadSavedCourses, saveCourse } from './saved-courses';
 import { bindGameUI, bindGameActions, bindCoursePicker, bindLapRecorder, element } from './ui';
@@ -32,52 +33,66 @@ import {
 import './style.css';
 
 const gameState = createGameState();
-const ui = bindGameUI(gameState, showError);
+const configurationState = createConfigurationState();
+const ui = bindGameUI(configurationState, gameState, (error) => showError(error, false));
 
 async function start() {
-  gameState.update({ tuningPresets: loadTuningPresets(localStorage, defaultTuningPresets()) });
-  const requestedCamera = new URL(location.href).searchParams.get('camera') ?? 'corner';
-  if (!isCameraStyle(requestedCamera)) throw new Error(`Unknown camera style: ${requestedCamera}`);
-  const requestedMode = new URL(location.href).searchParams.get('mode') ?? 'drift';
-  if (!isDriveMode(requestedMode)) throw new Error(`Unknown drive mode: ${requestedMode}`);
-  const requestedStation = new URL(location.href).searchParams.get('station') ?? 'off';
-  if (!isStereoStationSelection(requestedStation)) throw new Error(`Unknown stereo station: ${requestedStation}`);
-  gameState.update({ stereoStation: requestedStation });
+  configurationState.update({ tuningPresets: loadTuningPresets(localStorage, defaultTuningPresets()) });
+  // Invalid URL parameters are not fatal: drop them and use the default.
+  const readParams = <Value>(names: string[], read: (params: URLSearchParams) => Value, fallback: Value): Value => {
+    try {
+      return read(new URL(location.href).searchParams);
+    } catch (error) {
+      console.warn(`Ignoring invalid URL option ${names.join(', ')}:`, error);
+      const url = new URL(location.href);
+      for (const name of names) url.searchParams.delete(name);
+      history.replaceState(null, '', url);
+      return fallback;
+    }
+  };
+  const readOption = <Value extends string>(
+    name: string, fallback: Value, valid: (value: string) => value is Value,
+  ): Value => readParams([name], (params) => {
+    const value = params.get(name);
+    if (value === null) return fallback;
+    if (!valid(value)) throw new Error(`Invalid ${name} option: ${value}`);
+    return value;
+  }, fallback);
+  const requestedCamera = readOption('camera', 'corner', isCameraStyle);
+  const requestedMode = readOption('mode', 'drift', isDriveMode);
+  const requestedStation = readOption('station', 'off', isStereoStationSelection);
+  configurationState.update({ stereoStation: requestedStation });
   const requestedPresetId = new URL(location.href).searchParams.get('preset') ?? `${requestedMode}-default`;
   const matchedPreset = requestedPresetId === 'custom' ? null
-    : gameState.getState().tuningPresets.find(({ id, mode }) =>
+    : configurationState.getState().tuningPresets.find(({ id, mode }) =>
       id === requestedPresetId && mode === requestedMode);
   const requestedPreset = requestedPresetId !== 'custom' && !matchedPreset
-    ? gameState.getState().tuningPresets.find(({ id }) => id === `${requestedMode}-default`)
+    ? configurationState.getState().tuningPresets.find(({ id }) => id === `${requestedMode}-default`)
     : matchedPreset;
   const resolvedPresetId = requestedPreset?.id ?? (requestedPresetId === 'custom' ? 'custom' : `${requestedMode}-default`);
   const selectedTuningPresets = {
-    ...gameState.getState().selectedTuningPresets,
+    ...configurationState.getState().selectedTuningPresets,
     [requestedMode]: requestedPreset?.id ?? null,
   };
   const profiles = requestedPreset
-    ? { ...gameState.getState().profiles, [requestedMode]: { ...requestedPreset.tuning } }
-    : gameState.getState().profiles;
-  const requestedMinimap = new URL(location.href).searchParams.get('minimap') ?? gameState.getState().minimapOrientation;
-  if (!isMinimapOrientation(requestedMinimap)) throw new Error(`Unknown map orientation: ${requestedMinimap}`);
-  const readToggle = (name: string) => {
-    const value = new URL(location.href).searchParams.get(name) ?? 'on';
-    if (value !== 'on' && value !== 'off') throw new Error(`Invalid ${name} option: ${value}`);
-    return value === 'on';
-  };
-  const coneMode = new URL(location.href).searchParams.get('cones') ?? gameState.getState().coneMode;
-  if (coneMode !== 'all' && coneMode !== 'on' && coneMode !== 'corners' && coneMode !== 'off')
-    throw new Error(`Invalid cones option: ${coneMode}`);
+    ? { ...configurationState.getState().profiles, [requestedMode]: { ...requestedPreset.tuning } }
+    : configurationState.getState().profiles;
+  const requestedMinimap = readOption('minimap', configurationState.getState().minimapOrientation, isMinimapOrientation);
+  const readToggle = (name: string) => readOption(name, 'on', (value): value is 'on' | 'off' =>
+    value === 'on' || value === 'off') === 'on';
+  const coneMode = readOption('cones', configurationState.getState().coneMode,
+    (value): value is ConfigurationState['coneMode'] | 'on' =>
+      value === 'all' || value === 'on' || value === 'corners' || value === 'off');
   const requestedConeMode = coneMode === 'on' ? 'all' : coneMode;
-  const requestedGhost = new URL(location.href).searchParams.get('ghost') ?? 'fastest';
-  if (!isGhostMode(requestedGhost)) throw new Error(`Invalid ghost option: ${requestedGhost}`);
-  gameState.update({
+  const requestedGhost = readOption('ghost', 'fastest', isGhostMode);
+  configurationState.update({
     driveMode: requestedMode, profiles, selectedTuningPresets, cameraStyle: requestedCamera,
     minimapOrientation: requestedMinimap,
     cabinHeadMotion: readToggle('head-motion'),
-    mirrorResolution: readMirrorResolution(new URL(location.href).searchParams),
+    mirrorResolution: readParams(['mirror-resolution', 'low-res-mirrors'], readMirrorResolution, 'low'),
     coneMode: requestedConeMode, showGrass: readToggle('grass'), ghostMode: requestedGhost,
-    turnSignMode: readTurnSignMode(new URL(location.href).searchParams.get('signs')),
+    turnSignMode: readParams(['signs'], (params) => readTurnSignMode(params.get('signs')), 'several'),
+    muted: !readToggle('sound'),
   });
   const presetUrl = new URL(location.href);
   if (presetUrl.searchParams.get('preset') !== resolvedPresetId) {
@@ -91,16 +106,24 @@ async function start() {
   }
   const courseUrl = new URL(location.href);
   const availableCourses = [...courses, ...loadSavedCourses(localStorage)];
-  const requestedCourse = courseUrl.searchParams.get('course');
-  const requestedReverse = readCourseReverse(courseUrl.searchParams);
-  const requestedWeights = requestedCourse === 'custom' ? readCourseWeights(courseUrl.searchParams)
+  const courseId = courseUrl.searchParams.get('course');
+  const requestedCourse = courseId === null || courseId === 'random' || courseId === 'custom'
+    || availableCourses.some((course) => course.id === courseId) ? courseId : null;
+  if (requestedCourse !== courseId) {
+    console.warn(`Ignoring unknown course: ${courseId}`);
+    courseUrl.searchParams.delete('course');
+    history.replaceState(null, '', courseUrl);
+  }
+  const requestedReverse = readParams(['reverse'], readCourseReverse, false);
+  const requestedWeights = requestedCourse === 'custom'
+    ? readParams(['hairpins', ...courseGenerationFields.map(({ key }) => key)], readCourseWeights, { ...defaultCourseWeights })
     : ui.getCourseWeights();
   ui.setCourseWeights(requestedWeights);
-  gameState.update({ courseReverse: requestedReverse });
+  configurationState.update({ courseReverse: requestedReverse });
   let seed = 0;
   if (requestedCourse === 'random' || requestedCourse === 'custom') {
-    const value = courseUrl.searchParams.get('seed');
-    if (value !== null && !/^\d{1,10}$/.test(value)) throw new Error(`Invalid course seed: ${value}`);
+    let value = courseUrl.searchParams.get('seed');
+    if (value !== null && !/^\d{1,10}$/.test(value)) value = null;
     seed = value === null ? crypto.getRandomValues(new Uint32Array(1))[0] : Number(value);
     courseUrl.searchParams.set('seed', String(seed));
     if (requestedCourse === 'custom') writeCourseWeights(courseUrl.searchParams, requestedWeights);
@@ -124,14 +147,13 @@ async function start() {
   const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 1500);
   camera.layers.enable(1);
   const lighting = createLighting(scene, renderer);
-  const requestedTime = new URL(location.href).searchParams.get('time') ?? 'noon';
-  if (!isTimeOfDay(requestedTime)) throw new Error(`Unknown time of day: ${requestedTime}`);
-  gameState.update({ timeOfDay: requestedTime });
+  const requestedTime = readOption('time', 'noon', isTimeOfDay);
+  configurationState.update({ timeOfDay: requestedTime });
   lighting.apply(requestedTime);
   // The upstream Emscripten factory writes to `this`; ESM calls have no receiver.
   const [Ammo, car] = await Promise.all([AmmoFactory.call({}), loadCar()]);
   // The picker may change while the model is loading.
-  const selectedTime = gameState.getState().timeOfDay;
+  const selectedTime = configurationState.getState().timeOfDay;
   lighting.apply(selectedTime);
   let vehicleLights = {
     headlights: selectedTime !== 'noon', fogLights: false, headlightsAtPress: false,
@@ -139,8 +161,10 @@ async function start() {
   let shownHeadlights = vehicleLights.headlights;
   car.setLighting(shownHeadlights, selectedTime === 'night');
   let appliedTime = selectedTime;
-  gameState.subscribe(({ timeOfDay, cameraStyle, mirrorResolution }) => {
+  configurationState.subscribe(({ cameraStyle, mirrorResolution }) => {
     car.setMirrors(cameraStyle, mirrorResolution);
+  }, ['cameraStyle', 'mirrorResolution']);
+  configurationState.subscribe(({ timeOfDay }) => {
     if (timeOfDay === appliedTime) return;
     appliedTime = timeOfDay;
     lighting.apply(timeOfDay);
@@ -149,19 +173,23 @@ async function start() {
     };
     shownHeadlights = vehicleLights.headlights;
     car.setLighting(shownHeadlights, timeOfDay === 'night');
-  });
+  }, ['timeOfDay']);
 
   scene.add(car.chassis, ...car.wheels, ...car.hubs);
   const ghost = createGhostCar(scene, car);
   const controls = new DrivingControls();
-  const audio = new VehicleAudio((sound) => {
-    gameState.update({ sound: { ...gameState.getState().sound, ...sound } });
+  const audio = new VehicleAudio(({ muted, ...sound }) => {
+    if (configurationState.getState().muted !== muted) configurationState.update({ muted });
+    const previous = gameState.getState().sound;
+    if (previous.running !== sound.running || previous.failed !== sound.failed) {
+      gameState.update({ sound: { ...previous, ...sound } });
+    }
   }, (error) => {
     console.error('Vehicle audio unavailable:', error);
     gameState.update({ sound: {
       ...gameState.getState().sound, error: error instanceof Error ? error.message : String(error),
     } });
-  }, new URL(location.href).searchParams.get('sound') === 'off');
+  }, configurationState.getState().muted);
   const stereo = new CarStereo((powered) => {
     car.setStereo(powered);
     const { status } = gameState.getState();
@@ -174,16 +202,20 @@ async function start() {
       visible: true, error: true,
       message: `Stereo unavailable: ${error instanceof Error ? error.message : String(error)} Press S to retry.`,
     } });
-  }, gameState.getState().sound.muted);
-  gameState.subscribe(({ stereoStation }) => {
+  }, configurationState.getState().muted);
+  configurationState.subscribe(({ stereoStation }) => {
     if (stereoStation === 'off') {
       stereo.turnOff();
       return;
     }
     stereo.setStation(stereoStation);
     car.setStereoStation(stereoStation);
-  });
-  if (requestedStation !== 'off') stereo.turnOn();
+    stereo.turnOn();
+  }, ['stereoStation']);
+  configurationState.subscribe(({ muted }) => {
+    audio.setMuted(muted);
+    stereo.setMuted(muted);
+  }, ['muted']);
   let dialogOpen = false;
   const keys = controls.keys;
   const controlKeys = new Set(['ArrowLeft', 'ArrowRight', 'KeyX', 'KeyZ', 'Space', 'KeyR', 'KeyC', 'KeyD', 'KeyM', 'KeyW', 'KeyS', 'KeyF', 'KeyH']);
@@ -198,10 +230,10 @@ async function start() {
     try {
       const spawn = courseSpawn(nextDefinition);
       const laps = new LapTimer(nextDefinition);
-      physics = createVehiclePhysics({ Ammo, resources: physicsResources, car, course, spawn, controls, gameState, laps });
+      physics = createVehiclePhysics({ Ammo, resources: physicsResources, car, course, spawn, controls, configurationState, laps });
       const conePhysics = physics.addPlugin((context) => createConePhysics(context, { course, audio }));
       const drivingCamera = createDrivingCamera(camera, car, controls, nextDefinition, course.terrain);
-      const { coneMode, showGrass, turnSignMode } = gameState.getState();
+      const { coneMode, showGrass, turnSignMode } = configurationState.getState();
       conePhysics.setEnabled(coneMode !== 'off', coneMode === 'corners');
       course.setTurnSignMode(turnSignMode);
       physics.addPlugin((context) => createTurnSignPhysics(context, course.turnSignGroups, audio));
@@ -220,11 +252,15 @@ async function start() {
   let { course, terrain, spawn, laps, physics, conePhysics, drivingCamera } = createCourseSession({ ...definition, reverse: requestedReverse });
   const minimap = createMinimap(element('#minimap'), definition);
   const { fixedStep } = physics;
-  gameState.subscribe(({ coneMode, showGrass, turnSignMode }) => {
+  configurationState.subscribe(({ coneMode }) => {
     conePhysics.setEnabled(coneMode !== 'off', coneMode === 'corners');
+  }, ['coneMode']);
+  configurationState.subscribe(({ turnSignMode }) => {
     course.setTurnSignMode(turnSignMode);
+  }, ['turnSignMode']);
+  configurationState.subscribe(({ showGrass }) => {
     terrain.grass.visible = showGrass;
-  });
+  }, ['showGrass']);
   const tireEffects = createTireEffects(scene, car, terrain, course.isAsphalt);
   const forward = new THREE.Vector3();
   const ghostForward = new THREE.Vector3();
@@ -418,7 +454,7 @@ async function start() {
   }
 
   function updateGhost(alpha: number) {
-    const mode = gameState.getState().ghostMode;
+    const mode = configurationState.getState().ghostMode;
     const source = mode === 'record' ? recordLap : run;
     const index = mode === 'record' ? laps.lap > 0 && recordLap ? 0 : null
       : !run || mode === 'off' || laps.lap < 2 ? null
@@ -431,7 +467,7 @@ async function start() {
     }
     source.read(source.lapStarts[index] + lapTime, ghostFrame);
     applyCarPose(ghostFrame, ghost.chassis, ghost.wheels);
-    ghost.fadeNear(car.chassis.position, gameState.getState().cameraStyle === 'cabin');
+    ghost.fadeNear(car.chassis.position, configurationState.getState().cameraStyle === 'cabin');
     ghost.visible = true;
   }
 
@@ -500,7 +536,8 @@ async function start() {
       activeDefinition = nextDefinition;
       storageKey = replayStorageKey({ ...nextDefinition, reverse });
       refreshSavedRuns();
-      gameState.update({ courseReverse: reverse, status: { visible: false, error: false, message: '' } });
+      configurationState.update({ courseReverse: reverse });
+      gameState.update({ status: { visible: false, error: false, message: '' } });
       await refreshRecordLap();
       return nextDefinition;
     } catch (error) {
@@ -526,7 +563,7 @@ async function start() {
       if ((id === 'random' || id === 'custom') && seed !== undefined) url.searchParams.set('seed', String(seed));
       else url.searchParams.delete('seed');
       writeCourseWeights(url.searchParams, id === 'custom' ? customWeights : undefined);
-    }, gameState.getState().courseReverse);
+    }, configurationState.getState().courseReverse);
   }
 
   async function changeCourseDirection(reverse: boolean) {
@@ -547,7 +584,8 @@ async function start() {
     if (reverse) url.searchParams.set('reverse', '1');
     else url.searchParams.delete('reverse');
     history.replaceState(null, '', url);
-    gameState.update({ courseReverse: reverse, status: { visible: false, error: false, message: '' } });
+    configurationState.update({ courseReverse: reverse });
+    gameState.update({ status: { visible: false, error: false, message: '' } });
     await refreshRecordLap();
   }
 
@@ -557,12 +595,12 @@ async function start() {
       visible: true, error: true,
       message: `Unable to change course: ${error instanceof Error ? error.message : String(error)}`,
     } });
-  }, gameState, (name) => {
+  }, configurationState, (name) => {
     const saved = saveCourse(localStorage, activeDefinition, name);
     availableCourses.push(saved);
     activeDefinition = saved;
     minimap.setCourse(saved);
-    storageKey = replayStorageKey({ ...saved, reverse: gameState.getState().courseReverse });
+    storageKey = replayStorageKey({ ...saved, reverse: configurationState.getState().courseReverse });
     ++recordLoad;
     if (recordLap)
       void saveRecordLap(storageKey, recordLap).catch((error) => reportLapError('Unable to save record lap:', error));
@@ -589,16 +627,16 @@ async function start() {
 
   function cycleCamera() {
     const styles = ['corner', 'classic', 'cabin'] as const;
-    const cameraStyle = styles[(styles.indexOf(gameState.getState().cameraStyle) + 1) % styles.length];
-    gameState.update({ cameraStyle });
+    const cameraStyle = styles[(styles.indexOf(configurationState.getState().cameraStyle) + 1) % styles.length];
+    configurationState.update({ cameraStyle });
     const url = new URL(location.href);
     url.searchParams.set('camera', cameraStyle);
     history.replaceState(null, '', url);
   }
 
   function toggleDriveMode() {
-    const driveMode = gameState.getState().driveMode === 'drift' ? 'grip' : 'drift';
-    gameState.update({ driveMode });
+    const driveMode = configurationState.getState().driveMode === 'drift' ? 'grip' : 'drift';
+    configurationState.update({ driveMode });
     const url = new URL(location.href);
     url.searchParams.set('mode', driveMode);
     history.replaceState(null, '', url);
@@ -606,8 +644,8 @@ async function start() {
 
   function cycleTimeOfDay() {
     const times = ['noon', 'sunset', 'night'] as const;
-    const timeOfDay = times[(times.indexOf(gameState.getState().timeOfDay) + 1) % times.length];
-    gameState.update({ timeOfDay });
+    const timeOfDay = times[(times.indexOf(configurationState.getState().timeOfDay) + 1) % times.length];
+    configurationState.update({ timeOfDay });
     const url = new URL(location.href);
     url.searchParams.set('time', timeOfDay);
     history.replaceState(null, '', url);
@@ -616,7 +654,7 @@ async function start() {
   function pressStereo(direction: 'previous' | 'next' = 'next') {
     const station = stereo.press(direction);
     const stereoStation = stereo.isPowered ? station : 'off';
-    gameState.update({ stereoStation });
+    configurationState.update({ stereoStation });
     const url = new URL(location.href);
     if (stereo.isPowered) url.searchParams.set('station', station);
     else url.searchParams.delete('station');
@@ -663,8 +701,7 @@ async function start() {
   });
   bindGameActions({
     sound: (muted) => {
-      audio.setMuted(muted);
-      stereo.setMuted(muted);
+      configurationState.update({ muted });
     },
     clearInput: () => controls.clear(),
     setUIOpen(open) {
@@ -702,13 +739,13 @@ async function start() {
     event.preventDefault();
     audio.silence();
     renderer.setAnimationLoop(null);
-    gameState.update({ status: { visible: true, error: true, message: 'Graphics context lost. Reload the page to restart.' } });
+    gameState.update({ status: { visible: true, error: true, fatal: true, message: 'Graphics context lost. Reload the page to restart.' } });
   });
 
   function frame(time: number) {
     if (changingCourse) return;
-    const { driveMode, profiles } = gameState.getState();
-    controls.poll(!dialogOpen, profiles[driveMode].steeringExpo);
+    const { driveMode, profiles } = configurationState.getState();
+    controls.poll(!dialogOpen, profiles[driveMode].steeringExpo, ui.dismissError);
     if (controls.lightingRequested && !replay) {
       vehicleLights = updateVehicleLights(vehicleLights, controls.lightingRequested);
     }
@@ -762,7 +799,7 @@ async function start() {
     );
     const spawnBrakeHeld = !replaying && physics.spawnBrakeHeld;
     audio.update({ drivetrain: engine, tires: replaying ? playbackFrame.tires : physics.tireSounds });
-    const cameraState = gameState.getState();
+    const cameraState = configurationState.getState();
     drivingCamera.update(dt, replayVelocity3d ?? physics.linearVelocity, cameraState.driveMode, cameraState.cameraStyle, reversing, cameraState.cabinHeadMotion);
     lighting.update(car.chassis.position, controls.mapView ? camera.far : undefined);
     forward.set(0, 0, 1).applyQuaternion(car.chassis.quaternion);
@@ -860,10 +897,10 @@ async function start() {
   });
 }
 
-function showError(error: unknown) {
+function showError(error: unknown, fatal = true) {
   console.error('Unable to run Dorifto:', error);
   gameState.update({ status: {
-    visible: true, error: true,
+    visible: true, error: true, fatal,
     message: `Unable to run the demo: ${error instanceof Error ? error.message : String(error)}. Check the console and reload to retry.`,
   } });
 }

@@ -57,6 +57,7 @@ export class CarStereo {
     muted = false,
   ) {
     this.audio.preload = "none";
+    this.audio.setAttribute("referrerpolicy", "no-referrer");
     this.audio.muted = muted;
     this.audio.addEventListener("error", () => {
       this.fail(new Error(this.audio.error?.message || `${this.station.name} stream unavailable.`));

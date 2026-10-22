@@ -4,7 +4,7 @@ import { Reflector } from "three/addons/objects/Reflector.js";
 import { RectAreaLightUniformsLib } from "three/addons/lights/RectAreaLightUniformsLib.js";
 import { ConvexHull } from "three/addons/math/ConvexHull.js";
 import { idleRpm, redlineRpm } from "./drivetrain";
-import type { GameState } from "./game-state";
+import type { ConfigurationState } from "./configuration-state";
 import { clockText, createSegmentedDisplay, mapDisplaySurface } from "./segmented-display";
 
 type StandardMesh = THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>;
@@ -539,7 +539,7 @@ export async function loadCar() {
   }
 
   // Replace the flat mirror-glass mesh with live planar reflections.
-  let mirrorResolution: GameState["mirrorResolution"] = "low";
+  let mirrorResolution: ConfigurationState["mirrorResolution"] = "low";
   let mirrorsEnabled = false;
   const inactiveMirrorMaterial = new THREE.MeshStandardMaterial({
     color: 0xdde4ee,
@@ -943,7 +943,7 @@ export async function loadCar() {
     updateClock(date: Date) {
       clockReadout.setText(clockText(date));
     },
-    setMirrors(cameraStyle: GameState["cameraStyle"], resolution: GameState["mirrorResolution"]) {
+    setMirrors(cameraStyle: ConfigurationState["cameraStyle"], resolution: ConfigurationState["mirrorResolution"]) {
       mirrorResolution = resolution;
       mirrorsEnabled = cameraStyle === "cabin" && resolution !== "off";
       for (const { mirror, reflectionMaterial } of mirrorMounts) {

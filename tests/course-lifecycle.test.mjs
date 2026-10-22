@@ -9,7 +9,7 @@ let Ammo;
 let createVehiclePhysics;
 let createPhysicsResources;
 let createConePhysics;
-let createGameState;
+let createConfigurationState;
 let courses;
 let courseCornerAt;
 let courseRoute;
@@ -21,7 +21,7 @@ before(async () => {
   });
   ({ createVehiclePhysics, createPhysicsResources } = await server.ssrLoadModule('/src/vehicle-physics.ts'));
   ({ createConePhysics } = await server.ssrLoadModule('/src/cone-physics.ts'));
-  ({ createGameState } = await server.ssrLoadModule('/src/game-state.ts'));
+  ({ createConfigurationState } = await server.ssrLoadModule('/src/configuration-state.ts'));
   ({ courses, courseCornerAt, courseRoute } = await server.ssrLoadModule('/src/courses.ts'));
   Ammo = await AmmoFactory.call({});
 });
@@ -78,7 +78,7 @@ test('replaces real Ammo worlds while reusing car assets and heightfields and fr
     setReversing() {},
     setHazards() {},
   };
-  const gameState = createGameState();
+  const configurationState = createConfigurationState();
   const controls = { throttle: 0, brake: 0, reverse: 0, steer: 0, handbrake: false };
   const audio = { hitCone() {} };
   const laps = { reset() {}, update() {}, hitCone() {} };
@@ -122,7 +122,7 @@ test('replaces real Ammo worlds while reusing car assets and heightfields and fr
         isAsphalt: () => true,
       };
       const next = createVehiclePhysics({
-        Ammo, resources, car, controls, gameState, laps,
+        Ammo, resources, car, controls, configurationState, laps,
         spawn: { position: [i, 0], heading: i * 0.2 },
         course,
       });

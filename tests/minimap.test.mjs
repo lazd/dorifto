@@ -14,7 +14,7 @@ let createMinimapLayout;
 let createMinimap;
 let minimapMarkerTransform;
 let minimapViewTransform;
-let createGameState;
+let createConfigurationState;
 let isMinimapOrientation;
 let isMirrorResolution;
 let readMirrorResolution;
@@ -27,8 +27,8 @@ before(async () => {
   ({ courses, courseRoute, courseSpawn, startDistance, generateCourse } = await server.ssrLoadModule('/src/courses.ts'));
   ({ generateCustomCourse, defaultCourseWeights } = await server.ssrLoadModule('/src/course-generation.ts'));
   ({ createMinimap, createMinimapLayout, minimapMarkerTransform, minimapViewTransform } = await server.ssrLoadModule('/src/minimap.ts'));
-  ({ createGameState, isMinimapOrientation, isMirrorResolution, readMirrorResolution } =
-    await server.ssrLoadModule('/src/game-state.ts'));
+  ({ createConfigurationState, isMinimapOrientation, isMirrorResolution, readMirrorResolution } =
+    await server.ssrLoadModule('/src/configuration-state.ts'));
 });
 
 after(async () => {
@@ -146,13 +146,13 @@ test('marker tracks actual position, including off-track, and points in each wor
 });
 
 test('map orientation defaults to follow heading and validates setting values', () => {
-  assert.equal(createGameState().getState().minimapOrientation, 'heading-up');
+  assert.equal(createConfigurationState().getState().minimapOrientation, 'heading-up');
   for (const value of ['north-up', 'heading-up']) assert.equal(isMinimapOrientation(value), true);
   for (const value of ['', 'north', 'heading', 'on']) assert.equal(isMinimapOrientation(value), false);
 });
 
 test('performance settings default to low-resolution mirrors and corner-only cones', () => {
-  const state = createGameState().getState();
+  const state = createConfigurationState().getState();
   assert.equal(state.mirrorResolution, 'low');
   assert.equal(state.coneMode, 'corners');
 });

@@ -1,5 +1,5 @@
 import { courseRoute, startDistance, type CourseDefinition } from './courses';
-import type { GameState } from './game-state';
+import type { ConfigurationState } from './configuration-state';
 
 const size = 180;
 const padding = 16;
@@ -59,14 +59,14 @@ function headingAngle(forward: MapPoint) {
   return Math.atan2(forward.x, -forward.z) * 180 / Math.PI;
 }
 
-export function minimapViewTransform(forward: MapPoint, orientation: GameState['minimapOrientation']) {
+export function minimapViewTransform(forward: MapPoint, orientation: ConfigurationState['minimapOrientation']) {
   return orientation === 'north-up' ? '' :
     `translate(${size / 2} ${size / 2}) rotate(${(-headingAngle(forward)).toFixed(2)}) scale(${headingUpScale}) translate(${-size / 2} ${-size / 2})`;
 }
 
 export function minimapMarkerTransform(
   layout: ReturnType<typeof createMinimapLayout>, position: MapPoint, forward: MapPoint,
-  orientation: GameState['minimapOrientation'] = 'north-up',
+  orientation: ConfigurationState['minimapOrientation'] = 'north-up',
 ) {
   const { x, y } = layout.project(position);
   const angle = headingAngle(forward);
@@ -116,7 +116,7 @@ export function createMinimap(container: HTMLElement, definition: CourseDefiniti
   return {
     setCourse,
     update(
-      position: MapPoint, forward: MapPoint, orientation: GameState['minimapOrientation'],
+      position: MapPoint, forward: MapPoint, orientation: ConfigurationState['minimapOrientation'],
       ghost?: { position: MapPoint; forward: MapPoint } | null,
     ) {
       map.setAttribute('transform', minimapViewTransform(forward, orientation));

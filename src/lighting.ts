@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import type { GameState } from './game-state';
+import type { ConfigurationState } from './configuration-state';
 import { createCloudLayer } from './clouds';
 
 const daylight = {
@@ -56,7 +56,7 @@ export function createLighting(scene: THREE.Scene, renderer: THREE.WebGLRenderer
   scene.add(sun, sun.target);
 
   const paintClouds = createCloudLayer(1024, 512);
-  const createSky = (time: GameState['timeOfDay']) => {
+  const createSky = (time: ConfigurationState['timeOfDay']) => {
     const skyCanvas = document.createElement('canvas');
     skyCanvas.width = 2048;
     skyCanvas.height = 1024;
@@ -119,7 +119,7 @@ export function createLighting(scene: THREE.Scene, renderer: THREE.WebGLRenderer
     night: createSky('night'),
   };
   pmrem.dispose();
-  const applyTimeOfDay = (time: GameState['timeOfDay']) => {
+  const applyTimeOfDay = (time: ConfigurationState['timeOfDay']) => {
     const preset = daylight[time];
     scene.background = skies[time].sky;
     scene.environment = skies[time].environment;

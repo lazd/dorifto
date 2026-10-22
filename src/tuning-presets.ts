@@ -1,5 +1,5 @@
 import { isDriveMode, type DriveMode } from './drive-modes';
-import type { DrivingTuning } from './game-state';
+import type { DrivingTuning } from './configuration-state';
 
 export interface TuningPreset {
   id: string;

@@ -5,9 +5,9 @@ import type { createCourse } from './course';
 import type { courseSpawn } from './courses';
 import type { DrivingControls } from './controls';
 import type { LapTimer } from './laps';
-import type { GameState } from './game-state';
+import type { ConfigurationState } from './configuration-state';
 import type { Store } from './store';
-import { wattsPerHorsepower } from './game-state';
+import { wattsPerHorsepower } from './configuration-state';
 import { driveModes } from './drive-modes';
 import { Drivetrain, wheelInertia, type DrivetrainInput } from './drivetrain';
 import { vehicleSettings } from './vehicle-settings';
@@ -25,7 +25,7 @@ interface VehiclePhysicsOptions {
   course: ReturnType<typeof createCourse>;
   spawn: ReturnType<typeof courseSpawn>;
   controls: DrivingControls;
-  gameState: Store<GameState>;
+  configurationState: Store<ConfigurationState>;
   laps: LapTimer;
 }
 
@@ -53,7 +53,7 @@ export function createPhysicsResources(Ammo: typeof AmmoFactory) {
 }
 
 export function createVehiclePhysics({
-  Ammo, resources, car, course, spawn, controls, gameState, laps,
+  Ammo, resources, car, course, spawn, controls, configurationState, laps,
 }: VehiclePhysicsOptions) {
   const { terrain, isAsphalt } = course;
   const settings = vehicleSettings;
@@ -290,7 +290,7 @@ export function createVehiclePhysics({
   }
 
   function step() {
-    const { driveMode, profiles } = gameState.getState();
+    const { driveMode, profiles } = configurationState.getState();
     const tune = driveModes[driveMode];
     const tireTune = profiles[driveMode];
     const linear = body.getLinearVelocity();

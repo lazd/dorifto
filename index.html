@@ -4,11 +4,23 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#10191f" />
+    <meta name="referrer" content="no-referrer" />
     <title>Dorifto — Z32 Playground</title>
   </head>
   <body>
     <div id="app"></div>
-    <div id="status" role="status">Starting physics & loading the Z32…</div>
+    <div id="status" role="status">
+      <span id="status-message"></span>
+      <button
+        id="status-close"
+        type="button"
+        aria-label="Dismiss error"
+        title="Dismiss error (Escape / B)"
+        hidden
+      >
+        ×
+      </button>
+    </div>
     <aside class="course-hud" aria-label="Course map and options">
       <button
         id="minimap"
@@ -225,12 +237,7 @@
           >
             Racetracks
           </button>
-          <button
-            id="courses-saved-tab"
-            type="button"
-            role="tab"
-            aria-controls="courses-saved"
-          >
+          <button id="courses-saved-tab" type="button" role="tab" aria-controls="courses-saved">
             Saved courses
           </button>
         </div>
@@ -250,12 +257,7 @@
         >
           <div class="course-grid"></div>
         </div>
-        <div
-          id="courses-saved"
-          role="tabpanel"
-          aria-labelledby="courses-saved-tab"
-          tabindex="0"
-        >
+        <div id="courses-saved" role="tabpanel" aria-labelledby="courses-saved-tab" tabindex="0">
           <p id="courses-saved-empty">
             No saved courses yet. Generate a random or custom course, then save it from the course
             menu.
@@ -454,7 +456,10 @@
         <dt><kbd>F</kbd> (hold)</dt>
         <dd>Flash high beams; hold 1 second to toggle high beams on/off</dd>
         <dt><kbd>H</kbd></dt>
-        <dd>Headlights on immediately; tap to toggle (off also turns fog lights off); hold 1 second to toggle fog lights with headlights on</dd>
+        <dd>
+          Headlights on immediately; tap to toggle (off also turns fog lights off); hold 1 second to
+          toggle fog lights with headlights on
+        </dd>
         <dt><kbd>R</kbd></dt>
         <dd>Reset car, cones, effects, and lap timing</dd>
         <dt><kbd>C</kbd></dt>
@@ -486,7 +491,10 @@
         <dt>R1 / RB</dt>
         <dd>Handbrake</dd>
         <dt>X / Square (west face button)</dt>
-        <dd>Headlights on immediately; tap to toggle (off also turns fog lights off); hold 1 second to toggle fog lights with headlights on</dd>
+        <dd>
+          Headlights on immediately; tap to toggle (off also turns fog lights off); hold 1 second to
+          toggle fog lights with headlights on
+        </dd>
         <dt>L1 / LB (hold)</dt>
         <dd>Flash high beams; hold 1 second to toggle high beams on/off</dd>
         <dt>R3 (hold)</dt>

@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { courseRoute, type CourseDefinition } from "./courses";
 import { driveModes, type DriveMode } from "./drive-modes";
-import type { GameState } from "./game-state";
+import type { ConfigurationState } from "./configuration-state";
 import type { DrivingControls } from "./controls";
 import type { CourseTerrain } from "./terrain";
 import type { loadCar } from "./car";
@@ -51,7 +51,7 @@ export function createDrivingCamera(
   const cabinTilt = new THREE.Quaternion();
   const cabinTiltAngles = new THREE.Euler();
   let hasCabinVelocity = false;
-  let previousCameraStyle: GameState["cameraStyle"] | null = null;
+  let previousCameraStyle: ConfigurationState["cameraStyle"] | null = null;
   const previousTravel = new THREE.Vector3();
   const cameraRight = new THREE.Vector3();
   const cornerTarget = new THREE.Vector3();
@@ -147,7 +147,7 @@ export function createDrivingCamera(
     dt: number,
     velocity: THREE.Vector3,
     driveMode: DriveMode,
-    cameraStyle: GameState["cameraStyle"],
+    cameraStyle: ConfigurationState["cameraStyle"],
     reversing: boolean,
     cabinHeadMotion = true,
   ) {
