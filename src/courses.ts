@@ -9,6 +9,15 @@ const spawnDistance = 30;
 export interface CourseDefinition {
   id: string;
   name: string;
+  venueName?: string;
+  configName?: string;
+  location?: {
+    city: string;
+    state: string;
+    country: string;
+    lat: number;
+    lon: number;
+  };
   width: number;
   coneSpacing?: number;
   flat?: boolean;
@@ -25,6 +34,7 @@ export interface CourseDefinition {
    * its start (t = 0). Replaces the procedural terrain height along the course.
    */
   elevation?: readonly number[];
+  elevationSource?: string;
 }
 
 /** Periodic linear interpolation of an elevation profile at a forward route fraction. */

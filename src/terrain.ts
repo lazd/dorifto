@@ -38,6 +38,22 @@ export class CourseTerrain {
       const bend = Math.atan2(before.z * after.x - before.x * after.z, before.dot(after));
       return { a, b, bank: -THREE.MathUtils.clamp(bend / 10 * 2.5, -0.065, 0.065) };
     });
+    if (definition.elevation) {
+      // GPS stitching can introduce tiny S-bends. Spread banking transitions over
+      // 50 m so those bends do not produce opposing ramps across the road.
+      const bankRadius = Math.max(1, Math.round(25 / (length / count)));
+      const banks = this.segments.map(({ bank }) => bank);
+      this.segments.forEach((segment, i) => {
+        let weightedBank = 0;
+        let totalWeight = 0;
+        for (let offset = -bankRadius; offset <= bankRadius; offset++) {
+          const weight = bankRadius + 1 - Math.abs(offset);
+          weightedBank += banks[THREE.MathUtils.euclideanModulo(i + offset, count)] * weight;
+          totalWeight += weight;
+        }
+        segment.bank = weightedBank / totalWeight;
+      });
+    }
     const bounds = new THREE.Box3().setFromPoints(this.segments.map((segment) => segment.a));
     const profile = definition.elevation;
     const surroundings = profile && profileSurroundings(this.segments.map(({ a }, i) =>

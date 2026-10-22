@@ -216,13 +216,33 @@ checks, including a multi-seed sweep. Run `npm run build` to type-check and buil
 
 `npm run import-track -- src/trackImports/*.json` converts recorded-lap track JSON
 into course files in `src/tracks/`, which appear automatically in the course picker.
+`display_name` becomes the course `name` (falling back to `slug` if absent);
+`venue_name` and `config_name` are stored as optional `venueName` and `configName`.
+The optional `location` object retains `city`, `state`, `country`, `lat`, and `lon`.
+`blurb` is not imported.
 `featured_lap.points` (lat/lon) is projected to meters around the lap's centroid
 (north up, east right in the map view) and resampled every 8 m; a gap between the
 last fix and the start is bridged straight. `elevation.points` (`dist_frac`,
 `altitude_m`) becomes a smoothed road-height profile along the route, and the
-surrounding terrain is interpolated from nearby course heights. Tracks with no
-elevation data get a flat road. Options: `--width <m>` (default 15),
+surrounding terrain is interpolated from nearby course heights. The last and first
+100 m of elevation are joined with a height- and grade-matched curve before
+smoothing, preventing recording endpoint mismatches from forming a start/finish
+bump (the transition is shortened for very small loops). When elevation
+points are absent or empty, the importer fetches terrain heights from the
+[USGS 3DEP Elevation Point Query Service](https://apps.nationalmap.gov/epqs/)
+at 10 m intervals along the GPS lap, including the closing segment. Supplied
+elevation profiles are preserved; invalid supplied profiles and failed or missing
+USGS results stop the import instead of silently producing a flat road.
+Fetched profiles are cached locally in `src/trackImports/elevation-cache/`, keyed
+by the sampled GPS coordinates, so unchanged laps can be re-imported offline.
+Remove a track's cache file to refresh its elevation. Generated courses identify
+fetched data with `elevationSource: "USGS 3DEP"`. These are terrain estimates, not
+surveyed road heights; coverage and source resolution vary by location.
+Options: `--width <m>` (default 15),
 `--spacing <m>` (default 8), and `--out-dir <dir>`.
+
+Imported-track terrain banking is blended over 50 m around the closed loop, preventing small
+GPS stitching S-bends from creating abrupt cross-slope bumps at start/finish.
 
 ## Controls
 
