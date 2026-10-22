@@ -498,10 +498,16 @@ input:not([type="range"]):not(:disabled):not(:focus):hover,
   border-color: #9ee8d5;
 }
 button:focus-visible,
+button:focus-visible:active,
 select:focus-visible,
-input:focus-visible {
+select:focus-visible:active,
+input:focus-visible,
+input:focus-visible:active {
   outline: 2px solid #9ee8d5;
   outline-offset: 2px;
+}
+input:not([type="range"]):not([type="checkbox"]):not([type="radio"]):focus:not(:focus-visible) {
+  border-color: #9ee8d5;
 }
 .credit {
   font-size: 10px;
@@ -660,19 +666,21 @@ dialog h2 {
   border-spacing: 0 10px;
   font-size: 14px;
 }
-.settings-controls label {
+.settings-controls .settings-control-row {
   display: table-row;
 }
-.settings-controls label > span,
-.settings-controls label > select {
+.settings-controls label,
+.settings-controls .settings-control-row > select,
+.settings-controls .settings-control-row > input {
   display: table-cell;
   vertical-align: middle;
 }
-.settings-controls label > span {
+.settings-controls label {
   padding-right: 12px;
   text-align: right;
 }
-.settings-controls label > select {
+.settings-controls .settings-control-row > select,
+.settings-controls .settings-control-row > input {
   text-align: left;
 }
 .settings-controls #sound-status:not(:empty) {

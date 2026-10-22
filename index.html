@@ -161,13 +161,13 @@
       <h2 id="drift-tuning-title" tabindex="-1" autofocus>Tuning</h2>
       <p id="drift-tuning-mode" role="status"></p>
       <div class="settings-controls">
-        <label
-          ><span>Drive mode</span>
+        <div class="settings-control-row">
+          <label for="drive-mode">Drive mode</label>
           <select id="drive-mode">
             <option value="grip">Grip</option>
             <option value="drift" selected>Drift</option>
           </select>
-        </label>
+        </div>
       </div>
       <section class="settings-group" aria-labelledby="tuning-preset-title">
         <h3 id="tuning-preset-title">Drift tuning presets</h3>
@@ -342,99 +342,99 @@
       <section class="settings-group" aria-labelledby="settings-game-title">
         <h3 id="settings-game-title">Game</h3>
         <div class="settings-controls">
-          <label
-            ><span>Sound</span>
+          <div class="settings-control-row">
+            <label for="sound">Sound</label>
             <select id="sound">
               <option value="on" selected>On</option>
               <option value="off">Off</option>
             </select>
-          </label>
+          </div>
           <p id="sound-status" role="status"></p>
-          <label
-            ><span>Stereo station</span>
+          <div class="settings-control-row">
+            <label for="stereo-station">Stereo station</label>
             <select id="stereo-station"></select>
-          </label>
-          <label
-            ><span>Time of day</span>
+          </div>
+          <div class="settings-control-row">
+            <label for="time-of-day">Time of day</label>
             <select id="time-of-day">
               <option value="noon">Noon</option>
               <option value="sunset">Sunset</option>
               <option value="night">Night</option>
-            </select></label
-          >
-          <label
-            ><span>Map orientation</span>
+            </select>
+          </div>
+          <div class="settings-control-row">
+            <label for="minimap-orientation">Map orientation</label>
             <select id="minimap-orientation">
               <option value="north-up">North up</option>
               <option value="heading-up" selected>Follow heading</option>
-            </select></label
-          >
-          <label
-            ><span>Ghost car</span>
+            </select>
+          </div>
+          <div class="settings-control-row">
+            <label for="ghost-mode">Ghost car</label>
             <select id="ghost-mode">
               <option value="fastest">Fastest lap</option>
               <option value="previous">Previous lap</option>
               <option value="record">Record lap</option>
               <option value="off">Off</option>
-            </select></label
-          >
+            </select>
+          </div>
         </div>
       </section>
       <section class="settings-group" aria-labelledby="settings-camera-title">
         <h3 id="settings-camera-title">Camera</h3>
         <div class="settings-controls">
-          <label
-            ><span>Camera style</span>
+          <div class="settings-control-row">
+            <label for="camera-style">Camera style</label>
             <select id="camera-style">
               <option value="corner">Corner-aware chase</option>
               <option value="classic">Classic chase</option>
               <option value="cabin">In-cabin</option>
-            </select></label
-          >
-          <label
-            ><span>Mirror resolution</span>
+            </select>
+          </div>
+          <div class="settings-control-row">
+            <label for="mirror-resolution">Mirror resolution</label>
             <select id="mirror-resolution">
               <option value="low" selected>Low (512 × 256)</option>
               <option value="medium">Medium (1024 × 512)</option>
               <option value="high">High (full resolution)</option>
-            </select></label
-          >
-          <label
-            ><span>Cabin head motion</span>
+            </select>
+          </div>
+          <div class="settings-control-row">
+            <label for="cabin-head-motion">Cabin head motion</label>
             <select id="cabin-head-motion">
               <option value="on">On</option>
               <option value="off">Off</option>
-            </select></label
-          >
+            </select>
+          </div>
         </div>
       </section>
       <section class="settings-group" aria-labelledby="settings-map-title">
         <h3 id="settings-map-title">Map</h3>
         <div class="settings-controls">
-          <label
-            ><span>Cones</span>
+          <div class="settings-control-row">
+            <label for="show-cones">Cones</label>
             <select id="show-cones">
               <option value="all">On</option>
               <option value="corners" selected>Corners only</option>
               <option value="off">Off</option>
-            </select></label
-          >
-          <label
-            ><span>Turn Signs</span>
+            </select>
+          </div>
+          <div class="settings-control-row">
+            <label for="show-turn-signs">Turn Signs</label>
             <select id="show-turn-signs">
               <option value="off">Off</option>
               <option value="few">Few</option>
               <option value="several">Several</option>
               <option value="many">Many</option>
-            </select></label
-          >
-          <label
-            ><span>Grass Tufts</span>
+            </select>
+          </div>
+          <div class="settings-control-row">
+            <label for="show-grass">Grass Tufts</label>
             <select id="show-grass">
               <option value="on">On</option>
               <option value="off">Off</option>
-            </select></label
-          >
+            </select>
+          </div>
         </div>
       </section>
     </dialog>
