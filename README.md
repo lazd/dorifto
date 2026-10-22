@@ -135,18 +135,18 @@ Click **Help** to open the keyboard/controller controls dialog; close it with
 Close or Escape. Driving inputs are disabled while the dialog is open, but the
 simulation continues. Settings remains in the main footer.
 
-| Key | Action |
-| --- | --- |
-| Left / right arrows | Steer |
-| Z | Accelerate (rear-wheel drive) |
-| X (hold) | Brake, then reverse near a stop |
-| X + Z | Brakestand (front brakes hold, rear tires spin) |
-| Space | Lock the rear wheels / initiate a slide |
-| R | Reset the car, cones, smoke, and tire marks |
-| C | Cycle corner-aware chase, classic chase, in-cabin (once per press) |
-| D | Toggle Grip / Drift mode (once per press) |
-| M | Toggle the bird's-eye map view of the whole course |
-| W | Cycle Noon / Sunset / Night (once per press) |
+| Key                 | Action                                                             |
+| ------------------- | ------------------------------------------------------------------ |
+| Left / right arrows | Steer                                                              |
+| Z                   | Accelerate (rear-wheel drive)                                      |
+| X (hold)            | Brake, then reverse near a stop                                    |
+| X + Z               | Brakestand (front brakes hold, rear tires spin)                    |
+| Space               | Lock the rear wheels / initiate a slide                            |
+| R                   | Reset the car, cones, smoke, and tire marks                        |
+| C                   | Cycle corner-aware chase, classic chase, in-cabin (once per press) |
+| D                   | Toggle Grip / Drift mode (once per press)                          |
+| M                   | Toggle the bird's-eye map view of the whole course                 |
+| W                   | Cycle Noon / Sunset / Night (once per press)                       |
 
 Map view switches instantly in both directions, without an animated camera flight.
 
@@ -157,20 +157,20 @@ The native Gamepad API requires localhost or HTTPS; browser/OS support determine
 which controllers expose the `standard` mapping. Connection status appears below
 the keyboard controls. The first connected standard-mapped controller is used.
 
-| Controller input | Action |
-| --- | --- |
-| R2 / RT | Analog accelerator |
-| L2 / LT | Analog brake; reverse near a stop |
-| Left stick horizontal | Analog steering |
-| Right stick | Small camera orbit/height adjustment; release to recenter |
-| R1 / RB or Xbox X (west face button) | Handbrake |
-| R3 (right-stick click, hold) | Look behind; release to return |
-| B / Circle (east face button) | Toggle the bird's-eye map view (once per press) |
-| RT + LT | Brakestand |
-| Start / Menu / Options | Reset (once per press) |
-| View / Select / Back | Cycle corner-aware chase, classic chase, in-cabin (once per press) |
-| Y / Triangle (north face button) | Toggle Grip / Drift mode (once per press) |
-| D-pad Left | Cycle Noon / Sunset / Night (once per press) |
+| Controller input                     | Action                                                             |
+| ------------------------------------ | ------------------------------------------------------------------ |
+| R2 / RT                              | Analog accelerator                                                 |
+| L2 / LT                              | Analog brake; reverse near a stop                                  |
+| Left stick horizontal                | Analog steering                                                    |
+| Right stick                          | Small camera orbit/height adjustment; release to recenter          |
+| R1 / RB or Xbox X (west face button) | Handbrake                                                          |
+| R3 (right-stick click, hold)         | Look behind; release to return                                     |
+| B / Circle (east face button)        | Toggle the bird's-eye map view (once per press)                    |
+| RT + LT                              | Brakestand                                                         |
+| Start / Menu / Options               | Reset (once per press)                                             |
+| View / Select / Back                 | Cycle corner-aware chase, classic chase, in-cabin (once per press) |
+| Y / Triangle (north face button)     | Toggle Grip / Drift mode (once per press)                          |
+| D-pad Left                           | Cycle Noon / Sunset / Night (once per press)                       |
 
 Both triggers together allow brakestand behavior only below 4 km/h. LT alone brakes forward
 motion, then engages reverse only near a stop; release LT to leave reverse.
@@ -627,22 +627,27 @@ feature as well as its shape. A closed circuit still needs connecting bends, and
 connecting sections can remain straight even with a zero straightaway preference.
 Length is a distance target, not a weight: the generator fits the feature mix
 within 5% of that target without shrinking corners below the safety limit.
-Short layouts may use smaller connecting bends to leave room for the requested features.
+Short layouts use somewhat smaller sweepers and kinks to leave room for straights.
 
-| Preference | Default | Effect |
-| --- | --- | --- |
-| Course length | 2.0 km | Targets a lap between 1 and 5 km. |
-| Elevation change | 0.50 | Scales climbs, descents, and banking. Zero makes the entire terrain flat; one targets up to 20 m centerline relief, capped at 12% grade. |
-| Straightaways | 0.50 | Lengthens uninterrupted straights and the gaps between corner sequences. |
-| Tight corners | 0.35 | Adds sharp bends and tight switchbacks, typically around 28–40 m radius. This also controls hairpins; there is no separate hairpin preference. |
-| Sweeping corners | 0.70 | Adds broad, flowing bends around 95–135 m radius. |
-| Chicanes | 0.35 | Adds closely spaced, alternating left-right bends. |
+| Preference       | Default | Effect                                                                                                                                         |
+| ---------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| Course length    | 2.0 km  | Targets a lap between 1 and 5 km.                                                                                                              |
+| Elevation change | 0.50    | Scales climbs, descents, and banking. Zero makes the entire terrain flat; one targets up to 20 m centerline relief, capped at 12% grade.       |
+| Straightaways    | 0.50    | Lengthens the main straight and the straights between corner complexes, with fewer complexes per lap.                                          |
+| Tight corners    | 0.35    | Adds 90° corners and 155–185° hairpins, typically around 25–40 m radius. This also controls hairpins; there is no separate hairpin preference. |
+| Sweeping corners | 0.70    | Adds broad, flowing bends around 95–140 m radius, plus more high-speed kinks.                                                                  |
+| Chicanes         | 0.35    | Adds tight left-right chicanes and longer two- or three-bend esses.                                                                            |
 
-Custom layouts start from irregular polygons with randomized proportions and
-inward bends rather than two parallel sides and semicircular ends. Fixed-radius
-fillets round their corners; chicanes and switchbacks are distributed among
-available connecting sections, with turns in both directions. The shared closed
-B-spline smooths the tangent-connected straights and arcs.
+Custom layouts are assembled like real road courses: a main straight followed by
+a shuffled sequence of corner complexes (hairpins, 90° corners, medium corners,
+double apexes, sweepers, kinks, esses, and chicanes) joined by straights, with
+roughly one complex every 220–450 m. Every lap has at least four real corners,
+and at least 70° of cornering turns against the lap direction, so the outline
+folds back on itself rather than forming an oval or convex blob. Corner order is
+shuffled until the running heading stays within one lap plus a fold, avoiding
+spirals. Straight lengths are then solved so the loop closes exactly at the
+target distance. The shared closed B-spline smooths the tangent-connected
+straights and arcs.
 Layouts retain the 17.5 m road width and
 clearance checks, but allow centerline radii down to 22 m for tighter features.
 Length (in metres), all five preferences, and the seed are stored in the URL, for example
@@ -685,13 +690,13 @@ reverse ratio do not depend on horsepower or wheel radius. Forward ratios are
 specified directly in `src/drivetrain.ts`:
 
 | Gear | Ratio |
-| --- | --- |
-| 1 | 2.97 |
-| 2 | 2.10 |
-| 3 | 1.46 |
-| 4 | 1.00 |
-| 5 | 0.80 |
-| 6 | 0.63 |
+| ---- | ----- |
+| 1    | 2.97  |
+| 2    | 2.10  |
+| 3    | 1.46  |
+| 4    | 1.00  |
+| 5    | 0.80  |
+| 6    | 0.63  |
 
 The transmission always uses Sport behavior in both Grip and Drift; there is no
 transmission selector. The TCU uses actual engine RPM: upshifts at 7,200 RPM and

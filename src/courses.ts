@@ -65,29 +65,33 @@ export function courseTurns(route: THREE.Curve<THREE.Vector3>) {
   const length = route.getLength();
   const count = Math.ceil(length / 2);
   const spacing = length / count;
-  const bends = Array.from({ length: count }, (_, i) => {
-    const before = route.getTangentAt(THREE.MathUtils.euclideanModulo((i * spacing - 6) / length, 1));
-    const after = route.getTangentAt(((i * spacing + 6) / length) % 1);
-    return Math.atan2(before.z * after.x - before.x * after.z, before.dot(after));
+  // Signed curvature (1 / radius) sampled every ~2 m.
+  const curvature = Array.from({ length: count }, (_, i) => {
+    const before = route.getTangentAt(THREE.MathUtils.euclideanModulo((i * spacing - 4) / length, 1));
+    const after = route.getTangentAt(((i * spacing + 4) / length) % 1);
+    return Math.atan2(before.z * after.x - before.x * after.z, before.dot(after)) / 8;
   });
-  const candidates = bends.map((bend, i) => ({ bend, i }))
-    .filter(({ bend, i }) => Math.abs(bend) > 12 / 35
-      && Math.abs(bend) >= Math.abs(bends[(i + count - 1) % count])
-      && Math.abs(bend) > Math.abs(bends[(i + 1) % count]))
-    .sort((a, b) => Math.abs(b.bend) - Math.abs(a.bend));
+  const at = (i: number) => curvature[THREE.MathUtils.euclideanModulo(i, count)];
+  const bending = (i: number) => Math.abs(at(i)) > 1 / 100;
+  const straight = curvature.findIndex((_, i) => !bending(i));
+  if (straight < 0) return [];
+  // A turn is a sustained bend that changes heading by 45 degrees and tightens below a 70 m radius.
   const turns: { distance: number; direction: number }[] = [];
-  for (const { bend, i } of candidates) {
-    let approach = i;
-    while (i - approach < count / 2) {
-      const previous = bends[(approach - 1 + count) % count];
-      if (Math.sign(previous) !== Math.sign(bend) || Math.abs(previous) < 12 / 45) break;
-      approach--;
+  for (let entry = straight + 1; entry <= straight + count; entry++) {
+    if (!bending(entry) || (bending(entry - 1) && Math.sign(at(entry - 1)) === Math.sign(at(entry)))) continue;
+    const direction = Math.sign(at(entry));
+    let heading = 0;
+    let peak = 0;
+    for (let i = entry; bending(i) && Math.sign(at(i)) === direction && i - entry < count; i++) {
+      heading += Math.abs(at(i)) * spacing;
+      peak = Math.max(peak, Math.abs(at(i)));
     }
-    const distance = THREE.MathUtils.euclideanModulo(approach * spacing - 12, length);
+    if (heading < Math.PI / 4 || peak < 1 / 70) continue;
+    const distance = THREE.MathUtils.euclideanModulo(entry * spacing - 4, length);
     if (turns.every((turn) => {
       const gap = Math.abs(turn.distance - distance);
       return Math.min(gap, length - gap) > 24;
-    })) turns.push({ distance, direction: Math.sign(bend) });
+    })) turns.push({ distance, direction });
   }
   return turns.sort((a, b) => a.distance - b.distance);
 }

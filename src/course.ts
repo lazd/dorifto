@@ -3,6 +3,7 @@ import type { CourseDefinition } from './courses';
 import { courseCornerAt, courseRoute, courseTurns, startDistance } from './courses';
 import { surfaceMaterial } from './surfaces';
 import { CourseTerrain } from './terrain';
+import { createTurnSignFactory } from './turn-sign';
 
 export const coneDimensions = {
   height: 0.595,
@@ -199,44 +200,47 @@ function buildCourse(scene: THREE.Group, definition: CourseDefinition) {
       scene.add(tile);
     }
   }
-  const arrows = [false, true].map((reverse) => {
+  const turnSignGroups = [false, true].map((reverse) => {
     const group = new THREE.Group();
-    group.name = reverse ? 'reverse-turn-arrows' : 'forward-turn-arrows';
-    const arrowRoute = reverse ? courseRoute({ ...definition, reverse: true }) : route;
-    for (const { distance, direction } of courseTurns(arrowRoute)) {
-      const arrowShape = new THREE.Shape();
-      const points = [
-        [-0.25, -2], [0.25, -2], [0.25, 0.25], [1.1, 0.25],
-        [1.1, -0.3], [2.1, 0.6], [1.1, 1.5], [1.1, 0.95], [-0.25, 0.95],
-      ];
-      points.forEach(([x, y], i) => {
-        if (i === 0) arrowShape.moveTo(-direction * x, y);
-        else arrowShape.lineTo(-direction * x, y);
-      });
-      arrowShape.closePath();
-      const arrowGeometry = new THREE.ShapeGeometry(arrowShape);
-      const t = distance / arrowRoute.getLength();
-      const position = arrowRoute.getPointAt(t);
-      const tangent = arrowRoute.getTangentAt(t);
-      const arrow = new THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>(arrowGeometry, white);
-      arrow.rotation.set(-Math.PI / 2, 0, Math.atan2(-tangent.x, -tangent.z));
-      arrow.position.copy(position).setY(0.02);
-      arrow.updateMatrix();
-      const geometry = arrow.geometry.clone().applyMatrix4(arrow.matrix);
-      arrow.geometry.dispose();
-      arrow.geometry = terrain.projectGeometry(geometry, 0.02);
-      geometry.dispose();
-      arrow.position.set(0, 0, 0);
-      arrow.rotation.set(0, 0, 0);
-      group.add(arrow);
+    group.name = reverse ? 'reverse-turn-signs' : 'forward-turn-signs';
+    const signRoute = reverse ? courseRoute({ ...definition, reverse: true }) : route;
+    const turns = courseTurns(signRoute);
+    if (!turns.length) {
+      scene.add(group);
+      return group;
+    }
+    const createSign = createTurnSignFactory();
+    for (const { distance, direction } of turns) {
+      for (const approachOffset of [-6, 0, 6]) {
+        const signDistance = THREE.MathUtils.euclideanModulo(distance + approachOffset, signRoute.getLength());
+        const t = signDistance / signRoute.getLength();
+        const position = signRoute.getPointAt(t);
+        const tangent = signRoute.getTangentAt(t);
+        across.set(tangent.z, 0, -tangent.x).normalize();
+        position.addScaledVector(across, -direction * (definition.width / 2 + 3.5));
+
+        const sign = createSign(direction);
+        sign.position.copy(position);
+        sign.position.y = terrain.heightAt(position.x, position.z);
+        sign.rotation.y = Math.atan2(-tangent.x, -tangent.z);
+        group.add(sign);
+      }
     }
     scene.add(group);
     return group;
   });
+  let turnSignsEnabled = true;
+  let directionReverse = definition.reverse ?? false;
   function setDirection(reverse: boolean) {
-    arrows.forEach((group, i) => {
-      group.visible = i === Number(reverse);
+    directionReverse = reverse;
+    turnSignGroups.forEach((group, i) => {
+      group.visible = turnSignsEnabled && i === Number(reverse);
     });
+  }
+  function setTurnSignsEnabled(enabled: boolean) {
+    if (enabled === turnSignsEnabled) return;
+    turnSignsEnabled = enabled;
+    setDirection(directionReverse);
   }
   setDirection(definition.reverse ?? false);
   const curbRed = new THREE.MeshStandardMaterial({ color: 0xbc2823, roughness: 0.85, side: THREE.DoubleSide });
@@ -270,6 +274,7 @@ function buildCourse(scene: THREE.Group, definition: CourseDefinition) {
     cornerCones,
     terrain,
     setDirection,
+    setTurnSignsEnabled,
     isAsphalt: (position: THREE.Vector3) => terrain.isAsphalt(position),
   };
 }
