@@ -1,4 +1,5 @@
 :root {
+  --header-padding: 20px;
   font-family: ui-sans-serif, system-ui, sans-serif;
   color: #eef6f5;
   background: #10191f;
@@ -372,7 +373,7 @@ header {
   left: 0;
   right: 0;
   top: 0;
-  padding: 20px;
+  padding: var(--header-padding);
 }
 footer {
   left: 0;
@@ -652,8 +653,8 @@ dialog h2 {
 .lap-recorder {
   position: fixed;
   z-index: 2;
-  left: 28px;
-  bottom: 28px;
+  left: var(--header-padding);
+  bottom: var(--header-padding);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -665,8 +666,8 @@ dialog h2 {
 .chase-view .lap-recorder {
   left: auto;
   bottom: auto;
-  right: 28px;
-  top: 28px;
+  right: var(--header-padding);
+  top: var(--header-padding);
   flex-direction: row-reverse;
 }
 #lap-recorder-button {
@@ -732,14 +733,4 @@ dialog h2 {
 .editable-picker select {
   margin: 0;
   max-width: 300px;
-}
-@media (max-width: 800px), (max-height: 600px) {
-  .lap-recorder {
-    left: 12px;
-    bottom: 12px;
-  }
-  .chase-view .lap-recorder {
-    right: 12px;
-    top: 12px;
-  }
 }
