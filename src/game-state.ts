@@ -3,6 +3,7 @@ import { idleRpm } from './drivetrain';
 import { createStore } from './store';
 import { defaultCourseWeights, type CourseGenerationWeights } from './course-generation';
 import type { TurnSignMode } from './turn-sign';
+import { loadTuningPresets, type TuningPreset } from './tuning-presets';
 
 export const wattsPerHorsepower = 745.699872;
 
@@ -39,9 +40,28 @@ export function defaultTuning(mode: DriveMode) {
 }
 
 export type DrivingTuning = Readonly<ReturnType<typeof defaultTuning>>;
+export type { TuningPreset } from './tuning-presets';
+
+export function defaultTuningPresets(): TuningPreset[] {
+  return [
+    { id: 'drift-default', name: 'Default', mode: 'drift', readonly: true, tuning: defaultTuning('drift') },
+    {
+      id: 'drift-aggressive', name: 'Aggressive', mode: 'drift',
+      readonly: true,
+      tuning: {
+        horsepower: 515, steeringExpo: 0.6, steeringRate: 2.8, steeringScale: 1.03,
+        frontGrip: 1.05, rearGrip: 1, frontStiffness: 45000, rearStiffness: 43000,
+      },
+    },
+    { id: 'grip-default', name: 'Default', mode: 'grip', readonly: true, tuning: defaultTuning('grip') },
+  ];
+}
+
 export interface GameState {
   driveMode: DriveMode;
   profiles: Readonly<Record<DriveMode, DrivingTuning>>;
+  selectedTuningPresets: Readonly<Record<DriveMode, string | null>>;
+  tuningPresets: readonly TuningPreset[];
   cameraStyle: 'corner' | 'classic' | 'cabin';
   cabinHeadMotion: boolean;
   minimapOrientation: 'north-up' | 'heading-up';
@@ -71,10 +91,15 @@ export interface GameState {
   }>;
 }
 
-export function createGameState() {
+export function createGameState(storage?: Storage) {
+  const tuningPresets = storage
+    ? loadTuningPresets(storage, defaultTuningPresets())
+    : defaultTuningPresets();
   const store = createStore<GameState>({
     driveMode: 'drift',
     profiles: { drift: defaultTuning('drift'), grip: defaultTuning('grip') },
+    selectedTuningPresets: { drift: 'drift-default', grip: 'grip-default' },
+    tuningPresets,
     cameraStyle: 'corner', timeOfDay: 'noon', helpOpen: false, tuningOpen: false, settingsOpen: false,
     minimapOrientation: 'north-up', cabinHeadMotion: true,
     customCourseOpen: false, courseMenuOpen: false, courseWeights: { ...defaultCourseWeights },

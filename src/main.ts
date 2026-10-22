@@ -8,7 +8,11 @@ import { generateCustomCourse, readCourseWeights, writeCourseWeights, type Cours
 import { isDriveMode } from './drive-modes';
 import { LapTimer, formatLapTime } from './laps';
 import { VehicleAudio } from './audio';
-import { createGameState, isCameraStyle, isGhostMode, isMinimapOrientation, isTimeOfDay, type SavedRunOption } from './game-state';
+import {
+  createGameState, defaultTuningPresets, isCameraStyle, isGhostMode, isMinimapOrientation, isTimeOfDay,
+  type SavedRunOption,
+} from './game-state';
+import { loadTuningPresets } from './tuning-presets';
 import { bindGameUI, bindGameActions, bindCoursePicker, bindLapRecorder, element } from './ui';
 import { createDrivingCamera } from './camera';
 import { createLighting } from './lighting';
@@ -29,10 +33,26 @@ const gameState = createGameState();
 bindGameUI(gameState, showError);
 
 async function start() {
+  gameState.update({ tuningPresets: loadTuningPresets(localStorage, defaultTuningPresets()) });
   const requestedCamera = new URL(location.href).searchParams.get('camera') ?? 'corner';
   if (!isCameraStyle(requestedCamera)) throw new Error(`Unknown camera style: ${requestedCamera}`);
   const requestedMode = new URL(location.href).searchParams.get('mode') ?? 'drift';
   if (!isDriveMode(requestedMode)) throw new Error(`Unknown drive mode: ${requestedMode}`);
+  const requestedPresetId = new URL(location.href).searchParams.get('preset') ?? `${requestedMode}-default`;
+  const matchedPreset = requestedPresetId === 'custom' ? null
+    : gameState.getState().tuningPresets.find(({ id, mode }) =>
+      id === requestedPresetId && mode === requestedMode);
+  const requestedPreset = requestedPresetId !== 'custom' && !matchedPreset
+    ? gameState.getState().tuningPresets.find(({ id }) => id === `${requestedMode}-default`)
+    : matchedPreset;
+  const resolvedPresetId = requestedPreset?.id ?? (requestedPresetId === 'custom' ? 'custom' : `${requestedMode}-default`);
+  const selectedTuningPresets = {
+    ...gameState.getState().selectedTuningPresets,
+    [requestedMode]: requestedPreset?.id ?? null,
+  };
+  const profiles = requestedPreset
+    ? { ...gameState.getState().profiles, [requestedMode]: { ...requestedPreset.tuning } }
+    : gameState.getState().profiles;
   const requestedMinimap = new URL(location.href).searchParams.get('minimap') ?? 'north-up';
   if (!isMinimapOrientation(requestedMinimap)) throw new Error(`Unknown map orientation: ${requestedMinimap}`);
   const readToggle = (name: string) => {
@@ -47,12 +67,17 @@ async function start() {
   const requestedGhost = new URL(location.href).searchParams.get('ghost') ?? 'fastest';
   if (!isGhostMode(requestedGhost)) throw new Error(`Invalid ghost option: ${requestedGhost}`);
   gameState.update({
-    driveMode: requestedMode, cameraStyle: requestedCamera,
+    driveMode: requestedMode, profiles, selectedTuningPresets, cameraStyle: requestedCamera,
     minimapOrientation: requestedMinimap,
     cabinHeadMotion: readToggle('head-motion'),
     coneMode: requestedConeMode, showGrass: readToggle('grass'), ghostMode: requestedGhost,
     turnSignMode: readTurnSignMode(new URL(location.href).searchParams.get('signs')),
   });
+  const presetUrl = new URL(location.href);
+  if (presetUrl.searchParams.get('preset') !== resolvedPresetId) {
+    presetUrl.searchParams.set('preset', resolvedPresetId);
+    history.replaceState(null, '', presetUrl);
+  }
   const settingsUrl = new URL(location.href);
   if (settingsUrl.searchParams.has('transmission')) {
     settingsUrl.searchParams.delete('transmission');

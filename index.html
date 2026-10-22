@@ -44,15 +44,22 @@
           </label>
           <button
             id="custom-course"
+            class="keycap"
             type="button"
             aria-haspopup="dialog"
             aria-controls="custom-course-dialog"
             disabled
           >
-            <kbd>Custom course</kbd>
+            Custom course
           </button>
-          <button id="random-course" type="button" title="Generate a new course" disabled>
-            <kbd>Random course</kbd>
+          <button
+            id="random-course"
+            class="keycap"
+            type="button"
+            title="Generate a new course"
+            disabled
+          >
+            Random course
           </button>
         </div>
       </div>
@@ -62,10 +69,16 @@
         <span class="lap-recorder-icon" aria-hidden="true"></span>
         <span id="lap-recorder-label">REC</span>
       </button>
-      <span class="lap-replay-picker">
+      <span class="editable-picker">
         <select id="lap-replay-run" aria-label="Saved laps to replay"></select>
-        <button id="lap-replay-delete" type="button" aria-label="Delete saved laps" title="Delete saved laps">
-          <kbd>🗑️</kbd>
+        <button
+          id="lap-replay-delete"
+          class="keycap"
+          type="button"
+          aria-label="Delete saved laps"
+          title="Delete saved laps"
+        >
+          🗑️
         </button>
       </span>
     </div>
@@ -98,19 +111,48 @@
         <button type="submit" aria-label="Close" title="Close">×</button>
       </form>
       <h2 id="drift-tuning-title" tabindex="-1" autofocus>Tuning</h2>
-      <p>
-        Changes apply immediately to the selected drive mode. Each mode keeps separate settings. Try
-        raising rear peak grip if the rear steps out too quickly.
-      </p>
       <p id="drift-tuning-mode" role="status"></p>
-      <fieldset id="drift-tuning-sliders">
-        <legend>Engine, steering, tire grip and response</legend>
-      </fieldset>
-      <button id="drift-tuning-reset" type="button"><kbd>Restore defaults</kbd></button>
-      <p>
-        Front/rear peak factors multiply the active mode's base friction independently. Restore
-        defaults resets only this mode. Car reset keeps your tuning; reloading restores defaults.
-      </p>
+      <div class="settings-controls">
+        <label
+          ><span>Drive mode</span>
+          <select id="drive-mode">
+            <option value="grip">Grip</option>
+            <option value="drift" selected>Drift</option>
+          </select>
+        </label>
+      </div>
+      <section class="settings-group" aria-labelledby="tuning-preset-title">
+        <h3 id="tuning-preset-title">Drift tuning presets</h3>
+        <div class="editable-picker tuning-preset-picker">
+          <select id="tuning-preset" aria-label="Drift tuning preset"></select>
+          <input
+            id="tuning-preset-edit-name"
+            type="text"
+            maxlength="32"
+            aria-label="Rename tuning preset"
+            hidden
+          />
+          <button
+            id="tuning-preset-edit"
+            class="keycap"
+            type="button"
+            aria-label="Rename tuning preset"
+            title="Rename tuning preset"
+          >
+            ✏️
+          </button>
+          <button
+            id="tuning-preset-delete"
+            class="keycap"
+            type="button"
+            aria-label="Delete tuning preset"
+            title="Delete tuning preset"
+          >
+            🗑️
+          </button>
+        </div>
+      </section>
+      <fieldset id="drift-tuning-sliders"></fieldset>
     </dialog>
     <dialog id="custom-course-dialog" class="slider-dialog" aria-labelledby="custom-course-title">
       <form method="dialog" class="dialog-close">
@@ -118,35 +160,41 @@
       </form>
       <h2 id="custom-course-title" tabindex="-1" autofocus>Custom course</h2>
       <p>
-        Choose a course length and independent preferences from 0 (avoid) to 1 (strongly favor). The
-        preferences do not need to add up to 1. Changes apply only when you generate.
+        Choose a course length and independent preferences from 0 (avoid) to 1 (strongly favor).
       </p>
       <fieldset id="custom-course-sliders">
         <legend>Generation preferences</legend>
       </fieldset>
-      <p>
-        Elevation 0 is completely flat. Closed circuits still need return bends. Course length
-        targets 1–5 km, within 5%. Tight corners include hairpins. All layouts keep safe road
-        clearance and at least a 22 m turn radius.
-      </p>
       <p id="custom-course-status" role="status"></p>
       <p id="custom-course-error" role="alert"></p>
       <div class="dialog-actions">
-        <button id="custom-course-reset" type="button"><kbd>Restore defaults</kbd></button>
-        <button id="custom-course-generate" type="button" disabled>
-          <kbd>Generate course</kbd>
+        <button id="custom-course-reset" class="keycap" type="button">Restore defaults</button>
+        <button id="custom-course-generate" class="keycap" type="button" disabled>
+          Generate course
         </button>
       </div>
     </dialog>
     <header>
       <div class="controls">
-        <button id="settings" type="button" aria-haspopup="dialog" aria-controls="settings-dialog">
-          <kbd>⚙️</kbd>
+        <button
+          id="settings"
+          class="keycap"
+          type="button"
+          aria-haspopup="dialog"
+          aria-controls="settings-dialog"
+        >
+          ⚙️
         </button>
-        <button id="tuning" type="button" aria-haspopup="dialog" aria-controls="drift-tuning">
-          <kbd>🛠️</kbd>
+        <button
+          id="tuning"
+          class="keycap"
+          type="button"
+          aria-haspopup="dialog"
+          aria-controls="drift-tuning"
+        >
+          🛠️
         </button>
-        <button id="help" type="button" aria-haspopup="dialog"><kbd>❓</kbd></button>
+        <button id="help" class="keycap" type="button" aria-haspopup="dialog">❓</button>
       </div>
     </header>
     <footer>
@@ -175,85 +223,91 @@
         <button type="submit" aria-label="Close" title="Close">×</button>
       </form>
       <h2 id="settings-title" tabindex="-1" autofocus>Settings</h2>
-      <div class="settings-controls">
-        <label
-          >Sound
-          <select id="sound">
-            <option value="on" selected>On</option>
-            <option value="off">Off</option>
-          </select>
-        </label>
-        <p id="sound-status" role="status"></p>
-        <label
-          >Drive mode
-          <select id="drive-mode">
-            <option value="grip">Grip</option>
-            <option value="drift" selected>Drift</option>
-          </select></label
-        >
-        <label
-          >Time of day
-          <select id="time-of-day">
-            <option value="noon">Noon</option>
-            <option value="sunset">Sunset</option>
-            <option value="night">Night</option>
-          </select></label
-        >
-        <label
-          >Camera style
-          <select id="camera-style">
-            <option value="corner">Corner-aware chase</option>
-            <option value="classic">Classic chase</option>
-            <option value="cabin">In-cabin</option>
-          </select></label
-        >
-        <label
-          >Cabin head motion
-          <select id="cabin-head-motion">
-            <option value="on">On</option>
-            <option value="off">Off</option>
-          </select></label
-        >
-        <label
-          >Map orientation
-          <select id="minimap-orientation">
-            <option value="north-up">North up</option>
-            <option value="heading-up">Follow heading</option>
-          </select></label
-        >
-        <label
-          >Ghost car
-          <select id="ghost-mode">
-            <option value="fastest">Fastest lap</option>
-            <option value="previous">Previous lap</option>
-            <option value="off">Off</option>
-          </select></label
-        >
-        <label
-          >Cones
-          <select id="show-cones">
-            <option value="all">On</option>
-            <option value="corners">Corners only</option>
-            <option value="off">Off</option>
-          </select></label
-        >
-        <label
-          >Turn signs
-          <select id="show-turn-signs">
-            <option value="off">Off</option>
-            <option value="few">Few</option>
-            <option value="several">Several</option>
-            <option value="many">Many</option>
-          </select></label
-        >
-        <label
-          >Grass tufts
-          <select id="show-grass">
-            <option value="on">On</option>
-            <option value="off">Off</option>
-          </select></label
-        >
-      </div>
+      <section class="settings-group" aria-labelledby="settings-game-title">
+        <h3 id="settings-game-title">Game</h3>
+        <div class="settings-controls">
+          <label
+            ><span>Sound</span>
+            <select id="sound">
+              <option value="on" selected>On</option>
+              <option value="off">Off</option>
+            </select>
+          </label>
+          <p id="sound-status" role="status"></p>
+          <label
+            ><span>Time of day</span>
+            <select id="time-of-day">
+              <option value="noon">Noon</option>
+              <option value="sunset">Sunset</option>
+              <option value="night">Night</option>
+            </select></label
+          >
+          <label
+            ><span>Map orientation</span>
+            <select id="minimap-orientation">
+              <option value="north-up">North up</option>
+              <option value="heading-up">Follow heading</option>
+            </select></label
+          >
+          <label
+            ><span>Ghost car</span>
+            <select id="ghost-mode">
+              <option value="fastest">Fastest lap</option>
+              <option value="previous">Previous lap</option>
+              <option value="off">Off</option>
+            </select></label
+          >
+        </div>
+      </section>
+      <section class="settings-group" aria-labelledby="settings-camera-title">
+        <h3 id="settings-camera-title">Camera</h3>
+        <div class="settings-controls">
+          <label
+            ><span>Camera style</span>
+            <select id="camera-style">
+              <option value="corner">Corner-aware chase</option>
+              <option value="classic">Classic chase</option>
+              <option value="cabin">In-cabin</option>
+            </select></label
+          >
+          <label
+            ><span>Cabin head motion</span>
+            <select id="cabin-head-motion">
+              <option value="on">On</option>
+              <option value="off">Off</option>
+            </select></label
+          >
+        </div>
+      </section>
+      <section class="settings-group" aria-labelledby="settings-map-title">
+        <h3 id="settings-map-title">Map</h3>
+        <div class="settings-controls">
+          <label
+            ><span>Cones</span>
+            <select id="show-cones">
+              <option value="all">On</option>
+              <option value="corners">Corners only</option>
+              <option value="off">Off</option>
+            </select></label
+          >
+          <label
+            ><span>Turn Signs</span>
+            <select id="show-turn-signs">
+              <option value="off">Off</option>
+              <option value="few">Few</option>
+              <option value="several">Several</option>
+              <option value="many">Many</option>
+            </select></label
+          >
+          <label
+            ><span>Grass Tufts</span>
+            <select id="show-grass">
+              <option value="on">On</option>
+              <option value="off">Off</option>
+            </select></label
+          >
+        </div>
+      </section>
     </dialog>
     <dialog id="help-dialog" aria-labelledby="help-title">
       <form method="dialog" class="dialog-close">
@@ -317,10 +371,10 @@
       </dl>
       <h3>Lap recording</h3>
       <p>
-        Recording captures your launch and shows once you cross the start/finish line. From the second lap, a ghost car
-        drives your fastest (or previous) lap of the run. Press the record button to stop: the course
-        resets, the laps are saved, and the replay plays. Before crossing the line, press play to
-        watch saved laps. Resetting the car discards an unsaved run.
+        Recording captures your launch and shows once you cross the start/finish line. From the
+        second lap, a ghost car drives your fastest (or previous) lap of the run. Press the record
+        button to stop: the course resets, the laps are saved, and the replay plays. Before crossing
+        the line, press play to watch saved laps. Resetting the car discards an unsaved run.
       </p>
     </dialog>
     <script type="module" src="/src/main.ts"></script>

@@ -1,6 +1,7 @@
 import { driveModes, type DriveMode } from './drive-modes';
-import { defaultTuning, type DrivingTuning, type GameState } from './game-state';
+import { type DrivingTuning, type GameState } from './game-state';
 import type { Store } from './store';
+import { nextCustomPresetName, nextTuningPresetId, persistTuningPresets } from './tuning-presets';
 
 const sliders: {
   key: keyof DrivingTuning; label: string; min: number; max: number; step: number; hint: string;
@@ -23,19 +24,50 @@ const sliders: {
     hint: 'Higher builds rear cornering force sooner and can reduce initial rotation.' },
 ];
 
-export function createDrivingTuning(fieldset: HTMLFieldSetElement, resetButton: HTMLButtonElement, store: Store<GameState>) {
+export function createDrivingTuning(
+  fieldset: HTMLFieldSetElement,
+  store: Store<GameState>,
+  onPresetChange: (mode: DriveMode, presetId: string | null) => void,
+  reportError: (error: unknown) => void,
+) {
   let mode: DriveMode = store.getState().driveMode;
   let tuning = store.getState().profiles[mode];
   const update = (patch: Partial<DrivingTuning>) => {
     const state = store.getState();
+    if (Object.entries(patch).every(([key, value]) =>
+      state.profiles[state.driveMode][key as keyof DrivingTuning] === value)) return;
+    const current = { ...state.profiles[state.driveMode], ...patch };
+    const presetId = state.selectedTuningPresets[state.driveMode];
+    const preset = state.tuningPresets.find(({ id, mode }) => id === presetId && mode === state.driveMode);
+    const selectedPreset = preset && !preset.readonly
+      ? { ...preset, tuning: current }
+      : {
+        id: nextTuningPresetId(state.driveMode, state.tuningPresets),
+        name: nextCustomPresetName(state.driveMode, state.tuningPresets),
+        mode: state.driveMode,
+        tuning: current,
+      };
+    const tuningPresets = preset && !preset.readonly
+      ? state.tuningPresets.map((entry) => entry.id === preset.id ? selectedPreset : entry)
+      : [...state.tuningPresets, selectedPreset];
+    try {
+      persistTuningPresets(localStorage, tuningPresets);
+    } catch (error) {
+      reportError(error);
+    }
     store.update({ profiles: {
       ...state.profiles,
-      [state.driveMode]: { ...state.profiles[state.driveMode], ...patch },
+      [state.driveMode]: current,
+    }, tuningPresets, selectedTuningPresets: {
+      ...state.selectedTuningPresets,
+      [state.driveMode]: selectedPreset.id,
     } });
+    onPresetChange(state.driveMode, selectedPreset.id);
   };
   const refresh: (() => void)[] = [];
   for (const slider of sliders) {
     const label = document.createElement('label');
+    label.className = 'slider-control';
     const title = document.createElement('span');
     title.textContent = slider.label;
     const output = document.createElement('output');
@@ -73,10 +105,6 @@ export function createDrivingTuning(fieldset: HTMLFieldSetElement, resetButton: 
     label.append(title, output, input, hint);
     fieldset.append(label);
   }
-  resetButton.addEventListener('click', () => {
-    update(defaultTuning(store.getState().driveMode));
-    resetButton.blur();
-  });
   return store.subscribe((state) => {
     const next = state.profiles[state.driveMode];
     if (mode === state.driveMode && tuning === next) return;

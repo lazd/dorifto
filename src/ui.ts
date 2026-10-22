@@ -1,7 +1,19 @@
-import { driveModes, isDriveMode, type DriveMode } from "./drive-modes";
+import { isDriveMode, type DriveMode } from "./drive-modes";
 import { createDrivingTuning } from "./drift-tuning";
 import { redlineRpm } from "./drivetrain";
-import { isCameraStyle, isGhostMode, isMinimapOrientation, isTimeOfDay, type GameState } from "./game-state";
+import {
+  isCameraStyle,
+  isGhostMode,
+  isMinimapOrientation,
+  isTimeOfDay,
+  type GameState,
+} from "./game-state";
+import {
+  nextCustomPresetName,
+  nextTuningPresetId,
+  persistTuningPresets,
+  type TuningPreset,
+} from "./tuning-presets";
 import { formatLapTime } from "./laps";
 import type { Store } from "./store";
 import { isTurnSignMode } from "./turn-sign";
@@ -39,13 +51,17 @@ function bindCourseDisclosure(store: Store<GameState>) {
     if (map.getAttribute("aria-expanded") !== expanded) map.setAttribute("aria-expanded", expanded);
   });
   map.addEventListener("click", () => setOpen(Boolean(menu.hidden)));
-  document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape" && !menu.hidden && !document.querySelector("dialog[open]")) {
-      event.preventDefault();
-      setOpen(false);
-      map.focus();
-    }
-  }, true);
+  document.addEventListener(
+    "keydown",
+    (event) => {
+      if (event.key === "Escape" && !menu.hidden && !document.querySelector("dialog[open]")) {
+        event.preventDefault();
+        setOpen(false);
+        map.focus();
+      }
+    },
+    true,
+  );
   hud.addEventListener("keydown", (event) => event.stopPropagation());
   hud.addEventListener("keyup", (event) => event.stopPropagation());
   document.addEventListener("pointerdown", (event) => {
@@ -63,7 +79,9 @@ function bindDialog(
   const dialog = element<HTMLDialogElement>(selector);
   let displayedOpen = dialog.open;
   const close = () => store.update({ [key]: false });
-  element(trigger).addEventListener("click", () => store.update({ [key]: true, courseMenuOpen: false }));
+  element(trigger).addEventListener("click", () =>
+    store.update({ [key]: true, courseMenuOpen: false }),
+  );
   dialog.addEventListener("keydown", (event) => {
     if (event.key !== "Escape") return;
     event.preventDefault();
@@ -211,7 +229,7 @@ export function bindLapRecorder(
   const container = element(".lap-recorder");
   const button = element<HTMLButtonElement>("#lap-recorder-button");
   const label = bindText("#lap-recorder-label");
-  const picker = element(".lap-replay-picker");
+  const picker = element(".editable-picker");
   const runs = element<HTMLSelectElement>("#lap-replay-run");
   const remove = element<HTMLButtonElement>("#lap-replay-delete");
   button.addEventListener("click", () => {
@@ -223,7 +241,7 @@ export function bindLapRecorder(
     runs.blur();
   });
   remove.addEventListener("click", () => {
-    if (runs.value && confirm("Delete these saved laps?")) actions.remove(runs.value);
+    if (runs.value) actions.remove(runs.value);
     remove.blur();
   });
   const text = {
@@ -250,6 +268,193 @@ export function bindLapRecorder(
     }
     const selected = lapRecorder.selectedRun ?? "";
     if (runs.value !== selected) runs.value = selected;
+  });
+}
+
+function writeTuningPresetQuery(mode: DriveMode, presetId: string | null) {
+  const url = new URL(location.href);
+  url.searchParams.set("mode", mode);
+  url.searchParams.set("preset", presetId ?? "custom");
+  history.replaceState(null, "", url);
+}
+
+function bindTuningPresets(store: Store<GameState>, reportError: (error: unknown) => void) {
+  const title = bindText("#tuning-preset-title");
+  const presetsSelect = element<HTMLSelectElement>("#tuning-preset");
+  const editInput = element<HTMLInputElement>("#tuning-preset-edit-name");
+  const edit = element<HTMLButtonElement>("#tuning-preset-edit");
+  const remove = element<HTMLButtonElement>("#tuning-preset-delete");
+  let renderedMode: GameState["driveMode"] | null = null;
+  let renderedPresets: GameState["tuningPresets"] | null = null;
+  let editingPresetId: string | null = null;
+
+  const showNameEditor = (preset: TuningPreset) => {
+    editingPresetId = preset.id;
+    editInput.value = preset.name;
+    presetsSelect.hidden = true;
+    edit.hidden = true;
+    editInput.hidden = false;
+    editInput.focus();
+    editInput.select();
+  };
+
+  presetsSelect.addEventListener("change", () => {
+    const state = store.getState();
+    const presetId = presetsSelect.value;
+    if (presetId === "new") {
+      const preset: TuningPreset = {
+        id: nextTuningPresetId(state.driveMode, state.tuningPresets),
+        name: nextCustomPresetName(state.driveMode, state.tuningPresets),
+        mode: state.driveMode,
+        tuning: { ...state.profiles[state.driveMode] },
+      };
+      const tuningPresets = [...state.tuningPresets, preset];
+      try {
+        persistTuningPresets(localStorage, tuningPresets);
+        store.update({
+          tuningPresets,
+          selectedTuningPresets: { ...state.selectedTuningPresets, [state.driveMode]: preset.id },
+        });
+        writeTuningPresetQuery(state.driveMode, preset.id);
+        showNameEditor(preset);
+      } catch (error) {
+        reportError(error);
+      }
+      return;
+    }
+    const preset = state.tuningPresets.find(
+      ({ id, mode }) => id === presetId && mode === state.driveMode,
+    );
+    if (!preset) return;
+    store.update({
+      profiles: {
+        ...state.profiles,
+        [state.driveMode]: { ...preset.tuning },
+      },
+      selectedTuningPresets: { ...state.selectedTuningPresets, [state.driveMode]: preset.id },
+    });
+    writeTuningPresetQuery(state.driveMode, preset.id);
+  });
+
+  editInput.addEventListener("input", () => {
+    if (!editingPresetId) return;
+    const state = store.getState();
+    const preset = state.tuningPresets.find(({ id }) => id === editingPresetId);
+    if (!preset) return;
+    const name = editInput.value.trim();
+    const duplicate = state.tuningPresets.some(
+      (entry) =>
+        entry.mode === preset.mode &&
+        entry.id !== preset.id &&
+        entry.name.toLocaleLowerCase() === name.toLocaleLowerCase(),
+    );
+    if (!name || duplicate) return;
+    if (name === preset.name) return;
+    const tuningPresets = state.tuningPresets.map((entry) =>
+      entry.id === preset.id ? { ...entry, name } : entry,
+    );
+    try {
+      persistTuningPresets(localStorage, tuningPresets);
+      store.update({ tuningPresets });
+    } catch (error) {
+      reportError(error);
+    }
+  });
+
+  edit.addEventListener("click", () => {
+    const state = store.getState();
+    const preset = state.tuningPresets.find(
+      ({ id, mode }) => id === presetsSelect.value && mode === state.driveMode,
+    );
+    if (!preset || preset.readonly) return;
+    showNameEditor(preset);
+  });
+
+  editInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      editInput.blur();
+    } else if (event.key === "Escape") {
+      editInput.blur();
+    }
+  });
+
+  editInput.addEventListener("blur", () => {
+    const presetId = editingPresetId;
+    editingPresetId = null;
+    presetsSelect.hidden = false;
+    editInput.hidden = true;
+    edit.hidden = false;
+    if (!presetId) return;
+    const state = store.getState();
+    const preset = state.tuningPresets.find(({ id }) => id === presetId);
+    if (!preset) return;
+    editInput.value = preset.name;
+  });
+
+  remove.addEventListener("click", () => {
+    const state = store.getState();
+    const preset = state.tuningPresets.find(
+      ({ id, mode }) => id === presetsSelect.value && mode === state.driveMode,
+    );
+    if (!preset || preset.readonly) return;
+    const defaultPreset = state.tuningPresets.find(
+      ({ id, mode }) => id === `${state.driveMode}-default` && mode === state.driveMode,
+    );
+    if (!defaultPreset) {
+      reportError(new Error(`Missing Default tuning preset for ${state.driveMode} mode`));
+      return;
+    }
+    const tuningPresets = state.tuningPresets.filter(({ id }) => id !== preset.id);
+    try {
+      persistTuningPresets(localStorage, tuningPresets);
+      store.update({
+        tuningPresets,
+        profiles: {
+          ...state.profiles,
+          [state.driveMode]: { ...defaultPreset.tuning },
+        },
+        selectedTuningPresets: {
+          ...state.selectedTuningPresets,
+          [state.driveMode]: defaultPreset.id,
+        },
+      });
+      writeTuningPresetQuery(state.driveMode, defaultPreset.id);
+    } catch (error) {
+      reportError(error);
+    }
+    remove.blur();
+  });
+
+  store.subscribe((state) => {
+    const modeName = state.driveMode === "grip" ? "Grip" : "Drift";
+    if (renderedMode !== state.driveMode && editingPresetId !== null) {
+      editingPresetId = null;
+      editInput.blur();
+      presetsSelect.hidden = false;
+      editInput.hidden = true;
+      edit.hidden = false;
+    }
+    title(`${modeName} tuning presets`);
+    presetsSelect.setAttribute("aria-label", `${modeName} tuning preset`);
+    const modePresets = state.tuningPresets.filter(({ mode }) => mode === state.driveMode);
+    if (renderedMode !== state.driveMode || renderedPresets !== state.tuningPresets) {
+      const emptyOption = new Option("", "");
+      emptyOption.hidden = true;
+      emptyOption.disabled = true;
+      presetsSelect.replaceChildren(
+        emptyOption,
+        new Option("New preset...", "new"),
+        ...modePresets.map(({ id, name }) => new Option(name, id)),
+      );
+      renderedMode = state.driveMode;
+      renderedPresets = state.tuningPresets;
+    }
+    const selectedPresetId = state.selectedTuningPresets[state.driveMode] ?? "";
+    presetsSelect.value = selectedPresetId;
+    const selectedPreset = modePresets.find(({ id }) => id === selectedPresetId);
+    remove.disabled = !selectedPreset || selectedPreset.readonly === true;
+    edit.disabled = !selectedPreset || selectedPreset.readonly === true;
   });
 }
 
@@ -379,6 +584,7 @@ function bindCourseWeights(store: Store<GameState>) {
   const refresh: (() => void)[] = [];
   for (const { key, label: text, description, min, max, step } of courseGenerationFields) {
     const label = document.createElement("label");
+    label.className = "slider-control";
     const title = document.createElement("span");
     const output = document.createElement("output");
     const input = document.createElement("input");
@@ -430,11 +636,15 @@ export function bindGameUI(store: Store<GameState>, reportError: (error: unknown
   const current = bindText("#lap-current");
   const best = bindText("#lap-best");
   const controller = bindText("#controller-status");
-  const modeHint = bindText("#drift-tuning-mode");
   const status = element("#status");
   const statusText = bindText("#status");
   const footer = element("footer");
-  createDrivingTuning(element("#drift-tuning-sliders"), element("#drift-tuning-reset"), store);
+  createDrivingTuning(
+    element("#drift-tuning-sliders"),
+    store,
+    writeTuningPresetQuery,
+    reportError,
+  );
   bindDialog(store, "#tuning", "#drift-tuning", "tuningOpen");
   bindDialog(store, "#settings", "#settings-dialog", "settingsOpen");
   bindDialog(store, "#help", "#help-dialog", "helpOpen");
@@ -458,6 +668,9 @@ export function bindGameUI(store: Store<GameState>, reportError: (error: unknown
       store.update(write(value));
       const url = new URL(location.href);
       url.searchParams.set(parameter, input.value);
+      if (parameter === "mode" && isDriveMode(value)) {
+        url.searchParams.set("preset", store.getState().selectedTuningPresets[value] ?? "custom");
+      }
       history.replaceState(null, "", url);
       input.blur();
     });
@@ -473,6 +686,7 @@ export function bindGameUI(store: Store<GameState>, reportError: (error: unknown
     (driveMode) => ({ driveMode }),
     isDriveMode,
   );
+  bindTuningPresets(store, reportError);
   select<GameState["cameraStyle"]>(
     "#camera-style",
     "camera",
@@ -507,7 +721,8 @@ export function bindGameUI(store: Store<GameState>, reportError: (error: unknown
     "cones",
     (state) => state.coneMode,
     (coneMode) => ({ coneMode }),
-    (value): value is GameState["coneMode"] => value === "all" || value === "corners" || value === "off",
+    (value): value is GameState["coneMode"] =>
+      value === "all" || value === "corners" || value === "off",
   );
   select<GameState["turnSignMode"]>(
     "#show-turn-signs",
@@ -559,8 +774,6 @@ export function bindGameUI(store: Store<GameState>, reportError: (error: unknown
     soundStatus(
       state.sound.failed ? `Sound unavailable: ${state.sound.error ?? "Reload to retry."}` : "",
     );
-    const name = state.driveMode === "grip" ? "Grip" : "Drift";
-    modeHint(`Live in ${name} mode / base friction ${driveModes[state.driveMode].friction}`);
     if (status.hidden === state.status.visible) status.hidden = !state.status.visible;
     if (status.classList.contains("error") !== state.status.error)
       status.classList.toggle("error", state.status.error);

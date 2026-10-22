@@ -135,7 +135,7 @@ h1 span {
   min-width: 0;
   margin: 6px 0 0;
 }
-.course-options kbd {
+.course-options .keycap {
   display: block;
   margin-right: 0;
   padding: 8px;
@@ -409,7 +409,20 @@ footer.loaded:not(:hover):not(:focus-within) {
   margin: 0;
   accent-color: #9ee8d5;
 }
-kbd {
+button {
+  color: inherit;
+  font: inherit;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+kbd,
+button.keycap {
   display: inline-block;
   padding: 5px 7px;
   margin-right: 4px;
@@ -418,14 +431,6 @@ kbd {
   background: #10191f99;
   font: inherit;
   color: #fff;
-}
-button {
-  color: inherit;
-  font: inherit;
-  background: transparent;
-  border: 0;
-  padding: 0;
-  cursor: pointer;
 }
 select {
   margin-left: 6px;
@@ -436,8 +441,8 @@ select {
   border-radius: 4px;
   font: inherit;
 }
-button:hover kbd,
-button:focus-visible kbd {
+button.keycap:hover:not(:disabled),
+button.keycap:focus-visible {
   background: #397d70;
 }
 .credit {
@@ -513,15 +518,67 @@ dialog h2 {
   padding-right: 36px;
 }
 .settings-controls {
-  display: grid;
-  gap: 18px;
+  display: table;
+  border-spacing: 0 10px;
   font-size: 14px;
 }
 .settings-controls label {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
+  display: table-row;
+}
+.settings-controls label > span,
+.settings-controls label > select {
+  display: table-cell;
+  vertical-align: middle;
+}
+.settings-controls label > span {
+  padding-right: 12px;
+  text-align: right;
+}
+.settings-controls label > select {
+  text-align: left;
+}
+.settings-controls #sound-status:not(:empty) {
+  display: table-caption;
+  caption-side: bottom;
+  margin: 0;
+  padding-top: 6px;
+}
+.settings-group {
+  display: grid;
+  gap: 10px;
+}
+.settings-group + .settings-group {
+  margin-top: 18px;
+}
+.settings-group h3 {
+  margin: 0;
+}
+#tuning-preset-title {
+  margin: 0;
+}
+#tuning-preset,
+#tuning-preset-edit-name {
+  flex: 1;
+  max-width: 100%;
+}
+.tuning-preset-picker {
+  margin: 12px 18px;
+}
+.tuning-preset-picker > input {
+  min-width: 0;
+  margin: 0;
+  padding: 5px 8px;
+  color: #eef6f5;
+  background: #18272e;
+  border: 1px solid #adc3bd55;
+  border-radius: 4px;
+  font: inherit;
+}
+#tuning-preset-status:empty {
+  display: none;
+}
+#tuning-preset-status[data-error="true"] {
+  color: #ffb8a8;
 }
 #sound-status:empty,
 #custom-course-status:empty,
@@ -537,7 +594,7 @@ dialog h2 {
   color: #c1cfce;
 }
 .slider-dialog fieldset {
-  margin: 12px 0;
+  margin: 12px 18px;
   padding: 0;
   border: 0;
   min-width: 0;
@@ -546,7 +603,7 @@ dialog h2 {
   margin-bottom: 12px;
   font-weight: 600;
 }
-.slider-dialog label {
+.slider-control {
   display: grid;
   grid-template-columns: 1fr auto;
   gap: 5px 8px;
@@ -561,8 +618,6 @@ dialog h2 {
   grid-column: 1 / -1;
 }
 .slider-dialog input {
-  width: 100%;
-  margin: 3px 0;
   accent-color: #9ee8d5;
 }
 .slider-dialog small {
@@ -604,7 +659,7 @@ dialog h2 {
   gap: 8px;
 }
 .lap-recorder[hidden],
-.lap-replay-picker[hidden] {
+.editable-picker[hidden] {
   display: none;
 }
 .chase-view .lap-recorder {
@@ -668,13 +723,13 @@ dialog h2 {
     animation: none;
   }
 }
-.lap-replay-picker {
+.editable-picker {
   display: inline-flex;
   align-items: center;
   gap: 4px;
   font-size: 12px;
 }
-.lap-replay-picker select {
+.editable-picker select {
   margin: 0;
   max-width: 300px;
 }
