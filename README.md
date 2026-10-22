@@ -1053,6 +1053,21 @@ its public asset directory, preserving the glTF's relative binary and texture
 URLs and copying the model license alongside them. Relative URLs support
 deployment beneath a subdirectory.
 
+### GitHub Pages
+
+```sh
+npm run deploy
+```
+
+This type-checks and builds the app, then publishes only the contents of `dist/`
+to the `gh-pages` branch of the `origin` remote. It does not commit or push the
+source code or your current branch. Git must have push access to `origin`.
+The deployment includes `.nojekyll` so GitHub Pages serves the output unchanged.
+
+In the repository's **Settings > Pages**, select **Deploy from a branch**,
+then **gh-pages** and **/ (root)**. For this repository, the site URL is
+<https://lazd.github.io/dorifto/>.
+
 ## Model attribution
 
 This work is based on
