@@ -144,6 +144,7 @@ simulation continues. Settings remains in the main footer.
 | C | Cycle corner-aware chase, classic chase, in-cabin (once per press) |
 | D | Toggle Grip / Drift mode (once per press) |
 | M | Toggle the bird's-eye map view of the whole course |
+| W | Cycle Noon / Sunset / Night (once per press) |
 
 Map view switches instantly in both directions, without an animated camera flight.
 
@@ -167,6 +168,7 @@ the keyboard controls. The first connected standard-mapped controller is used.
 | Start / Menu / Options | Reset (once per press) |
 | View / Select / Back | Cycle corner-aware chase, classic chase, in-cabin (once per press) |
 | Y / Triangle (north face button) | Toggle Grip / Drift mode (once per press) |
+| D-pad Left | Cycle Noon / Sunset / Night (once per press) |
 
 Both triggers together allow brakestand behavior only below 4 km/h. LT alone brakes forward
 motion, then engages reverse only near a stop; release LT to leave reverse.
@@ -305,8 +307,16 @@ set them. `DRIVER_MIRROR_OUTBOARD_DEG` and `PASSENGER_MIRROR_OUTBOARD_DEG` in
 down. `setCabinEye()` in `src/camera.ts` moves the head and re-aims all
 three mirrors. The interior mirror's whole housing swivels on its ball joint.
 Dash warning lamps are off by default. The turn-signal arrows flash with the
-hazards, BRAKE flashes while the handbrake is held, and `car.setDashLight()` can
-switch any lamp (including the high-beam indicator) on or off.
+hazards, BRAKE stays solid while the handbrake is held, and ABS stays lit in Drift
+mode and switches off in Grip mode. `car.setDashLight()` can switch any lamp
+(including the high-beam indicator) on or off.
+Unlit warning lamps use blank dark gray masks that respond to cabin lighting
+and blend into the surrounding panel without revealing the warning symbols.
+At sunset and night, the gauge markings and odometer have a subdued green-white
+backlight and the red needles glow. Gauge illumination switches off at noon.
+A very dim warm light gently illuminates the cabin at night only.
+Oil pressure reads about 2 at idle and rises toward 5 at redline, with a gradual,
+frame-rate-independent response that lags behind both rising and falling RPM.
 Window tint only renders when looking in from outside, so the cabin view is
 clear, and the on-screen tachometer is hidden in cabin view in favor of the
 car's working gauges. The cones are lightweight dynamic physics objects: hit them to send
@@ -432,10 +442,14 @@ Noon has a blue sky and neutral daylight. Sunset uses a warm horizon, golden
 directional light, and a low sun angle for long shadows. Night uses a dark blue
 sky with soft cool ambient moonlight to reveal the car and nearby hills;
 the car's headlights remain the main illumination on the road.
-Procedural billowy clouds and thin wisps are baked into the sky texture, with
-peach-lit edges and lavender shadows at sunset, soft white daylight clouds, and
-muted blue clouds at night. The layout stays consistent across lighting changes,
-wraps seamlessly around the horizon, and adds no per-frame cloud rendering passes.
+Procedural clouds are baked into the sky texture. Sunset alone uses
+dense slate-blue cloud banks and fiery coral/orange undersides.
+A low sun and localized golden glow brighten the horizon beneath a cooler
+overhead sky, with warm direct light contrasted against cooler ambient light.
+Noon retains the original soft white billows and thin wisps; night retains
+the original muted blue clouds. Neither uses the dramatic sunset treatment.
+Cloud patterns are deterministic, wrap seamlessly around the horizon, and
+add no per-frame cloud rendering passes.
 Sky, fog, ambient illumination, reflections, and exposure change together.
 At Sunset and Night, headlights (beams and lens glow) switch on together with
 the running lights. At Noon they switch off. The two body brake lenses use a

@@ -12,10 +12,10 @@ const daylight = {
     exposure: 0.95,
   },
   sunset: {
-    sky: '#647ca6', horizon: '#f3b074', ground: '#654035',
-    cloudLight: '#ffd0a3', cloudShade: '#776f91',
-    ambient: '#ffd3ab', ambientIntensity: 0.45, environmentIntensity: 0.28,
-    sun: '#ffb45e', sunIntensity: 3.2, sunOffset: [-42, 12, -20],
+    sky: '#182b45', horizon: '#f5a04c', ground: '#493b38',
+    cloudLight: '#fa603d', cloudShade: '#29394f', cloudSun: '#ffb640',
+    ambient: '#bdc4dc', ambientIntensity: 0.42, environmentIntensity: 0.24,
+    sun: '#ff963e', sunIntensity: 3, sunOffset: [-42, 5, -20],
     exposure: 0.95,
   },
   night: {
@@ -28,6 +28,7 @@ const daylight = {
 } satisfies Record<string, {
   sky: string; horizon: string; ground: string; ambient: string;
   cloudLight: string; cloudShade: string;
+  cloudSun?: string;
   ambientIntensity: number; environmentIntensity: number;
   sun: string; sunIntensity: number; sunOffset: [number, number, number]; exposure: number;
 }>;
@@ -71,10 +72,39 @@ export function createLighting(scene: THREE.Scene, renderer: THREE.WebGLRenderer
     const preset = daylight[time];
     const gradient = skyContext.createLinearGradient(0, 0, 0, skyCanvas.height);
     gradient.addColorStop(0, preset.sky);
+    if (time === 'sunset') {
+      gradient.addColorStop(0.26, '#31435f');
+      gradient.addColorStop(0.37, '#76516b');
+      gradient.addColorStop(0.44, '#d65349');
+      gradient.addColorStop(0.48, '#ff8938');
+    }
     gradient.addColorStop(0.5, preset.horizon);
     gradient.addColorStop(1, preset.ground);
     skyContext.fillStyle = gradient;
     skyContext.fillRect(0, 0, skyCanvas.width, skyCanvas.height);
+    if (time === 'sunset') {
+      const direction = new THREE.Vector3().fromArray(preset.sunOffset).normalize();
+      const sunX = (Math.atan2(direction.z, direction.x) / (Math.PI * 2) + 0.5) * skyCanvas.width;
+      const sunY = (0.5 - Math.asin(direction.y) / Math.PI) * skyCanvas.height;
+      const radius = skyCanvas.width * 0.14;
+      for (const wrap of [-skyCanvas.width, 0, skyCanvas.width]) {
+        skyContext.save();
+        skyContext.translate(sunX + wrap, sunY);
+        skyContext.scale(1, 0.55);
+        const glow = skyContext.createRadialGradient(0, 0, 0, 0, 0, radius);
+        glow.addColorStop(0, 'rgba(255, 233, 145, 0.95)');
+        glow.addColorStop(0.12, 'rgba(255, 184, 61, 0.8)');
+        glow.addColorStop(0.45, 'rgba(255, 109, 32, 0.3)');
+        glow.addColorStop(1, 'rgba(255, 109, 32, 0)');
+        skyContext.fillStyle = glow;
+        skyContext.fillRect(-radius, -radius, radius * 2, radius * 2);
+        skyContext.restore();
+        skyContext.beginPath();
+        skyContext.arc(sunX + wrap, sunY, 3, 0, Math.PI * 2);
+        skyContext.fillStyle = '#fff3ba';
+        skyContext.fill();
+      }
+    }
     cloudContext.putImageData(new ImageData(paintClouds(preset), cloudCanvas.width, cloudCanvas.height), 0, 0);
     skyContext.drawImage(cloudCanvas, 0, 0, skyCanvas.width, skyCanvas.height);
     // Replacing the texture invalidates Three's cached equirectangular conversion.

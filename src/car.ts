@@ -3,6 +3,7 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { Reflector } from "three/addons/objects/Reflector.js";
 import { RectAreaLightUniformsLib } from "three/addons/lights/RectAreaLightUniformsLib.js";
 import { ConvexHull } from "three/addons/math/ConvexHull.js";
+import { redlineRpm } from "./drivetrain";
 
 type StandardMesh = THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>;
 
@@ -15,6 +16,8 @@ const INTERIOR_COLOR = 0x303030;
 const SPEEDO_DEG_PER_KMH = 1.338;
 const TACH_DEG_PER_RPM = 0.02759;
 const BOOST_DEG_PER_MMHG = 0.0523;
+const OIL_DEG_PER_KG_CM2 = 8.25;
+const OIL_PRESSURE_RESPONSE = 0.8;
 // The boost needle's hub is hidden behind the speedometer face, above the sub-dial.
 // Mirror adjustment as seen from the driver's eye. The car is right-hand drive, so the
 // driver's door mirror is on the -X side.
@@ -143,6 +146,9 @@ export async function loadCar() {
   const rearCornerMarkers = emissive(/^(Cornerglass|Cornerlightbulb)_/, 0xff1008);
   const frontPosition = emissive(/^BulbsPos_/, 0xfff3dc);
   const projectors = emissive(/^(Projectorglass|BulbHL)_/, 0xffe8c8);
+  const gaugeFaces = emissive(/^gaugeface[12]_Gauges_0$/, 0xd7f5df, true);
+  const odometer = emissive(/^Odo_Odometer_0$/, 0xd7f5df, true);
+  const gaugeNeedles = emissive(/_Gaugered_0$/, 0xff3820);
 
   function rearSpot(box: THREE.Box3, color: number) {
     const light = new THREE.SpotLight(color, 0, 4, Math.PI / 5, 0.9, 2);
@@ -229,15 +235,25 @@ export async function loadCar() {
     chassis.add(light, light.target);
     return light;
   });
-  function setLighting(enabled: boolean, underglowEnabled: boolean) {
+  const cabinLight = new THREE.PointLight(0xffd9b0, 0.06, 1.4, 2);
+  cabinLight.name = "cabin-ambient";
+  cabinLight.position.set(0, 0.62, -0.15);
+  cabinLight.visible = false;
+  chassis.add(cabinLight);
+
+  function setLighting(enabled: boolean, night: boolean) {
     headlightsOn = enabled;
     setBraking(brakingActive);
     setHazards(hazardsActive);
     setIntensity(rearCornerMarkers, enabled ? 1.5 : 0);
     setIntensity(frontPosition, enabled ? 2 : 0);
     setIntensity(projectors, enabled ? 2.4 : 0);
+    setIntensity(gaugeFaces, enabled ? 0.5 : 0);
+    setIntensity(odometer, enabled ? 0.35 : 0);
+    setIntensity(gaugeNeedles, enabled ? 0.9 : 0);
+    cabinLight.visible = night;
     for (const light of headlights) light.visible = enabled;
-    for (const light of underglow) light.visible = underglowEnabled;
+    for (const light of underglow) light.visible = night;
   }
 
   // Replace the flat mirror-glass mesh with live planar reflections.
@@ -451,6 +467,11 @@ export async function loadCar() {
     gaugeAxis,
   );
   const rotateBoostNeedle = pivot(/^turboarrow_/, BOOST_PIVOT, gaugeAxis);
+  const rotateOilNeedle = pivot(
+    /^Oilarrow_/,
+    new THREE.Vector3(-0.4359, 0.2256, 0.4106),
+    gaugeAxis,
+  );
   // Coolant temperature sits mid-scale and the tank stays full.
   pivot(
     /^temparrow_/,
@@ -462,8 +483,8 @@ export async function loadCar() {
     new THREE.Vector3(-0.5365, 0.2157, 0.4039),
     gaugeAxis,
   )(-THREE.MathUtils.degToRad(FUEL_FULL_DEG));
-  // Instrument-cluster warning lamps share one texture. Lit lamps glow unshaded; unlit lamps
-  // are flat black so sunlight and reflections can't reveal them through the smoked panel.
+  // Lit warning lamps glow unshaded; unlit masks match the dark gray panel
+  // and respond to cabin lighting without revealing the warning symbols.
   const dashLightMeshes = {
     leftSignal: /^leftind_/,
     rightSignal: /^rightind_/,
@@ -476,7 +497,13 @@ export async function loadCar() {
   };
   type DashLight = keyof typeof dashLightMeshes;
   const dashLights = {} as Record<DashLight, THREE.Mesh[]>;
-  const unlitDashLight = new THREE.MeshBasicMaterial({ color: 0x000000 });
+  const unlitDashLight = new THREE.MeshStandardMaterial({
+    color: 0x282828,
+    roughness: 0.96,
+    metalness: 0,
+  });
+  const unlitCatalystLight = unlitDashLight.clone();
+  unlitCatalystLight.color.set(0x181818);
   let litDashLight: THREE.MeshBasicMaterial | undefined;
   for (const [light, pattern] of Object.entries(dashLightMeshes) as [DashLight, RegExp][]) {
     dashLights[light] = named(pattern);
@@ -486,7 +513,8 @@ export async function loadCar() {
     });
   }
   function setDashLight(light: DashLight, on: boolean) {
-    for (const mesh of dashLights[light]) mesh.material = on ? litDashLight! : unlitDashLight;
+    const unlitMaterial = light === "catalyst" ? unlitCatalystLight : unlitDashLight;
+    for (const mesh of dashLights[light]) mesh.material = on ? litDashLight! : unlitMaterial;
   }
   for (const light of Object.keys(dashLights) as DashLight[]) setDashLight(light, false);
 
@@ -495,11 +523,17 @@ export async function loadCar() {
   function setSteering(roadWheelAngle: number) {
     rotateSteeringWheel(roadWheelAngle * STEERING_RATIO);
   }
-  function setGauges(speedKmh: number, rpm: number, boostMmHg: number) {
+  let oilPressure = 2;
+  function setGauges(speedKmh: number, rpm: number, boostMmHg: number, dt: number) {
     const degrees = THREE.MathUtils.degToRad;
     rotateSpeedNeedle(-degrees(SPEEDO_DEG_PER_KMH * THREE.MathUtils.clamp(speedKmh, 0, 190)));
     rotateRpmNeedle(-degrees(TACH_DEG_PER_RPM * THREE.MathUtils.clamp(rpm, 0, 9200)));
     rotateBoostNeedle(degrees(BOOST_DEG_PER_MMHG * THREE.MathUtils.clamp(boostMmHg, -760, 760)));
+    const targetOilPressure = THREE.MathUtils.mapLinear(
+      THREE.MathUtils.clamp(rpm, 850, redlineRpm), 850, redlineRpm, 2, 5,
+    );
+    oilPressure = THREE.MathUtils.damp(oilPressure, targetOilPressure, OIL_PRESSURE_RESPONSE, dt);
+    rotateOilNeedle(degrees(OIL_DEG_PER_KG_CM2 * oilPressure));
   }
 
   // Wheels spin; calipers and dust shields only steer and follow suspension travel.

@@ -111,7 +111,7 @@ async function start() {
     controls.clear();
   });
   const keys = controls.keys;
-  const controlKeys = new Set(['ArrowLeft', 'ArrowRight', 'KeyX', 'KeyZ', 'Space', 'KeyR', 'KeyC', 'KeyD', 'KeyM']);
+  const controlKeys = new Set(['ArrowLeft', 'ArrowRight', 'KeyX', 'KeyZ', 'Space', 'KeyR', 'KeyC', 'KeyD', 'KeyM', 'KeyW']);
   let accumulator = 0;
   let lastTime = 0;
   let changingCourse = false;
@@ -252,6 +252,15 @@ async function start() {
     history.replaceState(null, '', url);
   }
 
+  function cycleTimeOfDay() {
+    const times = ['noon', 'sunset', 'night'] as const;
+    const timeOfDay = times[(times.indexOf(gameState.getState().timeOfDay) + 1) % times.length];
+    gameState.update({ timeOfDay });
+    const url = new URL(location.href);
+    url.searchParams.set('time', timeOfDay);
+    history.replaceState(null, '', url);
+  }
+
   window.addEventListener('keydown', (event) => {
     if (dialogOpen) return;
     if (event.target instanceof HTMLSelectElement || event.target instanceof HTMLInputElement) return;
@@ -266,6 +275,8 @@ async function start() {
       if (!event.repeat) toggleDriveMode();
     } else if (event.code === 'KeyM') {
       if (!event.repeat) controls.mapView = !controls.mapView;
+    } else if (event.code === 'KeyW') {
+      if (!event.repeat) cycleTimeOfDay();
     } else keys.add(event.code);
   });
   window.addEventListener('keyup', (event) => {
@@ -306,6 +317,7 @@ async function start() {
     controls.poll(!dialogOpen, profiles[driveMode].steeringExpo);
     if (controls.driveModeRequested) toggleDriveMode();
     if (controls.cameraRequested) cycleCamera();
+    if (controls.timeOfDayRequested) cycleTimeOfDay();
     if (controls.resetRequested) reset();
     const dt = lastTime ? Math.min((time - lastTime) / 1000, 0.05) : fixedStep;
     lastTime = time;
@@ -328,9 +340,10 @@ async function start() {
     minimap.update(car.chassis.position, forward, cameraState.minimapOrientation);
     // Manifold pressure: closed-throttle vacuum through to full turbo boost.
     const manifoldMmHg = THREE.MathUtils.lerp(-550, 0, engine.load) * (1 - engine.boost) + 650 * engine.boost;
-    car.setGauges(Math.abs(forward.dot(velocity)) * 3.6, engine.rpm, manifoldMmHg);
+    car.setGauges(Math.abs(forward.dot(velocity)) * 3.6, engine.rpm, manifoldMmHg, dt);
     car.setSteering(physics.steering);
-    car.setDashLight('brake', controls.handbrake && time % 800 < 400);
+    car.setDashLight('brake', controls.handbrake);
+    car.setDashLight('abs', cameraState.driveMode === 'drift');
     const slip = speed > 3 ? 1 - Math.abs(forward.dot(velocity) / speed) : 0;
     const sliding = speed > 3 && (controls.handbrake || slip > 0.045);
     const burningOut = burnout > 0.1 && (wheelContacts[2] || wheelContacts[3]);

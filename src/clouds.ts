@@ -3,6 +3,7 @@ import { Color, MathUtils, Vector3 } from 'three';
 interface CloudPalette {
   cloudLight: string;
   cloudShade: string;
+  cloudSun?: string;
   sunOffset: readonly [number, number, number];
 }
 
@@ -39,6 +40,8 @@ function fractalNoise(x: number, y: number) {
 
 export function createCloudLayer(width: number, height: number) {
   const coverage = new Float32Array(width * height);
+  const detail = new Float32Array(width * height);
+  const sunsetCoverage = new Float32Array(width * height);
   const longitude = Array.from({ length: width }, (_, x) => (x / (width - 1) - 0.5) * Math.PI * 2);
   const latitude = Array.from({ length: height }, (_, y) => (0.5 - y / (height - 1)) * Math.PI);
   const pixels = new Uint8ClampedArray(width * height * 4);
@@ -50,30 +53,48 @@ export function createCloudLayer(width: number, height: number) {
       // Project onto a cloud layer above the viewer: distant clouds flatten toward the horizon.
       const px = radius * Math.cos(longitude[x]) / (up + 0.18);
       const pz = radius * Math.sin(longitude[x]) / (up + 0.18);
-      const billows = MathUtils.smoothstep(fractalNoise(px * 2.6, pz * 2.6), 0.46, 0.64);
+      const billowNoise = fractalNoise(px * 2.6, pz * 2.6);
+      const billows = MathUtils.smoothstep(billowNoise, 0.46, 0.64);
       const wisps = MathUtils.smoothstep(fractalNoise(px * 0.9 + 23, pz * 7 - 11), 0.58, 0.72) * 0.3;
       coverage[y * width + x] = Math.max(billows, wisps) * horizonFade;
+      detail[y * width + x] = billowNoise;
+      const banks = fractalNoise(px * 1.1 + 11, pz * 1.3 - 7) * 0.7 + billowNoise * 0.3;
+      sunsetCoverage[y * width + x] = MathUtils.smoothstep(banks, 0.34, 0.58) * horizonFade;
     }
   }
 
   return (palette: CloudPalette) => {
+    // Cloud masks differ by time of day, so skipped pixels must not retain the previous sky.
+    pixels.fill(0);
+    const sunset = palette.cloudSun !== undefined;
     const light = new Color(palette.cloudLight).convertLinearToSRGB();
     const shade = new Color(palette.cloudShade).convertLinearToSRGB();
+    const sunColor = palette.cloudSun ? new Color(palette.cloudSun).convertLinearToSRGB() : light;
     const sun = new Vector3().fromArray(palette.sunOffset).normalize();
     for (let y = 0; y < height / 2; y++) {
       const up = Math.sin(latitude[y]);
       const radius = Math.cos(latitude[y]);
       for (let x = 0; x < width; x++) {
-        const density = coverage[y * width + x];
+        const density = (sunset ? sunsetCoverage : coverage)[y * width + x];
         if (density === 0) continue;
-        const sunward = Math.max(0, radius * Math.cos(longitude[x]) * sun.x
-          + up * sun.y + radius * Math.sin(longitude[x]) * sun.z) ** 4;
-        const edgeLight = (1 - density) ** 2 * sunward;
-        const illumination = Math.min(1, 0.25 + sunward * 0.5 + edgeLight * 0.2 + up * 0.08);
+        const sunFacing = Math.max(0, radius * Math.cos(longitude[x]) * sun.x
+          + up * sun.y + radius * Math.sin(longitude[x]) * sun.z);
+        const sunward = sunFacing ** (sunset ? 2 : 4);
+        const edgeLight = sunset ? 0 : (1 - density) ** 2 * sunward;
+        const variation = detail[y * width + x] - 0.5;
+        const lowCloud = 1 - MathUtils.smoothstep(up, 0.08, 0.55);
+        const illumination = sunset
+          ? MathUtils.clamp(0.03 + lowCloud * (0.3 + sunward * 0.7)
+            + variation * 0.6 - density * 0.18, 0, 1)
+          : MathUtils.clamp(0.25 + sunward * 0.5 + edgeLight * 0.2 + up * 0.08, 0, 1);
+        // Low sunlight warms the undersides, not a narrow band around every silhouette.
+        const glow = sunset
+          ? MathUtils.smoothstep(sunFacing, 0.4, 0.99) * lowCloud * 0.7
+            * MathUtils.smoothstep(density, 0.05, 0.55) : 0;
         const index = (y * width + x) * 4;
-        pixels[index] = MathUtils.lerp(shade.r, light.r, illumination) * 255;
-        pixels[index + 1] = MathUtils.lerp(shade.g, light.g, illumination) * 255;
-        pixels[index + 2] = MathUtils.lerp(shade.b, light.b, illumination) * 255;
+        pixels[index] = MathUtils.lerp(MathUtils.lerp(shade.r, light.r, illumination), sunColor.r, glow) * 255;
+        pixels[index + 1] = MathUtils.lerp(MathUtils.lerp(shade.g, light.g, illumination), sunColor.g, glow) * 255;
+        pixels[index + 2] = MathUtils.lerp(MathUtils.lerp(shade.b, light.b, illumination), sunColor.b, glow) * 255;
         pixels[index + 3] = density * 235;
       }
     }

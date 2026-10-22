@@ -15,10 +15,12 @@ export class DrivingControls {
   resetRequested = false;
   cameraRequested = false;
   driveModeRequested = false;
+  timeOfDayRequested = false;
   controllerStatus = "";
   private resetHeld = false;
   private cameraHeld = false;
   private driveModeHeld = false;
+  private timeOfDayHeld = false;
   private mapViewHeld = false;
   private focused = document.hasFocus();
 
@@ -44,6 +46,7 @@ export class DrivingControls {
     this.resetRequested = false;
     this.cameraRequested = false;
     this.driveModeRequested = false;
+    this.timeOfDayRequested = false;
   }
 
   poll(enabled = true, steeringExpo = 0) {
@@ -67,6 +70,9 @@ export class DrivingControls {
     const driveModePressed = Boolean(pad?.buttons[3]?.pressed);
     this.driveModeRequested = driveModePressed && !this.driveModeHeld;
     this.driveModeHeld = driveModePressed;
+    const timeOfDayPressed = Boolean(pad?.buttons[14]?.pressed);
+    this.timeOfDayRequested = timeOfDayPressed && !this.timeOfDayHeld;
+    this.timeOfDayHeld = timeOfDayPressed;
     const mapViewPressed = Boolean(pad?.buttons[1]?.pressed);
     if (mapViewPressed && !this.mapViewHeld) this.mapView = !this.mapView;
     this.mapViewHeld = mapViewPressed;
