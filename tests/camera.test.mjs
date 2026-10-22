@@ -11,6 +11,7 @@ let courseRoute;
 let generateCustomCourse;
 let defaultCourseWeights;
 let DrivingControls;
+let carLightLayers;
 
 before(async () => {
   server = await createServer({
@@ -18,6 +19,7 @@ before(async () => {
     appType: 'custom',
   });
   ({ createDrivingCamera, cabinCameraMotion } = await server.ssrLoadModule('/src/camera.ts'));
+  ({ carLightLayers } = await server.ssrLoadModule('/src/car.ts'));
   ({ DrivingControls } = await server.ssrLoadModule('/src/controls.ts'));
   ({ courses, courseRoute } = await server.ssrLoadModule('/src/courses.ts'));
   ({ generateCustomCourse, defaultCourseWeights } = await server.ssrLoadModule('/src/course-generation.ts'));
@@ -25,6 +27,19 @@ before(async () => {
 
 after(async () => {
   await server?.close();
+});
+
+test('only cabin view enables interior illumination, while all driving views enable headlights', () => {
+  const camera = new THREE.PerspectiveCamera();
+  const controls = { mapView: false, mapZoom: 0, cameraX: 0, cameraY: 0, lookBehind: false };
+  const car = { chassis: new THREE.Group(), aimMirrors() {} };
+  const driving = createDrivingCamera(camera, car, controls, courses[0], { heightAt: () => 0 });
+  driving.reset(0);
+  for (const style of ['corner', 'classic', 'cabin', 'classic', 'cabin', 'corner']) {
+    driving.update(1 / 60, new THREE.Vector3(), 'drift', style, false);
+    assert.equal(camera.layers.isEnabled(carLightLayers.headlights), true);
+    assert.equal(camera.layers.isEnabled(carLightLayers.interior), style === 'cabin');
+  }
 });
 
 for (const style of ['corner', 'classic', 'cabin']) {

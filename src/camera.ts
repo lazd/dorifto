@@ -4,7 +4,7 @@ import { driveModes, type DriveMode } from "./drive-modes";
 import type { ConfigurationState } from "./configuration-state";
 import type { DrivingControls } from "./controls";
 import type { CourseTerrain } from "./terrain";
-import type { loadCar } from "./car";
+import { carLightLayers, type loadCar } from "./car";
 
 export const cabinCameraMotion = {
   // Displacement in meters per g, along the car's local axes.
@@ -23,6 +23,7 @@ export function createDrivingCamera(
   definition: CourseDefinition,
   terrain: CourseTerrain,
 ) {
+  camera.layers.enable(carLightLayers.headlights);
   const drivingFar = camera.far;
   const cameraRoute = courseRoute(definition);
   const cameraRouteLength = cameraRoute.getLength();
@@ -182,6 +183,8 @@ export function createDrivingCamera(
     cameraPitch = THREE.MathUtils.damp(cameraPitch, -cameraY * 0.8, pitchResponse, dt);
     const cabin = cameraStyle === "cabin";
     if (cameraStyle !== previousCameraStyle) {
+      if (cabin) camera.layers.enable(carLightLayers.interior);
+      else camera.layers.disable(carLightLayers.interior);
       camera.fov = cabin ? 75 : 55;
       camera.updateProjectionMatrix();
     }
@@ -338,5 +341,10 @@ export function createDrivingCamera(
     setClipping(height * 0.05, Math.max(drivingFar, height + mapSize.y + 100));
   }
 
-  return { reset, update, setCabinEye };
+  return {
+    reset, update, setCabinEye,
+    getCabinEye(target: THREE.Vector3) {
+      return target.copy(cabinEye).applyQuaternion(car.chassis.quaternion).add(car.chassis.position);
+    },
+  };
 }

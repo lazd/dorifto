@@ -20,6 +20,9 @@ gives nearby cabin mirrors more detail without using full-screen render targets.
 **High** (`?mirror-resolution=high`) uses drawing-buffer-resolution reflections
 for nearby mirrors. Distant cabin mirrors stay at 512×256.
 Mirrors render only in cabin view; both chase views skip mirror reflections entirely.
+Reflection cameras exclude the car's low beams, high beams, fog beams, and interior
+point lights. Cabin ambient, gauge glow, and stereo glow illuminate only cabin view;
+chase views skip those lights. Lamp lenses and displays still show their selected state.
 Choose **Off** (`?mirror-resolution=off`) to disable mirrors in cabin view as well.
 When reflections are disabled, the mirror glass remains a shiny silver surface
 using the scene's environment lighting, with no live reflection render passes.
@@ -440,9 +443,14 @@ maps at four, keeping the night scene within WebGL's 16 fragment-texture-unit mi
 All three pairs have soft additive, forward-facing lens halos rendered as scene geometry,
 so their glow also appears in live mirrors without a separate bloom pass.
 All headlight, high-beam, and fog-light combinations are compiled and rendered
-during the existing time-of-day startup warmup, before the game canvas becomes
-visible, to avoid first-toggle shader compilation. The selected light state is
-restored afterward.
+with the rear lamps off, braking, or reversing, for both cabin and chase lighting
+during the time-of-day startup warmup. Cabin, gauge, underglow, and ghost lights
+are included before the game canvas becomes visible, to avoid first-toggle shader
+compilation. The stereo light stays registered at zero intensity when off, so
+powering it on does not change shader layouts. All three mirror render targets
+are also compiled and rendered during startup, even when starting in chase view
+or with mirrors off. The selected light and mirror settings are restored afterward;
+warmup does not start radio playback.
 The halos are depth-tested, do not write depth, and cannot show through cars or walls.
 Headlights, high beams and fog lights are preserved in lap recordings; older recordings
 use the current headlight setting and default the high beams and fog lights to off.

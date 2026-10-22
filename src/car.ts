@@ -9,6 +9,8 @@ import { clockText, createSegmentedDisplay, mapDisplaySurface } from "./segmente
 
 type StandardMesh = THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>;
 
+export const carLightLayers = { headlights: 2, interior: 3 } as const;
+
 // Real Z32 two-seater length; the export's units are arbitrary.
 const CAR_LENGTH_M = 4.31;
 const PAINT_COLOR = 0xe51b23;
@@ -268,11 +270,12 @@ export async function loadCar() {
   stereoMaterial.toneMapped = false;
   const stereoBounds = new THREE.Box3().setFromObject(stereoDisplay);
   const stereoLight = new THREE.PointLight(0x42ff88, 0.025, 0.45, 2);
+  stereoLight.layers.set(carLightLayers.interior);
   stereoLight.name = "stereo-glow";
   stereoLight.position.copy(stereoBounds.getCenter(new THREE.Vector3()));
   stereoLight.position.z = stereoBounds.min.z - 0.025;
   chassis.worldToLocal(stereoLight.position);
-  stereoLight.visible = false;
+  stereoLight.intensity = 0;
   chassis.add(stereoLight);
 
   const [clock] = named(/^CLOCKTIME_Clocktime_0$/);
@@ -444,6 +447,7 @@ export async function loadCar() {
     return sideBounds(pattern).map((box) => {
       const lamp = box.getCenter(new THREE.Vector3());
       const light = new THREE.SpotLight(0xffe2b8, intensity, range, angle, 0.55, 1.2);
+      light.layers.set(carLightLayers.headlights);
       light.name = name;
       light.position.set(lamp.x, lamp.y, front + 0.035);
       light.target.position.set(lamp.x * spread, lamp.y - drop, light.position.z + 20);
@@ -508,6 +512,7 @@ export async function loadCar() {
     updateHeadlights();
   }
   const cabinLight = new THREE.PointLight(0xffd9b0, 0.06, 1.4, 2);
+  cabinLight.layers.set(carLightLayers.interior);
   cabinLight.name = "cabin-ambient";
   cabinLight.position.set(0, 0.62, -0.15);
   cabinLight.intensity = 0;
@@ -515,6 +520,7 @@ export async function loadCar() {
 
   const gaugeBounds = meshBounds(/^gaugeface[12]_Gauges_0$/);
   const gaugeLight = new THREE.PointLight(0xffd9b0, 0.025, 0.45, 2);
+  gaugeLight.layers.set(carLightLayers.interior);
   gaugeLight.name = "gauge-glow";
   gaugeLight.position.copy(gaugeBounds.getCenter(new THREE.Vector3()));
   gaugeLight.position.z = gaugeBounds.min.z - 0.025;
@@ -556,6 +562,12 @@ export async function loadCar() {
     sightLine: THREE.Vector3;
     housing?: THREE.Group;
   }[] = [];
+  function reflectionCameraFor(mirror: Reflector, camera: THREE.Camera) {
+    const reflectionCamera = mirror.getReflectionCamera(camera);
+    // Smoke uses main-view depth; car-only lighting is also excluded from reflections.
+    reflectionCamera.layers.set(0);
+    return reflectionCamera;
+  }
   for (const mesh of named(/^Mirrorglass_/)) {
     const geometry = mesh.geometry.clone().applyMatrix4(mesh.matrixWorld);
     const positions = geometry.getAttribute("position");
@@ -610,6 +622,7 @@ export async function loadCar() {
         if (!mirrorsEnabled) return;
         // Only nearby mirrors use higher resolutions; distant mirrors keep a fixed budget.
         const [renderer, , camera] = args;
+        reflectionCameraFor(mirror, camera);
         const close = mirror.getWorldPosition(eye).distanceToSquared(camera.position) < 2 ** 2;
         if (close && mirrorResolution === "high") renderer.getDrawingBufferSize(size);
         else if (close && mirrorResolution === "medium") size.set(1024, 512);
@@ -934,7 +947,7 @@ export async function loadCar() {
       stereoPowered = powered;
       radioReadout.setText(powered ? stereoStationId : " ");
       stereoMaterial.emissiveIntensity = powered ? 1.5 : 0;
-      stereoLight.visible = powered;
+      stereoLight.intensity = powered ? 0.025 : 0;
     },
     setStereoStation(id: string) {
       stereoStationId = id;
@@ -948,6 +961,28 @@ export async function loadCar() {
       mirrorsEnabled = cameraStyle === "cabin" && resolution !== "off";
       for (const { mirror, reflectionMaterial } of mirrorMounts) {
         mirror.material = mirrorsEnabled ? reflectionMaterial : inactiveMirrorMaterial;
+      }
+    },
+    async warmMirrors(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.PerspectiveCamera) {
+      const target = renderer.getRenderTarget();
+      const shadowAutoUpdate = renderer.shadowMap.autoUpdate;
+      scene.updateMatrixWorld(true);
+      camera.updateMatrixWorld(true);
+      try {
+        renderer.shadowMap.autoUpdate = false;
+        for (const mirror of mirrors) {
+          const material = mirror.material;
+          if (Array.isArray(material)) throw new Error("Mirror must use a single material.");
+          const reflectionCamera = reflectionCameraFor(mirror, camera);
+          renderer.setRenderTarget(mirror.getRenderTarget());
+          await renderer.compileAsync(scene, reflectionCamera);
+          renderer.setRenderTarget(target);
+          mirror.forceUpdate = true;
+          mirror.onBeforeRender(renderer, scene, camera, mirror.geometry, material, chassis);
+        }
+      } finally {
+        renderer.shadowMap.autoUpdate = shadowAutoUpdate;
+        renderer.setRenderTarget(target);
       }
     },
     setSteering,
