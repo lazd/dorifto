@@ -165,7 +165,7 @@
           <label for="drive-mode">Drive mode</label>
           <select id="drive-mode">
             <option value="grip">Grip</option>
-            <option value="drift" selected>Drift</option>
+            <option value="drift">Drift</option>
           </select>
         </div>
       </div>
@@ -214,7 +214,6 @@
             type="button"
             role="tab"
             aria-controls="courses-built-in"
-            aria-selected="true"
           >
             Built-in courses
           </button>
@@ -223,7 +222,6 @@
             type="button"
             role="tab"
             aria-controls="courses-racetracks"
-            aria-selected="false"
           >
             Racetracks
           </button>
@@ -232,7 +230,6 @@
             type="button"
             role="tab"
             aria-controls="courses-saved"
-            aria-selected="false"
           >
             Saved courses
           </button>
@@ -250,7 +247,6 @@
           role="tabpanel"
           aria-labelledby="courses-racetracks-tab"
           tabindex="0"
-          hidden
         >
           <div class="course-grid"></div>
         </div>
@@ -259,7 +255,6 @@
           role="tabpanel"
           aria-labelledby="courses-saved-tab"
           tabindex="0"
-          hidden
         >
           <p id="courses-saved-empty">
             No saved courses yet. Generate a random or custom course, then save it from the course
@@ -345,7 +340,7 @@
           <div class="settings-control-row">
             <label for="sound">Sound</label>
             <select id="sound">
-              <option value="on" selected>On</option>
+              <option value="on">On</option>
               <option value="off">Off</option>
             </select>
           </div>
@@ -365,17 +360,17 @@
           <div class="settings-control-row">
             <label for="minimap-orientation">Map orientation</label>
             <select id="minimap-orientation">
+              <option value="heading-up">Follow heading</option>
               <option value="north-up">North up</option>
-              <option value="heading-up" selected>Follow heading</option>
             </select>
           </div>
           <div class="settings-control-row">
             <label for="ghost-mode">Ghost car</label>
             <select id="ghost-mode">
+              <option value="off">Off</option>
+              <option value="record">Record lap</option>
               <option value="fastest">Fastest lap</option>
               <option value="previous">Previous lap</option>
-              <option value="record">Record lap</option>
-              <option value="off">Off</option>
             </select>
           </div>
         </div>
@@ -395,7 +390,7 @@
             <label for="mirror-resolution">Mirror resolution</label>
             <select id="mirror-resolution">
               <option value="off">Off</option>
-              <option value="low" selected>Low (512 × 256)</option>
+              <option value="low">Low (512 × 256)</option>
               <option value="medium">Medium (1024 × 512)</option>
               <option value="high">High (full resolution)</option>
             </select>
@@ -416,7 +411,7 @@
             <label for="show-cones">Cones</label>
             <select id="show-cones">
               <option value="all">On</option>
-              <option value="corners" selected>Corners only</option>
+              <option value="corners">Corners only</option>
               <option value="off">Off</option>
             </select>
           </div>

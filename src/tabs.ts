@@ -29,8 +29,7 @@ export class Tabs {
       });
       return panel;
     });
-    const selected = this.tabs.findIndex((tab) => tab.getAttribute('aria-selected') === 'true');
-    this.select(this.panels[Math.max(0, selected)].id);
+    this.select(this.panels[0].id);
   }
 
   select(panelId: string) {

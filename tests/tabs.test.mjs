@@ -15,7 +15,7 @@ before(async () => {
 
 after(async () => { await server?.close(); });
 
-function fixture(selected = 0) {
+function fixture() {
   let focused = null;
   class Element extends EventTarget {
     attributes = new Map();
@@ -32,7 +32,6 @@ function fixture(selected = 0) {
   const tabs = Array.from({ length: 3 }, (_, i) => {
     const tab = new Element(`tab-${i}`);
     tab.setAttribute('aria-controls', `panel-${i}`);
-    tab.setAttribute('aria-selected', String(i === selected));
     return tab;
   });
   const panels = tabs.map((_, i) => {
@@ -57,15 +56,15 @@ function checkSelected({ tabs, panels }, index) {
   });
 }
 
-test('initializes ARIA relationships and roving focus from the selected tab', () => {
-  const dom = fixture(1);
+test('defaults to the first tab and initializes ARIA relationships and roving focus', () => {
+  const dom = fixture();
   new Tabs(dom.root);
-  checkSelected(dom, 1);
+  checkSelected(dom, 0);
   assert.equal(dom.focused(), null);
 });
 
-test('defaults to the first tab and supports clicking and programmatic selection', () => {
-  const dom = fixture(-1);
+test('supports clicking and programmatic selection', () => {
+  const dom = fixture();
   const tabs = new Tabs(dom.root);
   checkSelected(dom, 0);
   dom.tabs[2].dispatchEvent(new Event('click'));

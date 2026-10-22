@@ -2,7 +2,7 @@ import { driveModes, type DriveMode } from './drive-modes';
 import { idleRpm } from './drivetrain';
 import { createStore } from './store';
 import type { TurnSignMode } from './turn-sign';
-import { stereoStations, type StereoStationId } from './stereo';
+import { type StereoStationSelection } from './stereo';
 import { loadTuningPresets, type TuningPreset } from './tuning-presets';
 
 export const wattsPerHorsepower = 745.699872;
@@ -105,7 +105,7 @@ export interface GameState {
   focused: boolean;
   controllerStatus: string;
   sound: Readonly<{ running: boolean; muted: boolean; failed: boolean; error: string | null }>;
-  stereoStation: StereoStationId;
+  stereoStation: StereoStationSelection;
   status: Readonly<{ message: string; error: boolean; visible: boolean }>;
   telemetry: Readonly<{
     speed: number; rpm: number; gear: number; limiter: boolean;
@@ -130,7 +130,7 @@ export function createGameState(storage?: Storage) {
     ghostMode: 'fastest', lapRecorder: { mode: 'off', runs: [], selectedRun: null, replayLap: null },
     focused: true, controllerStatus: '',
     sound: { running: false, muted: false, failed: false, error: null },
-    stereoStation: stereoStations[0].id,
+    stereoStation: 'off',
     status: { message: 'Loading car and physics...', error: false, visible: true },
     telemetry: {
       speed: 0, rpm: idleRpm, gear: 1, limiter: false,

@@ -53,6 +53,7 @@ function fixture(t, initiallyOpen = false) {
 test('every dialog blocks driving through UI events without game-store updates', (t) => {
   const ui = fixture(t);
   const store = createGameState();
+  assert.equal(store.getState().stereoStation, 'off');
   let gameUpdates = 0;
   store.subscribe(() => { gameUpdates++; });
   assert.deepEqual(ui.states, [false]);

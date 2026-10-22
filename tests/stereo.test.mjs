@@ -6,13 +6,15 @@ let server;
 let CarStereo;
 let stereoStations;
 let isStereoStation;
+let isStereoStationSelection;
 
 before(async () => {
   server = await createServer({
     server: { middlewareMode: true, hmr: false, ws: false, watch: null },
     appType: 'custom',
   });
-  ({ CarStereo, stereoStations, isStereoStation } = await server.ssrLoadModule('/src/stereo.ts'));
+  ({ CarStereo, stereoStations, isStereoStation, isStereoStationSelection } =
+    await server.ssrLoadModule('/src/stereo.ts'));
 });
 
 after(async () => { await server?.close(); });
@@ -119,6 +121,19 @@ test('stays off until requested and starts the playlist MP3 directly, only once'
   stereo.turnOn();
   assert.equal(audio.playCalls, 1);
   assert.deepEqual(errors, []);
+});
+
+test('supports Off as a station selection and explicitly powers down', (t) => {
+  const { stereo, audio, power } = fixture(t);
+  assert.equal(isStereoStationSelection('off'), true);
+  assert.equal(isStereoStationSelection(stereoStations[0].id), true);
+  assert.equal(isStereoStationSelection('missing'), false);
+  stereo.turnOn();
+  stereo.turnOff();
+  assert.equal(stereo.isPowered, false);
+  assert.equal(audio.paused, true);
+  assert.equal(audio.src, undefined);
+  assert.deepEqual(power, [true, false]);
 });
 
 test('respects initial and subsequent master mute without restarting playback', (t) => {

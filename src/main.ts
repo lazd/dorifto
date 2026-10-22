@@ -8,7 +8,7 @@ import { generateCustomCourse, readCourseWeights, writeCourseWeights, type Cours
 import { isDriveMode } from './drive-modes';
 import { LapTimer, formatLapTime } from './laps';
 import { VehicleAudio } from './audio';
-import { CarStereo, isStereoStation, stereoStations } from './stereo';
+import { CarStereo, isStereoStationSelection } from './stereo';
 import {
   createGameState, defaultTuningPresets, isCameraStyle, isGhostMode, isMinimapOrientation, isTimeOfDay,
   readMirrorResolution, type SavedRunOption,
@@ -40,8 +40,8 @@ async function start() {
   if (!isCameraStyle(requestedCamera)) throw new Error(`Unknown camera style: ${requestedCamera}`);
   const requestedMode = new URL(location.href).searchParams.get('mode') ?? 'drift';
   if (!isDriveMode(requestedMode)) throw new Error(`Unknown drive mode: ${requestedMode}`);
-  const requestedStation = new URL(location.href).searchParams.get('station') ?? stereoStations[0].id;
-  if (!isStereoStation(requestedStation)) throw new Error(`Unknown stereo station: ${requestedStation}`);
+  const requestedStation = new URL(location.href).searchParams.get('station') ?? 'off';
+  if (!isStereoStationSelection(requestedStation)) throw new Error(`Unknown stereo station: ${requestedStation}`);
   gameState.update({ stereoStation: requestedStation });
   const requestedPresetId = new URL(location.href).searchParams.get('preset') ?? `${requestedMode}-default`;
   const matchedPreset = requestedPresetId === 'custom' ? null
@@ -176,10 +176,14 @@ async function start() {
     } });
   }, gameState.getState().sound.muted);
   gameState.subscribe(({ stereoStation }) => {
+    if (stereoStation === 'off') {
+      stereo.turnOff();
+      return;
+    }
     stereo.setStation(stereoStation);
     car.setStereoStation(stereoStation);
   });
-  if (new URL(location.href).searchParams.has('station')) stereo.turnOn();
+  if (requestedStation !== 'off') stereo.turnOn();
   let dialogOpen = false;
   const keys = controls.keys;
   const controlKeys = new Set(['ArrowLeft', 'ArrowRight', 'KeyX', 'KeyZ', 'Space', 'KeyR', 'KeyC', 'KeyD', 'KeyM', 'KeyW', 'KeyS', 'KeyF', 'KeyH']);
@@ -610,10 +614,11 @@ async function start() {
   }
 
   function pressStereo(direction: 'previous' | 'next' = 'next') {
-    const stereoStation = stereo.press(direction);
+    const station = stereo.press(direction);
+    const stereoStation = stereo.isPowered ? station : 'off';
     gameState.update({ stereoStation });
     const url = new URL(location.href);
-    if (stereo.isPowered) url.searchParams.set('station', stereoStation);
+    if (stereo.isPowered) url.searchParams.set('station', station);
     else url.searchParams.delete('station');
     history.replaceState(null, '', url);
   }

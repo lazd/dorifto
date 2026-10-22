@@ -25,9 +25,14 @@ export const stereoStations = [
 ] as const;
 
 export type StereoStationId = (typeof stereoStations)[number]["id"];
+export type StereoStationSelection = StereoStationId | "off";
 
 export function isStereoStation(value: string): value is StereoStationId {
   return stereoStations.some(({ id }) => id === value);
+}
+
+export function isStereoStationSelection(value: string): value is StereoStationSelection {
+  return value === "off" || isStereoStation(value);
 }
 
 export class CarStereo {
@@ -87,7 +92,7 @@ export class CarStereo {
     this.playStation();
   }
 
-  private turnOff() {
+  turnOff() {
     this.clearGestureRetry();
     this.powered = false;
     this.playbackAttempt++;
