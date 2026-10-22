@@ -74,8 +74,11 @@ times stay upright. The choice is retained in the URL across reloads and course 
   camera smoothing, and reset framing.
 - `src/minimap.ts`: top-down course outline and live position/heading HUD.
 - `src/lighting.ts`: sky, environment, time-of-day presets, and following shadows.
-- `src/vehicle-physics.ts`: Ammo world, terrain/cone collision bodies, suspension,
-  tire forces, vehicle reset, and interpolated vehicle/cone poses.
+- `src/vehicle-physics.ts`: Ammo world, terrain collision bodies, suspension,
+  tire forces, vehicle reset, interpolated vehicle poses, and physics plugin lifecycle.
+- `src/physics-plugin.ts`: typed object-plugin context/hooks and reusable pose interpolation.
+- `src/cone-physics.ts`: cone shapes/bodies, filtering, resets, interpolated poses,
+  collision penalties, and impact sounds.
 - `src/tire-effects.ts`: skid marks, tire smoke/dust, and smoke depth capture.
 - `src/drive-modes.ts`: Grip/Drift handling and camera presets.
 - `src/drivetrain.ts`: fixed ratios, final drive, reverse, shared redline, Sport
@@ -86,6 +89,31 @@ times stay upright. The choice is retained in the URL across reloads and course 
 
 Each runtime module owns its working state; the entry point coordinates updates
 without sharing its local variables with the camera, physics, or effects.
+
+### Physics object plugins
+
+Register object physics explicitly after creating a world:
+
+```ts
+const conePhysics = physics.addPlugin((context) => createConePhysics(context, { course, audio }));
+conePhysics.setEnabled(true, true);
+```
+
+`addPlugin` returns the plugin's own typed controls. New object types implement
+`PhysicsPlugin` without changing vehicle physics. The context provides Ammo, the
+world/dispatcher, the vehicle body, the current lap timer (including after a
+direction change), `createRigidBody`, and `setBodyEnabled`. Managed bodies and
+motion states are freed automatically, even when disabled. Plugins own their
+collision shapes and any other Ammo allocations.
+
+Optional hooks run in registration order: `beforeStep(dt)` before simulation,
+`afterStep(dt)` after collision detection and before lap updates, `reset()` during
+vehicle reset, `captureVisuals(snap)` after each fixed step or forced snap, and
+`interpolate(alpha)` during rendering. `createPhysicsVisuals` provides reusable
+pose snapshots/interpolation; synchronize meshes from bodies before capturing.
+`dispose()` runs once after managed bodies are destroyed but before the world
+is destroyed, so it should release plugin-owned shapes and temporary allocations.
+Register plugins before the initial reset; registration does not reset the world.
 
 Edit `vehicleSettings` in `src/vehicle-settings.ts` and reload to change the
 vehicle's physical setup. Defaults are 2,900 lb (1,315 kg), 50/50 static

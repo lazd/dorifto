@@ -8,6 +8,7 @@ let server;
 let Ammo;
 let createVehiclePhysics;
 let createPhysicsResources;
+let createConePhysics;
 let createGameState;
 let courses;
 let courseCornerAt;
@@ -19,6 +20,7 @@ before(async () => {
     appType: 'custom',
   });
   ({ createVehiclePhysics, createPhysicsResources } = await server.ssrLoadModule('/src/vehicle-physics.ts'));
+  ({ createConePhysics } = await server.ssrLoadModule('/src/cone-physics.ts'));
   ({ createGameState } = await server.ssrLoadModule('/src/game-state.ts'));
   ({ courses, courseCornerAt, courseRoute } = await server.ssrLoadModule('/src/courses.ts'));
   Ammo = await AmmoFactory.call({});
@@ -107,35 +109,37 @@ test('replaces real Ammo worlds while reusing car assets and heightfields and fr
         cone.position.set(index * 2, i, 5);
         return cone;
       });
-      const next = createVehiclePhysics({
-        Ammo, resources, car, controls, gameState, laps, audio,
-        spawn: { position: [i, 0], heading: i * 0.2 },
-        course: {
-          cones,
-          cornerCones: [cones[0], cones[2]],
-          terrain: {
-            heights: new Float32Array(32 * 32).fill(i),
-            columns: 32, rows: 32, spacing: 1.5, minX: -24, minZ: -24,
-            minHeight: i - 0.01, maxHeight: i + 0.01,
-            normalAt: () => new THREE.Vector3(0, 1, 0),
-            heightAt: () => i,
-          },
-          isAsphalt: () => true,
+      const course = {
+        cones,
+        cornerCones: [cones[0], cones[2]],
+        terrain: {
+          heights: new Float32Array(32 * 32).fill(i),
+          columns: 32, rows: 32, spacing: 1.5, minX: -24, minZ: -24,
+          minHeight: i - 0.01, maxHeight: i + 0.01,
+          normalAt: () => new THREE.Vector3(0, 1, 0),
+          heightAt: () => i,
         },
+        isAsphalt: () => true,
+      };
+      const next = createVehiclePhysics({
+        Ammo, resources, car, controls, gameState, laps,
+        spawn: { position: [i, 0], heading: i * 0.2 },
+        course,
       });
+      const conePhysics = next.addPlugin((context) => createConePhysics(context, { course, audio }));
       current?.dispose();
       current = next;
       current.reset();
       if (i === 0) {
-        current.setConesEnabled(true, true);
+        conePhysics.setEnabled(true, true);
         assert.deepEqual(cones.map(({ visible }) => visible), [true, false, true]);
-        current.setConesEnabled(true);
+        conePhysics.setEnabled(true);
         assert.deepEqual(cones.map(({ visible }) => visible), [true, true, true]);
-        current.setConesEnabled(false, true);
+        conePhysics.setEnabled(false, true);
         assert.deepEqual(cones.map(({ visible }) => visible), [false, false, false]);
-        current.setConesEnabled(true, true);
+        conePhysics.setEnabled(true, true);
         assert.deepEqual(cones.map(({ visible }) => visible), [true, false, true]);
-        current.setConesEnabled(true);
+        conePhysics.setEnabled(true);
       }
       assert.equal(current.spawnBrakeHeld, true);
       assert.ok(Math.abs(car.chassis.position.x - i) < 1e-4);
@@ -170,6 +174,8 @@ test('replaces real Ammo worlds while reusing car assets and heightfields and fr
       assert.equal(heightfields.size, Math.min(i + 1, 2));
       assert.equal(destroyed.get(Ammo.btDiscreteDynamicsWorld), worldDestructions);
       assert.equal(destroyed.get(Ammo.btRigidBody), bodyDestructions);
+      // Leave some bodies disabled when replacing the world.
+      conePhysics.setEnabled(true, true);
     }
     current.dispose();
     current = undefined;

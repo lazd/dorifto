@@ -1,10 +1,9 @@
 import * as THREE from 'three';
 import type AmmoFactory from 'ammojs-typed';
 import type { loadCar } from './car';
-import { coneDimensions, type createCourse } from './course';
+import type { createCourse } from './course';
 import type { courseSpawn } from './courses';
 import type { DrivingControls } from './controls';
-import type { VehicleAudio } from './audio';
 import type { LapTimer } from './laps';
 import type { GameState } from './game-state';
 import type { Store } from './store';
@@ -12,6 +11,7 @@ import { wattsPerHorsepower } from './game-state';
 import { driveModes } from './drive-modes';
 import { Drivetrain, wheelInertia, type DrivetrainInput } from './drivetrain';
 import { vehicleSettings } from './vehicle-settings';
+import { createPhysicsVisuals, type PhysicsPlugin, type PhysicsPluginContext } from './physics-plugin';
 
 interface VehiclePhysicsOptions {
   Ammo: typeof AmmoFactory;
@@ -22,7 +22,6 @@ interface VehiclePhysicsOptions {
   controls: DrivingControls;
   gameState: Store<GameState>;
   laps: LapTimer;
-  audio: VehicleAudio;
 }
 
 export function createPhysicsResources(Ammo: typeof AmmoFactory) {
@@ -49,10 +48,9 @@ export function createPhysicsResources(Ammo: typeof AmmoFactory) {
 }
 
 export function createVehiclePhysics({
-  Ammo, resources, car, course, spawn, controls, gameState, laps, audio,
+  Ammo, resources, car, course, spawn, controls, gameState, laps,
 }: VehiclePhysicsOptions) {
-  const { cones, terrain, isAsphalt } = course;
-  const cornerConeIndices = new Set((course.cornerCones ?? []).map((cone) => cones.indexOf(cone)));
+  const { terrain, isAsphalt } = course;
   const settings = vehicleSettings;
   const { suspension } = settings;
   const frontAxleZ = (car.centers[0].z + car.centers[1].z) / 2;
@@ -71,9 +69,13 @@ export function createVehiclePhysics({
   const world = new Ammo.btDiscreteDynamicsWorld(dispatcher, broadphase, solver, configuration);
   const vector = new Ammo.btVector3(0, -9.81, 0);
   world.setGravity(vector);
-  const rigidBodies: { body: AmmoFactory.btRigidBody; motion: AmmoFactory.btDefaultMotionState }[] = [];
+  const rigidBodies = new Map<AmmoFactory.btRigidBody, AmmoFactory.btDefaultMotionState>();
+  const enabledBodies = new Set<AmmoFactory.btRigidBody>();
+  const plugins: PhysicsPlugin[] = [];
+  let disposed = false;
 
   function rigidBody(mass: number, shape: AmmoFactory.btCollisionShape, position: THREE.Vector3) {
+    if (disposed) throw new Error('Cannot create a body in disposed vehicle physics');
     const transform = new Ammo.btTransform();
     transform.setIdentity();
     vector.setValue(position.x, position.y, position.z);
@@ -84,7 +86,8 @@ export function createVehiclePhysics({
     const info = new Ammo.btRigidBodyConstructionInfo(mass, motion, shape, vector);
     const body = new Ammo.btRigidBody(info);
     world.addRigidBody(body);
-    rigidBodies.push({ body, motion });
+    enabledBodies.add(body);
+    rigidBodies.set(body, motion);
     Ammo.destroy(info);
     Ammo.destroy(transform);
     return body;
@@ -102,45 +105,6 @@ export function createVehiclePhysics({
     (terrain.minHeight + terrain.maxHeight) / 2,
     terrain.minZ + (terrain.rows - 1) * terrain.spacing / 2,
   ));
-  const coneStarts = cones.map((cone) => cone.position.clone());
-  const coneRotations = cones.map((cone) => cone.quaternion.clone());
-  const coneResetTransform = new Ammo.btTransform();
-  coneResetTransform.setIdentity();
-  const coneShape = new Ammo.btCompoundShape();
-  const coneBodyShape = new Ammo.btConvexHullShape();
-  const { height, bottomRadius, topRadius, baseWidth, baseHeight, centerOfMassHeight } = coneDimensions;
-  for (const [y, radius] of [[baseHeight - centerOfMassHeight, bottomRadius], [height - centerOfMassHeight, topRadius]]) {
-    for (let i = 0; i < 24; i++) {
-      const angle = i / 24 * Math.PI * 2;
-      vector.setValue(Math.cos(angle) * radius, y, Math.sin(angle) * radius);
-      coneBodyShape.addPoint(vector, true);
-    }
-  }
-  coneBodyShape.setMargin(0.005);
-  coneShape.addChildShape(coneResetTransform, coneBodyShape);
-  vector.setValue(baseWidth / 2, baseHeight / 2, baseWidth / 2);
-  const coneBaseShape = new Ammo.btBoxShape(vector);
-  coneBaseShape.setMargin(0.005);
-  vector.setValue(0, baseHeight / 2 - centerOfMassHeight, 0);
-  coneResetTransform.setOrigin(vector);
-  coneShape.addChildShape(coneResetTransform, coneBaseShape);
-  const coneBodies = cones.map((mesh) => {
-    const body = rigidBody(3, coneShape, mesh.position);
-    const transform = body.getWorldTransform();
-    const rotation = new Ammo.btQuaternion(mesh.quaternion.x, mesh.quaternion.y, mesh.quaternion.z, mesh.quaternion.w);
-    transform.setRotation(rotation);
-    body.setCenterOfMassTransform(transform);
-    body.getMotionState().setWorldTransform(transform);
-    world.updateSingleAabb(body);
-    Ammo.destroy(rotation);
-    body.setFriction(0.7);
-    body.setRestitution(0.15);
-    body.setDamping(0.08, 0.12);
-    body.setCcdMotionThreshold(0.1);
-    body.setCcdSweptSphereRadius(0.12);
-    body.setActivationState(2);
-    return body;
-  });
   const chassisShape = new Ammo.btConvexHullShape();
   for (let i = 0; i < car.collisionVertices.length; i++) {
     const point = car.collisionVertices[i];
@@ -154,8 +118,6 @@ export function createVehiclePhysics({
   vector.setValue(settings.inertiaKgM2.pitch, settings.inertiaKgM2.yaw, settings.inertiaKgM2.roll);
   body.setMassProps(settings.massKg, vector);
   body.updateInertiaTensor();
-  const carPointer = Ammo.getPointer(body);
-  const coneIds = new Map(coneBodies.map((cone, i) => [Ammo.getPointer(cone), i]));
   body.setActivationState(4);
   body.setDamping(settings.damping.linear, settings.damping.angular);
   const tuning = resources.vehicleTuning;
@@ -188,7 +150,6 @@ export function createVehiclePhysics({
 
 
   const tireSounds = Array.from({ length: 4 }, () => ({ slip: 0, speed: 0, load: 0 }));
-  const coneSoundCooldowns = new Map<number, number>();
 
   let steering = 0;
   let burnout = 0;
@@ -214,41 +175,7 @@ export function createVehiclePhysics({
   const linearVelocity = new THREE.Vector3();
   const previousVelocity = new THREE.Vector3();
   const currentVelocity = new THREE.Vector3();
-  const visualState = (object: THREE.Object3D) => ({
-    object,
-    previousPosition: new THREE.Vector3(),
-    position: new THREE.Vector3(),
-    previousRotation: new THREE.Quaternion(),
-    rotation: new THREE.Quaternion(),
-  });
-  const carVisualStates = [car.chassis, ...car.wheels, ...car.hubs].map(visualState);
-  const coneVisualStates = cones.map((cone, index) => ({ ...visualState(cone), coneIndex: index }));
-  let visualStates = [...carVisualStates, ...coneVisualStates];
-  let conesEnabled = true;
-  let cornerOnly = false;
-  const coneIsActive = (index: number) =>
-    conesEnabled && (!cornerOnly || cornerConeIndices.has(index));
-  // Inactive cones leave the world entirely: no rendering, collisions, or per-frame sync.
-  function setConesEnabled(enabled: boolean, onlyCorners = false) {
-    if (enabled === conesEnabled && onlyCorners === cornerOnly) return;
-    const wasActive = cones.map((_, index) => coneIsActive(index));
-    conesEnabled = enabled;
-    cornerOnly = onlyCorners;
-    coneBodies.forEach((cone, i) => {
-      const active = coneIsActive(i);
-      cones[i].visible = active;
-      if (active && !wasActive[i]) world.addRigidBody(cone);
-      else if (!active && wasActive[i]) world.removeRigidBody(cone);
-    });
-    visualStates = [
-      ...carVisualStates,
-      ...coneVisualStates.filter(({ coneIndex }) => coneIsActive(coneIndex)),
-    ];
-    if (enabled) {
-      resetCones();
-      captureVisuals(true);
-    }
-  }
+  const visuals = createPhysicsVisuals([car.chassis, ...car.wheels, ...car.hubs]);
   const wheelBasis = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI);
   const wheelContacts = [false, false, false, false];
   const physicsRotation = new THREE.Quaternion();
@@ -285,14 +212,6 @@ export function createVehiclePhysics({
   setCourseDirection(spawn, laps);
 
   function syncVisuals() {
-    cones.forEach((cone, i) => {
-      if (!coneIsActive(i)) return;
-      const transform = coneBodies[i].getWorldTransform();
-      const position = transform.getOrigin();
-      const rotation = transform.getRotation();
-      cone.position.set(position.x(), position.y(), position.z());
-      cone.quaternion.set(rotation.x(), rotation.y(), rotation.z(), rotation.w());
-    });
     const transform = body.getWorldTransform();
     const position = transform.getOrigin();
     const rotation = transform.getRotation();
@@ -316,53 +235,18 @@ export function createVehiclePhysics({
   }
 
   function captureVisuals(snap = false) {
-    for (const state of visualStates) {
-      state.previousPosition.copy(state.position);
-      state.previousRotation.copy(state.rotation);
-    }
     previousVelocity.copy(currentVelocity);
     syncVisuals();
     const linear = body.getLinearVelocity();
     currentVelocity.set(linear.x(), linear.y(), linear.z());
-    for (const state of visualStates) {
-      state.position.copy(state.object.position);
-      state.rotation.copy(state.object.quaternion);
-      if (snap) {
-        state.previousPosition.copy(state.position);
-        state.previousRotation.copy(state.rotation);
-      }
-    }
+    visuals.capture(snap);
+    for (const plugin of plugins) plugin.captureVisuals?.(snap);
     if (snap) previousVelocity.copy(currentVelocity);
-  }
-
-  function resetCones() {
-    if (!conesEnabled) return;
-    coneBodies.forEach((cone, i) => {
-      if (!coneIsActive(i)) return;
-      coneResetTransform.setIdentity();
-      const start = coneStarts[i];
-      const rotation = coneRotations[i];
-      const coneRotation = new Ammo.btQuaternion(rotation.x, rotation.y, rotation.z, rotation.w);
-      coneResetTransform.setRotation(coneRotation);
-      Ammo.destroy(coneRotation);
-      vector.setValue(start.x, start.y, start.z);
-      coneResetTransform.setOrigin(vector);
-      cone.setCenterOfMassTransform(coneResetTransform);
-      cone.getMotionState().setWorldTransform(coneResetTransform);
-      vector.setValue(0, 0, 0);
-      cone.setLinearVelocity(vector);
-      cone.setAngularVelocity(vector);
-      cone.clearForces();
-      // Placed props start asleep; collisions still wake them normally.
-      cone.setActivationState(2);
-      world.updateSingleAabb(cone);
-    });
   }
 
   function reset() {
     drivetrain.reset();
     for (const tire of tireSounds) tire.slip = tire.speed = tire.load = 0;
-    coneSoundCooldowns.clear();
     spawnBrakeHeld = true;
     brakestand = false;
     car.setBraking(true);
@@ -375,7 +259,7 @@ export function createVehiclePhysics({
     tireSpeeds.fill(0);
     tireAngles.fill(0);
     wheelContacts.fill(false);
-    resetCones();
+    for (const plugin of plugins) plugin.reset?.();
     body.setCenterOfMassTransform(resetTransform);
     body.getMotionState().setWorldTransform(resetTransform);
     vector.setValue(0, 0, 0);
@@ -422,10 +306,7 @@ export function createVehiclePhysics({
     brakestand = throttle > 0 && braking && !reversing && speed < settings.brakes.brakestandMaxSpeedKmh;
     burnout = 0;
     for (const tire of tireSounds) tire.slip = tire.speed = tire.load = 0;
-    for (const [cone, remaining] of coneSoundCooldowns) {
-      if (remaining <= fixedStep) coneSoundCooldowns.delete(cone);
-      else coneSoundCooldowns.set(cone, remaining - fixedStep);
-    }
+    for (const plugin of plugins) plugin.beforeStep?.(fixedStep);
     suspensionUp.set(0, 1, 0).applyQuaternion(physicsRotation);
     for (const axle of [0, 2]) {
       const left = vehicle.getWheelInfo(axle).get_m_raycastInfo();
@@ -577,30 +458,7 @@ export function createVehiclePhysics({
     vector.setValue(-linear.x() * drag, 0, -linear.z() * drag);
     body.applyCentralForce(vector);
     world.stepSimulation(fixedStep, 0);
-    for (let i = 0; i < dispatcher.getNumManifolds(); i++) {
-      const manifold = dispatcher.getManifoldByIndexInternal(i);
-      const first = Ammo.getPointer(manifold.getBody0());
-      const second = Ammo.getPointer(manifold.getBody1());
-      const cone = first === carPointer ? coneIds.get(second)
-        : second === carPointer ? coneIds.get(first) : undefined;
-      if (cone === undefined) continue;
-      let impulse = 0;
-      let touching = false;
-      for (let j = 0; j < manifold.getNumContacts(); j++) {
-        const point = manifold.getContactPoint(j);
-        if (point.getDistance() <= 0) {
-          touching = true;
-          impulse += point.getAppliedImpulse();
-        }
-      }
-      if (touching) {
-        laps.hitCone(cone);
-        if (impulse >= 0.5 && !coneSoundCooldowns.has(cone)) {
-          audio.hitCone(impulse);
-          coneSoundCooldowns.set(cone, 0.3);
-        }
-      }
-    }
+    for (const plugin of plugins) plugin.afterStep?.(fixedStep);
     const lapOrigin = body.getWorldTransform().getOrigin();
     lapPosition.set(lapOrigin.x(), lapOrigin.y(), lapOrigin.z());
     laps.update(lapPosition, fixedStep);
@@ -615,38 +473,55 @@ export function createVehiclePhysics({
   function interpolate(alpha: number) {
     car.setBraking(spawnBrakeHeld || (!reversing && controls.brake > 0));
     car.setReversing(reversing);
-    for (const state of visualStates) {
-      state.object.position.lerpVectors(state.previousPosition, state.position, alpha);
-      state.object.quaternion.slerpQuaternions(state.previousRotation, state.rotation, alpha);
-    }
+    visuals.interpolate(alpha);
+    for (const plugin of plugins) plugin.interpolate?.(alpha);
     linearVelocity.lerpVectors(previousVelocity, currentVelocity, alpha);
     velocity.copy(linearVelocity).setY(0);
     return velocity;
   }
 
-  let disposed = false;
+  function addPlugin<T extends PhysicsPlugin>(createPlugin: (context: PhysicsPluginContext) => T): T {
+    if (disposed) throw new Error('Cannot add a plugin to disposed vehicle physics');
+    const plugin = createPlugin({
+      Ammo, world, dispatcher, vehicleBody: body,
+      get laps() { return laps; },
+      createRigidBody: rigidBody,
+      setBodyEnabled(body, enabled) {
+        if (disposed) throw new Error('Cannot toggle a body in disposed vehicle physics');
+        if (!rigidBodies.has(body)) {
+          throw new Error('Cannot toggle an unmanaged physics body');
+        }
+        if (enabled === enabledBodies.has(body)) return;
+        if (enabled) {
+          world.addRigidBody(body);
+          enabledBodies.add(body);
+        } else {
+          world.removeRigidBody(body);
+          enabledBodies.delete(body);
+        }
+      },
+    });
+    plugins.push(plugin);
+    return plugin;
+  }
+
   function dispose() {
     if (disposed) return;
     disposed = true;
-    // Restore bodies removed by the cone filter so the shared cleanup removes them all.
-    coneBodies.forEach((cone, i) => {
-      if (!coneIsActive(i)) world.addRigidBody(cone);
-    });
     world.removeAction(vehicle);
     Ammo.destroy(vehicle);
     Ammo.destroy(raycaster);
-    for (const { body, motion } of rigidBodies) {
-      world.removeRigidBody(body);
+    for (const [body, motion] of rigidBodies) {
+      if (enabledBodies.has(body)) world.removeRigidBody(body);
       Ammo.destroy(body);
       Ammo.destroy(motion);
     }
-    Ammo.destroy(coneShape);
-    Ammo.destroy(coneBodyShape);
-    Ammo.destroy(coneBaseShape);
+    rigidBodies.clear();
+    enabledBodies.clear();
+    for (const plugin of plugins) plugin.dispose?.();
     Ammo.destroy(chassisShape);
     Ammo.destroy(groundShape);
     heightData.release();
-    Ammo.destroy(coneResetTransform);
     Ammo.destroy(resetTransform);
     Ammo.destroy(forceOffset);
     Ammo.destroy(vector);
@@ -658,7 +533,7 @@ export function createVehiclePhysics({
   }
 
   return {
-    step, reset, setCourseDirection, setConesEnabled, dispose, captureVisuals, interpolate, fixedStep, wheelContacts, tireSounds,
+    step, reset, setCourseDirection, addPlugin, dispose, captureVisuals, interpolate, fixedStep, wheelContacts, tireSounds,
     get engine() { return drivetrain.state; },
     get burnout() { return burnout; },
     get steering() { return steering; },

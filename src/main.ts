@@ -15,6 +15,7 @@ import { createLighting } from './lighting';
 import { createTireEffects } from './tire-effects';
 import { createMinimap } from './minimap';
 import { createPhysicsResources, createVehiclePhysics } from './vehicle-physics';
+import { createConePhysics } from './cone-physics';
 import './style.css';
 
 const gameState = createGameState();
@@ -127,15 +128,16 @@ async function start() {
     try {
       const spawn = courseSpawn(nextDefinition);
       const laps = new LapTimer(nextDefinition);
-      physics = createVehiclePhysics({ Ammo, resources: physicsResources, car, course, spawn, controls, gameState, laps, audio });
+      physics = createVehiclePhysics({ Ammo, resources: physicsResources, car, course, spawn, controls, gameState, laps });
+      const conePhysics = physics.addPlugin((context) => createConePhysics(context, { course, audio }));
       const drivingCamera = createDrivingCamera(camera, car, controls, nextDefinition, course.terrain);
       const { coneMode, showGrass, showTurnSigns } = gameState.getState();
-      physics.setConesEnabled(coneMode !== 'off', coneMode === 'corners');
+      conePhysics.setEnabled(coneMode !== 'off', coneMode === 'corners');
       course.setTurnSignsEnabled(showTurnSigns);
       course.terrain.grass.visible = showGrass;
       physics.reset();
       drivingCamera.reset(spawn.heading);
-      return { course, terrain: course.terrain, spawn, laps, physics, drivingCamera };
+      return { course, terrain: course.terrain, spawn, laps, physics, conePhysics, drivingCamera };
     } catch (error) {
       physics?.dispose();
       course.dispose();
@@ -144,11 +146,11 @@ async function start() {
   }
 
   let activeDefinition = definition;
-  let { course, terrain, spawn, laps, physics, drivingCamera } = createCourseSession({ ...definition, reverse: requestedReverse });
+  let { course, terrain, spawn, laps, physics, conePhysics, drivingCamera } = createCourseSession({ ...definition, reverse: requestedReverse });
   const minimap = createMinimap(element('#minimap'), definition);
   const { fixedStep } = physics;
   gameState.subscribe(({ coneMode, showGrass, showTurnSigns }) => {
-    physics.setConesEnabled(coneMode !== 'off', coneMode === 'corners');
+    conePhysics.setEnabled(coneMode !== 'off', coneMode === 'corners');
     course.setTurnSignsEnabled(showTurnSigns);
     terrain.grass.visible = showGrass;
   });
@@ -176,7 +178,7 @@ async function start() {
       minimap.setCourse(nextDefinition);
       const previousPhysics = physics;
       const previousCourse = course;
-      ({ course, terrain, spawn, laps, physics, drivingCamera } = next);
+      ({ course, terrain, spawn, laps, physics, conePhysics, drivingCamera } = next);
       tireEffects.setCourse(terrain, course.isAsphalt);
       previousPhysics.dispose();
       previousCourse.dispose();
