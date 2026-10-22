@@ -2,7 +2,7 @@ import { vehicleSettings } from "./vehicle-settings";
 
 export const redlineRpm = 7500;
 export const downshiftRpm = 4000;
-export const idleRpm = 750;
+export const idleRpm = 700;
 const ratios = [2.97, 2.1, 1.46, 1.0, 0.8, 0.63];
 const finalDrive = 3.692;
 const reverseRatio = 3.369;

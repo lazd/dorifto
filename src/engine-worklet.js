@@ -6,6 +6,10 @@ class VehicleSoundProcessor extends AudioWorkletProcessor {
     this.state = { ...this.target };
     this.phase = 0;
     this.crankPhase = 0;
+    this.lopePhase = 0;
+    this.lopeVariation = 0;
+    this.lopeVariationTarget = 0;
+    this.lopeNoise = 0;
     this.exhaustBody = 0;
     this.whistlePhase = 0;
     this.turboX1 = this.turboX2 = this.turboY1 = this.turboY2 = 0;
@@ -33,6 +37,8 @@ class VehicleSoundProcessor extends AudioWorkletProcessor {
     this.limiterSmoothing = 1 - Math.exp(-1 / (sampleRate * 0.003));
     this.squealAttack = 1 - Math.exp(-1 / (sampleRate * 0.14));
     this.squealRelease = 1 - Math.exp(-1 / (sampleRate * 0.08));
+    this.lopeSmoothing = 1 - Math.exp(-1 / (sampleRate * 0.035));
+    this.lopeVariationSmoothing = 1 - Math.exp(-1 / (sampleRate * 0.15));
     this.pulseDecay = Math.exp(-1 / (sampleRate * 0.006));
     this.blowDecay = Math.exp(-1 / (sampleRate * 0.16));
     this.impactDecay = Math.exp(-1 / (sampleRate * 0.055));
@@ -40,6 +46,10 @@ class VehicleSoundProcessor extends AudioWorkletProcessor {
       if (data.reset) {
         this.blow = 0;
         this.pulse = 0;
+        this.lopePhase = 0;
+        this.lopeVariation = 0;
+        this.lopeVariationTarget = 0;
+        this.lopeNoise = 0;
         this.impact = 0;
         this.target = { rpm: this.idleRpm, load: 0, boost: 0, cut: 0, limiter: 0 };
         this.state = { ...this.target };
@@ -97,28 +107,43 @@ class VehicleSoundProcessor extends AudioWorkletProcessor {
       this.random ^= this.random << 5;
       const noise = (this.random >>> 0) / 2147483648 - 1;
       this.noiseLow += (noise - this.noiseLow) * 0.04;
+      this.lopeNoise += (noise - this.lopeNoise) * this.lopeSmoothing;
       // A four-stroke V6 fires three evenly spaced times per crankshaft revolution.
       const limiterCut = state.limiter;
-      const audibleRpm = state.rpm;
+      const idleBlend = Math.max(0, Math.min(1,
+        (2200 - state.rpm) / (2200 - this.idleRpm)));
+      const idleLope = idleBlend * (1 - Math.min(state.load, 0.8) * 0.35) * 0.25;
+      this.lopeVariation += (this.lopeVariationTarget - this.lopeVariation) * this.lopeVariationSmoothing;
+      this.lopePhase += 3 * (1 + this.lopeVariation * 0.12) / sampleRate;
+      if (this.lopePhase >= 1) {
+        this.lopePhase -= 1;
+        this.lopeVariationTarget = noise;
+      }
+      const lopeCycle = this.lopePhase * Math.PI * 2;
+      const lope = Math.sin(lopeCycle + Math.sin(lopeCycle * 2) * 0.18)
+        * (1 + this.lopeVariation * 0.1);
+      const audibleRpm = state.rpm * (1 + lope * idleLope * 0.015)
+        + this.lopeVariation * idleLope * 40;
       this.phase += audibleRpm / 60 * 3 / sampleRate;
       this.crankPhase = (this.crankPhase + audibleRpm / 120 / sampleRate) % 1;
       if (this.phase >= 1) {
         this.phase -= 1;
-        this.pulse = 0.8 + noise * 0.2;
+        this.pulse = 0.8 + noise * (0.1 + idleLope * 0.14) + this.lopeNoise * idleLope * 0.65;
       }
       this.pulse *= this.pulseDecay;
       const cycle = this.phase * Math.PI * 2;
       const crank = this.crankPhase * Math.PI * 2;
       const firing = (this.pulse - 0.15) * 0.73 + Math.sin(cycle) * 0.21
-        + Math.sin(crank) * 0.28 + Math.sin(crank * 2) * 0.16
-        + Math.sin(crank * 3) * 0.06;
-      const combustion = firing * (0.24 + state.load * 0.55)
+        + Math.sin(crank) * 0.14 + Math.sin(crank * 2) * 0.08
+        + Math.sin(crank * 3) * 0.03;
+      const combustion = firing * (0.24 + state.load * 0.55) * (1 + lope * idleLope * 0.44)
         + this.noiseLow * state.load * 0.26
-        + Math.sin(crank * 3 + Math.sin(crank) * 0.15) * state.load * 0.065;
+        + Math.sin(crank * 3 + Math.sin(crank) * 0.15) * state.load * 0.0325;
       this.exhaust += (combustion - this.exhaust)
-        * Math.min(0.65, (380 + state.rpm * 0.08) / sampleRate * 6.28);
+        * Math.min(0.65, (380 + state.rpm * 0.08) * (1 - idleBlend * 0.4) / sampleRate * 6.28);
       this.exhaustBody += (this.exhaust - this.exhaustBody) * (175 / sampleRate * 6.28);
-      engine[i] = (Math.tanh(this.exhaust * (2 + state.load)) * 0.62 + this.exhaustBody * 0.78)
+      engine[i] = (Math.tanh(this.exhaust * (2 + state.load)) * (0.62 - idleBlend * 0.24)
+        + this.exhaustBody * (0.78 + idleBlend * 0.17)) * (1 - idleBlend * 0.4)
         * (1 - state.cut * 0.75) * (1 - limiterCut * 0.88);
 
       const whistleNoise = turboB * (noise - this.turboX2)
