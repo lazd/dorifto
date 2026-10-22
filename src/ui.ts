@@ -460,6 +460,13 @@ export function bindGameUI(store: Store<GameState>, reportError: (error: unknown
     (value): value is GameState["coneMode"] => value === "all" || value === "corners" || value === "off",
   );
   select<"on" | "off">(
+    "#show-turn-signs",
+    "signs",
+    (state) => (state.showTurnSigns ? "on" : "off"),
+    (value) => ({ showTurnSigns: value === "on" }),
+    isToggle,
+  );
+  select<"on" | "off">(
     "#show-grass",
     "grass",
     (state) => (state.showGrass ? "on" : "off"),

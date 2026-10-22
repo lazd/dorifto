@@ -40,7 +40,7 @@ async function start() {
     driveMode: requestedMode, cameraStyle: requestedCamera,
     minimapOrientation: requestedMinimap,
     cabinHeadMotion: readToggle('head-motion'),
-    coneMode: requestedConeMode, showGrass: readToggle('grass'),
+    coneMode: requestedConeMode, showGrass: readToggle('grass'), showTurnSigns: readToggle('signs'),
   });
   const settingsUrl = new URL(location.href);
   if (settingsUrl.searchParams.has('transmission')) {
@@ -129,8 +129,9 @@ async function start() {
       const laps = new LapTimer(nextDefinition);
       physics = createVehiclePhysics({ Ammo, resources: physicsResources, car, course, spawn, controls, gameState, laps, audio });
       const drivingCamera = createDrivingCamera(camera, car, controls, nextDefinition, course.terrain);
-      const { coneMode, showGrass } = gameState.getState();
+      const { coneMode, showGrass, showTurnSigns } = gameState.getState();
       physics.setConesEnabled(coneMode !== 'off', coneMode === 'corners');
+      course.setTurnSignsEnabled(showTurnSigns);
       course.terrain.grass.visible = showGrass;
       physics.reset();
       drivingCamera.reset(spawn.heading);
@@ -146,8 +147,9 @@ async function start() {
   let { course, terrain, spawn, laps, physics, drivingCamera } = createCourseSession({ ...definition, reverse: requestedReverse });
   const minimap = createMinimap(element('#minimap'), definition);
   const { fixedStep } = physics;
-  gameState.subscribe(({ coneMode, showGrass }) => {
+  gameState.subscribe(({ coneMode, showGrass, showTurnSigns }) => {
     physics.setConesEnabled(coneMode !== 'off', coneMode === 'corners');
+    course.setTurnSignsEnabled(showTurnSigns);
     terrain.grass.visible = showGrass;
   });
   const tireEffects = createTireEffects(scene, car, terrain, course.isAsphalt);
