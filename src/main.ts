@@ -16,6 +16,7 @@ import { createTireEffects } from './tire-effects';
 import { createMinimap } from './minimap';
 import { createPhysicsResources, createVehiclePhysics } from './vehicle-physics';
 import { createConePhysics } from './cone-physics';
+import { createTurnSignPhysics } from './turn-sign-physics';
 import './style.css';
 
 const gameState = createGameState();
@@ -134,6 +135,7 @@ async function start() {
       const { coneMode, showGrass, showTurnSigns } = gameState.getState();
       conePhysics.setEnabled(coneMode !== 'off', coneMode === 'corners');
       course.setTurnSignsEnabled(showTurnSigns);
+      physics.addPlugin((context) => createTurnSignPhysics(context, course.turnSignGroups, audio));
       course.terrain.grass.visible = showGrass;
       physics.reset();
       drivingCamera.reset(spawn.heading);

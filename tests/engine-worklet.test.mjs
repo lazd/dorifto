@@ -28,7 +28,7 @@ function trigger(processor, boost) {
   } });
 }
 
-function render(processor, seconds, sampleRate = 48000) {
+function render(processor, seconds, sampleRate = 48000, channel = 1) {
   const samples = [];
   for (let i = 0; i < Math.ceil(seconds * sampleRate / 128); i++) {
     const outputs = [1, 1, 2, 1].map((channels) =>
@@ -37,7 +37,7 @@ function render(processor, seconds, sampleRate = 48000) {
     for (const channels of outputs) {
       for (const channel of channels) assert.ok(channel.every(Number.isFinite));
     }
-    samples.push(...outputs[1][0]);
+    samples.push(...outputs[channel][0]);
   }
   return samples;
 }
@@ -45,6 +45,26 @@ function render(processor, seconds, sampleRate = 48000) {
 function energy(samples) {
   return samples.reduce((sum, value) => sum + value * value, 0) / samples.length;
 }
+
+test('metal clanks scale with impulse, ring down, and clear on reset at supported sample rates', () => {
+  for (const rate of [44100, 48000, 96000]) {
+    const soft = createProcessor(rate);
+    const hard = createProcessor(rate);
+    soft.port.onmessage({ data: { clank: 0.2 } });
+    hard.port.onmessage({ data: { clank: 1 } });
+    const quiet = render(soft, 0.08, rate, 3);
+    const loud = render(hard, 0.08, rate, 3);
+    assert.ok(energy(loud) > energy(quiet) * 20);
+    const tail = render(hard, 0.15, rate, 3);
+    assert.ok(energy(tail) > 0.001, 'metallic ringing outlasts the strike');
+    assert.ok(energy(tail) < energy(loud));
+    render(hard, 3, rate, 3);
+    assert.ok(energy(render(hard, 0.05, rate, 3)) < 1e-8);
+    hard.port.onmessage({ data: { clank: 1 } });
+    hard.port.onmessage({ data: { reset: true } });
+    assert.equal(energy(render(hard, 0.05, rate, 3)), 0);
+  }
+});
 
 test('blow-off intensity and duration increase with released boost', () => {
   const levels = [0.15, 0.5, 1].map((boost) => {
@@ -104,6 +124,12 @@ test('audio uses pre-release boost for lift-off and gear changes, and clears it 
     const messages = [];
     const audio = Object.create(VehicleAudio.prototype);
     audio.node = { port: { postMessage: (message) => messages.push(message) } };
+    audio.hitTurnSign(0.9);
+    assert.equal(messages.length, 0);
+    audio.hitTurnSign(25);
+    assert.deepEqual(messages.at(-1), { clank: 0.5 });
+    audio.hitTurnSign(1000);
+    assert.deepEqual(messages.at(-1), { clank: 1 });
     audio.reset();
     const update = (throttle, boost, gear = 1) => {
       audio.update({

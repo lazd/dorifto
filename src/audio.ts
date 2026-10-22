@@ -118,7 +118,7 @@ export class VehicleAudio {
         { type: "lowpass", frequency: 800, gain: 0.65, q: 0.7 },
         { type: "highpass", frequency: 900, gain: 0.28, q: 0.7 },
         { type: "lowpass", frequency: 4800, gain: 0.28, q: 0.7 },
-        { type: "lowpass", frequency: 950, gain: 0.9, q: 0.8 },
+        { type: "lowpass", frequency: 6500, gain: 0.9, q: 0.8 },
       ];
       channels.forEach((channel, i) => {
         const filter = context.createBiquadFilter();
@@ -157,6 +157,11 @@ export class VehicleAudio {
   hitCone(impulse: number) {
     if (impulse < 0.5) return;
     this.node?.port.postMessage({ impact: clamp(Math.sqrt(impulse / 80), 0.1, 1) });
+  }
+
+  hitTurnSign(impulse: number) {
+    if (impulse < 1) return;
+    this.node?.port.postMessage({ clank: clamp(Math.sqrt(impulse / 100), 0.1, 1) });
   }
 
   silence() {

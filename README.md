@@ -79,6 +79,8 @@ times stay upright. The choice is retained in the URL across reloads and course 
 - `src/physics-plugin.ts`: typed object-plugin context/hooks and reusable pose interpolation.
 - `src/cone-physics.ts`: cone shapes/bodies, filtering, resets, interpolated poses,
   collision penalties, and impact sounds.
+- `src/turn-sign-physics.ts`: knock-over turn-sign posts/boards, pose interpolation,
+  resets, direction/visibility filtering, and impact-triggered metallic clanks.
 - `src/tire-effects.ts`: skid marks, tire smoke/dust, and smoke depth capture.
 - `src/drive-modes.ts`: Grip/Drift handling and camera presets.
 - `src/drivetrain.ts`: fixed ratios, final drive, reverse, shared redline, Sport
@@ -105,6 +107,8 @@ world/dispatcher, the vehicle body, the current lap timer (including after a
 direction change), `createRigidBody`, and `setBodyEnabled`. Managed bodies and
 motion states are freed automatically, even when disabled. Plugins own their
 collision shapes and any other Ammo allocations.
+Only call `world.updateSingleAabb` for enabled bodies: removed bodies have no
+broadphase proxy, and passing them to Bullet can corrupt world collision detection.
 
 Optional hooks run in registration order: `beforeStep(dt)` before simulation,
 `afterStep(dt)` after collision detection and before lap updates, `reset()` during
@@ -114,6 +118,15 @@ pose snapshots/interpolation; synchronize meshes from bodies before capturing.
 `dispose()` runs once after managed bodies are destroyed but before the world
 is destroyed, so it should release plugin-owned shapes and temporary allocations.
 Register plugins before the initial reset; registration does not reset the world.
+
+Yellow turn signs have dynamic 8 kg post-and-board collision bodies. They start
+asleep until struck, then tumble freely. Only hard car-to-sign contacts trigger
+an impulse-scaled metallic clank with a short strike and ringing plate modes;
+terrain and other prop contacts are silent. Signs do not count as cone penalties.
+Reset restores their placed poses.
+Hidden signs and the inactive direction's signs leave physics entirely; showing
+them again restores their starting positions. Shared visual/collision dimensions
+live in `src/turn-sign.ts`.
 
 Edit `vehicleSettings` in `src/vehicle-settings.ts` and reload to change the
 vehicle's physical setup. Defaults are 2,900 lb (1,315 kg), 50/50 static

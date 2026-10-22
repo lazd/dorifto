@@ -1,9 +1,17 @@
 import * as THREE from 'three';
 
-const boardWidth = 0.8;
-const boardHeight = 1;
-const boardBottom = 1.45;
-const postSize = 0.05;
+export const turnSignDimensions = {
+  boardWidth: 0.8,
+  boardHeight: 1,
+  boardBottom: 1.45,
+  boardThickness: 0.012,
+  postSize: 0.05,
+  postBuried: 0.15,
+  postTopInset: 0.05,
+  postZ: -0.045,
+  centerOfMassHeight: 1.35,
+};
+const { boardWidth, boardHeight, boardBottom, postSize, postBuried, postTopInset, postZ } = turnSignDimensions;
 
 function roundedRect(width: number, height: number, radius: number) {
   const x = -width / 2;
@@ -102,7 +110,7 @@ function postTexture(length: number) {
 }
 
 export function createTurnSignFactory() {
-  const postLength = boardBottom + boardHeight - 0.05 + 0.15;
+  const postLength = boardBottom + boardHeight - postTopInset + postBuried;
   const postGeometry = new THREE.BoxGeometry(postSize, postLength, postSize);
   const boardGeometry = roundedRect(boardWidth, boardHeight, 0.05);
   const postMaterial = new THREE.MeshStandardMaterial({
@@ -122,7 +130,7 @@ export function createTurnSignFactory() {
     const sign = new THREE.Group();
     sign.name = 'turn-chevron-sign';
     const post = new THREE.Mesh(postGeometry, postMaterial);
-    post.position.set(0, postLength / 2 - 0.15, -postSize / 2 - 0.02);
+    post.position.set(0, postLength / 2 - postBuried, postZ);
     post.castShadow = true;
     sign.add(post);
 

@@ -272,6 +272,7 @@ function buildCourse(scene: THREE.Group, definition: CourseDefinition) {
   return {
     cones,
     cornerCones,
+    turnSignGroups,
     terrain,
     setDirection,
     setTurnSignsEnabled,
