@@ -54,6 +54,13 @@ export function defaultTuningPresets(): TuningPreset[] {
       },
     },
     { id: 'grip-default', name: 'Default', mode: 'grip', readonly: true, tuning: defaultTuning('grip') },
+    {
+      id: 'grip-fast', name: 'Fast', mode: 'grip', readonly: true,
+      tuning: {
+        horsepower: 500, steeringExpo: 0.6, steeringRate: 2, steeringScale: 1,
+        frontGrip: 1.1, rearGrip: 1.15, frontStiffness: 51000, rearStiffness: 51000,
+      },
+    },
   ];
 }
 

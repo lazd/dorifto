@@ -10,9 +10,7 @@ export interface TuningPreset {
 }
 
 export const tuningPresetsStorageKey = 'dorifto:tuning-presets';
-const tuningPresetsVersionKey = 'dorifto:tuning-presets-version';
-const tuningPresetsVersion = '1';
-const protectedPresetIds = new Set(['drift-default', 'drift-aggressive', 'grip-default']);
+const protectedPresetIds = new Set(['drift-default', 'drift-aggressive', 'grip-default', 'grip-fast']);
 
 const tuningKeys: (keyof DrivingTuning)[] = [
   'horsepower', 'steeringExpo', 'steeringRate', 'steeringScale',
@@ -63,7 +61,6 @@ export function loadTuningPresets(
   if (stored === null) {
     const initial = defaults.map((preset) => ({ ...preset, tuning: { ...preset.tuning } }));
     storage.setItem(tuningPresetsStorageKey, JSON.stringify(initial));
-    storage.setItem(tuningPresetsVersionKey, tuningPresetsVersion);
     return initial;
   }
 
@@ -85,26 +82,6 @@ export function loadTuningPresets(
     readonly: preset.readonly || protectedPresetIds.has(preset.id),
     tuning: { ...preset.tuning },
   }));
-  const protectedPresetsNormalized = presets.some(
-    (preset, index) => preset.readonly !== normalized[index].readonly,
-  );
-  const needsMigration = storage.getItem(tuningPresetsVersionKey) !== tuningPresetsVersion;
-  if (needsMigration) {
-    const existingIds = new Set(normalized.map(({ id }) => id));
-    for (const preset of defaults) {
-      if (!existingIds.has(preset.id)) {
-        normalized.push({
-          ...preset,
-          readonly: preset.readonly ?? protectedPresetIds.has(preset.id),
-          tuning: { ...preset.tuning },
-        });
-      }
-    }
-  }
-  if (needsMigration || protectedPresetsNormalized) {
-    storage.setItem(tuningPresetsStorageKey, JSON.stringify(normalized));
-    storage.setItem(tuningPresetsVersionKey, tuningPresetsVersion);
-  }
   return normalized;
 }
 

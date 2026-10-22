@@ -30,12 +30,21 @@ function createStorage() {
   };
 }
 
-test('starts with separate Default presets and the captured Drift Aggressive preset', () => {
+test('starts with protected defaults and the captured Drift Aggressive and Grip Fast presets', () => {
   const presets = defaultTuningPresets();
-  assert.deepEqual(presets.filter(({ mode }) => mode === 'grip').map(({ name }) => name), ['Default']);
+  assert.deepEqual(
+    presets.filter(({ mode }) => mode === 'grip').map(({ name }) => name),
+    ['Default', 'Fast'],
+  );
   assert.deepEqual(presets.find(({ id }) => id === 'grip-default').tuning, defaultTuning('grip'));
+  assert.deepEqual(presets.find(({ id }) => id === 'grip-fast').tuning, {
+    horsepower: 500, steeringExpo: 0.6, steeringRate: 2, steeringScale: 1,
+    frontGrip: 1.1, rearGrip: 1.15, frontStiffness: 51000, rearStiffness: 51000,
+  });
+  assert.equal(presets.find(({ id }) => id === 'grip-fast').readonly, true);
   assert.deepEqual(presets.find(({ id }) => id === 'drift-default').tuning, defaultTuning('drift'));
-  assert.ok(presets.filter(({ name }) => name === 'Default').every(({ readonly }) => readonly));
+  assert.ok(presets.filter(({ readonly }) => readonly).every(({ id }) =>
+    ['drift-default', 'drift-aggressive', 'grip-default', 'grip-fast'].includes(id)));
   assert.equal(presets.find(({ id }) => id === 'drift-aggressive').readonly, true);
   assert.deepEqual(presets.find(({ id }) => id === 'drift-aggressive').tuning, {
     horsepower: 515, steeringExpo: 0.6, steeringRate: 2.8, steeringScale: 1.03,
@@ -49,36 +58,9 @@ test('seeds presets once and loads later preset changes from storage', () => {
   assert.deepEqual(seeded, defaultTuningPresets());
   assert.deepEqual(JSON.parse(storage.getItem(tuningPresetsStorageKey)), seeded);
 
-  const legacyAggressive = seeded.map((preset) =>
-    preset.id === 'drift-aggressive' ? { ...preset, readonly: false } : preset);
-  storage.setItem(tuningPresetsStorageKey, JSON.stringify(legacyAggressive));
-  const normalized = createGameState(storage).getState().tuningPresets;
-  assert.equal(normalized.find(({ id }) => id === 'drift-aggressive').readonly, true);
-  assert.equal(
-    JSON.parse(storage.getItem(tuningPresetsStorageKey))
-      .find(({ id }) => id === 'drift-aggressive').readonly,
-    true,
-  );
-
-  const remaining = normalized.filter(({ id }) => id !== 'drift-aggressive');
+  const remaining = seeded.filter(({ id }) => id !== 'drift-aggressive');
   storage.setItem(tuningPresetsStorageKey, JSON.stringify(remaining));
   assert.deepEqual(createGameState(storage).getState().tuningPresets, remaining);
-});
-
-test('migrates legacy storage by restoring missing built-in presets once', () => {
-  const storage = createStorage();
-  const legacy = defaultTuningPresets().filter(({ id }) => id !== 'drift-aggressive');
-  storage.setItem(tuningPresetsStorageKey, JSON.stringify(legacy));
-  const migrated = createGameState(storage).getState().tuningPresets;
-  assert.ok(migrated.some(({ id }) => id === 'drift-aggressive'));
-  assert.deepEqual(migrated.find(({ id }) => id === 'drift-aggressive').tuning, {
-    horsepower: 515, steeringExpo: 0.6, steeringRate: 2.8, steeringScale: 1.03,
-    frontGrip: 1.05, rearGrip: 1, frontStiffness: 45000, rearStiffness: 43000,
-  });
-
-  const deleted = migrated.filter(({ id }) => id !== 'drift-aggressive');
-  storage.setItem(tuningPresetsStorageKey, JSON.stringify(deleted));
-  assert.ok(!createGameState(storage).getState().tuningPresets.some(({ id }) => id === 'drift-aggressive'));
 });
 
 test('rejects corrupt stored preset data explicitly', () => {
