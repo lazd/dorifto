@@ -753,6 +753,7 @@ export function bindStatusUI(store: Store<GameState>) {
   const status = element("#status");
   const statusText = bindText("#status-message");
   const close = element<HTMLButtonElement>("#status-close");
+  const progress = element("#status-progress");
   const footer = element("footer");
   const dismissError = () => {
     const current = store.getState().status;
@@ -778,6 +779,13 @@ export function bindStatusUI(store: Store<GameState>) {
     const loaded = !current.visible && !current.error;
     if (footer.classList.contains("loaded") !== loaded) footer.classList.toggle("loaded", loaded);
     statusText(current.message);
+    const percent = current.progress === undefined || current.error
+      ? null : Math.round(current.progress * 100);
+    progress.hidden = percent === null;
+    if (percent !== null && progress.getAttribute("aria-valuenow") !== String(percent)) {
+      progress.setAttribute("aria-valuenow", String(percent));
+      progress.style.setProperty("--progress", String(percent / 100));
+    }
   }, ["status"]);
   return dismissError;
 }

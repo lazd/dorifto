@@ -1,5 +1,6 @@
 :root {
   --header-padding: 20px;
+  --accent: #9ee8d5;
   font-family: ui-sans-serif, system-ui, sans-serif;
   color: #eef6f5;
   background: #10191f;
@@ -68,7 +69,10 @@ h1 span {
   text-align: center;
 }
 #status[hidden],
-.telemetry[hidden] {
+.telemetry[hidden],
+.loading header,
+.loading .course-hud,
+.loading .telemetry {
   display: none;
 }
 #status.error {
@@ -84,6 +88,29 @@ h1 span {
   right: 8px;
   width: 36px;
   height: 36px;
+}
+#status-progress {
+  width: min(320px, 70vw);
+  margin: 14px auto 0;
+}
+.progress-bar {
+  --progress: 0;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+}
+.progress-bar::after {
+  content: "";
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transform: scaleX(var(--progress));
+  transform-origin: left;
+  transition: transform 0.2s ease-out;
+}
+.progress-bar[hidden] {
+  display: none;
 }
 .telemetry {
   left: 32px;

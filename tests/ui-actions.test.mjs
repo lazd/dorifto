@@ -112,15 +112,17 @@ function statusFixture(t) {
     target.getAttribute = (name) => attributes.get(name) ?? null;
     target.setAttribute = (name, value) => attributes.set(name, value);
     target.blur = () => { document.activeElement = null; };
+    target.style = { setProperty: () => {} };
     return target;
   };
   const status = node();
   const message = node();
   const close = node();
+  const progress = node();
   const footer = node();
   const elements = new Map([
     ['#status', status], ['#status-message', message],
-    ['#status-close', close], ['footer', footer],
+    ['#status-close', close], ['#status-progress', progress], ['footer', footer],
   ]);
   document.querySelector = (selector) => elements.get(selector) ?? null;
   Object.defineProperty(globalThis, 'document', { configurable: true, value: document });

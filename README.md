@@ -44,6 +44,11 @@ Choosing a course, reversing it, or starting random/custom course generation clo
 the disclosure immediately. Opening the custom-course dialog also closes it.
 The footer fades out five seconds after loading completes. Hovering over it or
 focusing one of its links reveals it again; it stays visible during loading or errors.
+On first load, the page stays hidden until styles apply. A progress bar then explains
+each startup stage: downloading the car (tracked per file), starting physics, loading
+the record lap, compiling light shaders, and preparing mirrors and the ghost car.
+The car downloads while the sky and course are built. The header, course HUD,
+and tachometer stay hidden until the first gameplay frame.
 Reset uses keyboard **R** or the controller's
 Start/Menu/Options button rather than a toolbar button.
 Settings, Tuning, Help, Choose course, and Custom course share one dialog lifecycle in `src/ui.ts`: open at the
@@ -482,15 +487,18 @@ shadow casting; the low beams still illuminate the scene. This caps front shadow
 maps at four, keeping the night scene within WebGL's 16 fragment-texture-unit minimum.
 All three pairs have soft additive, forward-facing lens halos rendered as scene geometry,
 so their glow also appears in live mirrors without a separate bloom pass.
-All headlight, high-beam, and fog-light combinations are compiled and rendered
-with the rear lamps off, braking, or reversing, for both cabin and chase lighting
-during the time-of-day startup warmup. Cabin, gauge, underglow, and ghost lights
+Every headlight, high-beam, fog-light, rear-lamp (off, braking, reversing), and
+cabin/chase lighting combination is checked during the startup warmup for the
+selected time of day. Combinations with the same count of each visible light type and shadow
+caster share shaders, so each distinct layout is compiled and rendered only once.
+Cabin, gauge, underglow, and ghost lights
 are included before the game canvas becomes visible, to avoid first-toggle shader
 compilation. The stereo light stays registered at zero intensity when off, so
 powering it on does not change shader layouts. All three mirror render targets
 are also compiled and rendered during startup, even when starting in chase view
 or with mirrors off. The selected light and mirror settings are restored afterward;
-warmup does not start radio playback.
+warmup does not start radio playback. Switching time of day for the first time
+compiles that sky's lighting variants, so it can briefly stutter.
 The halos are depth-tested, do not write depth, and cannot show through cars or walls.
 Headlights, high beams and fog lights are preserved in lap recordings; older recordings
 use the current headlight setting and default the high beams and fog lights to off.
@@ -723,7 +731,8 @@ Sky, fog, ambient illumination, reflections, and exposure change together.
 At sunset and night, reflective materials use the visible sky, so the car
 reflects the actual clouds and sky colors. Noon retains the original neutral
 studio reflections and paint settings. All three skies and their reflection maps
-are generated and warmed up during loading, then reused when switching time of day.
+are generated during loading, then reused when switching time of day; only the
+selected time of day is shader-warmed at startup.
 Time-of-day car lights stay registered at zero intensity when off, avoiding
 scene-wide shader recompilation. No extra per-frame scene captures are needed.
 At Sunset and Night, headlights (beams and lens glow) switch on together with

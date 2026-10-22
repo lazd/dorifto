@@ -38,8 +38,16 @@ const TEMP_NORMAL_DEG = 30;
 const FUEL_FULL_DEG = 57;
 const BOOST_PIVOT = new THREE.Vector3(-0.3258, 0.2205, 0.4106);
 
-export async function loadCar() {
-  const { scene: model } = await new GLTFLoader().loadAsync(
+export async function loadCar(onProgress?: (fraction: number) => void) {
+  const manager = new THREE.LoadingManager();
+  let progress = 0;
+  // GLTFLoader discovers buffers and textures only after reading scene.gltf.
+  manager.onProgress = (_url, loaded, total) => {
+    if (total <= 2 || loaded / total <= progress) return;
+    progress = loaded / total;
+    onProgress?.(progress);
+  };
+  const { scene: model } = await new GLTFLoader(manager).loadAsync(
     `${import.meta.env.BASE_URL}nissan_300zx/scene.gltf`,
   );
   const chassis = new THREE.Group();

@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" style="background-color: #10191f">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -7,10 +7,19 @@
     <meta name="referrer" content="no-referrer" />
     <title>Dorifto — Z32 Playground</title>
   </head>
-  <body>
+  <body class="loading" hidden>
     <div id="app"></div>
     <div id="status" role="status">
       <span id="status-message"></span>
+      <div
+        id="status-progress"
+        class="progress-bar"
+        role="progressbar"
+        aria-label="Loading progress"
+        aria-valuemin="0"
+        aria-valuemax="100"
+        hidden
+      ></div>
       <button
         id="status-close"
         type="button"
@@ -30,7 +39,7 @@
         aria-controls="course-menu"
         aria-expanded="false"
       >
-        <span id="course-name">Loading course...</span>
+        <span id="course-name"></span>
         <span class="minimap-stats">
           <span class="minimap-lap" role="group" aria-label="Current lap">
             <strong id="lap-number">--</strong>
