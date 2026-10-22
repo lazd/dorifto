@@ -121,7 +121,8 @@ Register plugins before the initial reset; registration does not reset the world
 
 Yellow turn signs have dynamic 8 kg post-and-board collision bodies. They start
 asleep until struck, then tumble freely. Only hard car-to-sign contacts trigger
-an impulse-scaled metallic clank with a short strike and ringing plate modes;
+an impulse-scaled metallic crash with a brief low-end punch, ragged crunch, and faint,
+quickly damped sheet-metal clang rather than sustained ringing;
 terrain and other prop contacts are silent. Signs do not count as cone penalties.
 Reset restores their placed poses.
 Hidden signs and the inactive direction's signs leave physics entirely; showing

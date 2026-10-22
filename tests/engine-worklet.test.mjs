@@ -46,7 +46,7 @@ function energy(samples) {
   return samples.reduce((sum, value) => sum + value * value, 0) / samples.length;
 }
 
-test('metal clanks scale with impulse, ring down, and clear on reset at supported sample rates', () => {
+test('metal crashes scale with impulse, decay quickly, and clear on reset at supported sample rates', () => {
   for (const rate of [44100, 48000, 96000]) {
     const soft = createProcessor(rate);
     const hard = createProcessor(rate);
@@ -56,14 +56,63 @@ test('metal clanks scale with impulse, ring down, and clear on reset at supporte
     const loud = render(hard, 0.08, rate, 3);
     assert.ok(energy(loud) > energy(quiet) * 20);
     const tail = render(hard, 0.15, rate, 3);
-    assert.ok(energy(tail) > 0.001, 'metallic ringing outlasts the strike');
-    assert.ok(energy(tail) < energy(loud));
-    render(hard, 3, rate, 3);
+    assert.ok(energy(tail) > 0.00001, 'short crunch tail follows the strike');
+    assert.ok(energy(tail) < energy(loud) * 0.05, 'no sustained bell-like ring');
+    render(hard, 0.6, rate, 3);
     assert.ok(energy(render(hard, 0.05, rate, 3)) < 1e-8);
     hard.port.onmessage({ data: { clank: 1 } });
     hard.port.onmessage({ data: { reset: true } });
     assert.equal(energy(render(hard, 0.05, rate, 3)), 0);
   }
+});
+
+test('sign crash is dominated by noise rather than ringing tones', () => {
+  const withoutModes = source.replace(
+    'ring += Math.sin(mode.phase * Math.PI * 2) * mode.amplitude * 0.065;',
+    'ring += 0;',
+  );
+  assert.notEqual(withoutModes, source);
+  const full = createProcessor();
+  const noiseOnly = createProcessor(48000, withoutModes);
+  full.port.onmessage({ data: { clank: 1 } });
+  noiseOnly.port.onmessage({ data: { clank: 1 } });
+  const crash = render(full, 0.15, 48000, 3);
+  const noise = render(noiseOnly, 0.15, 48000, 3);
+  const tones = crash.map((value, index) => value - noise[index]);
+  assert.ok(energy(noise) > energy(tones) * 3, 'crunch outweighs resonant modes');
+});
+
+test('sign crash gain is reduced without changing other channels', () => {
+  const unitySource = source.replace(
+    '+ (crunch + noise * 0.25) * this.crash) * 0.75;',
+    '+ (crunch + noise * 0.25) * this.crash);',
+  );
+  assert.notEqual(unitySource, source);
+  const quiet = createProcessor();
+  const unity = createProcessor(48000, unitySource);
+  quiet.port.onmessage({ data: { clank: 1 } });
+  unity.port.onmessage({ data: { clank: 1 } });
+  const ratio = energy(render(quiet, 0.15, 48000, 3))
+    / energy(render(unity, 0.15, 48000, 3));
+  assert.ok(Math.abs(ratio - 0.75 ** 2) < 0.00001);
+});
+
+test('sign crash has a stronger initial punch without increasing its tail', () => {
+  const withoutPunch = source.replace(
+    'const punch = Math.sin(this.crashPunchPhase * Math.PI * 2) * this.crashPunch * 1.6;',
+    'const punch = 0;',
+  );
+  assert.notEqual(withoutPunch, source);
+  const full = createProcessor();
+  const light = createProcessor(48000, withoutPunch);
+  full.port.onmessage({ data: { clank: 1 } });
+  light.port.onmessage({ data: { clank: 1 } });
+  const hit = render(full, 0.25, 48000, 3);
+  const baseline = render(light, 0.25, 48000, 3);
+  assert.ok(energy(hit.slice(0, 960)) > energy(baseline.slice(0, 960)) * 2,
+    'first 20 ms has a weighty impact');
+  const difference = hit.map((value, index) => value - baseline[index]);
+  assert.ok(energy(difference.slice(7200)) < 1e-7, 'punch is gone after 150 ms');
 });
 
 test('blow-off intensity and duration increase with released boost', () => {

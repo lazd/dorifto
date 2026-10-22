@@ -34,9 +34,16 @@ class VehicleSoundProcessor extends AudioWorkletProcessor {
     this.impact = 0;
     this.impactPhase = 0;
     this.clank = 0;
-    this.clankModes = [430, 719, 1213, 2089, 3511].map((frequency, index) => ({
+    this.crash = 0;
+    this.crashLow = 0;
+    this.crashPunch = 0;
+    this.crashPunchPhase = 0;
+    this.crashPunchDecay = Math.exp(-1 / (sampleRate * 0.018));
+    this.crashSmoothing = 1 - Math.exp(-2 * Math.PI * 2400 / sampleRate);
+    this.crashDecay = Math.exp(-1 / (sampleRate * 0.045));
+    this.clankModes = [190, 367, 823, 1741, 2909].map((frequency, index) => ({
       frequency, phase: 0, amplitude: 0,
-      decay: Math.exp(-1 / (sampleRate * (0.32 - index * 0.055))),
+      decay: Math.exp(-1 / (sampleRate * (0.045 - index * 0.007))),
     }));
     this.clankDecay = Math.exp(-1 / (sampleRate * 0.008));
     this.parameters = ['rpm', 'load', 'boost', 'cut', 'limiter'];
@@ -60,6 +67,8 @@ class VehicleSoundProcessor extends AudioWorkletProcessor {
         this.lopeNoise = 0;
         this.impact = 0;
         this.clank = 0;
+        this.crash = this.crashLow = 0;
+        this.crashPunch = this.crashPunchPhase = 0;
         for (const mode of this.clankModes) mode.amplitude = mode.phase = 0;
         this.target = { rpm: this.idleRpm, load: 0, boost: 0, cut: 0, limiter: 0 };
         this.state = { ...this.target };
@@ -71,6 +80,9 @@ class VehicleSoundProcessor extends AudioWorkletProcessor {
         }
       } else if (data.clank !== undefined) {
         this.clank = Math.max(this.clank, data.clank);
+        this.crash = Math.max(this.crash, data.clank);
+        this.crashPunch = Math.max(this.crashPunch, data.clank);
+        this.crashPunchPhase = 0;
         for (const mode of this.clankModes) {
           mode.amplitude = Math.max(mode.amplitude, data.clank);
           mode.phase = 0;
@@ -235,16 +247,23 @@ class VehicleSoundProcessor extends AudioWorkletProcessor {
       this.impactPhase = (this.impactPhase + (85 + this.impact * 45) / sampleRate) % 1;
       impacts[i] = (Math.sin(this.impactPhase * Math.PI * 2) * 0.7
         + this.tireLow * 0.6) * this.impact;
-      // Inharmonic plate modes outlast the short, noisy metal-on-metal strike.
+      // Ragged crunch with a faint, quickly damped sheet-metal clang.
       this.clank *= this.clankDecay;
+      this.crash *= this.crashDecay;
+      this.crashPunch *= this.crashPunchDecay;
+      this.crashPunchPhase = (this.crashPunchPhase + 95 / sampleRate) % 1;
+      this.crashLow += (noise - this.crashLow) * this.crashSmoothing;
       let ring = 0;
       for (const mode of this.clankModes) {
         if (mode.amplitude < 0.000001) continue;
         mode.amplitude *= mode.decay;
         mode.phase = (mode.phase + mode.frequency / sampleRate) % 1;
-        ring += Math.sin(mode.phase * Math.PI * 2) * mode.amplitude * 0.18;
+        ring += Math.sin(mode.phase * Math.PI * 2) * mode.amplitude * 0.065;
       }
-      impacts[i] += ring + noise * this.clank * 0.55;
+      const crunch = Math.tanh(this.crashLow * 3) * (0.4 + Math.abs(noise) * 0.6);
+      const punch = Math.sin(this.crashPunchPhase * Math.PI * 2) * this.crashPunch * 1.6;
+      impacts[i] += (punch + ring + noise * this.clank * 0.85
+        + (crunch + noise * 0.25) * this.crash) * 0.75;
     }
     return true;
   }
