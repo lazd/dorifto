@@ -384,7 +384,7 @@ footer {
   opacity: 1;
   transition: opacity 0.6s ease;
 }
-footer.loaded:not(:hover):not(:focus-within) {
+footer.loaded:not(:focus-within) {
   opacity: 0;
   transition-delay: 5s;
 }
@@ -427,7 +427,7 @@ button.keycap {
   display: inline-block;
   padding: 5px 7px;
   margin-right: 4px;
-  border: 1px solid #adc3bd55;
+  border: 1px solid #525c59;
   border-radius: 4px;
   background: #10191f99;
   font: inherit;
@@ -438,7 +438,7 @@ select {
   padding: 5px 8px;
   color: #eef6f5;
   background: #18272e;
-  border: 1px solid #adc3bd55;
+  border: 1px solid #525c59;
   border-radius: 4px;
   font: inherit;
 }

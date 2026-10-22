@@ -434,7 +434,8 @@ Runs are recorded automatically from launch. Stop recording to save and replay a
 run, or use the play button before the start line to watch a saved run. During
 replay, the lap controls show the current lap's completed time (or "Partial lap"
 for an unfinished lap), with a trophy for the fastest lap in that run. The arrows
-jump to the previous or next lap, including the first lap from the launch.
+jump directly to the previous or next lap, including the first lap from the launch,
+and reset cones and signs to their initial positions.
 
 Every completed lap can set an all-time record, saved locally for that map layout
 and direction, regardless of tuning or drive mode. Records survive resets, reloads,

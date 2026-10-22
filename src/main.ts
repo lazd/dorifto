@@ -309,17 +309,6 @@ async function start() {
 
   function startReplay(recording: RunRecording, time = 0) {
     reset();
-    // Rebuild displaced cones and signs when seeking instead of carrying a future world state back.
-    let elapsed = 0;
-    while (elapsed < time) {
-      const step = Math.min(fixedStep, time - elapsed);
-      recording.read(elapsed, replayBefore);
-      recording.read(elapsed + step, replayAfter);
-      physics.stepReplay(replayBefore, replayAfter, step);
-      physics.captureReplayVisuals();
-      elapsed += step;
-    }
-    physics.interpolateReplay(1);
     replay = { recording, time };
     recording.read(time, playbackFrame);
     applyCarPose(playbackFrame, car.chassis, car.wheels, car.hubs);
