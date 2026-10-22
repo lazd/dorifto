@@ -42,26 +42,31 @@ function bindText(selector: string) {
   };
 }
 
-function bindCourseDisclosure(store: Store<GameState>) {
+function notifyUIVisibility() {
+  document.dispatchEvent(new Event("driving-ui-change"));
+}
+
+function setCourseMenuOpen(open: boolean) {
+  const menu = element("#course-menu");
+  if (menu.hidden === !open) return;
+  const map = element<HTMLButtonElement>("#minimap");
+  if (!open && menu.contains(document.activeElement)) map.focus();
+  menu.hidden = !open;
+  map.setAttribute("aria-expanded", String(open));
+  notifyUIVisibility();
+}
+
+function bindCourseDisclosure() {
   const hud = element(".course-hud");
   const map = element<HTMLButtonElement>("#minimap");
   const menu = element("#course-menu");
-  const setOpen = (open: boolean) => {
-    store.update({ courseMenuOpen: open });
-  };
-  store.subscribe(({ courseMenuOpen }) => {
-    if (!courseMenuOpen && !menu.hidden && menu.contains(document.activeElement)) map.focus();
-    if (menu.hidden !== !courseMenuOpen) menu.hidden = !courseMenuOpen;
-    const expanded = String(courseMenuOpen);
-    if (map.getAttribute("aria-expanded") !== expanded) map.setAttribute("aria-expanded", expanded);
-  });
-  map.addEventListener("click", () => setOpen(Boolean(menu.hidden)));
+  map.addEventListener("click", () => setCourseMenuOpen(menu.hidden));
   document.addEventListener(
     "keydown",
     (event) => {
       if (event.key === "Escape" && !menu.hidden && !document.querySelector("dialog[open]")) {
         event.preventDefault();
-        setOpen(false);
+        setCourseMenuOpen(false);
         map.focus();
       }
     },
@@ -70,24 +75,30 @@ function bindCourseDisclosure(store: Store<GameState>) {
   hud.addEventListener("keydown", (event) => event.stopPropagation());
   hud.addEventListener("keyup", (event) => event.stopPropagation());
   document.addEventListener("pointerdown", (event) => {
-    if (store.getState().customCourseOpen) return;
-    if (event.target instanceof Node && !hud.contains(event.target)) setOpen(false);
+    if (event.target instanceof Node && !hud.contains(event.target)) setCourseMenuOpen(false);
   });
 }
 
 function bindDialog(
-  store: Store<GameState>,
   trigger: string,
   selector: string,
-  key: "helpOpen" | "settingsOpen" | "tuningOpen" | "customCourseOpen" | "coursePickerOpen",
+  onOpen?: () => void,
 ) {
   const dialog = element<HTMLDialogElement>(selector);
   const opener = element(trigger);
-  let displayedOpen = dialog.open;
-  const close = () => store.update({ [key]: false });
-  opener.addEventListener("click", () =>
-    store.update({ [key]: true, courseMenuOpen: false }),
-  );
+  const close = () => {
+    dialog.close();
+    notifyUIVisibility();
+  };
+  opener.addEventListener("click", () => {
+    if (dialog.open) return;
+    onOpen?.();
+    dialog.dispatchEvent(new Event("dialog-open"));
+    setCourseMenuOpen(false);
+    dialog.showModal();
+    dialog.scrollTop = 0;
+    notifyUIVisibility();
+  });
   dialog.addEventListener("keydown", (event) => {
     if (event.key !== "Escape") return;
     event.preventDefault();
@@ -98,7 +109,9 @@ function bindDialog(
     close();
   });
   dialog.addEventListener("close", () => {
-    if (!dialog.open) close();
+    if (dialog.open) return;
+    notifyUIVisibility();
+    (opener.closest("[hidden]") ? element("#minimap") : opener).focus();
   });
   const outside = (event: MouseEvent) => {
     const bounds = dialog.getBoundingClientRect();
@@ -117,17 +130,6 @@ function bindDialog(
   dialog.addEventListener("click", (event) => {
     if (pressedOutside && outside(event)) close();
     pressedOutside = false;
-  });
-  store.subscribe((state) => {
-    if (state[key] === displayedOpen) return;
-    displayedOpen = state[key];
-    if (displayedOpen && !dialog.open) {
-      dialog.showModal();
-      dialog.scrollTop = 0;
-    } else if (!displayedOpen) {
-      if (dialog.open) dialog.close();
-      (opener.closest("[hidden]") ? element("#minimap") : opener).focus();
-    }
   });
 }
 
@@ -218,7 +220,13 @@ function bindTachometer() {
 export function bindGameActions(actions: {
   sound: (muted: boolean) => void;
   clearInput: () => void;
+  setUIOpen: (open: boolean) => void;
 }) {
+  const syncUIOpen = () => actions.setUIOpen(
+    document.querySelector("dialog[open]") !== null || !element("#course-menu").hidden,
+  );
+  document.addEventListener("driving-ui-change", syncUIOpen);
+  syncUIOpen();
   const sound = element<HTMLSelectElement>("#sound");
   sound.addEventListener("change", () => {
     const muted = sound.value === "off";
@@ -498,9 +506,11 @@ export function bindCoursePicker(
   store: Store<GameState>,
   saveCourse: (name: string) => CourseDefinition,
   deleteCourse: (id: string) => Promise<{ id: string; name: string }>,
+  getCourseWeights: () => CourseGenerationWeights,
 ) {
   const pickerButton = element<HTMLButtonElement>("#course");
   const picker = element<HTMLDialogElement>("#course-picker-dialog");
+  const customDialog = element<HTMLDialogElement>("#custom-course-dialog");
   const tabs = new Tabs(element("#course-picker-tabs"));
   const pickerError = bindText("#course-picker-error");
   const savedEmpty = element("#courses-saved-empty");
@@ -548,13 +558,9 @@ export function bindCoursePicker(
     }
     savedEmpty.hidden = [...cards.keys()].some((id) => id.startsWith("saved-"));
   }
-  let pickerOpen = false;
-  store.subscribe(({ coursePickerOpen }) => {
-    if (coursePickerOpen && !pickerOpen) {
-      tabs.select(coursePanel(selected.id));
-      pickerError("");
-    }
-    pickerOpen = coursePickerOpen;
+  picker.addEventListener("dialog-open", () => {
+    tabs.select(coursePanel(selected.id));
+    pickerError("");
   });
   function syncSaveCourse() {
     saveForm.hidden = selected.id !== "random" && selected.id !== "custom";
@@ -623,18 +629,18 @@ export function bindCoursePicker(
   async function selectCourse(id: string) {
     if (changing) return;
     if (id === selected.id && cards.has(id)) {
-      store.update({ coursePickerOpen: false });
+      picker.close();
       return;
     }
     changing = true;
-    store.update({ courseMenuOpen: false });
+    setCourseMenuOpen(false);
     setBusy(true);
     customError("");
     pickerError("");
     let closeCustom = false;
     try {
       const generated = id === "random" || id === "custom";
-      const weights = id === "custom" ? store.getState().courseWeights : undefined;
+      const weights = id === "custom" ? getCourseWeights() : undefined;
       if (weights) validateCourseWeights(weights);
       if (id === "custom") customStatus("Generating course…");
       selected = await changeCourse(
@@ -644,12 +650,12 @@ export function bindCoursePicker(
       );
       courseName(selected.name);
       syncSaveCourse();
-      store.update({ coursePickerOpen: false });
+      picker.close();
       closeCustom = id === "custom";
     } catch (error) {
       reportError(error);
       pickerError(error instanceof Error ? error.message : String(error));
-      if (store.getState().customCourseOpen) {
+      if (customDialog.open) {
         customError(error instanceof Error ? error.message : String(error));
       }
     } finally {
@@ -657,7 +663,7 @@ export function bindCoursePicker(
       setBusy(false);
       customStatus("");
       changing = false;
-      if (closeCustom) store.update({ customCourseOpen: false });
+      if (closeCustom) customDialog.close();
     }
   }
   button.addEventListener("click", () => {
@@ -672,7 +678,7 @@ export function bindCoursePicker(
       return;
     }
     changing = true;
-    store.update({ courseMenuOpen: false });
+    setCourseMenuOpen(false);
     setBusy(true);
     try {
       await changeDirection(reverse.checked);
@@ -689,10 +695,17 @@ export function bindCoursePicker(
   });
 }
 
-function bindCourseWeights(store: Store<GameState>) {
+function bindCourseWeights(
+  getWeights: () => CourseGenerationWeights,
+  setWeights: (weights: CourseGenerationWeights) => void,
+) {
   const fieldset = element<HTMLFieldSetElement>("#custom-course-sliders");
-  let weights = store.getState().courseWeights;
+  let weights = getWeights();
   const refresh: (() => void)[] = [];
+  const refreshWeights = () => {
+    weights = getWeights();
+    refresh.forEach((sync) => sync());
+  };
   for (const { key, label: text, description, min, max, step } of courseGenerationFields) {
     const label = document.createElement("label");
     label.className = "slider-control";
@@ -719,27 +732,24 @@ function bindCourseWeights(store: Store<GameState>) {
       input.setAttribute("aria-valuetext", output.value);
     };
     input.addEventListener("input", () => {
-      const next = { ...store.getState().courseWeights, [key]: input.valueAsNumber };
+      const next = { ...getWeights(), [key]: input.valueAsNumber };
       validateCourseWeights(next);
-      store.update({ courseWeights: next });
+      setWeights(next);
+      refreshWeights();
     });
     refresh.push(sync);
-    sync();
     label.append(title, output, input, hint);
     fieldset.append(label);
   }
   element("#custom-course-reset").addEventListener("click", () => {
-    store.update({ courseWeights: { ...defaultCourseWeights } });
+    setWeights({ ...defaultCourseWeights });
+    refreshWeights();
   });
-  store.subscribe((state) => {
-    if (state.courseWeights === weights) return;
-    weights = state.courseWeights;
-    refresh.forEach((sync) => sync());
-  });
+  return refreshWeights;
 }
 
 export function bindGameUI(store: Store<GameState>, reportError: (error: unknown) => void) {
-  bindCourseDisclosure(store);
+  bindCourseDisclosure();
   const speed = bindText("#speed");
   const gear = bindText("#gear");
   const tachometer = bindTachometer();
@@ -756,12 +766,21 @@ export function bindGameUI(store: Store<GameState>, reportError: (error: unknown
     writeTuningPresetQuery,
     reportError,
   );
-  bindDialog(store, "#tuning", "#drift-tuning", "tuningOpen");
-  bindDialog(store, "#settings", "#settings-dialog", "settingsOpen");
-  bindDialog(store, "#help", "#help-dialog", "helpOpen");
-  bindCourseWeights(store);
-  bindDialog(store, "#custom-course", "#custom-course-dialog", "customCourseOpen");
-  bindDialog(store, "#course", "#course-picker-dialog", "coursePickerOpen");
+  bindDialog("#tuning", "#drift-tuning");
+  bindDialog("#settings", "#settings-dialog");
+  bindDialog("#help", "#help-dialog");
+  let courseWeights = { ...defaultCourseWeights };
+  const getCourseWeights = () => courseWeights;
+  const setCourseWeights = (weights: CourseGenerationWeights) => {
+    validateCourseWeights(weights);
+    courseWeights = { ...weights };
+  };
+  let refreshCourseWeights: (() => void) | undefined;
+  bindDialog("#custom-course", "#custom-course-dialog", () => {
+    refreshCourseWeights ??= bindCourseWeights(getCourseWeights, setCourseWeights);
+    refreshCourseWeights();
+  });
+  bindDialog("#course", "#course-picker-dialog");
 
   function select<Value extends string>(
     selector: string,
@@ -912,4 +931,5 @@ export function bindGameUI(store: Store<GameState>, reportError: (error: unknown
     if (footer.classList.contains("loaded") !== loaded) footer.classList.toggle("loaded", loaded);
     statusText(state.status.message);
   });
+  return { getCourseWeights, setCourseWeights };
 }

@@ -32,7 +32,7 @@ import {
 import './style.css';
 
 const gameState = createGameState();
-bindGameUI(gameState, showError);
+const ui = bindGameUI(gameState, showError);
 
 async function start() {
   gameState.update({ tuningPresets: loadTuningPresets(localStorage, defaultTuningPresets()) });
@@ -94,8 +94,9 @@ async function start() {
   const requestedCourse = courseUrl.searchParams.get('course');
   const requestedReverse = readCourseReverse(courseUrl.searchParams);
   const requestedWeights = requestedCourse === 'custom' ? readCourseWeights(courseUrl.searchParams)
-    : gameState.getState().courseWeights;
-  gameState.update({ courseWeights: requestedWeights, courseReverse: requestedReverse });
+    : ui.getCourseWeights();
+  ui.setCourseWeights(requestedWeights);
+  gameState.update({ courseReverse: requestedReverse });
   let seed = 0;
   if (requestedCourse === 'random' || requestedCourse === 'custom') {
     const value = courseUrl.searchParams.get('seed');
@@ -180,13 +181,6 @@ async function start() {
   });
   if (new URL(location.href).searchParams.has('station')) stereo.turnOn();
   let dialogOpen = false;
-  gameState.subscribe((state) => {
-    const open = state.helpOpen || state.tuningOpen || state.settingsOpen || state.customCourseOpen
-      || state.coursePickerOpen || state.courseMenuOpen;
-    if (open === dialogOpen) return;
-    dialogOpen = open;
-    controls.clear();
-  });
   const keys = controls.keys;
   const controlKeys = new Set(['ArrowLeft', 'ArrowRight', 'KeyX', 'KeyZ', 'Space', 'KeyR', 'KeyC', 'KeyD', 'KeyM', 'KeyW', 'KeyS', 'KeyF', 'KeyH']);
   let accumulator = 0;
@@ -516,7 +510,7 @@ async function start() {
   }
 
   function changeCourse(id: string, seed?: number, weights?: CourseGenerationWeights) {
-    const customWeights = weights ?? gameState.getState().courseWeights;
+    const customWeights = weights ?? ui.getCourseWeights();
     return loadCourse(() => {
       const nextDefinition = id === 'custom' && seed !== undefined ? generateCustomCourse(seed, customWeights)
         : id === 'random' && seed !== undefined ? generateCourse(seed)
@@ -587,7 +581,7 @@ async function start() {
     }
     availableCourses.splice(availableCourses.findIndex((course) => course.id === id), 1);
     return fallback;
-  });
+  }, ui.getCourseWeights);
 
   function cycleCamera() {
     const styles = ['corner', 'classic', 'cabin'] as const;
@@ -668,6 +662,11 @@ async function start() {
       stereo.setMuted(muted);
     },
     clearInput: () => controls.clear(),
+    setUIOpen(open) {
+      if (open === dialogOpen) return;
+      dialogOpen = open;
+      controls.clear();
+    },
   });
   bindLapRecorder(gameState, {
     press: pressLapRecorder,

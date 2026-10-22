@@ -1,7 +1,6 @@
 import { driveModes, type DriveMode } from './drive-modes';
 import { idleRpm } from './drivetrain';
 import { createStore } from './store';
-import { defaultCourseWeights, type CourseGenerationWeights } from './course-generation';
 import type { TurnSignMode } from './turn-sign';
 import { stereoStations, type StereoStationId } from './stereo';
 import { loadTuningPresets, type TuningPreset } from './tuning-presets';
@@ -91,13 +90,6 @@ export interface GameState {
   mirrorResolution: 'low' | 'medium' | 'high';
   minimapOrientation: 'north-up' | 'heading-up';
   timeOfDay: 'noon' | 'sunset' | 'night';
-  helpOpen: boolean;
-  tuningOpen: boolean;
-  settingsOpen: boolean;
-  customCourseOpen: boolean;
-  coursePickerOpen: boolean;
-  courseMenuOpen: boolean;
-  courseWeights: CourseGenerationWeights;
   courseReverse: boolean;
   coneMode: 'all' | 'corners' | 'off';
   showGrass: boolean;
@@ -132,10 +124,8 @@ export function createGameState(storage?: Storage) {
     profiles: { drift: defaultTuning('drift'), grip: defaultTuning('grip') },
     selectedTuningPresets: { drift: 'drift-default', grip: 'grip-default' },
     tuningPresets,
-    cameraStyle: 'corner', timeOfDay: 'noon', helpOpen: false, tuningOpen: false, settingsOpen: false,
+    cameraStyle: 'corner', timeOfDay: 'noon',
     minimapOrientation: 'heading-up', cabinHeadMotion: true, mirrorResolution: 'low',
-    customCourseOpen: false, coursePickerOpen: false, courseMenuOpen: false,
-    courseWeights: { ...defaultCourseWeights },
     courseReverse: false, coneMode: 'corners', showGrass: true, turnSignMode: 'several',
     ghostMode: 'fastest', lapRecorder: { mode: 'off', runs: [], selectedRun: null, replayLap: null },
     focused: true, controllerStatus: '',

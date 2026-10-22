@@ -43,6 +43,10 @@ Settings, Tuning, Help, Choose course, and Custom course share one dialog lifecy
 top, close with the upper-right ×, Escape, or an outside click, and restore focus
 to the opening button (the minimap for Custom course). Clicking or dragging controls
 inside does not dismiss them.
+Dialog visibility and the course disclosure are managed by DOM events, not the
+per-frame game store. These events also clear and disable driving inputs while UI
+is open. Custom-course slider preferences are local to the UI, initialized from
+the URL when applicable, and passed to course generation on demand.
 
 The dependency-free observable store in `src/store.ts` exposes `getState()`,
 `update(patch)`, and `subscribe(listener)` (returning an unsubscribe function).
