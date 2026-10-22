@@ -280,8 +280,8 @@ export class TireSmoke {
     this.geometry.getAttribute('lighting').needsUpdate = true;
   }
 
-  captureDepth(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.PerspectiveCamera) {
-    if (!this.geometry.instanceCount) return;
+  captureDepth(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.PerspectiveCamera, force = false) {
+    if (!this.geometry.instanceCount && !force) return this.depthTarget.depthTexture;
     this.chassis.updateWorldMatrix(true, false);
     camera.updateWorldMatrix(true, false);
     this.material.uniforms.viewToCar.value.copy(this.chassis.matrixWorld).invert().multiply(camera.matrixWorld);
@@ -319,5 +319,6 @@ export class TireSmoke {
       scene.background = background;
       hidden.forEach((object) => { object.visible = true; });
     }
+    return this.depthTarget.depthTexture;
   }
 }

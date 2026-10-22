@@ -166,7 +166,10 @@ test('gamepad left vertical axis controls map zoom only in map view and clears w
   const pad = { connected: true, mapping: 'standard', axes: [0.4, -0.7, 0.3, -0.5], buttons: [] };
   try {
     Object.defineProperty(globalThis, 'document', {
-      configurable: true, value: { hasFocus: () => true, hidden: false, addEventListener() {} },
+      configurable: true, value: {
+        hasFocus: () => true, hidden: false, addEventListener() {},
+        documentElement: { style: {} }, body: { style: {} },
+      },
     });
     Object.defineProperty(globalThis, 'window', {
       configurable: true, value: { addEventListener() {} },
@@ -205,7 +208,10 @@ test('gamepad D-pad up controls the lap recorder and left/right request replay l
   const pad = { connected: true, mapping: 'standard', axes: [], buttons: [] };
   try {
     Object.defineProperty(globalThis, 'document', {
-      configurable: true, value: { hasFocus: () => true, hidden: false, addEventListener() {} },
+      configurable: true, value: {
+        hasFocus: () => true, hidden: false, addEventListener() {},
+        documentElement: { style: {} }, body: { style: {} },
+      },
     });
     Object.defineProperty(globalThis, 'window', {
       configurable: true, value: { addEventListener() {} },

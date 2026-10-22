@@ -115,6 +115,7 @@ async function start() {
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFShadowMap;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.domElement.style.visibility = 'hidden';
   element('#app').append(renderer.domElement);
   renderer.domElement.setAttribute('aria-label', '3D driving playground');
 
@@ -794,16 +795,48 @@ async function start() {
     });
     if (!replaying && (!terrain.contains(car.chassis.position.x, car.chassis.position.z)
       || car.chassis.position.y < terrain.heightAt(car.chassis.position.x, car.chassis.position.z) - 5)) reset();
-    tireEffects.captureDepth(renderer, scene, camera);
+    const sceneDepth = tireEffects.captureDepth(renderer, scene, camera, ghost.visible);
     renderer.render(scene, camera);
+    ghost.renderGlow(renderer, camera, sceneDepth);
   }
 
   reset();
-  gameState.update({ status: { visible: false, error: false, message: '' } });
   await refreshRecordLap();
+  const warmupCamera = camera.clone();
+  warmupCamera.position.copy(car.chassis.position).add(new THREE.Vector3(5, 3, 6));
+  warmupCamera.lookAt(car.chassis.position);
+  const previousTarget = renderer.getRenderTarget();
+  ghost.chassis.position.copy(car.chassis.position);
+  ghost.chassis.quaternion.copy(car.chassis.quaternion);
+  ghost.wheels.forEach((wheel, i) => {
+    wheel.position.copy(car.wheels[i].position);
+    wheel.quaternion.copy(car.wheels[i].quaternion);
+  });
+  try {
+    // Offscreen targets use different output and tone-mapping shaders than the game canvas.
+    renderer.setRenderTarget(null);
+    ghost.visible = true;
+    await renderer.compileAsync(scene, warmupCamera);
+    const depth = tireEffects.captureDepth(renderer, scene, warmupCamera, true);
+    renderer.render(scene, warmupCamera);
+    ghost.renderGlow(renderer, warmupCamera, depth);
+    ghost.visible = false;
+    await renderer.compileAsync(scene, camera);
+    renderer.render(scene, warmupCamera);
+    renderer.getContext().finish();
+  } finally {
+    ghost.visible = false;
+    renderer.setRenderTarget(previousTarget);
+  }
+  gameState.update({ status: { visible: false, error: false, message: '' } });
+  let firstFrame = true;
   renderer.setAnimationLoop((time) => {
     try {
       frame(time);
+      if (firstFrame) {
+        renderer.domElement.style.visibility = '';
+        firstFrame = false;
+      }
     } catch (error) {
       audio.silence();
       renderer.setAnimationLoop(null);

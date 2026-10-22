@@ -495,7 +495,17 @@ and deletion of saved replay runs. **Ghost car → Record lap** races that recor
 from the first start-line crossing and restarts it each lap. A faster lap replaces
 the record and becomes the ghost for subsequent laps. A cyan arrow on the minimap
 tracks the active ghost's position and heading alongside the player's gold arrow.
-The ghost fades out near your car in cabin view. Chase views fade it only slightly,
+The ghost has an even, very soft cyan halo around its silhouette and casts a faint
+cyan light on nearby surfaces. Its halo respects scene depth, and both effects fade
+with the ghost near your car in cabin view.
+Exterior stripes and trim use a slightly darker cyan, including the front lamp and bumper details.
+The ghost mesh, lighting variants, and halo passes are warmed up on the game canvas
+during startup, with GPU work completed before loading ends, to avoid first-use
+shader compilation at the finish line.
+Ghost lights stay registered at zero intensity while hidden, keeping scene shader
+layouts stable when the ghost appears or disappears. The canvas stays hidden
+through warmup until the first gameplay frame is ready.
+Chase views fade it only slightly,
 to 70% of its normal opacity when the cars overlap.
 **Fastest lap** and
 **Previous lap** still use only the current run, starting on lap 2.
