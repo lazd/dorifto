@@ -1,0 +1,11 @@
+Model Information:
+* title:	nissan_300zx
+* source:	https://sketchfab.com/3d-models/nissan-300zx-88be494c18134b1ca820f776d5144164
+* author:	MattDoesBlender (https://sketchfab.com/MattDoesBlender)
+
+Model License:
+* license type:	CC-BY-NC-SA-4.0 (http://creativecommons.org/licenses/by-nc-sa/4.0/)
+* requirements:	Author must be credited. No commercial use. Modified versions must have the same license.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "nissan_300zx" (https://sketchfab.com/3d-models/nissan-300zx-88be494c18134b1ca820f776d5144164) by MattDoesBlender (https://sketchfab.com/MattDoesBlender) licensed under CC-BY-NC-SA-4.0 (http://creativecommons.org/licenses/by-nc-sa/4.0/)

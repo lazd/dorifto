@@ -1,0 +1,534 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#10191f" />
+    <meta name="referrer" content="no-referrer" />
+    <title>Dorifto — Z32 Playground</title>
+    <script type="module" crossorigin src="./assets/index-CY7mFiMh.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-BS0f7N-h.css">
+  </head>
+  <body>
+    <div id="app"></div>
+    <div id="status" role="status">
+      <span id="status-message"></span>
+      <button
+        id="status-close"
+        type="button"
+        aria-label="Dismiss error"
+        title="Dismiss error (Escape / B)"
+        hidden
+      >
+        ×
+      </button>
+    </div>
+    <aside class="course-hud" aria-label="Course map and options">
+      <button
+        id="minimap"
+        class="minimap"
+        type="button"
+        aria-label="Toggle course options"
+        aria-controls="course-menu"
+        aria-expanded="false"
+      >
+        <span id="course-name">Loading course...</span>
+        <span class="minimap-stats">
+          <span class="minimap-lap" role="group" aria-label="Current lap">
+            <strong id="lap-number">--</strong>
+            <span>LAP</span>
+          </span>
+          <span class="minimap-timing" role="group" aria-label="Lap timing">
+            <strong id="lap-current" aria-label="Current lap time">--:--.---</strong>
+            <span class="minimap-best"
+              ><span>BEST</span
+              ><span id="lap-best" aria-label="Best lap time">--:--.---</span></span
+            >
+          </span>
+        </span>
+      </button>
+      <div id="course-menu" hidden>
+        <div id="course-options" class="course-options">
+          <label class="checkbox">
+            <input id="reverse-course" type="checkbox" disabled /> Reverse course
+          </label>
+          <button
+            id="course"
+            class="keycap"
+            type="button"
+            aria-haspopup="dialog"
+            aria-controls="course-picker-dialog"
+            disabled
+          >
+            Choose course
+          </button>
+          <div class="course-generation-actions">
+            <button
+              id="custom-course"
+              class="keycap"
+              type="button"
+              aria-label="Custom course"
+              title="Custom course"
+              aria-haspopup="dialog"
+              aria-controls="custom-course-dialog"
+              disabled
+            >
+              🛠️
+            </button>
+            <button
+              id="random-course"
+              class="keycap"
+              type="button"
+              aria-label="Random course"
+              title="Generate a new course"
+              disabled
+            >
+              ♻️
+            </button>
+            <button
+              id="delete-course"
+              class="keycap"
+              type="button"
+              aria-label="Delete course"
+              title="Delete course"
+              disabled
+            >
+              🗑️
+            </button>
+          </div>
+          <form id="save-course-form" hidden>
+            <label for="save-course-name">Course name</label>
+            <input id="save-course-name" type="text" required placeholder="Name this course" />
+            <button id="save-course" class="keycap" type="submit">Save course</button>
+            <span id="save-course-status" role="status"></span>
+          </form>
+        </div>
+      </div>
+    </aside>
+    <div class="lap-recorder" hidden>
+      <button id="lap-recorder-button" type="button" data-mode="off">
+        <span class="lap-recorder-icon" aria-hidden="true"></span>
+        <span id="lap-recorder-label">REC</span>
+      </button>
+      <span id="lap-replay-controls" hidden>
+        <button
+          id="lap-replay-previous"
+          class="keycap"
+          type="button"
+          aria-label="Previous lap"
+          title="Previous lap"
+        >
+          ←
+        </button>
+        <span id="lap-replay-time"></span>
+        <button
+          id="lap-replay-next"
+          class="keycap"
+          type="button"
+          aria-label="Next lap"
+          title="Next lap"
+        >
+          →
+        </button>
+      </span>
+      <span class="editable-picker">
+        <select id="lap-replay-run" aria-label="Saved laps to replay"></select>
+        <button
+          id="lap-replay-delete"
+          class="keycap"
+          type="button"
+          aria-label="Delete saved laps"
+          title="Delete saved laps"
+        >
+          🗑️
+        </button>
+      </span>
+    </div>
+    <aside class="telemetry" aria-label="Driving information">
+      <div
+        id="tachometer"
+        role="meter"
+        aria-label="Engine RPM"
+        aria-valuemin="0"
+        aria-valuemax="8000"
+        aria-valuenow="0"
+      >
+        <svg class="tach-dial" viewBox="0 0 280 280" aria-hidden="true"></svg>
+      </div>
+      <div class="tach-center">
+        <div class="tach-label">RPM × 1000</div>
+        <div class="speed-display">
+          <span id="speed" class="visually-hidden">0</span>
+          <svg id="speed-led" viewBox="0 0 124 64" aria-hidden="true"></svg>
+        </div>
+        <span class="speed-unit">MPH</span>
+        <div class="gear-display">
+          <strong id="gear">1</strong>
+          <div class="gear-label">GEAR</div>
+        </div>
+      </div>
+    </aside>
+    <dialog id="drift-tuning" class="slider-dialog" aria-labelledby="drift-tuning-title">
+      <form method="dialog" class="dialog-close">
+        <button type="submit" aria-label="Close" title="Close">×</button>
+      </form>
+      <h2 id="drift-tuning-title" tabindex="-1" autofocus>Tuning</h2>
+      <p id="drift-tuning-mode" role="status"></p>
+      <div class="settings-controls">
+        <div class="settings-control-row">
+          <label for="drive-mode">Drive mode</label>
+          <select id="drive-mode">
+            <option value="grip">Grip</option>
+            <option value="drift">Drift</option>
+          </select>
+        </div>
+      </div>
+      <section class="settings-group" aria-labelledby="tuning-preset-title">
+        <h3 id="tuning-preset-title">Drift tuning presets</h3>
+        <div class="editable-picker tuning-preset-picker">
+          <select id="tuning-preset" aria-label="Drift tuning preset"></select>
+          <input
+            id="tuning-preset-edit-name"
+            type="text"
+            maxlength="32"
+            aria-label="Rename tuning preset"
+            hidden
+          />
+          <button
+            id="tuning-preset-edit"
+            class="keycap"
+            type="button"
+            aria-label="Rename tuning preset"
+            title="Rename tuning preset"
+          >
+            ✏️
+          </button>
+          <button
+            id="tuning-preset-delete"
+            class="keycap"
+            type="button"
+            aria-label="Delete tuning preset"
+            title="Delete tuning preset"
+          >
+            🗑️
+          </button>
+        </div>
+      </section>
+      <fieldset id="drift-tuning-sliders"></fieldset>
+    </dialog>
+    <dialog id="course-picker-dialog" aria-labelledby="course-picker-title">
+      <form method="dialog" class="dialog-close">
+        <button type="submit" aria-label="Close">×</button>
+      </form>
+      <h2 id="course-picker-title" tabindex="-1" autofocus>Choose course</h2>
+      <div id="course-picker-tabs" class="tabs">
+        <div role="tablist" aria-label="Course groups">
+          <button
+            id="courses-built-in-tab"
+            type="button"
+            role="tab"
+            aria-controls="courses-built-in"
+          >
+            Built-in courses
+          </button>
+          <button
+            id="courses-racetracks-tab"
+            type="button"
+            role="tab"
+            aria-controls="courses-racetracks"
+          >
+            Racetracks
+          </button>
+          <button id="courses-saved-tab" type="button" role="tab" aria-controls="courses-saved">
+            Saved courses
+          </button>
+        </div>
+        <div
+          id="courses-built-in"
+          role="tabpanel"
+          aria-labelledby="courses-built-in-tab"
+          tabindex="0"
+        >
+          <div class="course-grid"></div>
+        </div>
+        <div
+          id="courses-racetracks"
+          role="tabpanel"
+          aria-labelledby="courses-racetracks-tab"
+          tabindex="0"
+        >
+          <div class="course-grid"></div>
+        </div>
+        <div id="courses-saved" role="tabpanel" aria-labelledby="courses-saved-tab" tabindex="0">
+          <p id="courses-saved-empty">
+            No saved courses yet. Generate a random or custom course, then save it from the course
+            menu.
+          </p>
+          <div class="course-grid"></div>
+        </div>
+      </div>
+      <p id="course-picker-error" role="alert"></p>
+    </dialog>
+    <dialog id="custom-course-dialog" class="slider-dialog" aria-labelledby="custom-course-title">
+      <form method="dialog" class="dialog-close">
+        <button type="submit" aria-label="Close" title="Close">×</button>
+      </form>
+      <h2 id="custom-course-title" tabindex="-1" autofocus>Custom course</h2>
+      <p>
+        Choose a course length and independent preferences from 0 (avoid) to 1 (strongly favor).
+      </p>
+      <fieldset id="custom-course-sliders">
+        <legend>Generation preferences</legend>
+      </fieldset>
+      <p id="custom-course-status" role="status"></p>
+      <p id="custom-course-error" role="alert"></p>
+      <div class="dialog-actions">
+        <button id="custom-course-reset" class="keycap" type="button">Restore defaults</button>
+        <button id="custom-course-generate" class="keycap" type="button" disabled>
+          Generate course
+        </button>
+      </div>
+    </dialog>
+    <header>
+      <div class="controls">
+        <button
+          id="settings"
+          class="keycap"
+          type="button"
+          aria-haspopup="dialog"
+          aria-controls="settings-dialog"
+        >
+          ⚙️
+        </button>
+        <button
+          id="tuning"
+          class="keycap"
+          type="button"
+          aria-haspopup="dialog"
+          aria-controls="drift-tuning"
+        >
+          🛠️
+        </button>
+        <button id="help" class="keycap" type="button" aria-haspopup="dialog">❓</button>
+      </div>
+    </header>
+    <footer>
+      <p class="credit">
+        “<a
+          href="https://sketchfab.com/3d-models/nissan-300zx-88be494c18134b1ca820f776d5144164"
+          target="_blank"
+          rel="noreferrer"
+          >nissan_300zx</a
+        >” by
+        <a href="https://sketchfab.com/MattDoesBlender" target="_blank" rel="noreferrer"
+          >MattDoesBlender</a
+        >
+        ·
+        <a
+          href="https://creativecommons.org/licenses/by-nc-sa/4.0/"
+          target="_blank"
+          rel="noreferrer"
+          >CC BY-NC-SA 4.0</a
+        >
+        · Non-commercial demo
+      </p>
+    </footer>
+    <dialog id="settings-dialog" aria-labelledby="settings-title">
+      <form method="dialog" class="dialog-close">
+        <button type="submit" aria-label="Close" title="Close">×</button>
+      </form>
+      <h2 id="settings-title" tabindex="-1" autofocus>Settings</h2>
+      <section class="settings-group" aria-labelledby="settings-game-title">
+        <h3 id="settings-game-title">Game</h3>
+        <div class="settings-controls">
+          <div class="settings-control-row">
+            <label for="sound">Sound</label>
+            <select id="sound">
+              <option value="on">On</option>
+              <option value="off">Off</option>
+            </select>
+          </div>
+          <p id="sound-status" role="status"></p>
+          <div class="settings-control-row">
+            <label for="stereo-station">Stereo station</label>
+            <select id="stereo-station"></select>
+          </div>
+          <div class="settings-control-row">
+            <label for="time-of-day">Time of day</label>
+            <select id="time-of-day">
+              <option value="noon">Noon</option>
+              <option value="sunset">Sunset</option>
+              <option value="night">Night</option>
+            </select>
+          </div>
+          <div class="settings-control-row">
+            <label for="minimap-orientation">Map orientation</label>
+            <select id="minimap-orientation">
+              <option value="heading-up">Follow heading</option>
+              <option value="north-up">North up</option>
+            </select>
+          </div>
+          <div class="settings-control-row">
+            <label for="ghost-mode">Ghost car</label>
+            <select id="ghost-mode">
+              <option value="off">Off</option>
+              <option value="record">Record lap</option>
+              <option value="fastest">Fastest lap</option>
+              <option value="previous">Previous lap</option>
+            </select>
+          </div>
+        </div>
+      </section>
+      <section class="settings-group" aria-labelledby="settings-camera-title">
+        <h3 id="settings-camera-title">Camera</h3>
+        <div class="settings-controls">
+          <div class="settings-control-row">
+            <label for="camera-style">Camera style</label>
+            <select id="camera-style">
+              <option value="corner">Corner-aware chase</option>
+              <option value="classic">Classic chase</option>
+              <option value="cabin">In-cabin</option>
+            </select>
+          </div>
+          <div class="settings-control-row">
+            <label for="mirror-resolution">Mirror resolution</label>
+            <select id="mirror-resolution">
+              <option value="off">Off</option>
+              <option value="low">Low (512 × 256)</option>
+              <option value="medium">Medium (1024 × 512)</option>
+              <option value="high">High (full resolution)</option>
+            </select>
+          </div>
+          <div class="settings-control-row">
+            <label for="cabin-head-motion">Cabin head motion</label>
+            <select id="cabin-head-motion">
+              <option value="on">On</option>
+              <option value="off">Off</option>
+            </select>
+          </div>
+        </div>
+      </section>
+      <section class="settings-group" aria-labelledby="settings-map-title">
+        <h3 id="settings-map-title">Map</h3>
+        <div class="settings-controls">
+          <div class="settings-control-row">
+            <label for="show-cones">Cones</label>
+            <select id="show-cones">
+              <option value="all">On</option>
+              <option value="corners">Corners only</option>
+              <option value="off">Off</option>
+            </select>
+          </div>
+          <div class="settings-control-row">
+            <label for="show-turn-signs">Turn Signs</label>
+            <select id="show-turn-signs">
+              <option value="off">Off</option>
+              <option value="few">Few</option>
+              <option value="several">Several</option>
+              <option value="many">Many</option>
+            </select>
+          </div>
+          <div class="settings-control-row">
+            <label for="show-grass">Grass Tufts</label>
+            <select id="show-grass">
+              <option value="on">On</option>
+              <option value="off">Off</option>
+            </select>
+          </div>
+        </div>
+      </section>
+    </dialog>
+    <dialog id="help-dialog" aria-labelledby="help-title">
+      <form method="dialog" class="dialog-close">
+        <button type="submit" aria-label="Close" title="Close">×</button>
+      </form>
+      <h2 id="help-title" tabindex="-1" autofocus>Driving controls</h2>
+      <h3>Keyboard</h3>
+      <dl>
+        <dt><kbd>←</kbd><kbd>→</kbd></dt>
+        <dd>Steer; up/down zooms in/out in map view</dd>
+        <dt><kbd>Z</kbd></dt>
+        <dd>Accelerate</dd>
+        <dt><kbd>X</kbd></dt>
+        <dd>Brake; hold to reverse near a stop</dd>
+        <dt><kbd>X</kbd> + <kbd>Z</kbd></dt>
+        <dd>Brakestand below 2.5 mph; all-wheel braking at higher speeds</dd>
+        <dt><kbd>Space</kbd></dt>
+        <dd>Handbrake</dd>
+        <dt><kbd>F</kbd> (hold)</dt>
+        <dd>Flash high beams; hold 1 second to toggle high beams on/off</dd>
+        <dt><kbd>H</kbd></dt>
+        <dd>
+          Headlights on immediately; tap to toggle (off also turns fog lights off); hold 1 second to
+          toggle fog lights with headlights on
+        </dd>
+        <dt><kbd>R</kbd></dt>
+        <dd>Reset car, cones, effects, and lap timing</dd>
+        <dt><kbd>C</kbd></dt>
+        <dd>Cycle camera: corner-aware chase, classic chase, in-cabin</dd>
+        <dt><kbd>D</kbd></dt>
+        <dd>Toggle Grip / Drift mode</dd>
+        <dt><kbd>M</kbd></dt>
+        <dd>Toggle bird's-eye map view</dd>
+        <dt><kbd>W</kbd></dt>
+        <dd>Cycle time of day: noon, sunset, night (once per press)</dd>
+        <dt><kbd>S</kbd></dt>
+        <dd>Turn on the stereo / next station / off after the last station</dd>
+      </dl>
+      <h3>
+        Controller
+        <div id="controller-status" role="status"></div>
+      </h3>
+      <dl>
+        <dt>R2 / RT</dt>
+        <dd>Accelerate</dd>
+        <dt>L2 / LT</dt>
+        <dd>Brake; hold to reverse near a stop</dd>
+        <dt>RT + LT</dt>
+        <dd>Brakestand below 2.5 mph; all-wheel braking at higher speeds</dd>
+        <dt>Left stick</dt>
+        <dd>Steer</dd>
+        <dt>Right stick</dt>
+        <dd>Adjust camera; hold left/right 1 second for 4 turn-signal flashes; pan in map view</dd>
+        <dt>R1 / RB</dt>
+        <dd>Handbrake</dd>
+        <dt>X / Square (west face button)</dt>
+        <dd>
+          Headlights on immediately; tap to toggle (off also turns fog lights off); hold 1 second to
+          toggle fog lights with headlights on
+        </dd>
+        <dt>L1 / LB (hold)</dt>
+        <dd>Flash high beams; hold 1 second to toggle high beams on/off</dd>
+        <dt>R3 (hold)</dt>
+        <dd>Look behind</dd>
+        <dt>B / Circle</dt>
+        <dd>Toggle bird's-eye map view (once per press)</dd>
+        <dt>View / Select / Back</dt>
+        <dd>Cycle camera: corner-aware chase, classic chase, in-cabin (once per press)</dd>
+        <dt>Y / Triangle</dt>
+        <dd>Toggle Grip / Drift mode (once per press)</dd>
+        <dt>D-pad Down</dt>
+        <dd>Cycle time of day: noon, sunset, night (once per press)</dd>
+        <dt>Start / Menu / Options</dt>
+        <dd>Reset</dd>
+        <dt>D-pad Left</dt>
+        <dd>Turn on stereo / previous station / off; previous lap during replay</dd>
+        <dt>D-pad Right</dt>
+        <dd>Turn on stereo / next station / off; next lap during replay</dd>
+        <dt>D-pad Up</dt>
+        <dd>Stop recording and replay, or play saved laps before the start line</dd>
+      </dl>
+      <h3>Lap recording</h3>
+      <p>
+        Recording captures your launch and shows once you cross the start/finish line. From the
+        second lap, a ghost car drives your fastest (or previous) lap of the run. Press the record
+        button to stop: the course resets, the laps are saved, and the replay plays. Before crossing
+        the line, press play to watch saved laps. Replays show each lap's total time, with a 🏆 for
+        the fastest lap of the run; use the arrows to skip to the previous or next lap. Resetting
+        the car discards an unsaved run, but completed record laps are saved automatically for each
+        map and direction. Choose Record lap in the ghost setting to race the all-time record from
+        your first lap. Beating it replaces the ghost with your new record.
+      </p>
+    </dialog>
+  </body>
+</html>
