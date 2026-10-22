@@ -348,6 +348,12 @@ async function start() {
     else if (selectedRun) void playSavedRun(selectedRun);
   }
 
+  function seekReplayLap(direction: 'previous' | 'next') {
+    if (!replay || changingCourse) return;
+    const time = replay.recording.replayLapAt(replay.time)[direction];
+    if (time !== null) startReplay(replay.recording, time);
+  }
+
   function recordStep() {
     if (!run) {
       if (physics.spawnBrakeHeld) return;
@@ -651,6 +657,8 @@ async function start() {
     if (controls.timeOfDayRequested) cycleTimeOfDay();
     if (controls.resetRequested) reset();
     if (controls.recordRequested) pressLapRecorder();
+    if (controls.previousLapRequested) seekReplayLap('previous');
+    if (controls.nextLapRequested) seekReplayLap('next');
     const dt = lastTime ? Math.min((time - lastTime) / 1000, 0.05) : fixedStep;
     lastTime = time;
     const replayVelocity3d = updateReplay(dt);

@@ -8,6 +8,7 @@ let defaultTuning;
 let defaultTuningPresets;
 let tuningPresetsStorageKey;
 let nextTuningPresetId;
+let persistTuningPresets;
 
 before(async () => {
   server = await createServer({
@@ -15,7 +16,7 @@ before(async () => {
     appType: 'custom',
   });
   ({ createGameState, defaultTuning, defaultTuningPresets } = await server.ssrLoadModule('/src/game-state.ts'));
-  ({ tuningPresetsStorageKey, nextTuningPresetId } = await server.ssrLoadModule('/src/tuning-presets.ts'));
+  ({ tuningPresetsStorageKey, nextTuningPresetId, persistTuningPresets } = await server.ssrLoadModule('/src/tuning-presets.ts'));
 });
 
 after(async () => {
@@ -52,15 +53,38 @@ test('starts with protected defaults and the captured Drift Aggressive and Grip 
   });
 });
 
-test('seeds presets once and loads later preset changes from storage', () => {
+test('loads built-ins from code without writing them to storage', () => {
   const storage = createStorage();
-  const seeded = createGameState(storage).getState().tuningPresets;
-  assert.deepEqual(seeded, defaultTuningPresets());
-  assert.deepEqual(JSON.parse(storage.getItem(tuningPresetsStorageKey)), seeded);
+  storage.setItem = () => { throw new Error('Unexpected storage write'); };
+  assert.deepEqual(createGameState(storage).getState().tuningPresets, defaultTuningPresets());
+  assert.equal(storage.getItem(tuningPresetsStorageKey), null);
+});
 
-  const remaining = seeded.filter(({ id }) => id !== 'drift-aggressive');
-  storage.setItem(tuningPresetsStorageKey, JSON.stringify(remaining));
-  assert.deepEqual(createGameState(storage).getState().tuningPresets, remaining);
+test('stores only user presets and combines them with built-ins on load', () => {
+  const storage = createStorage();
+  const custom = {
+    id: 'grip-personal', name: 'Personal', mode: 'grip',
+    tuning: { ...defaultTuning('grip'), horsepower: 420 },
+  };
+  persistTuningPresets(storage, [...defaultTuningPresets(), custom]);
+  const loaded = createGameState(storage).getState().tuningPresets;
+  assert.deepEqual(loaded, [...defaultTuningPresets(), custom]);
+  persistTuningPresets(storage, loaded);
+  assert.deepEqual(JSON.parse(storage.getItem(tuningPresetsStorageKey)), [custom]);
+  assert.deepEqual(createGameState(storage).getState().tuningPresets, loaded);
+});
+
+test('empty saved presets cannot remove built-ins', () => {
+  const storage = createStorage();
+  persistTuningPresets(storage, defaultTuningPresets());
+  assert.deepEqual(JSON.parse(storage.getItem(tuningPresetsStorageKey)), []);
+  assert.deepEqual(createGameState(storage).getState().tuningPresets, defaultTuningPresets());
+});
+
+test('surfaces failures when saving user presets', () => {
+  const storage = createStorage();
+  storage.setItem = () => { throw new Error('Storage blocked'); };
+  assert.throws(() => persistTuningPresets(storage, []), /Storage blocked/);
 });
 
 test('rejects corrupt stored preset data explicitly', () => {

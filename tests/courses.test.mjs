@@ -4,6 +4,7 @@ import { createServer } from 'vite';
 
 let server;
 let courses;
+let racetracks;
 let courseRoute;
 let courseSpawn;
 let generateCourse;
@@ -14,7 +15,7 @@ before(async () => {
     server: { middlewareMode: true, hmr: false, ws: false, watch: null },
     appType: 'custom',
   });
-  ({ courses, courseRoute, courseSpawn, generateCourse } = await server.ssrLoadModule('/src/courses.ts'));
+  ({ courses, racetracks, courseRoute, courseSpawn, generateCourse } = await server.ssrLoadModule('/src/courses.ts'));
   ({ terrainBaseHeight } = await server.ssrLoadModule('/src/terrain-profile.ts'));
 });
 
@@ -93,6 +94,36 @@ test('keeps Hillside fixed and generation deterministic without mutating course 
   assert.notDeepEqual(generateCourse(2380708672).points, first.points);
   assert.deepEqual(courses, snapshot);
   assert.equal(new Set(courses.map((course) => course.id)).size, courses.length);
+});
+
+test('excludes retired courses and defaults to Sweeper Circuit', () => {
+  assert.equal(courses[0].id, 'sweeper');
+  assert.ok(!courses.some(({ id }) => id === 'autocross' || id === 'drift-test'));
+});
+
+test('identifies Sonoma and Thunderhill as racetracks within the available courses', () => {
+  assert.deepEqual(racetracks.map(({ id }) => id), ['sonoma-raceway', 'thunderhill-east']);
+  for (const racetrack of racetracks) assert.ok(courses.includes(racetrack));
+});
+
+test('includes Hilly Drift as a fixed built-in course with rolling terrain', () => {
+  const definition = courses.find((course) => course.id === 'hilly-drift');
+  assert.ok(definition);
+  assert.equal(definition.name, 'Hilly Drift');
+  assert.equal(definition.width, 17.5);
+  assert.equal(definition.points.length, 27);
+  assert.deepEqual(definition.points[0], [-61.88367320531236, -204.52177657500891]);
+  assert.deepEqual(definition.points.at(-1), [-37.07271277101184, -195.54119071713902]);
+  assert.equal(definition.generation, undefined);
+  assert.equal(definition.flat, undefined);
+  assert.equal(definition.elevationScale, undefined);
+  const route = courseRoute(definition);
+  assert.ok(route.getPoint(0).distanceTo(route.getPoint(1)) < 1e-8);
+  assert.ok(route.getTangent(0).dot(route.getTangent(1)) > 0.999999);
+  const heights = route.getSpacedPoints(100).map(({ x, z }) => terrainBaseHeight(x, z));
+  assert.ok(Math.max(...heights) - Math.min(...heights) > 1);
+  const spawn = courseSpawn(definition);
+  assert.ok([...spawn.position, spawn.heading].every(Number.isFinite));
 });
 
 test('meets radius, turn-balance, elevation, closure, and clearance limits across seeds', () => {

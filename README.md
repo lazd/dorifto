@@ -250,7 +250,9 @@ the keyboard controls. The first connected standard-mapped controller is used.
 | Start / Menu / Options               | Reset (once per press)                                             |
 | View / Select / Back                 | Cycle corner-aware chase, classic chase, in-cabin (once per press) |
 | Y / Triangle (north face button)     | Toggle Grip / Drift mode (once per press)                          |
-| D-pad Left                           | Cycle Noon / Sunset / Night (once per press)                       |
+| D-pad Down                           | Cycle Noon / Sunset / Night (once per press)                       |
+| D-pad Up                             | Stop recording and replay, or play saved laps before the start line |
+| D-pad Left / Right                   | Skip to the previous / next lap during replay                      |
 
 Both triggers together allow brakestand behavior only below 4 km/h. LT alone brakes forward
 motion, then engages reverse only near a stop; release LT to leave reverse.
@@ -410,9 +412,9 @@ clear, and the on-screen tachometer is hidden in cabin view in favor of the
 car's working gauges. The cones are lightweight dynamic physics objects: hit them to send
 them sliding and tumbling. Reset restores the car and all cones to their starting
 positions and clears smoke and tire marks.
-The autocross loop starts straight ahead through a checkered line, then follows
-an opening slalom, sweeping bend, hairpin, and return section. Paired cones mark
-a fifteen-meter-wide corridor, with painted arrows indicating direction. Cones
+Sweeper Circuit is the default course, with a 17.5-meter-wide corridor and a
+checkered start/finish line. Paired cones mark the road edges, with painted arrows
+indicating direction. Cones
 have glossy white reflective-style bands that catch the headlights (a visual
 approximation, not a retroreflective optical simulation).
 
@@ -447,6 +449,10 @@ tracks the active ghost's position and heading alongside the player's gold arrow
 **Previous lap** still use only the current run, starting on lap 2.
 
 ## Drive modes
+
+Built-in tuning presets always come from code, not localStorage. Only user presets
+are saved locally per browser.
+The preset picker shows presets for the active Grip or Drift mode only.
 
 Click **Tuning** in the bottom toolbar to open a dialog and adjust the selected mode live without
 resetting the car. Sliders control steering angle (showing low/high-speed limits
@@ -601,14 +607,9 @@ about 38 m, with the same 17.5 m road width, rolling terrain, and corner banking
 as the original. Its fixed markers preserve this layout independently of later
 changes to the random-course generator. Select it from the Course picker.
 
-**Drift Test Loop** (`?course=drift-test`) is a compact 14 m-wide handling circuit
-with gentle elevation and banking (35% of the normal terrain relief). Hills in
-the infield and runoff help distinguish the road's direction.
-Start with the roughly 65 m approach to repeat a consistent entry speed, hold a slide
-around the broad far-end sweeper, then use the linked opposite-direction bends
-on the return leg to practice transitions and recovery. Cones are spaced 7 m
-apart along each edge. Normal lap timing, cone counts, cameras, lighting, and
-drive-mode tuning work as on the other circuits.
+**Hilly Drift** (`?course=hilly-drift`) is a built-in 17.5 m-wide course with
+rolling terrain. Its fixed layout preserves the original saved course's 27 markers
+and is available in the Course picker without importing or saving it locally.
 
 **Flat Skidpad** is a solid asphalt disk 500 m across, with a counter-clockwise
 reference route of approximately 50 m centerline radius and 62.5 m marked width.
@@ -655,16 +656,16 @@ After releasing the hold, ordinary braking/reverse and lift-off behavior resume.
 
 ### Layouts
 
-Use the Course selector to load Autocross Playground (15 m wide) or Sweeper
-Circuit (17.5 m wide). Switching courses replaces the track in place without
+Use the Course selector to load Sweeper Circuit, Hillside Circuit, Hilly Drift,
+Flat Skidpad, or an imported track. Switching courses replaces the track in place without
 reloading the page or car assets. It resets the car, physics world, lap timing,
 cones, smoke, and tire marks while retaining tuning, sound, camera, drive mode,
 and time-of-day settings. Replaced track graphics and physics bodies are freed;
 native heightfield buffers are pooled and reused because this Ammo build does not
 export a working memory-free function.
 Course controls are disabled during loading, and failures appear in the status
-message without navigating away. The selection is encoded in `?course=autocross` or
-`?course=sweeper`, so links can open a particular course.
+message without navigating away. The selection is encoded in `?course=sweeper` or
+`?course=hilly-drift`, so links can open a particular course.
 
 The driving corridor is textured asphalt with an 80 cm paved shoulder; everything
 outside it is textured dirt/gravel. Both receive shadows and headlights.
@@ -715,9 +716,12 @@ These are geometric limits, not an autopilot: slow down for the tighter bends.
 After generating a random or custom course, open the course menu to enter a name
 and choose **Save course**. The exact course layout is stored in localStorage,
 added to and selected in the **Course** dropdown, including after reloading.
+Saved layouts also retain their generator type and seed; custom courses include
+the exact generation parameters used, independent of later slider changes.
 The save controls disappear once the saved course is selected. Saved courses are
 local to this browser; their `?course=saved-…` links require the same local data.
-The dropdown separates **Built-in courses** and **Saved courses** into groups;
+The dropdown separates **Built-in courses**, **Racetracks** (Sonoma Raceway and
+Thunderhill East), and **Saved courses** into groups;
 use the generation buttons to create random or custom courses.
 The course menu's delete button removes the selected saved course and switches to
 the default course. Deletion is disabled for built-in and unsaved generated courses.

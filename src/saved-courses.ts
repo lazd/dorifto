@@ -1,6 +1,20 @@
 import type { CourseDefinition } from './courses';
+import { courseGenerationFields } from './course-generation';
 
 export const savedCoursesStorageKey = 'dorifto:courses';
+
+function isGeneration(value: unknown): boolean {
+  if (typeof value !== 'object' || value === null) return false;
+  const generation = value as Record<string, unknown>;
+  if (typeof generation.seed !== 'number' || !Number.isInteger(generation.seed)
+    || generation.seed < 0 || generation.seed > 0xffffffff) return false;
+  if (generation.type === 'random') return true;
+  if (generation.type !== 'custom' || typeof generation.weights !== 'object' || generation.weights === null)
+    return false;
+  const weights = generation.weights as Record<string, unknown>;
+  return courseGenerationFields.every(({ key, min, max }) =>
+    typeof weights[key] === 'number' && Number.isFinite(weights[key]) && weights[key] >= min && weights[key] <= max);
+}
 
 function isCourse(value: unknown): value is CourseDefinition {
   if (typeof value !== 'object' || value === null) return false;
@@ -15,6 +29,7 @@ function isCourse(value: unknown): value is CourseDefinition {
       course[key] === undefined || typeof course[key] === 'number' && Number.isFinite(course[key]) && course[key] > 0)
     && (course.flat === undefined || typeof course.flat === 'boolean')
     && (course.reverse === undefined || typeof course.reverse === 'boolean')
+    && (course.generation === undefined || isGeneration(course.generation))
     && (course.elevation === undefined || Array.isArray(course.elevation) && course.elevation.length > 0
       && course.elevation.every((height: unknown) => typeof height === 'number' && Number.isFinite(height)));
 }

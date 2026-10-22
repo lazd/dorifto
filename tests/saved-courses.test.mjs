@@ -44,6 +44,13 @@ test('saves named random and custom layouts and restores exact geometry and opti
   assert.deepEqual(loadSavedCourses(storage), JSON.parse(JSON.stringify([savedRandom, savedCustom])));
   assert.deepEqual(savedRandom.points, random.points);
   assert.deepEqual(savedCustom.points, custom.points);
+  assert.deepEqual(savedRandom.generation, { type: 'random', seed: 42 });
+  assert.deepEqual(savedCustom.generation, { type: 'custom', seed: 42, weights: defaultCourseWeights });
+  const restored = loadSavedCourses(storage);
+  assert.deepEqual(restored[0].generation, savedRandom.generation);
+  assert.deepEqual(restored[1].generation, savedCustom.generation);
+  assert.deepEqual(generateCourse(restored[0].generation.seed).points, random.points);
+  assert.deepEqual(generateCustomCourse(restored[1].generation.seed, restored[1].generation.weights).points, custom.points);
   assert.deepEqual({ ...savedRandom, id: random.id, name: random.name }, random);
   assert.deepEqual({ ...savedCustom, id: custom.id, name: custom.name }, custom);
   assert.equal(random.id, 'random', 'saving does not modify the active definition');
@@ -70,6 +77,30 @@ test('storage failures are surfaced rather than reporting a successful save', ()
     id: 'custom', name: 'Custom', width: 10, points: [[0, 0], [100, 0], [0, 100]],
   }, 'Name'), /Storage full/);
   assert.deepEqual(loadSavedCourses(storage), []);
+});
+
+test('custom generation parameters are captured independently of later slider changes', () => {
+  const weights = { ...defaultCourseWeights };
+  const course = generateCustomCourse(42, weights);
+  weights.elevation = 0;
+  const storage = memoryStorage();
+  saveCourse(storage, course, 'Custom');
+  assert.deepEqual(loadSavedCourses(storage)[0].generation.weights, defaultCourseWeights);
+});
+
+test('rejects invalid generation metadata but accepts older courses without it', () => {
+  const storage = memoryStorage();
+  const course = { id: 'saved-test', name: 'Test', width: 10, points: [[0, 0], [100, 0], [0, 100]] };
+  for (const generation of [
+    { type: 'random', seed: -1 }, { type: 'random', seed: 0x100000000 },
+    { type: 'custom', seed: 42, weights: {} },
+    { type: 'custom', seed: 42, weights: { ...defaultCourseWeights, elevation: 2 } },
+  ]) {
+    storage.setItem(savedCoursesStorageKey, JSON.stringify([{ ...course, generation }]));
+    assert.throws(() => loadSavedCourses(storage), /invalid format/);
+  }
+  storage.setItem(savedCoursesStorageKey, JSON.stringify([course]));
+  assert.deepEqual(loadSavedCourses(storage), [course]);
 });
 
 test('deletes only the requested saved course and rejects built-in or missing courses', () => {

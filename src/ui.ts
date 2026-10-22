@@ -1,6 +1,7 @@
 import { isDriveMode, type DriveMode } from "./drive-modes";
 import { createDrivingTuning } from "./drift-tuning";
 import { redlineRpm } from "./drivetrain";
+import { racetracks } from "./courses";
 import {
   isCameraStyle,
   isGhostMode,
@@ -512,9 +513,11 @@ export function bindCoursePicker(
   input.add(generatedOption);
   const builtInGroup = document.createElement("optgroup");
   builtInGroup.label = "Built-in courses";
+  const racetrackGroup = document.createElement("optgroup");
+  racetrackGroup.label = "Racetracks";
   const savedGroup = document.createElement("optgroup");
   savedGroup.label = "Saved courses";
-  input.append(builtInGroup, savedGroup);
+  input.append(builtInGroup, racetrackGroup, savedGroup);
   function syncCourseSelection() {
     const generated = selected.id === "random" || selected.id === "custom";
     generatedOption.text = generated ? selected.name : "";
@@ -545,7 +548,8 @@ export function bindCoursePicker(
   });
   courseName(selected.name);
   for (const course of options) {
-    const group = course.id.startsWith("saved-") ? savedGroup : builtInGroup;
+    const group = course.id.startsWith("saved-") ? savedGroup
+      : racetracks.some(({ id }) => id === course.id) ? racetrackGroup : builtInGroup;
     group.append(new Option(course.name, course.id));
   }
   syncCourseSelection();

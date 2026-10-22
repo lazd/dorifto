@@ -173,6 +173,57 @@ test('gamepad left vertical axis controls map zoom only in map view and clears w
   }
 });
 
+test('gamepad D-pad up controls the lap recorder and left/right request replay lap skips once per press', () => {
+  const descriptors = new Map(['document', 'window', 'navigator'].map((key) =>
+    [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
+  const pad = { connected: true, mapping: 'standard', axes: [], buttons: [] };
+  try {
+    Object.defineProperty(globalThis, 'document', {
+      configurable: true, value: { hasFocus: () => true, hidden: false, addEventListener() {} },
+    });
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true, value: { addEventListener() {} },
+    });
+    Object.defineProperty(globalThis, 'navigator', {
+      configurable: true, value: { getGamepads: () => [pad] },
+    });
+    const controls = new DrivingControls();
+    const press = (index) => {
+      pad.buttons[index] = { pressed: true };
+      controls.poll();
+    };
+    const release = (index) => {
+      pad.buttons[index] = { pressed: false };
+      controls.poll();
+    };
+
+    press(12);
+    assert.equal(controls.recordRequested, true);
+    controls.poll();
+    assert.equal(controls.recordRequested, false);
+    release(12);
+    press(14);
+    assert.equal(controls.previousLapRequested, true);
+    controls.poll();
+    assert.equal(controls.previousLapRequested, false);
+    release(14);
+    press(15);
+    assert.equal(controls.nextLapRequested, true);
+    controls.poll();
+    assert.equal(controls.nextLapRequested, false);
+    release(15);
+    press(13);
+    assert.equal(controls.recordRequested, false);
+    assert.equal(controls.previousLapRequested, false);
+    assert.equal(controls.nextLapRequested, false);
+  } finally {
+    for (const [key, descriptor] of descriptors) {
+      if (descriptor) Object.defineProperty(globalThis, key, descriptor);
+      else delete globalThis[key];
+    }
+  }
+});
+
 test('map zoom is directional, bounded, frame-rate independent, and retained until reset', () => {
   const heights = [];
   for (const fps of [30, 60, 144]) {

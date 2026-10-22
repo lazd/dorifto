@@ -10,7 +10,6 @@ export interface TuningPreset {
 }
 
 export const tuningPresetsStorageKey = 'dorifto:tuning-presets';
-const protectedPresetIds = new Set(['drift-default', 'drift-aggressive', 'grip-default', 'grip-fast']);
 
 const tuningKeys: (keyof DrivingTuning)[] = [
   'horsepower', 'steeringExpo', 'steeringRate', 'steeringScale',
@@ -54,15 +53,12 @@ function isTuningPreset(value: unknown): value is TuningPreset {
 }
 
 export function loadTuningPresets(
-  storage: Pick<Storage, 'getItem' | 'setItem'>,
+  storage: Pick<Storage, 'getItem'>,
   defaults: readonly TuningPreset[],
 ): TuningPreset[] {
   const stored = storage.getItem(tuningPresetsStorageKey);
-  if (stored === null) {
-    const initial = defaults.map((preset) => ({ ...preset, tuning: { ...preset.tuning } }));
-    storage.setItem(tuningPresetsStorageKey, JSON.stringify(initial));
-    return initial;
-  }
+  const builtIns = defaults.map((preset) => ({ ...preset, tuning: { ...preset.tuning } }));
+  if (stored === null) return builtIns;
 
   let parsed: unknown;
   try {
@@ -77,14 +73,10 @@ export function loadTuningPresets(
   if (new Set(presets.map(({ id }) => id)).size !== presets.length) {
     throw new Error('Saved tuning presets contain duplicate IDs');
   }
-  const normalized = presets.map((preset) => ({
-    ...preset,
-    readonly: preset.readonly || protectedPresetIds.has(preset.id),
-    tuning: { ...preset.tuning },
-  }));
-  return normalized;
+  return [...builtIns, ...presets.map((preset) => ({ ...preset, tuning: { ...preset.tuning } }))];
 }
 
 export function persistTuningPresets(storage: Pick<Storage, 'setItem'>, presets: readonly TuningPreset[]) {
-  storage.setItem(tuningPresetsStorageKey, JSON.stringify(presets));
+  storage.setItem(tuningPresetsStorageKey,
+    JSON.stringify(presets.filter((preset) => !preset.readonly)));
 }

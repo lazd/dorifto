@@ -318,6 +318,7 @@ export function generateCustomCourse(seed: number, weights: CourseGenerationWeig
     const mirror = random() < 0.5 ? -1 : 1;
     const definition: CourseDefinition = {
       id: 'custom', name: `Custom Circuit (${seed})`, width,
+      generation: { type: 'custom', seed, weights: { ...weights } },
       points: [...points.slice(startIndex), ...points.slice(0, startIndex)].map(([px, pz]) => [
         mirror * (px * Math.cos(rotation) - pz * Math.sin(rotation)),
         px * Math.sin(rotation) + pz * Math.cos(rotation),

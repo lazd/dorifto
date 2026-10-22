@@ -18,8 +18,12 @@ export class DrivingControls {
   driveModeRequested = false;
   timeOfDayRequested = false;
   recordRequested = false;
+  previousLapRequested = false;
+  nextLapRequested = false;
   controllerStatus = "";
   private recordHeld = false;
+  private previousLapHeld = false;
+  private nextLapHeld = false;
   private resetHeld = false;
   private cameraHeld = false;
   private driveModeHeld = false;
@@ -52,6 +56,8 @@ export class DrivingControls {
     this.driveModeRequested = false;
     this.timeOfDayRequested = false;
     this.recordRequested = false;
+    this.previousLapRequested = false;
+    this.nextLapRequested = false;
   }
 
   poll(enabled = true, steeringExpo = 0) {
@@ -78,10 +84,15 @@ export class DrivingControls {
     const timeOfDayPressed = Boolean(pad?.buttons[13]?.pressed);
     this.timeOfDayRequested = timeOfDayPressed && !this.timeOfDayHeld;
     this.timeOfDayHeld = timeOfDayPressed;
-    // D-pad left: same as tapping the lap recorder button.
-    const recordPressed = Boolean(pad?.buttons[14]?.pressed);
+    const recordPressed = Boolean(pad?.buttons[12]?.pressed);
     this.recordRequested = recordPressed && !this.recordHeld;
     this.recordHeld = recordPressed;
+    const previousLapPressed = Boolean(pad?.buttons[14]?.pressed);
+    this.previousLapRequested = previousLapPressed && !this.previousLapHeld;
+    this.previousLapHeld = previousLapPressed;
+    const nextLapPressed = Boolean(pad?.buttons[15]?.pressed);
+    this.nextLapRequested = nextLapPressed && !this.nextLapHeld;
+    this.nextLapHeld = nextLapPressed;
     const mapViewPressed = Boolean(pad?.buttons[1]?.pressed);
     if (mapViewPressed && !this.mapViewHeld) this.mapView = !this.mapView;
     this.mapViewHeld = mapViewPressed;
