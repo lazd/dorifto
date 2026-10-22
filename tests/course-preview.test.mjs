@@ -40,3 +40,24 @@ test('course preview markup escapes labels and colors', () => {
   assert.ok(svg.includes('stroke="&#34;red&#34;"'));
   assert.ok(!svg.includes('<Tom'));
 });
+
+test('fits the full road stroke and start marker without clipping, including the wide skidpad', () => {
+  for (const definition of courses) {
+    for (const minStrokeWidth of [1.5, 8]) {
+      const size = 120;
+      const padding = 10;
+      const { path, scale } = coursePreviewGeometry(definition, size, padding, 400, minStrokeWidth);
+      const stroke = Math.max(minStrokeWidth, definition.width * scale);
+      const coordinates = [...path.matchAll(/-?\d+(?:\.\d+)?/g)].map(Number);
+      assert.ok(coordinates.every((value) =>
+        value - stroke / 2 >= padding - 0.1 && value + stroke / 2 <= size - padding + 0.1),
+      `${definition.id} road edges fit with stroke ${stroke}`);
+      const svg = coursePreviewSvg(definition, { size, padding, minStrokeWidth });
+      const marker = svg.match(/<circle cx="([^"]+)" cy="([^"]+)" r="([^"]+)"/);
+      assert.ok(marker);
+      const [, x, y, radius] = marker.map(Number);
+      assert.ok([x, y].every((value) => value - radius >= 0 && value + radius <= size),
+        `${definition.id} start marker fits`);
+    }
+  }
+});

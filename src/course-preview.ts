@@ -20,7 +20,9 @@ const escape = (text: string) => text.replace(/[&<>"']/g, (character) => `&#${ch
  * Top-down outline of a course as SVG path data, scaled to fit a square,
  * with +Z at the top to match the in-game map view.
  */
-export function coursePreviewGeometry(definition: CourseDefinition, size = 200, padding = 12, samples = 400) {
+export function coursePreviewGeometry(
+  definition: CourseDefinition, size = 200, padding = 12, samples = 400, minStrokeWidth = 1.5,
+) {
   const points = courseRoute(definition).getSpacedPoints(samples);
   points.pop();
   let minX = Infinity;
@@ -33,7 +35,9 @@ export function coursePreviewGeometry(definition: CourseDefinition, size = 200, 
     minZ = Math.min(minZ, z);
     maxZ = Math.max(maxZ, z);
   }
-  const scale = (size - 2 * padding) / Math.max(maxX - minX, maxZ - minZ, 1e-6);
+  const extent = Math.max(maxX - minX, maxZ - minZ, 1e-6);
+  const available = size - 2 * padding;
+  const scale = Math.min(available / (extent + definition.width), (available - minStrokeWidth) / extent);
   const offsetX = (size - (maxX - minX) * scale) / 2;
   const offsetY = (size - (maxZ - minZ) * scale) / 2;
   const project = (x: number, z: number) =>
@@ -52,11 +56,11 @@ export function coursePreviewSvg(definition: CourseDefinition, options: CoursePr
     size = 200, padding = 12, samples = 400, trackColor = 'currentColor',
     startColor = '#e8372c', minStrokeWidth = 1.5, title = definition.name,
   } = options;
-  const { path, scale, start } = coursePreviewGeometry(definition, size, padding, samples);
+  const { path, scale, start } = coursePreviewGeometry(definition, size, padding, samples, minStrokeWidth);
   const stroke = Math.max(minStrokeWidth, definition.width * scale);
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${size}" width="${size}" height="${size}" role="img">`
     + `<title>${escape(title)}</title>`
     + `<path d="${path}" fill="none" stroke="${escape(trackColor)}" stroke-width="${stroke.toFixed(2)}" stroke-linejoin="round"/>`
-    + `<circle cx="${start[0].toFixed(1)}" cy="${start[1].toFixed(1)}" r="${Math.max(3, stroke * 0.9).toFixed(1)}" fill="${escape(startColor)}"/>`
+    + `<circle cx="${start[0].toFixed(1)}" cy="${start[1].toFixed(1)}" r="${Math.max(3, Math.min(6, stroke * 0.9)).toFixed(1)}" fill="${escape(startColor)}"/>`
     + '</svg>';
 }

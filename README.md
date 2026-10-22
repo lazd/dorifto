@@ -39,7 +39,7 @@ The footer fades out five seconds after loading completes. Hovering over it or
 focusing one of its links reveals it again; it stays visible during loading or errors.
 Reset uses keyboard **R** or the controller's
 Start/Menu/Options button rather than a toolbar button.
-Settings, Tuning, Help, and Custom course share one dialog lifecycle in `src/ui.ts`: open at the
+Settings, Tuning, Help, Choose course, and Custom course share one dialog lifecycle in `src/ui.ts`: open at the
 top, close with the upper-right ×, Escape, or an outside click, and restore focus
 to the opening button (the minimap for Custom course). Clicking or dragging controls
 inside does not dismiss them.
@@ -412,11 +412,6 @@ clear, and the on-screen tachometer is hidden in cabin view in favor of the
 car's working gauges. The cones are lightweight dynamic physics objects: hit them to send
 them sliding and tumbling. Reset restores the car and all cones to their starting
 positions and clears smoke and tire marks.
-Sweeper Circuit is the default course, with a 17.5-meter-wide corridor and a
-checkered start/finish line. Paired cones mark the road edges, with painted arrows
-indicating direction. Cones
-have glossy white reflective-style bands that catch the headlights (a visual
-approximation, not a retroreflective optical simulation).
 
 ## Lap timing
 
@@ -656,7 +651,7 @@ After releasing the hold, ordinary braking/reverse and lift-off behavior resume.
 
 ### Layouts
 
-Use the Course selector to load Sweeper Circuit, Hillside Circuit, Hilly Drift,
+Use **Choose course** in the minimap's course menu to load Sweeper Circuit, Hillside Circuit, Hilly Drift,
 Flat Skidpad, or an imported track. Switching courses replaces the track in place without
 reloading the page or car assets. It resets the car, physics world, lap timing,
 cones, smoke, and tire marks while retaining tuning, sound, camera, drive mode,
@@ -715,14 +710,23 @@ These are geometric limits, not an autopilot: slow down for the tighter bends.
 
 After generating a random or custom course, open the course menu to enter a name
 and choose **Save course**. The exact course layout is stored in localStorage,
-added to and selected in the **Course** dropdown, including after reloading.
+added to and selected in the **Choose course** picker, including after reloading.
 Saved layouts also retain their generator type and seed; custom courses include
 the exact generation parameters used, independent of later slider changes.
 The save controls disappear once the saved course is selected. Saved courses are
 local to this browser; their `?course=saved-…` links require the same local data.
-The dropdown separates **Built-in courses**, **Racetracks** (Sonoma Raceway and
-Thunderhill East), and **Saved courses** into groups;
-use the generation buttons to create random or custom courses.
+The picker opens a dialog with **Built-in courses**, **Racetracks** (Sonoma Raceway
+and Thunderhill East), and **Saved courses** tabs. Each tab shows a responsive grid
+of SVG course previews with names and lap lengths underneath (meters for courses
+under 1 km, otherwise kilometers); the current course is highlighted.
+Selecting a card loads the course and closes the dialog on success; loading errors
+remain visible in the dialog. The Saved courses tab explains how to save a course
+when empty. The reusable `Tabs` class in `src/tabs.ts` provides tab/panel ARIA
+relationships, roving focus, Left/Right arrow navigation with wraparound, and
+Home/End navigation. Opening the picker selects the current course's tab.
+Escape, the close button, or a backdrop click dismisses the dialog and restores
+focus to the minimap. Driving inputs are disabled while it is open.
+Use the generation buttons in the course menu to create random or custom courses.
 The course menu's delete button removes the selected saved course and switches to
 the default course. Deletion is disabled for built-in and unsaved generated courses.
 

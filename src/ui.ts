@@ -1,7 +1,9 @@
 import { isDriveMode, type DriveMode } from "./drive-modes";
 import { createDrivingTuning } from "./drift-tuning";
 import { redlineRpm } from "./drivetrain";
-import { racetracks } from "./courses";
+import { courseRoute, racetracks, type CourseDefinition } from "./courses";
+import { coursePreviewSvg } from "./course-preview";
+import { Tabs } from "./tabs";
 import {
   isCameraStyle,
   isGhostMode,
@@ -76,12 +78,13 @@ function bindDialog(
   store: Store<GameState>,
   trigger: string,
   selector: string,
-  key: "helpOpen" | "settingsOpen" | "tuningOpen" | "customCourseOpen",
+  key: "helpOpen" | "settingsOpen" | "tuningOpen" | "customCourseOpen" | "coursePickerOpen",
 ) {
   const dialog = element<HTMLDialogElement>(selector);
+  const opener = element(trigger);
   let displayedOpen = dialog.open;
   const close = () => store.update({ [key]: false });
-  element(trigger).addEventListener("click", () =>
+  opener.addEventListener("click", () =>
     store.update({ [key]: true, courseMenuOpen: false }),
   );
   dialog.addEventListener("keydown", (event) => {
@@ -120,7 +123,10 @@ function bindDialog(
     if (displayedOpen && !dialog.open) {
       dialog.showModal();
       dialog.scrollTop = 0;
-    } else if (!displayedOpen && dialog.open) dialog.close();
+    } else if (!displayedOpen) {
+      if (dialog.open) dialog.close();
+      (opener.closest("[hidden]") ? element("#minimap") : opener).focus();
+    }
   });
 }
 
@@ -479,7 +485,7 @@ function bindTuningPresets(store: Store<GameState>, reportError: (error: unknown
 }
 
 export function bindCoursePicker(
-  options: readonly { id: string; name: string }[],
+  options: readonly CourseDefinition[],
   selected: { id: string; name: string },
   changeCourse: (
     id: string,
@@ -489,10 +495,37 @@ export function bindCoursePicker(
   changeDirection: (reverse: boolean) => Promise<void>,
   reportError: (error: unknown) => void,
   store: Store<GameState>,
-  saveCourse: (name: string) => { id: string; name: string },
+  saveCourse: (name: string) => CourseDefinition,
   deleteCourse: (id: string) => Promise<{ id: string; name: string }>,
 ) {
-  const input = element<HTMLSelectElement>("#course");
+  const pickerButton = element<HTMLButtonElement>("#course");
+  const picker = element<HTMLDialogElement>("#course-picker-dialog");
+  const tabs = new Tabs(element("#course-picker-tabs"));
+  const pickerError = bindText("#course-picker-error");
+  const savedEmpty = element("#courses-saved-empty");
+  const cards = new Map<string, HTMLButtonElement>();
+  const coursePanel = (id: string) => id.startsWith("saved-") ? "courses-saved"
+    : racetracks.some((course) => course.id === id) ? "courses-racetracks" : "courses-built-in";
+  function addCourse(course: CourseDefinition) {
+    const card = document.createElement("button");
+    card.type = "button";
+    card.className = "course-card";
+    card.title = course.name;
+    card.dataset.courseId = course.id;
+    const length = courseRoute(course).getLength();
+    const distance = length < 1000 ? `${Math.round(length)} m` : `${(length / 1000).toFixed(2)} km`;
+    card.setAttribute("aria-label", `${course.name}, ${distance}`);
+    card.innerHTML = coursePreviewSvg(course);
+    const label = document.createElement("span");
+    label.textContent = course.name;
+    const lengthLabel = document.createElement("small");
+    lengthLabel.className = "course-card-length";
+    lengthLabel.textContent = distance;
+    card.append(label, lengthLabel);
+    card.addEventListener("click", () => void selectCourse(course.id));
+    element(`#${coursePanel(course.id)} .course-grid`).append(card);
+    cards.set(course.id, card);
+  }
   const button = element<HTMLButtonElement>("#random-course");
   const reverse = element<HTMLInputElement>("#reverse-course");
   const customButton = element<HTMLButtonElement>("#custom-course");
@@ -507,22 +540,21 @@ export function bindCoursePicker(
   const saveButton = element<HTMLButtonElement>("#save-course");
   const saveStatus = bindText("#save-course-status");
   const deleteButton = element<HTMLButtonElement>("#delete-course");
-  const generatedOption = new Option("", "");
-  generatedOption.hidden = true;
-  generatedOption.disabled = true;
-  input.add(generatedOption);
-  const builtInGroup = document.createElement("optgroup");
-  builtInGroup.label = "Built-in courses";
-  const racetrackGroup = document.createElement("optgroup");
-  racetrackGroup.label = "Racetracks";
-  const savedGroup = document.createElement("optgroup");
-  savedGroup.label = "Saved courses";
-  input.append(builtInGroup, racetrackGroup, savedGroup);
   function syncCourseSelection() {
-    const generated = selected.id === "random" || selected.id === "custom";
-    generatedOption.text = generated ? selected.name : "";
-    input.value = generated ? "" : selected.id;
+    for (const [id, card] of cards) {
+      if (id === selected.id) card.setAttribute("aria-current", "true");
+      else card.removeAttribute("aria-current");
+    }
+    savedEmpty.hidden = [...cards.keys()].some((id) => id.startsWith("saved-"));
   }
+  let pickerOpen = false;
+  store.subscribe(({ coursePickerOpen }) => {
+    if (coursePickerOpen && !pickerOpen) {
+      tabs.select(coursePanel(selected.id));
+      pickerError("");
+    }
+    pickerOpen = coursePickerOpen;
+  });
   function syncSaveCourse() {
     saveForm.hidden = selected.id !== "random" && selected.id !== "custom";
     saveName.value = selected.name;
@@ -535,7 +567,7 @@ export function bindCoursePicker(
     if (changing) return;
     try {
       const saved = saveCourse(saveName.value);
-      savedGroup.append(new Option(saved.name, saved.id));
+      addCourse(saved);
       selected = saved;
       syncCourseSelection();
       courseName(saved.name);
@@ -547,15 +579,13 @@ export function bindCoursePicker(
     }
   });
   courseName(selected.name);
-  for (const course of options) {
-    const group = course.id.startsWith("saved-") ? savedGroup
-      : racetracks.some(({ id }) => id === course.id) ? racetrackGroup : builtInGroup;
-    group.append(new Option(course.name, course.id));
-  }
+  for (const course of options) addCourse(course);
   syncCourseSelection();
   const setBusy = (busy: boolean) => {
     deleteButton.disabled = busy || !selected.id.startsWith("saved-");
-    input.disabled =
+    picker.setAttribute("aria-busy", String(busy));
+    for (const card of cards.values()) card.disabled = busy;
+    pickerButton.disabled =
       button.disabled =
       reverse.disabled =
       customButton.disabled =
@@ -576,8 +606,8 @@ export function bindCoursePicker(
     const id = selected.id;
     try {
       selected = await deleteCourse(id);
-      const option = Array.from(input.options).find((option) => option.value === id);
-      option?.remove();
+      cards.get(id)?.remove();
+      cards.delete(id);
       syncCourseSelection();
       courseName(selected.name);
       syncSaveCourse();
@@ -589,12 +619,17 @@ export function bindCoursePicker(
       deleteButton.blur();
     }
   });
-  const selectCourse = async (id: string) => {
+  async function selectCourse(id: string) {
     if (changing) return;
+    if (id === selected.id && cards.has(id)) {
+      store.update({ coursePickerOpen: false });
+      return;
+    }
     changing = true;
     store.update({ courseMenuOpen: false });
     setBusy(true);
     customError("");
+    pickerError("");
     let closeCustom = false;
     try {
       const generated = id === "random" || id === "custom";
@@ -608,9 +643,11 @@ export function bindCoursePicker(
       );
       courseName(selected.name);
       syncSaveCourse();
+      store.update({ coursePickerOpen: false });
       closeCustom = id === "custom";
     } catch (error) {
       reportError(error);
+      pickerError(error instanceof Error ? error.message : String(error));
       if (store.getState().customCourseOpen) {
         customError(error instanceof Error ? error.message : String(error));
       }
@@ -621,7 +658,7 @@ export function bindCoursePicker(
       changing = false;
       if (closeCustom) store.update({ customCourseOpen: false });
     }
-  };
+  }
   button.addEventListener("click", () => {
     void selectCourse("random");
   });
@@ -648,9 +685,6 @@ export function bindCoursePicker(
   }
   reverse.addEventListener("change", () => {
     void reverseCourse();
-  });
-  input.addEventListener("change", () => {
-    void selectCourse(input.value);
   });
 }
 
@@ -726,6 +760,7 @@ export function bindGameUI(store: Store<GameState>, reportError: (error: unknown
   bindDialog(store, "#help", "#help-dialog", "helpOpen");
   bindCourseWeights(store);
   bindDialog(store, "#custom-course", "#custom-course-dialog", "customCourseOpen");
+  bindDialog(store, "#course", "#course-picker-dialog", "coursePickerOpen");
 
   function select<Value extends string>(
     selector: string,

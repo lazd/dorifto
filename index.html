@@ -35,13 +35,19 @@
       </button>
       <div id="course-menu" hidden>
         <div id="course-options" class="course-options">
-          <label
-            >Course
-            <select id="course" aria-label="Course" disabled></select
-          ></label>
           <label class="checkbox">
             <input id="reverse-course" type="checkbox" disabled /> Reverse course
           </label>
+          <button
+            id="course"
+            class="keycap"
+            type="button"
+            aria-haspopup="dialog"
+            aria-controls="course-picker-dialog"
+            disabled
+          >
+            Choose course
+          </button>
           <div class="course-generation-actions">
             <button
               id="custom-course"
@@ -195,6 +201,74 @@
         </div>
       </section>
       <fieldset id="drift-tuning-sliders"></fieldset>
+    </dialog>
+    <dialog id="course-picker-dialog" aria-labelledby="course-picker-title">
+      <form method="dialog" class="dialog-close">
+        <button type="submit" aria-label="Close">×</button>
+      </form>
+      <h2 id="course-picker-title" tabindex="-1" autofocus>Choose course</h2>
+      <div id="course-picker-tabs" class="tabs">
+        <div role="tablist" aria-label="Course groups">
+          <button
+            id="courses-built-in-tab"
+            type="button"
+            role="tab"
+            aria-controls="courses-built-in"
+            aria-selected="true"
+          >
+            Built-in courses
+          </button>
+          <button
+            id="courses-racetracks-tab"
+            type="button"
+            role="tab"
+            aria-controls="courses-racetracks"
+            aria-selected="false"
+          >
+            Racetracks
+          </button>
+          <button
+            id="courses-saved-tab"
+            type="button"
+            role="tab"
+            aria-controls="courses-saved"
+            aria-selected="false"
+          >
+            Saved courses
+          </button>
+        </div>
+        <div
+          id="courses-built-in"
+          role="tabpanel"
+          aria-labelledby="courses-built-in-tab"
+          tabindex="0"
+        >
+          <div class="course-grid"></div>
+        </div>
+        <div
+          id="courses-racetracks"
+          role="tabpanel"
+          aria-labelledby="courses-racetracks-tab"
+          tabindex="0"
+          hidden
+        >
+          <div class="course-grid"></div>
+        </div>
+        <div
+          id="courses-saved"
+          role="tabpanel"
+          aria-labelledby="courses-saved-tab"
+          tabindex="0"
+          hidden
+        >
+          <p id="courses-saved-empty">
+            No saved courses yet. Generate a random or custom course, then save it from the course
+            menu.
+          </p>
+          <div class="course-grid"></div>
+        </div>
+      </div>
+      <p id="course-picker-error" role="alert"></p>
     </dialog>
     <dialog id="custom-course-dialog" class="slider-dialog" aria-labelledby="custom-course-title">
       <form method="dialog" class="dialog-close">

@@ -94,6 +94,7 @@ export interface GameState {
   tuningOpen: boolean;
   settingsOpen: boolean;
   customCourseOpen: boolean;
+  coursePickerOpen: boolean;
   courseMenuOpen: boolean;
   courseWeights: CourseGenerationWeights;
   courseReverse: boolean;
@@ -131,7 +132,8 @@ export function createGameState(storage?: Storage) {
     tuningPresets,
     cameraStyle: 'corner', timeOfDay: 'noon', helpOpen: false, tuningOpen: false, settingsOpen: false,
     minimapOrientation: 'heading-up', cabinHeadMotion: true, mirrorResolution: 'low',
-    customCourseOpen: false, courseMenuOpen: false, courseWeights: { ...defaultCourseWeights },
+    customCourseOpen: false, coursePickerOpen: false, courseMenuOpen: false,
+    courseWeights: { ...defaultCourseWeights },
     courseReverse: false, coneMode: 'corners', showGrass: true, turnSignMode: 'several',
     ghostMode: 'fastest', lapRecorder: { mode: 'off', runs: [], selectedRun: null, replayLap: null },
     focused: true, controllerStatus: '',

@@ -1,6 +1,6 @@
-import * as THREE from 'three';
-import { terrainBaseHeight } from './terrain-profile';
-import type { CourseGenerationWeights } from './course-generation';
+import * as THREE from "three";
+import { terrainBaseHeight } from "./terrain-profile";
+import type { CourseGenerationWeights } from "./course-generation";
 
 export const startDistance = 5;
 export const courseShoulderWidth = 1.6;
@@ -15,7 +15,9 @@ export interface CourseDefinition {
   elevationScale?: number;
   padRadius?: number;
   reverse?: boolean;
-  generation?: { type: 'random'; seed: number } | { type: 'custom'; seed: number; weights: CourseGenerationWeights };
+  generation?:
+    | { type: "random"; seed: number }
+    | { type: "custom"; seed: number; weights: CourseGenerationWeights };
   /** Ground-plane coordinates [x, z], ordered in the driving direction. */
   points: readonly (readonly [number, number])[];
   /**
@@ -29,11 +31,18 @@ export interface CourseDefinition {
 export function courseProfileHeight(elevation: readonly number[], fraction: number) {
   const scaled = THREE.MathUtils.euclideanModulo(fraction, 1) * elevation.length;
   const index = Math.floor(scaled) % elevation.length;
-  return THREE.MathUtils.lerp(elevation[index], elevation[(index + 1) % elevation.length], scaled - Math.floor(scaled));
+  return THREE.MathUtils.lerp(
+    elevation[index],
+    elevation[(index + 1) % elevation.length],
+    scaled - Math.floor(scaled),
+  );
 }
 
 class CourseCurve extends THREE.Curve<THREE.Vector3> {
-  constructor(private readonly markers: CourseDefinition['points'], private readonly reverse = false) {
+  constructor(
+    private readonly markers: CourseDefinition["points"],
+    private readonly reverse = false,
+  ) {
     super();
   }
 
@@ -42,19 +51,26 @@ class CourseCurve extends THREE.Curve<THREE.Vector3> {
     const index = Math.floor(scaled);
     const u = scaled - index;
     const v = 1 - u;
-    const weights = [v ** 3, 3 * u ** 3 - 6 * u ** 2 + 4,
-      -3 * u ** 3 + 3 * u ** 2 + 3 * u + 1, u ** 3];
+    const weights = [
+      v ** 3,
+      3 * u ** 3 - 6 * u ** 2 + 4,
+      -3 * u ** 3 + 3 * u ** 2 + 3 * u + 1,
+      u ** 3,
+    ];
     target.set(0, 0, 0);
     for (let i = 0; i < 4; i++) {
       const [x, z] = this.markers[(index + i - 1 + this.markers.length) % this.markers.length];
-      target.x += x * weights[i] / 6;
-      target.z += z * weights[i] / 6;
+      target.x += (x * weights[i]) / 6;
+      target.z += (z * weights[i]) / 6;
     }
     return target;
   }
 
   getTangent(t: number, target = new THREE.Vector3()) {
-    return target.copy(this.getPoint(t + 0.00001)).sub(this.getPoint(t - 0.00001)).normalize();
+    return target
+      .copy(this.getPoint(t + 0.00001))
+      .sub(this.getPoint(t - 0.00001))
+      .normalize();
   }
 }
 
@@ -71,7 +87,9 @@ export function courseTurns(route: THREE.Curve<THREE.Vector3>) {
   const spacing = length / count;
   // Signed curvature (1 / radius) sampled every ~2 m.
   const curvature = Array.from({ length: count }, (_, i) => {
-    const before = route.getTangentAt(THREE.MathUtils.euclideanModulo((i * spacing - 4) / length, 1));
+    const before = route.getTangentAt(
+      THREE.MathUtils.euclideanModulo((i * spacing - 4) / length, 1),
+    );
     const after = route.getTangentAt(((i * spacing + 4) / length) % 1);
     return Math.atan2(before.z * after.x - before.x * after.z, before.dot(after)) / 8;
   });
@@ -80,9 +98,18 @@ export function courseTurns(route: THREE.Curve<THREE.Vector3>) {
   const straight = curvature.findIndex((_, i) => !bending(i));
   if (straight < 0) return [];
   // A turn is a sustained bend that changes heading by 45 degrees and tightens below a 70 m radius.
-  const turns: { distance: number; direction: number; apexDistance: number; exitDistance: number }[] = [];
+  const turns: {
+    distance: number;
+    direction: number;
+    apexDistance: number;
+    exitDistance: number;
+  }[] = [];
   for (let entry = straight + 1; entry <= straight + count; entry++) {
-    if (!bending(entry) || (bending(entry - 1) && Math.sign(at(entry - 1)) === Math.sign(at(entry)))) continue;
+    if (
+      !bending(entry) ||
+      (bending(entry - 1) && Math.sign(at(entry - 1)) === Math.sign(at(entry)))
+    )
+      continue;
     const direction = Math.sign(at(entry));
     let heading = 0;
     let peak = 0;
@@ -99,13 +126,20 @@ export function courseTurns(route: THREE.Curve<THREE.Vector3>) {
     const previousHeading = apexIndex === 0 ? 0 : headings[apexIndex - 1];
     const apexFraction = (heading / 2 - previousHeading) / (headings[apexIndex] - previousHeading);
     const apexDistance = THREE.MathUtils.euclideanModulo(
-      (entry + apexIndex + apexFraction - 0.5) * spacing, length,
+      (entry + apexIndex + apexFraction - 0.5) * spacing,
+      length,
     );
-    const exitDistance = THREE.MathUtils.euclideanModulo((entry + headings.length) * spacing, length);
-    if (turns.every((turn) => {
-      const gap = Math.abs(turn.distance - distance);
-      return Math.min(gap, length - gap) > 24;
-    })) turns.push({ distance, direction, apexDistance, exitDistance });
+    const exitDistance = THREE.MathUtils.euclideanModulo(
+      (entry + headings.length) * spacing,
+      length,
+    );
+    if (
+      turns.every((turn) => {
+        const gap = Math.abs(turn.distance - distance);
+        return Math.min(gap, length - gap) > 24;
+      })
+    )
+      turns.push({ distance, direction, apexDistance, exitDistance });
   }
   return turns.sort((a, b) => a.distance - b.distance);
 }
@@ -125,11 +159,15 @@ export function courseKerbSegments(route: THREE.Curve<THREE.Vector3>) {
   const wrap = (index: number) => THREE.MathUtils.euclideanModulo(index, count);
   const curvature = Array.from({ length: count }, (_, index) => {
     const distance = (index + 0.5) * spacing;
-    const before = route.getTangentAt(THREE.MathUtils.euclideanModulo(distance - 12, length) / length);
-    const after = route.getTangentAt(THREE.MathUtils.euclideanModulo(distance + 12, length) / length);
+    const before = route.getTangentAt(
+      THREE.MathUtils.euclideanModulo(distance - 12, length) / length,
+    );
+    const after = route.getTangentAt(
+      THREE.MathUtils.euclideanModulo(distance + 12, length) / length,
+    );
     return Math.atan2(before.z * after.x - before.x * after.z, before.dot(after)) / 24;
   });
-  const directions = curvature.map((value) => Math.abs(value) >= 1 / 180 ? Math.sign(value) : 0);
+  const directions = curvature.map((value) => (Math.abs(value) >= 1 / 180 ? Math.sign(value) : 0));
   // Close short holes inside the same bend, without joining opposite sides of a chicane.
   for (let index = 0; index < count; index++) {
     if (!directions[index]) continue;
@@ -148,7 +186,8 @@ export function courseKerbSegments(route: THREE.Curve<THREE.Vector3>) {
     const direction = directions[index];
     if (!direction || visited.has(index)) continue;
     let start = index;
-    for (let step = 0; step < count - 1 && directions[wrap(start - 1)] === direction; step++) start = wrap(start - 1);
+    for (let step = 0; step < count - 1 && directions[wrap(start - 1)] === direction; step++)
+      start = wrap(start - 1);
     const run: number[] = [];
     let heading = 0;
     let peak = 0;
@@ -160,9 +199,13 @@ export function courseKerbSegments(route: THREE.Curve<THREE.Vector3>) {
       heading += Math.max(0, curvature[current] * direction) * spacing;
       peak = Math.max(peak, Math.abs(curvature[current]));
     }
-    if (run.length * spacing < 16 || heading < THREE.MathUtils.degToRad(12) || peak < 1 / 140) continue;
+    if (run.length * spacing < 16 || heading < THREE.MathUtils.degToRad(12) || peak < 1 / 140)
+      continue;
     for (const current of run) accepted[current] = direction;
-    for (const [edge, step] of [[run[0], -1], [run[run.length - 1], 1]]) {
+    for (const [edge, step] of [
+      [run[0], -1],
+      [run[run.length - 1], 1],
+    ]) {
       for (let extension = 1; extension * spacing <= 4; extension++) {
         const current = wrap(edge + extension * step);
         if (curvature[current] * direction < 1 / 1000 || directions[current]) break;
@@ -170,9 +213,13 @@ export function courseKerbSegments(route: THREE.Curve<THREE.Vector3>) {
       }
     }
   }
-  return accepted.map((direction, index) => ({
-    distance: index * spacing, endDistance: (index + 1) * spacing, direction,
-  })).filter(({ direction }) => direction !== 0);
+  return accepted
+    .map((direction, index) => ({
+      distance: index * spacing,
+      endDistance: (index + 1) * spacing,
+      direction,
+    }))
+    .filter(({ direction }) => direction !== 0);
 }
 
 export function courseStartDistance(definition: CourseDefinition, length: number) {
@@ -180,9 +227,9 @@ export function courseStartDistance(definition: CourseDefinition, length: number
 }
 
 export function readCourseReverse(parameters: URLSearchParams) {
-  const value = parameters.get('reverse');
-  if (value === null || value === '0' || value === 'false') return false;
-  if (value === '' || value === '1' || value === 'true') return true;
+  const value = parameters.get("reverse");
+  if (value === null || value === "0" || value === "false") return false;
+  if (value === "" || value === "1" || value === "true") return true;
   throw new Error(`Invalid reverse course option: ${value}`);
 }
 
@@ -190,7 +237,11 @@ export function courseSpawn(definition: CourseDefinition) {
   const route = courseRoute(definition);
   // Spawn on the approach side of the same physical start line in either direction.
   const length = route.getLength();
-  const t = THREE.MathUtils.euclideanModulo(courseStartDistance(definition, length) - spawnDistance, length) / length;
+  const t =
+    THREE.MathUtils.euclideanModulo(
+      courseStartDistance(definition, length) - spawnDistance,
+      length,
+    ) / length;
   const position = route.getPointAt(t);
   const tangent = route.getTangentAt(t);
   return { position: [position.x, position.z] as const, heading: Math.atan2(tangent.x, tangent.z) };
@@ -210,29 +261,46 @@ export function courseHasClearance(route: THREE.Curve<THREE.Vector3>, width: num
 }
 
 // Fixed markers preserve the named course independently of random generation.
-const hillsidePoints: CourseDefinition['points'] = [
-  [84.01622954751265, 0], [83.92487526054921, 26.12612762443657],
-  [69.15384490029841, 48.13773738710717], [43.14160621121232, 56.89100040112654],
-  [19.06506027584704, 56.21735976199199], [0, 59.729722283795326],
-  [-23.623736833566536, 69.65958110175593], [-54.73388835855688, 72.17778701416533],
-  [-81.52414272569827, 56.748656259050236], [-92.32171154378821, 28.74009417125997],
-  [-87.49982195923651, 0], [-100, -30], [-145, -45], [-190, -40], [-245, -45],
-  [-275, -80], [-275, -130], [-250, -175], [-200, -190],
-  [-155, -175], [-115, -140], [-70, -115], [-25, -95],
-  [27.363917446122286, -80.68829415215477], [53.8119932085613, -70.96208036913637],
-  [70.2405650712074, -48.89419930583218], [78.21984842673713, -24.350131429050233],
+const hillsidePoints: CourseDefinition["points"] = [
+  [84.01622954751265, 0],
+  [83.92487526054921, 26.12612762443657],
+  [69.15384490029841, 48.13773738710717],
+  [43.14160621121232, 56.89100040112654],
+  [19.06506027584704, 56.21735976199199],
+  [0, 59.729722283795326],
+  [-23.623736833566536, 69.65958110175593],
+  [-54.73388835855688, 72.17778701416533],
+  [-81.52414272569827, 56.748656259050236],
+  [-92.32171154378821, 28.74009417125997],
+  [-87.49982195923651, 0],
+  [-100, -30],
+  [-145, -45],
+  [-190, -40],
+  [-245, -45],
+  [-275, -80],
+  [-275, -130],
+  [-250, -175],
+  [-200, -190],
+  [-155, -175],
+  [-115, -140],
+  [-70, -115],
+  [-25, -95],
+  [27.363917446122286, -80.68829415215477],
+  [53.8119932085613, -70.96208036913637],
+  [70.2405650712074, -48.89419930583218],
+  [78.21984842673713, -24.350131429050233],
 ];
 
 export function createCourseRandom(seed: number) {
   if (!Number.isInteger(seed) || seed < 0 || seed > 0xffffffff) {
-    throw new Error('Course seed must be an unsigned 32-bit integer');
+    throw new Error("Course seed must be an unsigned 32-bit integer");
   }
   let state = seed;
   return () => {
     state = (state + 0x6d2b79f5) | 0;
-    let value = Math.imul(state ^ state >>> 15, 1 | state);
-    value ^= value + Math.imul(value ^ value >>> 7, 61 | value);
-    return ((value ^ value >>> 14) >>> 0) / 4294967296;
+    let value = Math.imul(state ^ (state >>> 15), 1 | state);
+    value ^= value + Math.imul(value ^ (value >>> 7), 61 | value);
+    return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
   };
 }
 
@@ -249,12 +317,17 @@ export function generateCourse(seed: number): CourseDefinition {
     const points: [number, number][] = hillsidePoints.map(([x, z]) => {
       const px = (x + 95) * stretchX + 15 * Math.sin((z + 55) / 100 + phaseX);
       const pz = (z + 55) * stretchZ + 15 * Math.sin((x + 95) / 150 + phaseZ);
-      return [mirror * (px * Math.cos(angle) - pz * Math.sin(angle)),
-        px * Math.sin(angle) + pz * Math.cos(angle)];
+      return [
+        mirror * (px * Math.cos(angle) - pz * Math.sin(angle)),
+        px * Math.sin(angle) + pz * Math.cos(angle),
+      ];
     });
     const definition: CourseDefinition = {
-      id: 'random', name: `Random Circuit (${seed})`, width: 17.5, points,
-      generation: { type: 'random', seed },
+      id: "random",
+      name: `Random Circuit (${seed})`,
+      width: 17.5,
+      points,
+      generation: { type: "random", seed },
     };
     const scale = (975 + random() * 100) / courseRoute(definition).getLength();
     points.forEach((point) => {
@@ -276,7 +349,10 @@ export function generateCourse(seed: number): CourseDefinition {
       const after = samples[(i + 1) % samples.length];
       const incoming = current.clone().sub(before);
       const outgoing = after.clone().sub(current);
-      const bend = Math.atan2(incoming.z * outgoing.x - incoming.x * outgoing.z, incoming.dot(outgoing));
+      const bend = Math.atan2(
+        incoming.z * outgoing.x - incoming.x * outgoing.z,
+        incoming.dot(outgoing),
+      );
       const radius = (incoming.length() + outgoing.length()) / (2 * Math.abs(bend));
       radii.push(radius);
       // Sampling margin keeps the actual centerline radius above 38 m.
@@ -291,8 +367,13 @@ export function generateCourse(seed: number): CourseDefinition {
       const grade = Math.abs(terrainBaseHeight(after.x, after.z) - height) / outgoing.length();
       if (grade > 0.12) navigable = false;
     }
-    if (!navigable || Math.min(leftDistance, rightDistance) < length * 0.1
-      || maxHeight - minHeight < 10 || maxHeight - minHeight > 20) continue;
+    if (
+      !navigable ||
+      Math.min(leftDistance, rightDistance) < length * 0.1 ||
+      maxHeight - minHeight < 10 ||
+      maxHeight - minHeight > 20
+    )
+      continue;
     radii.sort((a, b) => a - b);
     const medianRadius = radii[Math.floor(radii.length / 2)];
     if (medianRadius < 60 || medianRadius > 110) continue;
@@ -302,31 +383,43 @@ export function generateCourse(seed: number): CourseDefinition {
 }
 
 // Generated by scripts/import-track.mjs from recorded-lap GPS data.
-export const racetracks = Object.values(import.meta.glob<CourseDefinition>('./tracks/*.json', {
-  eager: true, import: 'default',
-})).sort((a, b) => a.name.localeCompare(b.name));
+export const racetracks = Object.values(
+  import.meta.glob<CourseDefinition>("./tracks/*.json", {
+    eager: true,
+    import: "default",
+  }),
+).sort((a, b) => a.name.localeCompare(b.name));
 
 export const courses: readonly CourseDefinition[] = [
   {
-    id: 'sweeper',
-    name: 'Sweeper Circuit',
+    id: "sweeper",
+    name: "Sweeper Loop",
     width: 17.5,
     coneSpacing: 6,
     points: [
-      [0, 0], [0, 30], [-8, 60], [0, 90], [30, 115],
-      [65, 110], [90, 80], [85, 45], [60, 25],
-      [65, -10], [40, -35], [10, -25],
+      [0, 0],
+      [0, 30],
+      [-8, 60],
+      [0, 90],
+      [30, 115],
+      [65, 110],
+      [90, 80],
+      [85, 45],
+      [60, 25],
+      [65, -10],
+      [40, -35],
+      [10, -25],
     ],
   },
   {
-    id: 'hillside',
-    name: 'Hillside Circuit',
+    id: "hillside",
+    name: "Hillside Circuit",
     width: 17.5,
     points: hillsidePoints,
   },
   {
-    id: 'hilly-drift',
-    name: 'Hilly Drift',
+    id: "hilly-drift",
+    name: "Hilly Drift",
     width: 17.5,
     points: [
       [-61.88367320531236, -204.52177657500891],
@@ -359,14 +452,14 @@ export const courses: readonly CourseDefinition[] = [
     ],
   },
   {
-    id: 'skidpad',
-    name: 'Flat Skidpad',
+    id: "skidpad",
+    name: "Flat Skidpad",
     width: 62.5,
     coneSpacing: 12,
     flat: true,
     padRadius: 250,
     points: Array.from({ length: 32 }, (_, i): [number, number] => {
-      const angle = -i / 32 * Math.PI * 2;
+      const angle = (-i / 32) * Math.PI * 2;
       return [50 * Math.cos(angle), 50 * Math.sin(angle)];
     }),
   },

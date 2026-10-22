@@ -150,7 +150,8 @@ async function start() {
   }, new URL(location.href).searchParams.get('sound') === 'off');
   let dialogOpen = false;
   gameState.subscribe((state) => {
-    const open = state.helpOpen || state.tuningOpen || state.settingsOpen || state.customCourseOpen || state.courseMenuOpen;
+    const open = state.helpOpen || state.tuningOpen || state.settingsOpen || state.customCourseOpen
+      || state.coursePickerOpen || state.courseMenuOpen;
     if (open === dialogOpen) return;
     dialogOpen = open;
     controls.clear();
