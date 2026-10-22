@@ -5,6 +5,7 @@ import { RectAreaLightUniformsLib } from "three/addons/lights/RectAreaLightUnifo
 import { ConvexHull } from "three/addons/math/ConvexHull.js";
 import { idleRpm, redlineRpm } from "./drivetrain";
 import type { GameState } from "./game-state";
+import { clockText, createSegmentedDisplay, mapDisplaySurface } from "./segmented-display";
 
 type StandardMesh = THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>;
 
@@ -195,6 +196,14 @@ export async function loadCar() {
   // Radioface also includes the gauge cover, clock and A/C glass; the stereo is at +X.
   const stereoDisplay = splitSurface(/^intglass_Radioface_0$/, "stereo-display", (x) => x > 0);
   const stereoMaterial = stereoDisplay.material;
+  const radioReadout = createSegmentedDisplay(1024, 256, "#123522", "#8fffc1", 8);
+  let stereoStationId = "";
+  let stereoPowered = false;
+  radioReadout.setText(" ");
+  mapDisplaySurface(stereoDisplay.geometry);
+  stereoMaterial.map = radioReadout.texture;
+  stereoMaterial.emissiveMap = radioReadout.texture;
+  stereoMaterial.color.set(0xffffff);
   stereoMaterial.emissive.set(0x42ff88);
   stereoMaterial.emissiveIntensity = 0;
   stereoMaterial.toneMapped = false;
@@ -206,6 +215,33 @@ export async function loadCar() {
   chassis.worldToLocal(stereoLight.position);
   stereoLight.visible = false;
   chassis.add(stereoLight);
+
+  const [clock] = named(/^CLOCKTIME_Clocktime_0$/);
+  if (!clock) throw new Error("Missing clock display geometry.");
+  const clockReadout = createSegmentedDisplay(512, 128, "#07130e", "#b9f8d1", 5);
+  clock.geometry = clock.geometry.clone();
+  const [clockFace] = named(/^clockface_Clockface_0$/);
+  if (!clockFace) throw new Error("Missing clock bezel geometry.");
+  clockFace.geometry.computeBoundingBox();
+  const faceBounds = clockFace.geometry.boundingBox!;
+  const faceSlope = (faceBounds.max.z - faceBounds.min.z) / (faceBounds.max.y - faceBounds.min.y);
+  const clockPositions = clock.geometry.getAttribute("position");
+  // The exported digits tilt opposite to the bezel, which hides half of the readout.
+  for (let i = 0; i < clockPositions.count; i++) {
+    clockPositions.setZ(i, faceBounds.min.z + (clockPositions.getY(i) - faceBounds.min.y) * faceSlope - 0.0005);
+  }
+  clock.geometry.computeVertexNormals();
+  clock.geometry.computeBoundingSphere();
+  mapDisplaySurface(clock.geometry);
+  clock.material = clock.material.clone();
+  clock.material.map = clockReadout.texture;
+  clock.material.emissiveMap = clockReadout.texture;
+  clock.material.color.set(0xffffff);
+  clock.material.emissive.set(0xffffff);
+  clock.material.emissiveIntensity = 0.7;
+  clock.material.toneMapped = false;
+  clock.material.transparent = false;
+  clockReadout.setText(clockText(new Date()));
 
   // The label atlas is shared by cabin buttons; isolate the two gauge-side pods.
   const podLabels = splitSurface(
@@ -693,8 +729,17 @@ export async function loadCar() {
     setHazards,
     setLighting,
     setStereo(powered: boolean) {
+      stereoPowered = powered;
+      radioReadout.setText(powered ? stereoStationId : " ");
       stereoMaterial.emissiveIntensity = powered ? 1.5 : 0;
       stereoLight.visible = powered;
+    },
+    setStereoStation(id: string) {
+      stereoStationId = id;
+      radioReadout.setText(stereoPowered ? id : " ");
+    },
+    updateClock(date: Date) {
+      clockReadout.setText(clockText(date));
     },
     setMirrorResolution(resolution: GameState["mirrorResolution"]) {
       mirrorResolution = resolution;

@@ -409,6 +409,11 @@ the gauge cluster whenever the headlights are on. Gauge illumination switches of
 The left climate-control and right gauge-side pod labels also brighten with neutral-white backlighting when
 the headlights are on, retaining their original label colors rather than glowing green.
 A very dim warm light gently illuminates the cabin at night only.
+The console clock shows local real-world time in 12-hour `h:mm` format without a leading zero, updating
+when the minute changes. It shares a fourteen-segment digital readout style with
+the stereo, whose green display shows the selected station ID while powered on.
+The stereo uses eight fixed-width character cells; longer IDs are truncated to
+eight characters and shorter IDs are padded without changing character size.
 Oil pressure reads about 2 at idle and rises toward 5 at redline, with a gradual,
 frame-rate-independent response that lags behind both rising and falling RPM.
 Window tint only renders when looking in from outside, so the cabin view is

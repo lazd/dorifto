@@ -8,7 +8,7 @@ import { generateCustomCourse, readCourseWeights, writeCourseWeights, type Cours
 import { isDriveMode } from './drive-modes';
 import { LapTimer, formatLapTime } from './laps';
 import { VehicleAudio } from './audio';
-import { CarStereo, isStereoStation } from './stereo';
+import { CarStereo, isStereoStation, stereoStations } from './stereo';
 import {
   createGameState, defaultTuningPresets, isCameraStyle, isGhostMode, isMinimapOrientation, isTimeOfDay,
   readMirrorResolution, type SavedRunOption,
@@ -40,7 +40,7 @@ async function start() {
   if (!isCameraStyle(requestedCamera)) throw new Error(`Unknown camera style: ${requestedCamera}`);
   const requestedMode = new URL(location.href).searchParams.get('mode') ?? 'drift';
   if (!isDriveMode(requestedMode)) throw new Error(`Unknown drive mode: ${requestedMode}`);
-  const requestedStation = new URL(location.href).searchParams.get('station') ?? 'groovesalad';
+  const requestedStation = new URL(location.href).searchParams.get('station') ?? stereoStations[0].id;
   if (!isStereoStation(requestedStation)) throw new Error(`Unknown stereo station: ${requestedStation}`);
   gameState.update({ stereoStation: requestedStation });
   const requestedPresetId = new URL(location.href).searchParams.get('preset') ?? `${requestedMode}-default`;
@@ -165,7 +165,10 @@ async function start() {
       message: `Stereo unavailable: ${error instanceof Error ? error.message : String(error)} Press S to retry.`,
     } });
   }, gameState.getState().sound.muted);
-  gameState.subscribe(({ stereoStation }) => stereo.setStation(stereoStation));
+  gameState.subscribe(({ stereoStation }) => {
+    stereo.setStation(stereoStation);
+    car.setStereoStation(stereoStation);
+  });
   if (new URL(location.href).searchParams.has('station')) stereo.turnOn();
   let dialogOpen = false;
   gameState.subscribe((state) => {
@@ -738,6 +741,7 @@ async function start() {
     // Manifold pressure: closed-throttle vacuum through to full turbo boost.
     const manifoldMmHg = THREE.MathUtils.lerp(-550, 0, engine.load) * (1 - engine.boost) + 650 * engine.boost;
     car.setGauges(Math.abs(forward.dot(velocity)) * 3.6, engine.rpm, manifoldMmHg, dt);
+    car.updateClock(new Date());
     car.setSteering(replaying ? playbackFrame.steering : physics.steering);
     car.setDashLight('brake', handbrake);
     car.setDashLight('abs', cameraState.driveMode === 'drift');

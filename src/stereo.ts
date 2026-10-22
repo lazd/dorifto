@@ -1,23 +1,23 @@
 // Direct MP3 streams from SomaFM's PLS playlists; browsers cannot play PLS files.
 export const stereoStations = [
   {
-    id: "groovesalad",
+    id: "grvesald",
     name: "Groove Salad",
     stream: "https://ice2.somafm.com/groovesalad-128-mp3",
   },
   {
-    id: "secretagent",
+    id: "scrtagnt",
     name: "Secret Agent",
     stream: "https://ice6.somafm.com/secretagent-128-mp3",
   },
-  { id: "vaporwaves", name: "Vaporwaves", stream: "https://ice5.somafm.com/vaporwaves-128-mp3" },
+  { id: "vaprwvs", name: "Vaporwaves", stream: "https://ice5.somafm.com/vaporwaves-128-mp3" },
   {
-    id: "heavyweight-reggae",
+    id: "reggae",
     name: "Heavyweight Reggae",
     stream: "https://ice5.somafm.com/reggae-128-mp3",
   },
   {
-    id: "underground-80s",
+    id: "80s",
     name: "Underground 80s",
     stream: "https://ice5.somafm.com/u80s-128-mp3",
   },

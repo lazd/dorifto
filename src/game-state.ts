@@ -3,7 +3,7 @@ import { idleRpm } from './drivetrain';
 import { createStore } from './store';
 import { defaultCourseWeights, type CourseGenerationWeights } from './course-generation';
 import type { TurnSignMode } from './turn-sign';
-import type { StereoStationId } from './stereo';
+import { stereoStations, type StereoStationId } from './stereo';
 import { loadTuningPresets, type TuningPreset } from './tuning-presets';
 
 export const wattsPerHorsepower = 745.699872;
@@ -140,7 +140,7 @@ export function createGameState(storage?: Storage) {
     ghostMode: 'fastest', lapRecorder: { mode: 'off', runs: [], selectedRun: null, replayLap: null },
     focused: true, controllerStatus: '',
     sound: { running: false, muted: false, failed: false, error: null },
-    stereoStation: 'groovesalad',
+    stereoStation: stereoStations[0].id,
     status: { message: 'Loading car and physics...', error: false, visible: true },
     telemetry: {
       speed: 0, rpm: idleRpm, gear: 1, limiter: false,
