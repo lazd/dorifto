@@ -41,7 +41,7 @@ export function createLighting(scene: THREE.Scene, renderer: THREE.WebGLRenderer
   scene.fog = fog;
   const pmrem = new THREE.PMREMGenerator(renderer);
   const environment = new RoomEnvironment();
-  scene.environment = pmrem.fromScene(environment, 0.04).texture;
+  const noonEnvironment = pmrem.fromScene(environment, 0.04).texture;
   environment.dispose();
   pmrem.dispose();
   const ambient = new THREE.HemisphereLight();
@@ -113,6 +113,7 @@ export function createLighting(scene: THREE.Scene, renderer: THREE.WebGLRenderer
     sky.colorSpace = THREE.SRGBColorSpace;
     sky.mapping = THREE.EquirectangularReflectionMapping;
     scene.background = sky;
+    scene.environment = time === 'noon' ? noonEnvironment : sky;
     previousSky?.dispose();
     fog.color.set(preset.horizon);
     ambient.color.set(preset.ambient);

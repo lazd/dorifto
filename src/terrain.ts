@@ -219,17 +219,22 @@ export class CourseTerrain {
     const bladeMaterial = new THREE.MeshStandardMaterial({
       color: 0xffffff, roughness: 1, side: THREE.DoubleSide,
     });
-    // Thin decorative blades otherwise flare under the close, powerful headlights.
+    // Keep upright blades from flaring under headlights or grazing sunset light.
     bladeMaterial.onBeforeCompile = (shader) => {
       shader.fragmentShader = shader.fragmentShader.replace(
         '#include <lights_fragment_begin>',
         THREE.ShaderChunk.lights_fragment_begin.replace(
           'getSpotLightInfo( spotLight, geometryPosition, directLight );',
           'getSpotLightInfo( spotLight, geometryPosition, directLight );\ndirectLight.color *= 0.05;',
+        ).replace(
+          'getDirectionalLightInfo( directionalLight, directLight );',
+          `getDirectionalLightInfo( directionalLight, directLight );
+          directLight.color *= mix(0.12, 1.0, smoothstep(0.12, 0.5,
+            dot(directionalLight.direction, normalize(mat3(viewMatrix) * vec3(0.0, 1.0, 0.0)))));`,
         ),
       );
     };
-    bladeMaterial.customProgramCacheKey = () => 'grass-soft-spotlights';
+    bladeMaterial.customProgramCacheKey = () => 'grass-soft-low-angle-lights';
     let grassSeed = 18473;
     const random = () => {
       grassSeed = (grassSeed + 0x6d2b79f5) | 0;

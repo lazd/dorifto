@@ -100,6 +100,10 @@ export async function loadCar() {
     glass.material = glass.material.clone();
     glass.material.side = side;
   }
+  const headlightCovers = named(/^hlglass_/).map((mesh) => {
+    mesh.material = mesh.material.clone();
+    return mesh.material;
+  });
 
   function emissive(pattern: RegExp, color: number, useMap = false) {
     const materials: THREE.MeshStandardMaterial[] = [];
@@ -179,8 +183,8 @@ export async function loadCar() {
   function setHazards(illuminated: boolean) {
     hazardsActive = illuminated;
     setIntensity(rearSignals, illuminated ? 3 : 0);
-    setIntensity(frontSignals, illuminated ? 3 : headlightsOn ? 0.4 : 0);
-    setIntensity(sideMarkers, illuminated ? 2 : headlightsOn ? 0.5 : 0);
+    setIntensity(frontSignals, illuminated ? 3 : headlightsOn ? 0.8 : 0);
+    setIntensity(sideMarkers, illuminated ? 2 : headlightsOn ? 0.9 : 0);
     setDashLight("leftSignal", illuminated);
     setDashLight("rightSignal", illuminated);
   }
@@ -193,9 +197,9 @@ export async function loadCar() {
   }
   function setBraking(braking: boolean) {
     brakingActive = braking;
-    setIntensity(tailLamps, braking ? 6 : headlightsOn ? 1.5 : 0);
-    setIntensity(brakeLenses, braking ? 2.5 : headlightsOn ? 0.35 : 0);
-    setIntensity(rearPositionBulbs, braking || headlightsOn ? 3 : 0);
+    setIntensity(tailLamps, braking ? 6 : headlightsOn ? 2.5 : 0);
+    setIntensity(brakeLenses, braking ? 2.5 : headlightsOn ? 0.65 : 0);
+    setIntensity(rearPositionBulbs, braking || headlightsOn ? 4 : 0);
     setIntensity(thirdBrakeLight, braking ? 5 : 0);
     for (const light of brakeLights) {
       light.intensity = braking ? 8 : 0;
@@ -245,12 +249,13 @@ export async function loadCar() {
     headlightsOn = enabled;
     setBraking(brakingActive);
     setHazards(hazardsActive);
-    setIntensity(rearCornerMarkers, enabled ? 1.5 : 0);
-    setIntensity(frontPosition, enabled ? 2 : 0);
-    setIntensity(projectors, enabled ? 1.8 : 0);
+    setIntensity(rearCornerMarkers, enabled ? 2.5 : 0);
+    setIntensity(frontPosition, enabled ? 3.5 : 0);
+    setIntensity(projectors, enabled ? 8 : 0);
     setIntensity(gaugeFaces, enabled ? 0.5 : 0);
     setIntensity(odometer, enabled ? 0.35 : 0);
     setIntensity(gaugeNeedles, enabled ? 0.9 : 0);
+    for (const material of headlightCovers) material.opacity = enabled ? 0.2 : 0.6;
     cabinLight.visible = night;
     for (const light of headlights) light.visible = enabled;
     for (const light of underglow) light.visible = night;

@@ -293,11 +293,12 @@ and nearby objects behind all three brake lenses.
 Brake and reverse spill uses soft, narrow rearward beams with reduced intensity
 and a 4 m range to limit bumper highlights without dimming the illuminated lenses.
 All four clear lenses in the center rear panel glow warm white and cast a subtle
-white light only in reverse. Headlight inserts have a subdued, slightly amber
-warm-white glow behind their covers, with reduced beam intensity to avoid
-washing out the road.
-Headlights retain the original non-glowing covers at half their original tint
-opacity over their warm-white low-beam inserts; window tint is unchanged.
+white light only in reverse. Headlight inserts have a bright warm-white glow
+behind their covers, independently of the reduced beam intensity that avoids
+washing out the road. Running-light lenses are brighter for nighttime visibility,
+while braking and hazards remain distinct from the steady running lights.
+Headlights retain the original non-glowing covers with reduced tint opacity,
+especially when lit, so their low-beam inserts remain bright; window tint is unchanged.
 The inner rectangular high-beam sections remain tinted and unlit; only the
 outer low-beam sections glow and project light.
 The door mirrors and interior rear-view mirror use live planar reflections.
@@ -452,6 +453,11 @@ the original muted blue clouds. Neither uses the dramatic sunset treatment.
 Cloud patterns are deterministic, wrap seamlessly around the horizon, and
 add no per-frame cloud rendering passes.
 Sky, fog, ambient illumination, reflections, and exposure change together.
+At sunset and night, reflective materials use the visible sky, so the car
+reflects the actual clouds and sky colors. Noon retains the original neutral
+studio reflections and paint settings. The studio map is generated once, and
+Three.js caches the roughness-filtered sky maps until the time of day changes;
+no extra per-frame scene captures are needed.
 At Sunset and Night, headlights (beams and lens glow) switch on together with
 the running lights. At Noon they switch off. The two body brake lenses use a
 dark red base and low emission as running lights, with a pronounced jump to
@@ -528,6 +534,8 @@ Grass includes subdued dry strands and broad color variation. Grass and soil use
 separate procedural normal maps blended with the surface coverage. Sparse instanced
 grass tufts add height along the verge, aligned to the terrain; they are decorative
 and do not add collision bodies.
+Tuft lighting is subdued under headlights and low-angle sunlight so the blades
+blend into the verge rather than glowing gold at sunset.
 This material blend does not change terrain geometry, collision, or tire grip.
 Off-track height smoothing softens infield ridges without changing pavement or
 the immediate shoulder. The hillside blend completes within the route lookup's
