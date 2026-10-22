@@ -245,7 +245,7 @@ the keyboard controls. The first connected standard-mapped controller is used.
 | Left stick vertical (map view)       | Up: zoom in; down: zoom out                                        |
 | Right stick                          | Camera orbit/height; pan up/down/left/right in map view            |
 | R1 / RB or Xbox X (west face button) | Handbrake                                                          |
-| R3 (right-stick click, hold)         | Look behind; release to return                                     |
+| R3 (right-stick click, hold)         | Look behind; move right stick to pan; release to return            |
 | B / Circle (east face button)        | Toggle the bird's-eye map view (once per press)                    |
 | RT + LT                              | Brakestand                                                         |
 | Start / Menu / Options               | Reset (once per press)                                             |

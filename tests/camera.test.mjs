@@ -134,6 +134,32 @@ function cabinRig(rotation = new THREE.Quaternion()) {
   return { camera, car, controls, driving, eye, velocity, update, offset, mirrorAims: () => mirrorAims };
 }
 
+for (const style of ['corner', 'classic', 'cabin']) {
+  test(`${style}: right stick pans horizontally while looking behind and recenters on release`, () => {
+    const { camera, controls, update } = cabinRig();
+    const settle = () => {
+      for (let i = 0; i < 240; i++) update(1 / 60, new THREE.Vector3(), style);
+      return camera.getWorldDirection(new THREE.Vector3());
+    };
+    const front = settle();
+    controls.lookBehind = true;
+    const rear = settle();
+    assert.ok(front.z * rear.z < 0, 'look-behind faces the opposite direction');
+    for (const cameraX of [-1, 1]) {
+      controls.cameraX = cameraX;
+      const panned = settle();
+      assert.ok(panned.z * rear.z > 0, 'pan stays rear-facing');
+      assert.ok(Math.abs(panned.x) > 0.3, 'horizontal stick pans the rear view');
+      assert.equal(Math.sign(panned.x), cameraX);
+      assert.ok(panned.angleTo(rear) > 0.3);
+    }
+    controls.cameraX = 0;
+    assert.ok(settle().angleTo(rear) < 1e-5, 'stick release centers the rear view');
+    controls.lookBehind = false;
+    assert.ok(settle().angleTo(front) < 1e-5, 'R3 release restores the forward view');
+  });
+}
+
 test('gamepad left vertical axis controls map zoom only in map view and clears when disabled', () => {
   const descriptors = new Map(['document', 'window', 'navigator'].map((key) =>
     [key, Object.getOwnPropertyDescriptor(globalThis, key)]));

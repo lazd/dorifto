@@ -175,7 +175,7 @@ export function createDrivingCamera(
     const pitchResponse = cameraY === 0 ? tune.cameraRecenterResponse : 9;
     cameraYaw = THREE.MathUtils.damp(
       cameraYaw,
-      controls.lookBehind ? Math.PI : -cameraX * 0.45,
+      (controls.lookBehind ? Math.PI : 0) - cameraX * 0.45,
       yawResponse,
       dt,
     );
