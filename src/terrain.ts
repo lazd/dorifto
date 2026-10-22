@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { courseProfileHeight, courseRoute } from './courses';
+import { courseProfileHeight, courseRoute, courseShoulderWidth } from './courses';
 import type { CourseDefinition } from './courses';
 import { surfaceMaterial } from './surfaces';
 import { terrainBaseHeight } from './terrain-profile';
@@ -23,7 +23,7 @@ export class CourseTerrain {
   private readonly padRadius?: number;
 
   constructor(definition: CourseDefinition) {
-    this.halfWidth = definition.width / 2 + 0.8;
+    this.halfWidth = definition.width / 2 + courseShoulderWidth;
     this.padRadius = definition.padRadius;
     // Driving direction must not change the heightfield or its banking.
     const route = courseRoute({ ...definition, reverse: false });

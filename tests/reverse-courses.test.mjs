@@ -109,12 +109,12 @@ test('lap gates accept complete reversed laps and reject driving the wrong way',
       const directed = { ...definition, reverse };
       const route = courseRoute(directed);
       const length = route.getLength();
-      const origin = courseStartDistance(directed, length) - 30;
+      const origin = ((courseStartDistance(directed, length) - 30) % length + length) % length;
       function drive(direction) {
         const timer = new LapTimer(directed);
         timer.reset(route.getPointAt(origin / length));
         const spacing = 0.75;
-        for (let distance = spacing; distance < length + 30; distance += spacing) {
+        for (let distance = spacing; distance < length + 60; distance += spacing) {
           const t = ((origin + direction * distance) / length % 1 + 1) % 1;
           timer.update(route.getPointAt(t), 1 / 60);
         }

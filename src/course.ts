@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { CourseDefinition } from './courses';
-import { courseCornerAt, courseKerbSegments, courseRoute, startDistance } from './courses';
+import { courseCornerAt, courseKerbSegments, courseRoute, courseShoulderWidth, startDistance } from './courses';
 import { surfaceMaterial } from './surfaces';
 import { CourseTerrain } from './terrain';
 import { courseTurnSignPlacements, createTurnSignFactory, type TurnSignMode } from './turn-sign';
@@ -174,7 +174,7 @@ function buildCourse(scene: THREE.Group, definition: CourseDefinition) {
     pad.name = 'skidpad-asphalt';
     pad.receiveShadow = true;
     scene.add(pad);
-  } else ribbon(0, definition.width + 1.6, 0.008, asphalt);
+  } else ribbon(0, definition.width + courseShoulderWidth * 2, 0.008, asphalt);
   for (const side of [-1, 1]) ribbon(side * definition.width / 2, 0.16, 0.016, white);
   const columns = Math.ceil(definition.width / 0.5);
   const tileWidth = definition.width / columns;

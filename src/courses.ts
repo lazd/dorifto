@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { terrainBaseHeight } from './terrain-profile';
 
 export const startDistance = 5;
+export const courseShoulderWidth = 1.6;
 const spawnDistance = 30;
 
 export interface CourseDefinition {
