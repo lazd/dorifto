@@ -452,12 +452,12 @@ export function bindGameUI(store: Store<GameState>, reportError: (error: unknown
     (value) => ({ cabinHeadMotion: value === "on" }),
     isToggle,
   );
-  select<"on" | "off">(
+  select<GameState["coneMode"]>(
     "#show-cones",
     "cones",
-    (state) => (state.showCones ? "on" : "off"),
-    (value) => ({ showCones: value === "on" }),
-    isToggle,
+    (state) => state.coneMode,
+    (coneMode) => ({ coneMode }),
+    (value): value is GameState["coneMode"] => value === "all" || value === "corners" || value === "off",
   );
   select<"on" | "off">(
     "#show-grass",

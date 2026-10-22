@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { CourseDefinition } from './courses';
-import { courseRoute, courseTurns, startDistance } from './courses';
+import { courseCornerAt, courseRoute, courseTurns, startDistance } from './courses';
 import { surfaceMaterial } from './surfaces';
 import { CourseTerrain } from './terrain';
 
@@ -74,13 +74,16 @@ function buildCourse(scene: THREE.Group, definition: CourseDefinition) {
     stripeHeight, 24, 1, true,
   );
   const cones: THREE.Mesh[] = [];
+  const cornerCones: THREE.Mesh[] = [];
   const length = route.getLength();
   const gates = Math.ceil(length / (definition.coneSpacing ?? 6));
   const across = new THREE.Vector3();
   for (let i = 0; i < gates; i++) {
     const t = i / gates;
+    const distance = i * length / gates;
     const center = route.getPointAt(t);
     const tangent = route.getTangentAt(t);
+    const corner = courseCornerAt(route, distance);
     across.set(tangent.z, 0, -tangent.x).normalize();
     for (const side of [-1, 1]) {
       const cone = new THREE.Mesh(coneGeometry, orange);
@@ -113,6 +116,7 @@ function buildCourse(scene: THREE.Group, definition: CourseDefinition) {
       cone.add(stripe);
       scene.add(cone);
       cones.push(cone);
+      if (corner) cornerCones.push(cone);
     }
   }
 
@@ -263,6 +267,7 @@ function buildCourse(scene: THREE.Group, definition: CourseDefinition) {
   });
   return {
     cones,
+    cornerCones,
     terrain,
     setDirection,
     isAsphalt: (position: THREE.Vector3) => terrain.isAsphalt(position),

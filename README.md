@@ -9,7 +9,9 @@ runtime CDN dependencies.
 The toolbar's **Settings** button opens sound, drive mode, time of day, camera
 style, cabin head motion, map orientation, cones, and grass tufts controls in a modal dialog. Changes apply immediately. Close with **Close**,
 Escape, or a backdrop click; driving inputs are disabled while it is open.
-Turning **Cones** off (`?cones=off`) hides them and removes their physics bodies;
+**Cones** can be shown everywhere (`?cones=all`), limited to corners
+(`?cones=corners`), or turned off (`?cones=off`). Hidden cones are also removed
+from physics;
 **Grass tufts** off (`?grass=off`) hides the decorative blades. Both help
 performance on long imported tracks, which carry hundreds of cones.
 Chase views place the Settings/Tuning/Help buttons at the bottom center and the
@@ -465,9 +467,10 @@ full red emission when braking so brake application stays visible at Sunset/Nigh
 when braking; the spoiler strip remains brake-only. Front turn signals glow dim amber
 and brighten during hazard flashes; rear signals illuminate only for hazards.
 Side markers glow amber. Soft red
-underglow uses downward-facing area-light strips beneath the side rails (between
-the wheel wells) and front/rear bumpers for an even pool of light, without visible
-point sources. Underglow is Night-only. Foot braking, hazards, and reverse lights
+underglow uses downward-facing area-light strips tucked inward and below the
+side skirts (between the wheel wells) and behind the front/rear bumpers to keep
+the light on the ground rather than the body, without visible point sources.
+Underglow is Night-only. Foot braking, hazards, and reverse lights
 still work at any time of day, independently of the running-light state.
 The selection is saved in `?time=noon`, `?time=sunset`, or `?time=night` and
 preserved when switching courses or generating a random layout. Noon is the default.

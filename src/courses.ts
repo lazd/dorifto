@@ -92,6 +92,14 @@ export function courseTurns(route: THREE.Curve<THREE.Vector3>) {
   return turns.sort((a, b) => a.distance - b.distance);
 }
 
+export function courseCornerAt(route: THREE.Curve<THREE.Vector3>, distance: number) {
+  const length = route.getLength();
+  const before = route.getTangentAt(THREE.MathUtils.euclideanModulo(distance - 6, length) / length);
+  const after = route.getTangentAt(THREE.MathUtils.euclideanModulo(distance + 6, length) / length);
+  const bend = Math.atan2(before.z * after.x - before.x * after.z, before.dot(after));
+  return Math.abs(bend) > 12 / 75;
+}
+
 export function courseStartDistance(definition: CourseDefinition, length: number) {
   return definition.reverse ? length - startDistance : startDistance;
 }

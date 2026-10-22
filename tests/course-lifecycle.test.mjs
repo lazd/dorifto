@@ -9,6 +9,9 @@ let Ammo;
 let createVehiclePhysics;
 let createPhysicsResources;
 let createGameState;
+let courses;
+let courseCornerAt;
+let courseRoute;
 
 before(async () => {
   server = await createServer({
@@ -17,11 +20,23 @@ before(async () => {
   });
   ({ createVehiclePhysics, createPhysicsResources } = await server.ssrLoadModule('/src/vehicle-physics.ts'));
   ({ createGameState } = await server.ssrLoadModule('/src/game-state.ts'));
+  ({ courses, courseCornerAt, courseRoute } = await server.ssrLoadModule('/src/courses.ts'));
   Ammo = await AmmoFactory.call({});
 });
 
 after(async () => {
   await server?.close();
+});
+
+test('corner-only course cones exclude straightaways', () => {
+  for (const definition of courses.filter(({ id }) => id !== 'skidpad')) {
+    const route = courseRoute(definition);
+    const length = route.getLength();
+    const gates = Math.ceil(length / (definition.coneSpacing ?? 6));
+    const cornerGates = Array.from({ length: gates }, (_, i) => courseCornerAt(route, i * length / gates));
+    assert.ok(cornerGates.some(Boolean), `${definition.id} has corner cones`);
+    assert.ok(cornerGates.some((corner) => !corner), `${definition.id} excludes straightaways`);
+  }
 });
 
 test('heightfield pooling keeps active worlds isolated and reuses released buffers', () => {
@@ -87,15 +102,17 @@ test('replaces real Ammo worlds while reusing car assets and heightfields and fr
   let current;
   try {
     for (let i = 0; i < replacements; i++) {
+      const cones = Array.from({ length: coneCount }, (_, index) => {
+        const cone = new THREE.Group();
+        cone.position.set(index * 2, i, 5);
+        return cone;
+      });
       const next = createVehiclePhysics({
         Ammo, resources, car, controls, gameState, laps, audio,
         spawn: { position: [i, 0], heading: i * 0.2 },
         course: {
-          cones: Array.from({ length: coneCount }, (_, index) => {
-            const cone = new THREE.Group();
-            cone.position.set(index * 2, i, 5);
-            return cone;
-          }),
+          cones,
+          cornerCones: [cones[0], cones[2]],
           terrain: {
             heights: new Float32Array(32 * 32).fill(i),
             columns: 32, rows: 32, spacing: 1.5, minX: -24, minZ: -24,
@@ -109,6 +126,17 @@ test('replaces real Ammo worlds while reusing car assets and heightfields and fr
       current?.dispose();
       current = next;
       current.reset();
+      if (i === 0) {
+        current.setConesEnabled(true, true);
+        assert.deepEqual(cones.map(({ visible }) => visible), [true, false, true]);
+        current.setConesEnabled(true);
+        assert.deepEqual(cones.map(({ visible }) => visible), [true, true, true]);
+        current.setConesEnabled(false, true);
+        assert.deepEqual(cones.map(({ visible }) => visible), [false, false, false]);
+        current.setConesEnabled(true, true);
+        assert.deepEqual(cones.map(({ visible }) => visible), [true, false, true]);
+        current.setConesEnabled(true);
+      }
       assert.equal(current.spawnBrakeHeld, true);
       assert.ok(Math.abs(car.chassis.position.x - i) < 1e-4);
       assert.ok(car.chassis.position.y >= i);

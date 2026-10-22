@@ -32,11 +32,15 @@ async function start() {
     if (value !== 'on' && value !== 'off') throw new Error(`Invalid ${name} option: ${value}`);
     return value === 'on';
   };
+  const coneMode = new URL(location.href).searchParams.get('cones') ?? 'all';
+  if (coneMode !== 'all' && coneMode !== 'on' && coneMode !== 'corners' && coneMode !== 'off')
+    throw new Error(`Invalid cones option: ${coneMode}`);
+  const requestedConeMode = coneMode === 'on' ? 'all' : coneMode;
   gameState.update({
     driveMode: requestedMode, cameraStyle: requestedCamera,
     minimapOrientation: requestedMinimap,
     cabinHeadMotion: readToggle('head-motion'),
-    showCones: readToggle('cones'), showGrass: readToggle('grass'),
+    coneMode: requestedConeMode, showGrass: readToggle('grass'),
   });
   const settingsUrl = new URL(location.href);
   if (settingsUrl.searchParams.has('transmission')) {
@@ -125,8 +129,8 @@ async function start() {
       const laps = new LapTimer(nextDefinition);
       physics = createVehiclePhysics({ Ammo, resources: physicsResources, car, course, spawn, controls, gameState, laps, audio });
       const drivingCamera = createDrivingCamera(camera, car, controls, nextDefinition, course.terrain);
-      const { showCones, showGrass } = gameState.getState();
-      physics.setConesEnabled(showCones);
+      const { coneMode, showGrass } = gameState.getState();
+      physics.setConesEnabled(coneMode !== 'off', coneMode === 'corners');
       course.terrain.grass.visible = showGrass;
       physics.reset();
       drivingCamera.reset(spawn.heading);
@@ -142,8 +146,8 @@ async function start() {
   let { course, terrain, spawn, laps, physics, drivingCamera } = createCourseSession({ ...definition, reverse: requestedReverse });
   const minimap = createMinimap(element('#minimap'), definition);
   const { fixedStep } = physics;
-  gameState.subscribe(({ showCones, showGrass }) => {
-    physics.setConesEnabled(showCones);
+  gameState.subscribe(({ coneMode, showGrass }) => {
+    physics.setConesEnabled(coneMode !== 'off', coneMode === 'corners');
     terrain.grass.visible = showGrass;
   });
   const tireEffects = createTireEffects(scene, car, terrain, course.isAsphalt);

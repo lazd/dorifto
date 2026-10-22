@@ -45,7 +45,7 @@ export interface GameState {
   courseMenuOpen: boolean;
   courseWeights: CourseGenerationWeights;
   courseReverse: boolean;
-  showCones: boolean;
+  coneMode: 'all' | 'corners' | 'off';
   showGrass: boolean;
   focused: boolean;
   controllerStatus: string;
@@ -66,7 +66,7 @@ export function createGameState() {
     cameraStyle: 'corner', timeOfDay: 'noon', helpOpen: false, tuningOpen: false, settingsOpen: false,
     minimapOrientation: 'north-up', cabinHeadMotion: true,
     customCourseOpen: false, courseMenuOpen: false, courseWeights: { ...defaultCourseWeights },
-    courseReverse: false, showCones: true, showGrass: true,
+    courseReverse: false, coneMode: 'all', showGrass: true,
     focused: true, controllerStatus: '',
     sound: { running: false, muted: false, failed: false, error: null },
     status: { message: 'Loading car and physics...', error: false, visible: true },

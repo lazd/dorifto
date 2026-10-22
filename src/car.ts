@@ -12,6 +12,10 @@ const CAR_LENGTH_M = 4.31;
 const PAINT_COLOR = 0xe51b23;
 const WHEEL_COLOR = 0x111216;
 const INTERIOR_COLOR = 0x303030;
+// Chassis offsets in meters: X is lateral, +Z is forward.
+const UNDERGLOW_SIDE_OFFSET = 0.55;
+const UNDERGLOW_FRONT_OFFSET = 1.85;
+const UNDERGLOW_REAR_OFFSET = 1.5;
 // Needle sweeps measured from the instrument-cluster texture.
 const SPEEDO_DEG_PER_KMH = 1.338;
 const TACH_DEG_PER_RPM = 0.02759;
@@ -210,15 +214,15 @@ export async function loadCar() {
   RectAreaLightUniformsLib.init();
   const underglow: THREE.RectAreaLight[] = [];
   const lightStrips = [
-    { x: -0.76, z: 0, width: 0.08, length: 1.6 },
-    { x: 0.76, z: 0, width: 0.08, length: 1.6 },
-    { x: 0, z: 1.85, width: 1.5, length: 0.08 },
-    { x: 0, z: -1.85, width: 1.5, length: 0.08 },
+    { x: -UNDERGLOW_SIDE_OFFSET, z: 0, width: 0.08, length: 1.6 }, // Right (driver) side
+    { x: UNDERGLOW_SIDE_OFFSET, z: 0, width: 0.08, length: 1.6 }, // Left (passenger) side
+    { x: 0, z: UNDERGLOW_FRONT_OFFSET, width: 1, length: 0.08 }, // Front
+    { x: 0, z: -UNDERGLOW_REAR_OFFSET, width: 1.25, length: 0.08 }, // Rear
   ];
   for (const strip of lightStrips) {
     const light = new THREE.RectAreaLight(0xff1824, 18, strip.width, strip.length);
     light.name = "red-underglow";
-    light.position.set(strip.x, -0.25, strip.z);
+    light.position.set(strip.x, -0.38, strip.z);
     light.rotation.x = -Math.PI / 2;
     light.visible = false;
     chassis.add(light);
@@ -535,7 +539,11 @@ export async function loadCar() {
     rotateRpmNeedle(-degrees(TACH_DEG_PER_RPM * THREE.MathUtils.clamp(rpm, 0, 9200)));
     rotateBoostNeedle(degrees(BOOST_DEG_PER_MMHG * THREE.MathUtils.clamp(boostMmHg, -760, 760)));
     const targetOilPressure = THREE.MathUtils.mapLinear(
-      THREE.MathUtils.clamp(rpm, 850, redlineRpm), 850, redlineRpm, 2, 5,
+      THREE.MathUtils.clamp(rpm, 850, redlineRpm),
+      850,
+      redlineRpm,
+      2,
+      5,
     );
     oilPressure = THREE.MathUtils.damp(oilPressure, targetOilPressure, OIL_PRESSURE_RESPONSE, dt);
     rotateOilNeedle(degrees(OIL_DEG_PER_KG_CM2 * oilPressure));

@@ -52,6 +52,7 @@ export function createVehiclePhysics({
   Ammo, resources, car, course, spawn, controls, gameState, laps, audio,
 }: VehiclePhysicsOptions) {
   const { cones, terrain, isAsphalt } = course;
+  const cornerConeIndices = new Set((course.cornerCones ?? []).map((cone) => cones.indexOf(cone)));
   const settings = vehicleSettings;
   const { suspension } = settings;
   const frontAxleZ = (car.centers[0].z + car.centers[1].z) / 2;
@@ -221,19 +222,28 @@ export function createVehiclePhysics({
     rotation: new THREE.Quaternion(),
   });
   const carVisualStates = [car.chassis, ...car.wheels, ...car.hubs].map(visualState);
-  const coneVisualStates = cones.map(visualState);
+  const coneVisualStates = cones.map((cone, index) => ({ ...visualState(cone), coneIndex: index }));
   let visualStates = [...carVisualStates, ...coneVisualStates];
   let conesEnabled = true;
-  // Disabled cones leave the world entirely: no rendering, collisions, or per-frame sync.
-  function setConesEnabled(enabled: boolean) {
-    if (enabled === conesEnabled) return;
+  let cornerOnly = false;
+  const coneIsActive = (index: number) =>
+    conesEnabled && (!cornerOnly || cornerConeIndices.has(index));
+  // Inactive cones leave the world entirely: no rendering, collisions, or per-frame sync.
+  function setConesEnabled(enabled: boolean, onlyCorners = false) {
+    if (enabled === conesEnabled && onlyCorners === cornerOnly) return;
+    const wasActive = cones.map((_, index) => coneIsActive(index));
     conesEnabled = enabled;
+    cornerOnly = onlyCorners;
     coneBodies.forEach((cone, i) => {
-      cones[i].visible = enabled;
-      if (enabled) world.addRigidBody(cone);
-      else world.removeRigidBody(cone);
+      const active = coneIsActive(i);
+      cones[i].visible = active;
+      if (active && !wasActive[i]) world.addRigidBody(cone);
+      else if (!active && wasActive[i]) world.removeRigidBody(cone);
     });
-    visualStates = enabled ? [...carVisualStates, ...coneVisualStates] : carVisualStates;
+    visualStates = [
+      ...carVisualStates,
+      ...coneVisualStates.filter(({ coneIndex }) => coneIsActive(coneIndex)),
+    ];
     if (enabled) {
       resetCones();
       captureVisuals(true);
@@ -275,7 +285,8 @@ export function createVehiclePhysics({
   setCourseDirection(spawn, laps);
 
   function syncVisuals() {
-    if (conesEnabled) cones.forEach((cone, i) => {
+    cones.forEach((cone, i) => {
+      if (!coneIsActive(i)) return;
       const transform = coneBodies[i].getWorldTransform();
       const position = transform.getOrigin();
       const rotation = transform.getRotation();
@@ -327,6 +338,7 @@ export function createVehiclePhysics({
   function resetCones() {
     if (!conesEnabled) return;
     coneBodies.forEach((cone, i) => {
+      if (!coneIsActive(i)) return;
       coneResetTransform.setIdentity();
       const start = coneStarts[i];
       const rotation = coneRotations[i];
@@ -616,8 +628,10 @@ export function createVehiclePhysics({
   function dispose() {
     if (disposed) return;
     disposed = true;
-    // Bodies removed by the cone toggle must be back in the world to be removed below.
-    if (!conesEnabled) coneBodies.forEach((cone) => world.addRigidBody(cone));
+    // Restore bodies removed by the cone filter so the shared cleanup removes them all.
+    coneBodies.forEach((cone, i) => {
+      if (!coneIsActive(i)) world.addRigidBody(cone);
+    });
     world.removeAction(vehicle);
     Ammo.destroy(vehicle);
     Ammo.destroy(raycaster);
