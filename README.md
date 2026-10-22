@@ -397,6 +397,8 @@ set them. `DRIVER_MIRROR_OUTBOARD_DEG` and `PASSENGER_MIRROR_OUTBOARD_DEG` in
 `REAR_VIEW_MIRROR_TILT_DEG` tilts the interior mirror's view up (positive) or
 down. `setCabinEye()` in `src/camera.ts` moves the head and re-aims all
 three mirrors. The interior mirror's whole housing swivels on its ball joint.
+The steering column, wheel, and stalk tilt upward by 2.5 degrees to keep the
+turn-signal indicators visible from the default cabin eye position.
 Dash warning lamps are off by default. The turn-signal arrows flash with the
 hazards, BRAKE stays solid while the handbrake is held, and ABS stays lit in Drift
 mode and switches off in Grip mode. `car.setDashLight()` can switch any lamp

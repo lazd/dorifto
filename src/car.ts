@@ -31,6 +31,7 @@ const DRIVER_MIRROR_OUTBOARD_DEG = 2;
 const PASSENGER_MIRROR_OUTBOARD_DEG = -2;
 // Positive tilts the rear-view mirror's view upward.
 const REAR_VIEW_MIRROR_TILT_DEG = -1;
+const STEERING_COLUMN_TILT_DEG = 2.5;
 const TEMP_NORMAL_DEG = 30;
 const FUEL_FULL_DEG = 57;
 const BOOST_PIVOT = new THREE.Vector3(-0.3258, 0.2205, 0.4106);
@@ -164,21 +165,53 @@ export async function loadCar() {
     pattern: RegExp,
     name: string,
     contains: (x: number, y: number, z: number) => boolean,
+    wholeComponents = false,
   ) {
     const [source] = named(pattern);
     if (!source) throw new Error(`Missing ${name} geometry.`);
     const geometry = source.geometry;
     const positions = geometry.getAttribute("position");
     const indices = geometry.getIndex();
-    if (!indices) throw new Error(`Missing ${name} indices.`);
     const selected: number[] = [];
     const remaining: number[] = [];
-    for (let i = 0; i < indices.count; i += 3) {
-      const triangle = [0, 1, 2].map((offset) => indices.getX(i + offset));
+    const triangles: { vertices: number[]; included: boolean }[] = [];
+    for (let i = 0; i < (indices?.count ?? positions.count); i += 3) {
+      const triangle = [0, 1, 2].map((offset) => indices?.getX(i + offset) ?? i + offset);
       const included = triangle.every((index) =>
         contains(positions.getX(index), positions.getY(index), positions.getZ(index)),
       );
-      (included ? selected : remaining).push(...triangle);
+      triangles.push({ vertices: triangle, included });
+    }
+    if (wholeComponents) {
+      // Keep adjoining dashboard geometry fixed, even where it overlaps the column's bounds.
+      const vertexKey = (index: number) =>
+        [positions.getX(index), positions.getY(index), positions.getZ(index)]
+          .map((value) => value.toFixed(5)).join(",");
+      const touching = new Map<string, number[]>();
+      const excluded: number[] = [];
+      triangles.forEach(({ vertices, included }, index) => {
+        if (!included) excluded.push(index);
+        for (const vertex of vertices) {
+          const key = vertexKey(vertex);
+          const neighbors = touching.get(key) ?? [];
+          neighbors.push(index);
+          touching.set(key, neighbors);
+        }
+      });
+      for (let i = 0; i < excluded.length; i++) {
+        for (const vertex of triangles[excluded[i]].vertices) {
+          const key = vertexKey(vertex);
+          for (const neighbor of touching.get(key) ?? []) {
+            if (!triangles[neighbor].included) continue;
+            triangles[neighbor].included = false;
+            excluded.push(neighbor);
+          }
+          touching.delete(key);
+        }
+      }
+    }
+    for (const { vertices, included } of triangles) {
+      (included ? selected : remaining).push(...vertices);
     }
     if (!selected.length) throw new Error(`Missing ${name} surface.`);
     const surface = source.clone(false);
@@ -551,7 +584,12 @@ export async function loadCar() {
     mesh.removeFromParent();
 
   // Re-parent interior parts under pivots so they can rotate about their real hubs.
-  function pivot(pattern: RegExp, origin: THREE.Vector3, axis: THREE.Vector3) {
+  function pivot(
+    pattern: RegExp,
+    origin: THREE.Vector3,
+    axis: THREE.Vector3,
+    mount = chassis,
+  ) {
     const group = new THREE.Group();
     group.position.copy(origin);
     for (const mesh of named(pattern)) {
@@ -564,13 +602,33 @@ export async function loadCar() {
     }
     if (!group.children.length) throw new Error(`Missing ${pattern} in the car model.`);
     chassis.add(group);
+    if (mount !== chassis) mount.attach(group);
     return (angle: number) => group.quaternion.setFromAxisAngle(axis, angle);
+  }
+  const steeringColumn = new THREE.Group();
+  steeringColumn.name = "steering-column";
+  steeringColumn.position.set(-0.3808, 0.14, 0.33);
+  chassis.add(steeringColumn);
+  for (const [pattern, name] of [
+    [/^Plastic_PlasticInterior_0$/, "steering-column-housing"],
+    [/^Intbuttons_Interiorbuttons_0$/, "steering-column-labels"],
+  ] as const) {
+    const part = splitSurface(
+      pattern,
+      name,
+      (x, y, z) => x > -0.56 && x < -0.29 && y > 0.48 && y < 0.65 && z > 0.16 && z < 0.37,
+      true,
+    );
+    steeringColumn.attach(part);
   }
   const rotateSteeringWheel = pivot(
     /^(Steeringwheel|badgeglass|badgechrome|badgeburgundy)_/,
     new THREE.Vector3(-0.3808, 0.1946, 0.07),
     new THREE.Vector3(0, 0.3095, -0.9509).normalize(),
+    steeringColumn,
   );
+  steeringColumn.rotation.x = THREE.MathUtils.degToRad(STEERING_COLUMN_TILT_DEG);
+  chassis.updateMatrixWorld(true);
   // The gauge face points at the driver; positive rotation is counter-clockwise from the seat.
   // The boost needle hangs below its hub, so sweeping toward +7 is counter-clockwise.
   const gaugeAxis = new THREE.Vector3(0, 0.1591, -0.9873).normalize();
