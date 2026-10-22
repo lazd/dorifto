@@ -29,6 +29,7 @@ class VehicleSoundProcessor extends AudioWorkletProcessor {
       })),
     }));
     this.blow = 0;
+    this.blowPhase = 0;
     this.random = 123456789;
     this.impact = 0;
     this.impactPhase = 0;
@@ -45,6 +46,7 @@ class VehicleSoundProcessor extends AudioWorkletProcessor {
     this.port.onmessage = ({ data }) => {
       if (data.reset) {
         this.blow = 0;
+        this.blowPhase = 0;
         this.pulse = 0;
         this.lopePhase = 0;
         this.lopeVariation = 0;
@@ -65,7 +67,14 @@ class VehicleSoundProcessor extends AudioWorkletProcessor {
       } else {
         this.target = data;
         for (let i = 0; i < 4; i++) this.tires[i].target = data.tires[i];
-        this.blow = Math.max(this.blow, data.blow || 0);
+        if (data.blow > 0) {
+          const pressure = Math.min(1, data.blow);
+          const strength = Math.pow(pressure, 1.3);
+          if (strength >= this.blow) {
+            this.blow = strength;
+            this.blowDecay = Math.exp(-1 / (sampleRate * (0.1 + pressure * 0.12)));
+          }
+        }
       }
     };
   }
@@ -155,7 +164,10 @@ class VehicleSoundProcessor extends AudioWorkletProcessor {
       this.whistlePhase = (this.whistlePhase
         + whistleFrequency * (1 + this.noiseLow * 0.006) / sampleRate) % 1;
       this.blow *= this.blowDecay;
+      this.blowPhase = (this.blowPhase
+        + (2600 + this.blow * 2400) * (1 + this.noiseLow * 0.02) / sampleRate) % 1;
       turbo[i] = noise * (state.boost * 0.025 + this.blow * 0.65)
+        + (Math.sin(this.blowPhase * Math.PI * 2) * 0.1 + whistleNoise * 0.25) * this.blow
         + (whistleNoise * 0.65
           + Math.sin(this.whistlePhase * Math.PI * 2) * 0.025) * state.boost;
 

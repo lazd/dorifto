@@ -194,7 +194,8 @@ export class Drivetrain {
       );
     const drag = (22 + this.engineSpeed * 0.055) * (1 - load * 0.85);
     const idleTorque = clamp(drag + (idleSpeed - this.engineSpeed) * 3, 0, 120) * (1 - throttle);
-    return combustion + idleTorque - drag;
+    const torque = combustion + idleTorque - drag;
+    return torque < 0 ? torque * (3 - throttle * 2) : torque;
   }
 
   private transferClutchTorque(

@@ -22,6 +22,7 @@ export class VehicleAudio {
   private muted = false;
   private previousThrottle = 0;
   private previousGear = 1;
+  private previousBoost = 0;
   private failed = false;
 
   constructor(
@@ -165,6 +166,7 @@ export class VehicleAudio {
   reset() {
     this.previousThrottle = 0;
     this.previousGear = 1;
+    this.previousBoost = 0;
     this.node?.port.postMessage({ reset: true });
   }
 
@@ -173,9 +175,11 @@ export class VehicleAudio {
     const engine = state.drivetrain;
     const release =
       this.previousThrottle - engine.throttle > 0.15 || this.previousGear !== engine.gear;
-    const blow = release && engine.boost > 0.12 ? engine.boost : 0;
+    const releaseBoost = Math.max(this.previousBoost, engine.boost);
+    const blow = release && releaseBoost > 0.12 ? releaseBoost : 0;
     this.previousThrottle = engine.throttle;
     this.previousGear = engine.gear;
+    this.previousBoost = engine.boost;
     this.node?.port.postMessage({
       rpm: engine.rpm,
       load: engine.load,
