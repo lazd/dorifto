@@ -24,6 +24,11 @@ import {
   type PhysicsTelemetry,
 } from './physics-messages';
 
+/** Most simulation time per request (the worker's own cap); stalls beyond it are dropped. */
+const maxRequestTime = 0.05;
+/** Beyond this the drawn pose holds rather than extrapolating further past the newest tick. */
+const maxExtrapolation = 0.05;
+
 interface PhysicsClientOptions {
   car: Awaited<ReturnType<typeof loadCar>>;
   course: ReturnType<typeof createCourse>;
@@ -91,9 +96,12 @@ export function createPhysicsClient({
   let failed = false;
   let initialized = false;
   let resetting = false;
-  let pendingTime = 0;
-  let receivedAt = 0;
-  let remainder = 0;
+  // Simulation-time clocks. Requests run the worker one frame ahead of render time so the next
+  // frame normally interpolates between delivered ticks instead of extrapolating past them.
+  let sentTime = 0;
+  let renderTime = 0;
+  let currentTickTime = 0;
+  const requestTimes: number[] = [];
   let replayTime: number | null = null;
   let records: PhysicsRecord[] = [];
   const recycled: ArrayBuffer[] = [];
@@ -123,6 +131,7 @@ export function createPhysicsClient({
   function send(command: PhysicsCommand, transfer: Transferable[] = []) {
     if (disposed || failed) return;
     pendingResponses++;
+    requestTimes.push(sentTime);
     worker.postMessage({ ...command, revision }, transfer);
   }
 
@@ -134,7 +143,7 @@ export function createPhysicsClient({
     else onError(error);
   }
 
-  function accept(snapshot: PhysicsSnapshot) {
+  function accept(snapshot: PhysicsSnapshot, endTime: number) {
     previous.set(current);
     const data = new Float32Array(snapshot.buffer);
     for (let i = 0; i < snapshot.count; i++) {
@@ -149,9 +158,8 @@ export function createPhysicsClient({
     afterVelocity.fromArray(telemetry.velocity);
     Object.assign(laps, snapshot.laps);
     records.push(...snapshot.records);
-    remainder = snapshot.alpha;
+    currentTickTime = endTime - snapshot.alpha * physicsStep;
     replayTime = snapshot.replayTime;
-    receivedAt = performance.now();
     resetting = false;
     for (const impact of snapshot.impacts) {
       if (impact.type === 'cone') audio.hitCone(impact.impulse);
@@ -167,6 +175,7 @@ export function createPhysicsClient({
   worker.onmessage = ({ data }: MessageEvent<PhysicsResponse>) => {
     if (disposed || failed) return;
     pendingResponses--;
+    const endTime = requestTimes.shift() ?? sentTime;
     if (data.type === 'error') {
       const error = new Error(`Physics worker: ${data.message}`);
       if (data.stack) error.stack = data.stack;
@@ -177,7 +186,7 @@ export function createPhysicsClient({
       recycled.push(data.buffer);
       return;
     }
-    accept(data);
+    accept(data, endTime);
   };
   worker.onerror = (event) => {
     event.preventDefault();
@@ -190,10 +199,9 @@ export function createPhysicsClient({
 
   function invalidate() {
     revision++;
-    pendingTime = 0;
+    renderTime = currentTickTime = sentTime;
     records = [];
     resetting = true;
-    remainder = 1;
     Object.assign(laps, emptyLapState());
   }
 
@@ -215,12 +223,21 @@ export function createPhysicsClient({
       car.setReversing(telemetry.reversing);
       car.setHazards(telemetry.hazards, telemetry.hazardsEnabled);
     }
-    linearVelocity.lerpVectors(beforeVelocity, afterVelocity, alpha);
+    linearVelocity.lerpVectors(beforeVelocity, afterVelocity, Math.min(alpha, 1));
     return velocity.copy(linearVelocity).setY(0);
   }
 
+  /**
+   * Places the render clock between the snapshot's two ticks. Past the newest tick (the reply for
+   * this frame's time is still in flight) poses extrapolate along the last tick's motion, so the
+   * drawn time never depends on when the worker's message happened to arrive.
+   */
   function interpolationAlpha() {
-    return Math.min(1, remainder + (performance.now() - receivedAt) / (physicsStep * 1000));
+    return THREE.MathUtils.clamp(
+      1 + (renderTime - currentTickTime) / physicsStep,
+      0,
+      1 + maxExtrapolation / physicsStep,
+    );
   }
 
   return {
@@ -229,11 +246,17 @@ export function createPhysicsClient({
     fixedStep: physicsStep,
     advance(dt: number) {
       if (disposed || failed) return;
-      pendingTime = Math.min(pendingTime + dt, 0.05);
+      renderTime += dt;
       if (pendingResponses) return;
+      let request = renderTime + dt - sentTime;
+      if (request > maxRequestTime) {
+        renderTime -= request - maxRequestTime;
+        request = maxRequestTime;
+      }
+      if (request <= 0) return;
       const buffers = recycled.splice(0);
-      send({ type: 'advance', dt: pendingTime, input: input(), recycled: buffers }, buffers);
-      pendingTime = 0;
+      sentTime += request;
+      send({ type: 'advance', dt: request, input: input(), recycled: buffers }, buffers);
     },
     takeRecords() {
       const result = records;
@@ -267,7 +290,7 @@ export function createPhysicsClient({
       send({ type: 'replay', recording: data, time, input: input() }, [data.data.buffer]);
     },
     captureVisuals(_snap = true) {
-      pendingTime = 0;
+      renderTime = currentTickTime = sentTime;
       send({ type: 'snap', input: input() });
     },
     interpolate,

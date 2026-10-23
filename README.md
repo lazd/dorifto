@@ -156,8 +156,12 @@ tab stops rendering. Visibility changes clear pending time and snap interpolatio
 Snapshots contain the last two fixed-step poses in recycled transferable buffers.
 Unchanged props are omitted after their final resting pose has been delivered.
 The main thread interpolates poses without waiting for the worker, then updates
-cameras, lights, audio, UI, and tire effects. Impact sounds arrive as impulse
-events. Recording samples are encoded at 30 Hz in the worker, with per-step lap
+cameras, lights, audio, UI, and tire effects. Interpolation runs on a simulation-time
+clock: each request runs the worker one frame ahead of render time, so a timely
+reply covers the next frame and poses interpolate between delivered ticks. Only
+when a reply is late (e.g. CPU contention) do poses extrapolate along the newest
+tick, up to 50 ms. Message arrival timing never moves the drawn time. Impact sounds
+arrive as impulse events. Recording samples are encoded at 30 Hz in the worker, with per-step lap
 crossings, so rendering/message frequency cannot skip samples or shift lap times.
 Replay poses drive the same worker-owned world, preserving prop collisions.
 

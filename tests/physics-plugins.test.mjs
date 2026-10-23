@@ -222,6 +222,17 @@ test('worker client bounds in-flight advances, ignores pre-reset replies, preser
   client.advance(physicsStep);
   assert.equal(worker.requests.length, 1, 'wait for the reset before advancing again');
   worker.reply();
+  const near = (actual, expected, message) =>
+    assert.ok(Math.abs(actual - expected) < 1e-6, message);
+  client.advance(physicsStep * 1.5);
+  worker.reply();
+  client.advance(physicsStep * 1.5);
+  near(client.interpolationAlpha(), 1, 'a timely reply already covers the next frame');
+  client.advance(physicsStep * 1.5);
+  near(client.interpolationAlpha(), 2.5, 'extrapolate to render time while a reply is late');
+  worker.reply();
+  near(client.interpolationAlpha(), 1.5, 'arrival time does not move the drawn time');
+  client.takeRecords();
   client.advance(physicsStep * 4);
   client.captureVisuals(true);
   const live = worker.reply();
