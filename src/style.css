@@ -242,6 +242,10 @@ h1 span {
 .minimap-timing {
   text-align: right;
 }
+.minimap-timing > .is-invalid {
+  color: #ff625c;
+  animation: lap-recording-pulse 1.2s ease-in-out infinite;
+}
 .minimap-lap > strong,
 .minimap-timing > strong {
   display: block;
@@ -250,6 +254,7 @@ h1 span {
   font-weight: 500;
 }
 .minimap-best {
+  --record-color: #ffd166;
   display: flex;
   justify-content: flex-end;
   gap: 6px;
@@ -895,6 +900,7 @@ dialog h2 {
   }
 }
 @media (prefers-reduced-motion: reduce) {
+  .minimap-timing > .is-invalid,
   [data-mode='recording'] .lap-recorder-icon {
     animation: none;
   }

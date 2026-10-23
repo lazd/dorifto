@@ -47,10 +47,10 @@
           </span>
           <span class="minimap-timing" role="group" aria-label="Lap timing">
             <strong id="lap-current" aria-label="Current lap time">--:--.---</strong>
-            <span class="minimap-best"
-              ><span>BEST</span
-              ><span id="lap-best" aria-label="Best lap time">--:--.---</span></span
-            >
+            <span class="minimap-best">
+              <span>BEST</span>
+              <span id="lap-best" aria-label="Current run record lap time">--:--.---</span>
+            </span>
           </span>
         </span>
       </button>
@@ -440,6 +440,13 @@
             <select id="show-grass">
               <option value="on">On</option>
               <option value="off">Off</option>
+            </select>
+          </div>
+          <div class="settings-control-row">
+            <label for="show-lap-gates">Racing line training gates</label>
+            <select id="show-lap-gates">
+              <option value="off">Off</option>
+              <option value="on">On</option>
             </select>
           </div>
         </div>

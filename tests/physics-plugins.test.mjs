@@ -62,6 +62,7 @@ function fixture(slopeX = 0, slopeZ = 0, simulationWorld) {
       new THREE.Vector3(0.75, 0, -1.3),
     ],
     radii: [0.32, 0.32, 0.32, 0.32],
+    widths: [0.24, 0.24, 0.24, 0.24],
     collisionVertices: [-1, 1].flatMap((x) =>
       [-1, 1].flatMap((y) =>
         [-1, 1].map((z) => new THREE.Vector3(x * 0.75, y < 0 ? -0.1 : 0.3, z * 2)),
@@ -331,6 +332,33 @@ test('bots-only mode has no player vehicle and follows bot telemetry through rev
   snapshot = simulation.handle({ type: 'reset', revision: 2, input: setup.input });
   assert.equal(snapshot.laps.elapsedTime, 0);
   assert.equal(snapshot.bots[0].metrics.elapsed, 0);
+});
+
+test('lap limits receive each tire center and both full-width tread edges', () => {
+  const { physics, laps, car, controls } = fixture();
+  let points;
+  laps.update = (_position, _dt, tirePoints) => {
+    points = tirePoints.map((point) => point.clone());
+  };
+  try {
+    controls.steer = 1;
+    controls.throttle = 0.2;
+    for (let step = 0; step < 60; step++) physics.step();
+    assert.equal(points.length, 12);
+    for (let i = 0; i < 4; i++) {
+      const [center, left, right] = points.slice(i * 3, i * 3 + 3);
+      assert.ok(Math.abs(left.distanceTo(right) - car.widths[i]) < 1e-8);
+      assert.ok(center.distanceTo(left.clone().add(right).multiplyScalar(0.5)) < 1e-8);
+    }
+    const front = points[1].clone().sub(points[2]).normalize();
+    const rear = points[7].clone().sub(points[8]).normalize();
+    assert.ok(
+      front.dot(rear) < 0.99,
+      'front tread edges follow steering rather than chassis width',
+    );
+  } finally {
+    physics.dispose();
+  }
 });
 
 async function clientFixture(t, options = {}) {

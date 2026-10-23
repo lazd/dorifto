@@ -80,6 +80,7 @@ test('replaces real Ammo worlds while reusing car assets and heightfields and fr
       new THREE.Vector3(0.75, 0, -1.3),
     ],
     radii: [0.32, 0.32, 0.32, 0.32],
+    widths: [0.24, 0.24, 0.24, 0.24],
     collisionVertices: [-1, 1].flatMap((x) =>
       [-1, 1].flatMap((y) => [-1, 1].map((z) => new THREE.Vector3(x * 0.75, y * 0.3, z * 2))),
     ),

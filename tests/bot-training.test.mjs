@@ -164,6 +164,7 @@ test('a skilled rear bot overtakes a less-skilled front bot in the shared world'
     car: {
       centers: geometry.centers.map((point) => point.toArray()),
       radii: geometry.radii,
+      widths: geometry.widths,
       collisionVertices: geometry.collisionVertices.map((point) => point.toArray()),
     },
     cones: [],

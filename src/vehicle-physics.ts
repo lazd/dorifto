@@ -26,7 +26,13 @@ export type PhysicsControls = Pick<
 export type PhysicsConfiguration = Pick<ConfigurationState, 'driveMode' | 'profiles' | 'coneMode'>;
 export type PhysicsCar = Pick<
   Awaited<ReturnType<typeof loadCar>>,
-  'centers' | 'radii' | 'collisionVertices' | 'setBraking' | 'setReversing' | 'setHazards'
+  | 'centers'
+  | 'radii'
+  | 'widths'
+  | 'collisionVertices'
+  | 'setBraking'
+  | 'setReversing'
+  | 'setHazards'
 > & {
   chassis: THREE.Object3D;
   wheels: THREE.Object3D[];
@@ -82,6 +88,8 @@ export function createVehiclePhysics({
   const sharedWorld = simulationWorld ?? createPhysicsWorld(Ammo, resources, terrain);
   const { world, dispatcher } = sharedWorld;
   const vector = new Ammo.btVector3(0, 0, 0);
+  const lapTirePoints = Array.from({ length: 12 }, () => new THREE.Vector3());
+  const lapTireAcross = new THREE.Vector3();
   const rigidBodies = new Map<AmmoFactory.btRigidBody, AmmoFactory.btDefaultMotionState>();
   const enabledBodies = new Set<AmmoFactory.btRigidBody>();
   const plugins: PhysicsPlugin[] = [];
@@ -593,7 +601,30 @@ export function createVehiclePhysics({
     for (const plugin of plugins) plugin.afterStep?.(fixedStep);
     const lapOrigin = body.getWorldTransform().getOrigin();
     lapPosition.set(lapOrigin.x(), lapOrigin.y(), lapOrigin.z());
-    laps.update(lapPosition, fixedStep);
+    const lapRotation = body.getWorldTransform().getRotation();
+    physicsRotation.set(lapRotation.x(), lapRotation.y(), lapRotation.z(), lapRotation.w());
+    for (let i = 0; i < 4; i++) {
+      const center = lapTirePoints[i * 3];
+      const contact = vehicle.getWheelInfo(i).get_m_raycastInfo();
+      if (contact.get_m_isInContact()) {
+        const point = contact.get_m_contactPointWS();
+        center.set(point.x(), point.y(), point.z());
+      } else {
+        center
+          .copy(car.centers[i])
+          .sub(centerOfMass)
+          .applyQuaternion(physicsRotation)
+          .add(lapPosition);
+      }
+      const wheelSteering = i < 2 ? steering : 0;
+      lapTireAcross
+        .set(Math.cos(wheelSteering), 0, -Math.sin(wheelSteering))
+        .applyQuaternion(physicsRotation)
+        .multiplyScalar(car.widths[i] / 2);
+      lapTirePoints[i * 3 + 1].copy(center).add(lapTireAcross);
+      lapTirePoints[i * 3 + 2].copy(center).sub(lapTireAcross);
+    }
+    laps.update(lapPosition, fixedStep, lapTirePoints);
     offTrackTime = isAsphalt(lapPosition) ? 0 : offTrackTime + fixedStep;
     car.setHazards(offTrackTime > 3 && (offTrackTime - 3) % 0.8 < 0.4, offTrackTime > 3);
     for (let i = 0; i < 4; i++) {

@@ -181,13 +181,39 @@ A seven-segment LED-style MPH speedometer sits in the center with a gear readout
 below it. Driving-state messages (brakes held, sliding, burnout, etc.) are not shown.
 A persistent minimap shows the current lap number on the left
 (`--` before crossing the start line) and the current lap time on the right
-with the best time directly underneath, including in cabin view. There is
+with the current run's best time labeled **RECORD** directly underneath, including in cabin view.
+Setting a new run record flashes the label and time gold for two seconds; reduced-motion
+mode uses a steady gold highlight instead. Replay does not trigger record celebrations. There is
 no separate lap timing panel. It shows the complete course, a white start/finish line, and an amber arrow
 for the car's live position and heading. It follows course changes automatically;
 **Settings > Map orientation** selects **North up** (`?minimap=north-up`)
 or **Follow heading** (default, `?minimap=heading-up`). Follow heading rotates the course
 so the car always points up, fitting the entire course at any angle. The lap
 times stay upright. The choice is retained in the URL across reloads and course changes.
+When all four tires, including their tread edges, are beyond the outer edges of the white lines (farther than
+half the track width plus half the 16 cm stripe width from the centerline), the current lap time turns red and pulses (solid red with
+reduced motion enabled). Asphalt shoulders do not count as inside the track. The warning
+stays latched after rejoining; reset clears it, or crossing start/finish discards the invalid
+attempt and starts fresh without changing completed times or the best lap. Airborne tires
+use their projected wheel positions rather than stale ground-contact points. The check includes
+the loaded model's tire widths and front-wheel steering, so a tread edge touching the line
+keeps the lap valid even when the tire's center is outside.
+**Settings > Map > Racing line training gates** (`?lap-gates=on`) shows visual targets
+3 times the loaded car's width, spaced roughly 22.5 m along a geometry-based,
+minimum-curvature racing-line approximation. This is not a vehicle-specific optimal line.
+Bounded geometric relaxation minimizes squared second differences around the closed route,
+leaving room for the full gate width. There are no forced corner-entry or apex targets.
+The box-constrained quadratic is solved using accelerated projected gradient (FISTA),
+with a projected-gradient convergence check rather than a fixed number of smoothing passes.
+Unlike averaging offsets initialized to zero, this produces an actual change from the centerline.
+It is a lightweight geometric approximation, not the 3D minimum-lap-time optimal-control
+solver in [TUM's planner](https://github.com/TUMRT/online_3D_racing_line_planning), which also
+models vehicle acceleration limits, speed, banking, and elevation.
+Targets are 36 cm-thick tubular semicircular arches, visible from overhead, emerging from the terrain with a bright core and soft additive
+glow, without lights, shadows, or bloom render passes. The first target is red and the rest cyan.
+The 3x car-width measurement is the diameter of the arch's luminous centerline.
+Missing training gates never affects lap validity
+or counting; they update with the course and driving direction.
 
 ## Runtime modules
 

@@ -831,7 +831,11 @@ export function bindGameUI(
   const tachometer = bindTachometer();
   const lap = bindText('#lap-number');
   const current = bindText('#lap-current');
+  const currentLap = element('#lap-current');
   const best = bindText('#lap-best');
+  const record = element('.minimap-best');
+  let previousBest = game.getState().telemetry.best;
+  let recordAnimation: Animation | undefined;
   const controller = bindText('#controller-status');
   createDrivingTuning(
     element('#drift-tuning-sliders'),
@@ -987,6 +991,14 @@ export function bindGameUI(
     (value) => ({ showGrass: value === 'on' }),
     isToggle,
   );
+  select<'on' | 'off'>(
+    '#show-lap-gates',
+    'lap-gates',
+    'showLapGates',
+    (state) => (state.showLapGates ? 'on' : 'off'),
+    (value) => ({ showLapGates: value === 'on' }),
+    isToggle,
+  );
   const focus = () => game.update({ focused: document.hasFocus() && !document.hidden });
   window.addEventListener('focus', focus);
   window.addEventListener('blur', focus);
@@ -1028,7 +1040,32 @@ export function bindGameUI(
       gear(t.gear < 0 ? 'R' : String(t.gear));
       lap(t.lap ? String(t.lap) : '--');
       current(formatLapTime(t.lap ? t.current : null));
+      if (currentLap.classList.contains('is-invalid') !== t.invalid) {
+        currentLap.classList.toggle('is-invalid', t.invalid);
+        currentLap.setAttribute('aria-label', t.invalid ? 'Invalid lap time' : 'Current lap time');
+        currentLap.title = t.invalid ? 'All four tires left the track: lap is invalid' : '';
+      }
       best(formatLapTime(t.best));
+      if (t.best !== previousBest) {
+        recordAnimation?.cancel();
+        if (
+          t.best !== null &&
+          (previousBest === null || t.best < previousBest) &&
+          state.lapRecorder.mode !== 'replay'
+        ) {
+          const gold = getComputedStyle(record).getPropertyValue('--record-color');
+          const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+          recordAnimation = record.animate(
+            [
+              { color: gold, opacity: 1 },
+              { color: gold, opacity: reducedMotion ? 1 : 0.35 },
+              { color: gold, opacity: 1 },
+            ],
+            { duration: 500, iterations: 4, easing: 'ease-in-out' },
+          );
+        }
+        previousBest = t.best;
+      }
       controller(state.controllerStatus);
     },
     ['telemetry', 'controllerStatus'],

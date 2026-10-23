@@ -58,6 +58,9 @@ export function carPhysicsGeometry(model: THREE.Object3D) {
     centers,
     radii: tireBounds.map((box) => box.getSize(new THREE.Vector3()).y / 2),
     widths: tireBounds.map((box) => box.getSize(new THREE.Vector3()).x),
+    width: new THREE.Box3()
+      .setFromPoints([...vertices, ...tireBounds.flatMap((box) => [box.min, box.max])])
+      .getSize(new THREE.Vector3()).x,
     collisionVertices: [...vertices],
   };
 }

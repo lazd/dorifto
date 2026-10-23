@@ -30,7 +30,7 @@ export function trainRaceBot(
   Ammo: typeof AmmoFactory,
   definition: CourseDefinition,
   terrain: CourseTerrain,
-  geometry: Pick<PhysicsCar, 'centers' | 'radii' | 'collisionVertices'>,
+  geometry: Pick<PhysicsCar, 'centers' | 'radii' | 'widths' | 'collisionVertices'>,
   configuration: PhysicsConfiguration,
   options: RaceBotOptions,
   runs: number,

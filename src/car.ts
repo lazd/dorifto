@@ -962,7 +962,7 @@ export async function loadCar(onProgress?: (fraction: number) => void) {
   // Order: front right, front left, rear right, rear left (+X is the car's left, +Z front).
   const wheels = Array.from({ length: 4 }, () => new THREE.Group());
   const hubs = Array.from({ length: 4 }, () => new THREE.Group());
-  const { centers, radii, widths, collisionVertices } = carPhysicsGeometry(model);
+  const { centers, radii, widths, width, collisionVertices } = carPhysicsGeometry(model);
   for (const mesh of named(/^(llantaoem|tyr_|frontrotor|rearrotor|frontcaliper|rearcaliper)/)) {
     const corner = carCorner(new THREE.Box3().setFromObject(mesh));
     const geometry = mesh.geometry.clone().applyMatrix4(mesh.matrixWorld);
@@ -982,6 +982,7 @@ export async function loadCar(onProgress?: (fraction: number) => void) {
     centers,
     radii,
     widths,
+    width,
     collisionVertices,
     setBraking,
     setPaintColor(color: THREE.ColorRepresentation) {

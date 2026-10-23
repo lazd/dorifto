@@ -157,6 +157,12 @@ async function start() {
     ),
     coneMode: requestedConeMode,
     showGrass: readToggle('grass'),
+    showLapGates:
+      readOption(
+        'lap-gates',
+        'off',
+        (value): value is 'on' | 'off' => value === 'on' || value === 'off',
+      ) === 'on',
     ghostMode: requestedGhost,
     turnSignMode: readParams(
       ['signs'],
@@ -245,8 +251,8 @@ async function start() {
   configurationState.update({ timeOfDay: requestedTime });
   lighting.apply(requestedTime);
   const initialDefinition = { ...definition, reverse: requestedReverse };
-  const initialCourse = createCourse(scene, initialDefinition);
   const car = await carLoad;
+  const initialCourse = createCourse(scene, initialDefinition, car.width);
   showLoading('Starting physics…', 0.2);
   // The picker may change while the model is loading.
   const selectedTime = configurationState.getState().timeOfDay;
@@ -367,13 +373,14 @@ async function start() {
 
   async function createCourseSession(
     nextDefinition: CourseDefinition,
-    course = createCourse(scene, nextDefinition),
+    course = createCourse(scene, nextDefinition, car.width),
   ) {
     let physics: ReturnType<typeof createPhysicsClient> | undefined;
     try {
       const spawn = courseSpawn(nextDefinition);
-      const { coneMode, showGrass, turnSignMode } = configurationState.getState();
+      const { coneMode, showGrass, showLapGates, turnSignMode } = configurationState.getState();
       course.setTurnSignMode(turnSignMode);
+      course.setLapGates(showLapGates);
       course.terrain.grass.visible = showGrass;
       physics = createPhysicsClient({
         bots: readRaceBots(courseUrl.searchParams),
@@ -402,6 +409,7 @@ async function start() {
       const latest = configurationState.getState();
       physics.setCones(latest.coneMode !== 'off', latest.coneMode === 'corners');
       course.setTurnSignMode(latest.turnSignMode);
+      course.setLapGates(latest.showLapGates);
       course.terrain.grass.visible = latest.showGrass;
       const laps = physics.laps;
       const drivingCamera = createDrivingCamera(
@@ -445,6 +453,12 @@ async function start() {
       terrain.grass.visible = showGrass;
     },
     ['showGrass'],
+  );
+  configurationState.subscribe(
+    ({ showLapGates }) => {
+      course.setLapGates(showLapGates);
+    },
+    ['showLapGates'],
   );
   const tireEffects = createTireEffects(scene, car, terrain, course.isAsphalt);
   lighting.setupMaterials();
@@ -658,6 +672,11 @@ async function start() {
     }
     if (run.lapStarts.length < timing.lap && timing.last !== null)
       run.completeLap(timing.lapStartedAt - runOrigin, timing.last, timing.lastCones ?? 0);
+    else if (
+      run.started &&
+      run.lapStarts[run.lapStarts.length - 1] !== timing.lapStartedAt - runOrigin
+    )
+      run.lapStarts[run.lapStarts.length - 1] = timing.lapStartedAt - runOrigin;
     if (!sample) return;
     run.pushSample(sample);
     keepRunRecord();
@@ -1131,6 +1150,7 @@ async function start() {
         gear: engine.gear,
         limiter: engine.limiterCut,
         ...timing,
+        invalid: !replaying && laps.invalid,
         cones: replaying ? 0 : laps.conesHit,
         driving: spawnBrakeHeld
           ? 'brakes-held'
