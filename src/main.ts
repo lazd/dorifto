@@ -40,6 +40,7 @@ import { createDrivingCamera } from './camera';
 import { createLighting } from './lighting';
 import { createTireEffects } from './tire-effects';
 import { createMinimap } from './minimap';
+import { createLeaderboard } from './leaderboard';
 import { createPhysicsClient } from './physics-client';
 import { raceBotDriverName, raceBotTunings, readBotsOnly, readRaceBots } from './race-bot';
 import type { PhysicsRecord } from './physics-messages';
@@ -440,6 +441,7 @@ async function start() {
     initialCourse,
   );
   const minimap = createMinimap(element('#minimap'), definition);
+  const leaderboard = createLeaderboard(element<HTMLOListElement>('#leaderboard'));
   const { fixedStep } = physics;
   configurationState.subscribe(
     ({ coneMode }) => {
@@ -1133,6 +1135,7 @@ async function start() {
       replaying ? [] : physics.botMarkers,
       !botsOnly || replaying,
     );
+    leaderboard.update(physics.standings, physics.raceEntrants);
     // Manifold pressure: closed-throttle vacuum through to full turbo boost.
     const manifoldMmHg =
       THREE.MathUtils.lerp(-550, 0, engine.load) * (1 - engine.boost) + 650 * engine.boost;

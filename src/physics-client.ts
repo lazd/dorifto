@@ -11,6 +11,7 @@ import type { RunRecording } from './lap-recording';
 import { idleRpm } from './drivetrain';
 import { botColor, createBotCar } from './bot-car';
 import type { RaceBotOptions } from './race-bot';
+import type { RaceStanding } from './race-standings';
 import {
   createPhysicsInit,
   emptyLapState,
@@ -80,6 +81,11 @@ export function createPhysicsClient({
   const botSounds: OpponentSoundState[] = [];
   const markerCars = [...(botsOnly ? [car] : []), ...botCars];
   const botColors = markerCars.map((_car, index) => botColor(index));
+  const raceEntrants = [
+    ...(botsOnly ? [] : [{ name: 'You', color: new THREE.Color(carPaintColor).getStyle() }]),
+    ...bots.map((_bot, index) => ({ name: `Bot ${index + 1}`, color: botColor(index) })),
+  ];
+  let standings: readonly RaceStanding[] = [];
   if (botsOnly) car.setPaintColor(botColors[observedBot]);
   const botMarkers = markerCars.map((_car, index) => ({
     position: new THREE.Vector3(),
@@ -206,6 +212,7 @@ export function createPhysicsClient({
     records.push(...snapshot.records);
     currentTickTime = endTime - snapshot.alpha * physicsStep;
     replayTime = snapshot.replayTime;
+    if (snapshot.standings) standings = snapshot.standings;
     syncObservedState(snapshot.laps);
     resetting = false;
     for (const impact of snapshot.impacts) {
@@ -250,6 +257,7 @@ export function createPhysicsClient({
     records = [];
     resetting = true;
     botTelemetry = [];
+    standings = [];
     Object.assign(laps, emptyLapState());
   }
 
@@ -345,6 +353,10 @@ export function createPhysicsClient({
       return observedBot;
     },
     botMarkers,
+    raceEntrants,
+    get standings() {
+      return standings;
+    },
     botSounds,
     get botSmokeActive() {
       return botEffects.some((effect) => effect.active);

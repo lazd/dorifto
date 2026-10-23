@@ -138,6 +138,26 @@ proof of a real-world setup. Retain failed runs and avoid reporting only best la
 Profile multi-car cost before increasing bot counts. Keep feedback control in
 the physics worker, share course maps, and avoid per-frame DOM updates.
 
+## Live standings
+
+With multiple drivers, the map HUD shows a color-matched leaderboard: the leader's
+last valid lap (`m:ss`), then each trailing driver's gap to the leader (`+1.2s` or
+`+1 lap`). Before passage history is available, gaps show `--`.
+
+All drivers use the same sampled course centerline, with continuous segment
+projection and a bounded local search each physics step. Progress unwraps across
+the start line and decreases in reverse. An invalid lap subtracts one circuit
+only when the driver crosses the finish line, matching the lap timer's policy.
+Resets and course/direction changes clear progress and passage history.
+
+Standings publish through existing worker snapshots at 10 Hz, outside the game
+store. Time gaps refresh twice per simulation second (and on leader changes),
+using the leader's interpolated passage time at each trailing driver's credited
+course distance, not distance divided by speed. Passage history is bounded to
+roughly one circuit per driver; invalid finishes clear that driver's history.
+The UI retains its rows and only changes displayed text or ordering when needed.
+Single-driver sessions and replays hide the leaderboard.
+
 ## Initial delivery status
 
 Phases 1 and 2 are implemented:

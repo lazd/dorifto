@@ -147,6 +147,46 @@ h1 span {
 #course-menu {
   flex-shrink: 0;
 }
+.leaderboard {
+  flex-shrink: 0;
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid #9ee8d533;
+  border-radius: 6px;
+  background: #10191fc9;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  list-style: none;
+  counter-reset: position;
+  pointer-events: none;
+}
+.leaderboard li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 0;
+  counter-increment: position;
+}
+.leaderboard li::before {
+  content: counter(position) '.';
+  min-width: 12px;
+  color: #aebfbd;
+}
+.entrant-color {
+  flex: 0 0 7px;
+  height: 7px;
+  background: var(--entrant-color);
+}
+.leaderboard-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.leaderboard-timing {
+  margin-left: auto;
+  white-space: nowrap;
+}
 #course-name {
   order: 2;
   flex-shrink: 0;
@@ -167,7 +207,6 @@ h1 span {
 }
 .course-options .keycap {
   display: block;
-  margin-right: 0;
   padding: 8px;
 }
 .course-generation-actions {
@@ -456,6 +495,9 @@ footer.loaded:not(:focus-within) {
   gap: 6px;
   padding: 0 1px;
 }
+kbd {
+  margin-right: 4px;
+}
 input {
   accent-color: #9ee8d5;
   font: inherit;
@@ -503,7 +545,6 @@ kbd,
 button.keycap {
   display: inline-block;
   padding: 5px 7px;
-  margin-right: 4px;
   border: 1px solid #525c59;
   border-radius: 4px;
   background: #10191fe1;
@@ -954,7 +995,7 @@ dialog h2 {
 .editable-picker {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   font-size: 12px;
 }
 .editable-picker select {

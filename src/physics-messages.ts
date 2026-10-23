@@ -6,6 +6,7 @@ import { frameStride, type RunRecording, type ReplayTireState } from './lap-reco
 import type { TerrainQueryData } from './terrain-query';
 import type { PhysicsCar, PhysicsConfiguration, PhysicsControls } from './vehicle-physics';
 import type { RaceBotOptions, VehicleState, createRaceBot } from './race-bot';
+import type { RaceStanding } from './race-standings';
 
 export const physicsStep = 1 / 120;
 export const poseStride = 7;
@@ -183,6 +184,7 @@ export interface PhysicsSnapshot {
   replayTime: number | null;
   telemetry: PhysicsTelemetry;
   laps: LapState;
+  standings?: RaceStanding[];
   bots: {
     laps: LapState;
     metrics: ReturnType<typeof createRaceBot>['metrics'];

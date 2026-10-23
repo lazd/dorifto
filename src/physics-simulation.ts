@@ -23,6 +23,7 @@ import {
   type RaceBotPreset,
 } from './race-bot';
 import { LapTimer } from './laps';
+import { createRaceStandings } from './race-standings';
 import { TerrainSurface, heightAt, normalAt } from './terrain-query';
 import {
   RunRecording,
@@ -185,6 +186,15 @@ export function createPhysicsSimulation(Ammo: typeof AmmoFactory, data: PhysicsI
   const physics = playerPhysics ?? bots[0].physics;
   if (botsOnly) controls = bots[0].controls;
   const vehicles = [...(playerPhysics ? [playerPhysics] : []), ...bots.map((bot) => bot.physics)];
+  function createStandings() {
+    return vehicles.length > 1
+      ? createRaceStandings(mapDefinition, [
+          ...(playerPhysics ? [{ position: car.chassis.position, laps }] : []),
+          ...bots.map((bot) => ({ position: bot.car.chassis.position, laps: bot.laps })),
+        ])
+      : null;
+  }
+  let raceStandings = createStandings();
   const objects = [
     car.chassis,
     ...car.wheels,
@@ -257,6 +267,7 @@ export function createPhysicsSimulation(Ammo: typeof AmmoFactory, data: PhysicsI
     for (const vehicle of vehicles) vehicle.reset();
     previousVelocity.set(0, 0, 0);
     capture(true);
+    raceStandings?.reset();
     forceSnapshot = true;
   }
 
@@ -266,6 +277,7 @@ export function createPhysicsSimulation(Ammo: typeof AmmoFactory, data: PhysicsI
   function handle(request: PhysicsRequest): PhysicsSnapshot {
     let duration = 0;
     const records: PhysicsRecord[] = [];
+    let standings: PhysicsSnapshot['standings'];
     if (request.type !== 'init') applyInput(request.input);
     if (request.type === 'advance') {
       buffers.push(...request.recycled);
@@ -292,6 +304,7 @@ export function createPhysicsSimulation(Ammo: typeof AmmoFactory, data: PhysicsI
           simulationWorld.step(physicsStep);
           for (const vehicle of vehicles) vehicle.afterStep();
           capture(false);
+          standings = raceStandings?.update(physicsStep) ?? standings;
           if (!physics.spawnBrakeHeld) {
             const record: PhysicsRecord = { laps: lapState(laps) };
             if (recordingSteps++ % sampleSteps === 0) {
@@ -335,6 +348,7 @@ export function createPhysicsSimulation(Ammo: typeof AmmoFactory, data: PhysicsI
           bot.options,
         );
       });
+      raceStandings = createStandings();
       reset();
     } else if (request.type === 'replay') {
       reset();
@@ -406,6 +420,7 @@ export function createPhysicsSimulation(Ammo: typeof AmmoFactory, data: PhysicsI
         previousVelocity: previousVelocity.toArray(),
       },
       laps: lapState(laps),
+      standings,
       bots: bots.map((bot) => ({
         laps: lapState(bot.laps),
         metrics: bot.bot.metrics,

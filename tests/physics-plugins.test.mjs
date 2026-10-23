@@ -227,7 +227,8 @@ test('worker snapshots include independently driven bots through reset, reversal
   assert.equal(snapshot.bots[0].wheelContacts.length, 4);
   const initial = new Float32Array(snapshot.buffer);
   const botZ = initial[vehiclePoseCount * snapshotStride + 1 + poseStride + 2];
-  for (let i = 0; i < 30; i++)
+  let standings;
+  for (let i = 0; i < 30; i++) {
     snapshot = simulation.handle({
       type: 'advance',
       dt: physicsStep * 4,
@@ -235,7 +236,11 @@ test('worker snapshots include independently driven bots through reset, reversal
       input: setup.input,
       recycled: [],
     });
+    standings = snapshot.standings ?? standings;
+  }
 
+  assert.deepEqual(standings.map(({ entrant }) => entrant).sort(), [0, 1]);
+  assert.ok(standings.every(({ gap }) => gap === null || Number.isFinite(gap)));
   assert.ok(snapshot.bots[0].metrics.elapsed > 0);
   assert.ok(snapshot.bots[0].engine.rpm > 0);
   assert.equal(snapshot.bots[0].velocity.length, 3);
@@ -276,6 +281,7 @@ test('worker snapshots include independently driven bots through reset, reversal
     recycled: [],
   });
   assert.equal(snapshot.bots[0].metrics.elapsed, 0, 'bots do not participate in recorded replays');
+  assert.equal(snapshot.standings, undefined, 'replays do not publish live standings');
   snapshot = simulation.handle({ type: 'reset', revision: 3, input: setup.input });
   snapshot = simulation.handle({
     type: 'advance',
@@ -285,6 +291,7 @@ test('worker snapshots include independently driven bots through reset, reversal
     recycled: [],
   });
   assert.ok(snapshot.bots[0].metrics.elapsed > 0, 'bots resume after replay reset');
+  assert.equal(snapshot.standings.length, 2, 'reset publishes fresh standings on the first step');
 });
 
 test('bots-only mode has no player vehicle and follows bot telemetry through reversal and reset', (t) => {
@@ -427,12 +434,20 @@ test('spectating swaps the full model, camera telemetry and laps without resetti
   });
   client.advance(physicsStep * 4);
   const snapshot = worker.reply();
+  assert.deepEqual(client.standings, snapshot.standings);
+  assert.deepEqual(
+    client.raceEntrants.map(({ name }) => name),
+    ['Bot 1', 'Bot 2'],
+  );
+  const standings = client.standings;
   client.interpolate(1);
   const first = fixture.car.chassis.position.clone();
   const firstColor = fixture.car.paintColor;
   assert.equal(client.cycleObservedBot(), true);
   assert.equal(client.observedBot, 1);
   assert.notEqual(fixture.car.paintColor, firstColor);
+  assert.equal(fixture.car.paintColor, client.raceEntrants[1].color);
+  assert.equal(client.standings, standings, 'spectating does not change race identities');
   assert.ok(fixture.car.chassis.position.distanceTo(client.botMarkers[1].position) < 1e-8);
   assert.ok(first.distanceTo(client.botMarkers[0].position) < 1e-8);
   assert.deepEqual(client.engine, snapshot.bots[1].engine);
@@ -441,6 +456,8 @@ test('spectating swaps the full model, camera telemetry and laps without resetti
   assert.equal(client.cycleObservedBot(), true);
   assert.equal(client.observedBot, 0);
   assert.ok(fixture.car.chassis.position.distanceTo(first) < 1e-8);
+  client.reset();
+  assert.deepEqual(client.standings, [], 'clear standings while a reset is pending');
 });
 
 test('worker client bounds in-flight advances, ignores pre-reset replies, preserves snap samples, and surfaces failures', async (t) => {
