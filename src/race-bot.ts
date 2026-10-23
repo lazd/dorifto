@@ -2,15 +2,32 @@ import * as THREE from 'three';
 import { courseRoute, type CourseDefinition } from './courses';
 import { driveModes } from './drive-modes';
 import { createTrafficPlanner } from './bot-traffic';
+import { optimizeRacingLine } from './racing-line';
 import { defaultTuningPresets } from './configuration-state';
+import { vehicleSettings } from './vehicle-settings';
 import type {
   PhysicsConfiguration,
   PhysicsControls,
   createVehiclePhysics,
 } from './vehicle-physics';
 
-export const raceBotVersion = 3;
+export const raceBotVersion = 4;
 export const raceBotGridSpacing = 12;
+/** Driver model constants; `scripts/optimize-race-bot.mjs` searches these for lap time. */
+export const raceBotTuning = {
+  /** Cornering limit on asphalt, m/s² per unit of tire grip. */
+  corneringGrip: 10.5,
+  /** Straight-line braking limit, m/s². */
+  brakingLimit: 7,
+  /** Deceleration from lifting off (engine braking, drag and tire scrub), m/s². */
+  liftDeceleration: 2,
+  /** Speed drops (m/s) small enough to make by lifting rather than braking. */
+  smallSpeedDrop: 4,
+  /** Steering lookahead, seconds of travel beyond a fixed 5 m. */
+  lookaheadTime: 0.25,
+  /** Gap kept between the car body and the road edge on the racing line, m. */
+  edgeMargin: 0.8,
+};
 export const trainingCourses = { race: 'hillside', drift: 'sweeper' } as const;
 export type VehicleState = ReturnType<ReturnType<typeof createVehiclePhysics>['readState']>;
 
@@ -106,26 +123,10 @@ export function createDrivingMap(
     const tangent = route.getTangentAt(i / count);
     return new THREE.Vector3(tangent.z, 0, -tangent.x);
   });
-  const offsets = new Float64Array(count);
-  const line = centers.map((point) => point.clone());
-  const clearance = definition.width / 2 - halfWidth - 0.8;
+  const clearance = definition.width / 2 - halfWidth - raceBotTuning.edgeMargin;
   if (clearance <= 0) throw new Error('Course is too narrow for this vehicle');
-  // Minimize bending energy inside the road corridor, not just route length.
+  const line = optimizeRacingLine(centers, clearance);
   const at = (i: number) => line[wrap(i, count)];
-  const delta = new THREE.Vector3();
-  for (let pass = 0; pass < 300; pass++) {
-    for (let i = 0; i < count; i++) {
-      delta
-        .copy(at(i - 1))
-        .add(at(i + 1))
-        .multiplyScalar(4)
-        .sub(at(i - 2))
-        .sub(at(i + 2))
-        .addScaledVector(at(i), -6);
-      offsets[i] = clamp(offsets[i] + delta.dot(rights[i]) * 0.08, -clearance, clearance);
-      line[i].copy(centers[i]).addScaledVector(rights[i], offsets[i]);
-    }
-  }
   const samples = line.map((point, i) => {
     const before = at(i - 1);
     const after = at(i + 1);
@@ -158,7 +159,7 @@ export type DrivingMap = ReturnType<typeof createDrivingMap>;
 export function createRaceBot(
   map: DrivingMap,
   configuration: PhysicsConfiguration,
-  dimensions: { wheelbase: number; halfWidth: number; halfLength: number },
+  dimensions: { wheelbase: number; halfWidth: number; halfLength: number; wheelRadius: number },
   options: RaceBotOptions = defaultRaceBotOptions,
   saved?: RaceExperience,
 ) {
@@ -207,7 +208,18 @@ export function createRaceBot(
   const speeds = new Float64Array(count);
   const tune = driveModes[configuration.driveMode];
   const tuning = configuration.profiles[configuration.driveMode];
-  const trafficPlanner = createTrafficPlanner(map, dimensions, options);
+  // Skill is how close to the car's limits the driver dares to run, not a different car.
+  const limit = THREE.MathUtils.lerp(0.85, 1, options.skill);
+  const lateralAcceleration =
+    raceBotTuning.corneringGrip * Math.min(tuning.frontGrip, tuning.rearGrip) * limit;
+  const brakingDeceleration = raceBotTuning.brakingLimit * limit;
+  const { frontTorqueNm, rearTorqueNm } = vehicleSettings.brakes;
+  const fullBrakeDeceleration =
+    (2 * (frontTorqueNm + rearTorqueNm)) / dimensions.wheelRadius / vehicleSettings.massKg;
+  const trafficPlanner = createTrafficPlanner(map, dimensions, options, {
+    lateralAcceleration,
+    braking: brakingDeceleration,
+  });
   const sectorAt = (i: number) =>
     Math.min(sectorCount - 1, Math.floor((wrap(i, count) * sectorCount) / count));
   let index = -1;
@@ -223,15 +235,19 @@ export function createRaceBot(
   let lateralError = 0;
   let braking = false;
 
+  const cornerGrip = samples.map((sample) =>
+    Math.max(2, lateralAcceleration - Math.sign(sample.curvature) * sample.bank * 9.81),
+  );
+  // Friction circle: grip spent cornering is not available for braking or accelerating.
+  const remainingGrip = (i: number, speed: number) =>
+    Math.sqrt(
+      Math.max(0.15, 1 - ((speed ** 2 * Math.abs(samples[i].curvature)) / cornerGrip[i]) ** 2),
+    );
+
   function rebuildSpeeds() {
-    const lateralAcceleration =
-      (5 + options.skill * 2) * Math.min(tuning.frontGrip, tuning.rearGrip);
     for (let i = 0; i < count; i++) {
-      const sample = samples[i];
-      const bankAssist = -Math.sign(sample.curvature) * sample.bank * 9.81;
       const cornerSpeed = Math.sqrt(
-        Math.max(2, lateralAcceleration + bankAssist) /
-          Math.max(Math.abs(sample.curvature), 0.0005),
+        cornerGrip[i] / Math.max(Math.abs(samples[i].curvature), 0.0005),
       );
       speeds[i] = Math.min(65, cornerSpeed) * experience.pace[sectorAt(i)];
     }
@@ -239,12 +255,18 @@ export function createRaceBot(
     for (let pass = 0; pass < 2; pass++) {
       for (let i = count - 1; i >= 0; i--) {
         const next = (i + 1) % count;
-        const deceleration = Math.max(2, 5 + options.skill * 2 + samples[i].grade * 9.81);
+        const deceleration = Math.max(
+          2,
+          brakingDeceleration * remainingGrip(next, speeds[next]) + samples[i].grade * 9.81,
+        );
         speeds[i] = Math.min(speeds[i], Math.sqrt(speeds[next] ** 2 + 2 * deceleration * spacing));
       }
       for (let i = 0; i < count; i++) {
         const previous = wrap(i - 1, count);
-        const acceleration = Math.max(1, 5 - samples[i].grade * 9.81);
+        const acceleration = Math.max(
+          1,
+          5 * remainingGrip(previous, speeds[previous]) - samples[i].grade * 9.81,
+        );
         speeds[i] = Math.min(
           speeds[i],
           Math.sqrt(speeds[previous] ** 2 + 2 * acceleration * spacing),
@@ -315,7 +337,7 @@ export function createRaceBot(
     maxSlip = Math.max(maxSlip, Math.abs(state.slipAngle));
     if (outside || (state.speed > 5 && Math.abs(state.slipAngle) > 0.18)) troubled = true;
 
-    const lookahead = 5 + state.speed * (0.5 + options.skill * 0.15);
+    const lookahead = 5 + state.speed * raceBotTuning.lookaheadTime;
     const targetIndex = wrap(index + Math.max(1, Math.round(lookahead / spacing)), count);
     const target = trafficPlanner.update(state, index, lateralError, targetIndex, dt, traffic);
     const dx = target.x - state.x;
@@ -347,7 +369,7 @@ export function createRaceBot(
     const plannedSpeed = THREE.MathUtils.lerp(speeds[index], speeds[adjacent], Math.abs(fraction));
     const steeringSpeed = target.avoiding
       ? Math.sqrt(
-          (5 + options.skill * 2) /
+          lateralAcceleration /
             Math.max(Math.abs(Math.tan(wheelAngle) / dimensions.wheelbase), 0.0005),
         )
       : Infinity;
@@ -365,26 +387,40 @@ export function createRaceBot(
       controls.brake = 1;
       return controls;
     }
-    const speedError = targetSpeed - state.speed;
-    const plannedAcceleration =
-      (speeds[wrap(index + 1, count)] ** 2 - speeds[wrap(index - 1, count)] ** 2) / (4 * spacing);
-    const feedForward =
-      target.speedLimit < plannedSpeed
-        ? 0
-        : (plannedAcceleration * state.speed) / Math.max(plannedSpeed, 1);
-    const acceleration = feedForward + speedError * 1.5;
-    braking = targetSpeed === 0 || acceleration < (braking ? -0.15 : -0.9);
-    const brake = braking ? clamp(-acceleration / 8, 0, 1) : 0;
-    const brakingZone = plannedAcceleration < -0.8 && state.speed > plannedSpeed - 2;
+    // Small speed drops are made by lifting early; large ones by braking as late as the profile allows.
+    const { liftDeceleration, smallSpeedDrop } = raceBotTuning;
+    let required = (state.speed - targetSpeed) * 1.5;
+    let slowest = targetSpeed;
+    const reach = state.speed ** 2 / (2 * liftDeceleration);
+    for (let k = 1; (k - fraction) * spacing < reach; k++) {
+      const ahead = speeds[wrap(index + k, count)];
+      if (ahead >= state.speed) continue;
+      slowest = Math.min(slowest, ahead);
+      required = Math.max(
+        required,
+        (state.speed ** 2 - ahead ** 2) / (2 * Math.max((k - fraction) * spacing, 1)),
+      );
+    }
+    const lifting = state.speed - slowest < smallSpeedDrop;
+    const brakeAt = lifting ? liftDeceleration * 1.5 : brakingDeceleration * 0.9;
+    braking = targetSpeed === 0 || required > (braking ? liftDeceleration : brakeAt);
+    // Like the throttle, ease off the brakes as soon as the car starts to slide.
+    const brake = braking
+      ? clamp(required / fullBrakeDeceleration, 0, 1) *
+        (1 - THREE.MathUtils.smoothstep(Math.abs(state.slipAngle), 0.06, 0.2))
+      : 0;
     // Invert the drivetrain's sqrt(pedal) response so small torque requests stay small.
-    let throttle = braking || brakingZone ? 0 : clamp(acceleration / 4, 0, 1) ** 2;
+    let throttle =
+      braking || (lifting && required > liftDeceleration * 0.9)
+        ? 0
+        : clamp((targetSpeed - state.speed) * 2, 0, 1) ** 2;
     if (state.speed > 5)
       throttle *= 1 - THREE.MathUtils.smoothstep(Math.abs(state.slipAngle), 0.1, 0.28);
     controls.brake = targetSpeed === 0 ? 1 : approach(controls.brake, brake, dt * 8);
     controls.throttle =
       controls.brake > 0
         ? 0
-        : approach(controls.throttle, throttle, dt * (throttle > controls.throttle ? 2 : 6));
+        : approach(controls.throttle, throttle, dt * (throttle > controls.throttle ? 4 : 6));
     return controls;
   }
 

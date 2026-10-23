@@ -78,6 +78,8 @@ export function trainRaceBot(
       for (let step = 0; step < maxSeconds / physicsStep; step++) {
         const state = physics.readState();
         bot.update(state, physicsStep);
+        const wasInvalid = laps.invalid;
+        const lapTime = laps.current;
         physics.step();
         const metrics = bot.metrics;
         offTrack =
@@ -96,10 +98,17 @@ export function trainRaceBot(
           failure = 'spin';
           break;
         }
-        if (laps.lap !== lastLap) {
-          if (lastLap > 0 && laps.last !== null) {
+        // The game's track-limit rule voids a lap (without counting it) once all four tires
+        // leave the asphalt; invalid laps are reported so training cannot hide them.
+        const invalidCrossing = wasInvalid && !laps.invalid;
+        if (laps.lap !== lastLap || invalidCrossing) {
+          if (lastLap > 0) {
             const seconds = metrics.offTrackSeconds - lapOffTrack;
-            times.push({ time: laps.last, valid: seconds === 0, offTrackSeconds: seconds });
+            times.push({
+              time: invalidCrossing ? lapTime + physicsStep : (laps.last ?? 0),
+              valid: !invalidCrossing,
+              offTrackSeconds: seconds,
+            });
           }
           lastLap = laps.lap;
           lapOffTrack = metrics.offTrackSeconds;

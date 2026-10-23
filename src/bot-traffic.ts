@@ -8,6 +8,7 @@ export function createTrafficPlanner(
   map: DrivingMap,
   dimensions: { halfWidth: number; halfLength: number; wheelbase: number },
   options: RaceBotOptions,
+  { lateralAcceleration, braking }: { lateralAcceleration: number; braking: number },
 ) {
   const { centers, rights, samples, spacing } = map;
   const margin = lerp(0.8, 0.4, options.aggression);
@@ -82,10 +83,16 @@ export function createTrafficPlanner(
         other !== state &&
         Math.hypot(other.x - state.x, other.z - state.z) < horizon + dimensions.halfLength * 2,
     );
+    // The car ahead owns its line; only cars ahead shape the path, cars behind only matter when reversing.
+    const trackSin = Math.sin(samples[index].heading);
+    const trackCos = Math.cos(samples[index].heading);
+    const ahead = nearby.filter(
+      (other) => (other.x - state.x) * trackSin + (other.z - state.z) * trackCos > 0,
+    );
     const offsetAt = (i: number) =>
       (samples[i].x - centers[i].x) * rights[i].x + (samples[i].z - centers[i].z) * rights[i].z;
-    if (!nearby.length && !active) return result;
-    if (!nearby.length && Math.abs(lateral - offsetAt(index)) < 0.25) {
+    if (!ahead.length && !active) return result;
+    if (!ahead.length && Math.abs(lateral - offsetAt(index)) < 0.25) {
       reset();
       return result;
     }
@@ -122,7 +129,15 @@ export function createTrafficPlanner(
     const longitudinal =
       (state.x - centers[index].x) * -rights[index].z +
       (state.z - centers[index].z) * rights[index].x;
-    const lateralAcceleration = 4 + options.skill * 2;
+    // Paths may begin where the car already is (the racing line runs near the edge); they only
+    // fail by heading further outside than that.
+    const stateHeading = state.heading - samples[index].heading;
+    const roadEdge = Math.max(
+      map.definition.width / 2 - 0.25,
+      Math.abs(lateral) +
+        Math.abs(Math.cos(stateHeading)) * dimensions.halfWidth +
+        Math.abs(Math.sin(stateHeading)) * dimensions.halfLength,
+    );
     if (passingVehicle !== null) {
       const other = traffic[passingVehicle];
       if (
@@ -169,13 +184,18 @@ export function createTrafficPlanner(
         const footprint =
           Math.abs(Math.cos(relativeHeading)) * dimensions.halfWidth +
           Math.abs(Math.sin(relativeHeading)) * dimensions.halfLength;
-        const outside = Math.abs(offset) + footprint > map.definition.width / 2 - 0.25;
+        const outside = Math.abs(offset) + footprint > roadEdge;
         const time = Math.min(2, distance / Math.max(5, state.speed));
-        const blocker = nearby.find((other) => overlaps(x, z, heading, other, time));
+        const blocker = ahead.find((other) => overlaps(x, z, heading, other, time));
         if (outside || blocker)
           return {
             candidate,
             blocker,
+            blockerOffset: blocker
+              ? offset +
+                (blocker.x + blocker.vx * time - x) * rights[i].x +
+                (blocker.z + blocker.vz * time - z) * rights[i].z
+              : 0,
             freeDistance: Math.max(0, distance - spacing),
             speedLimit,
             curvature,
@@ -188,14 +208,21 @@ export function createTrafficPlanner(
             speedLimit,
             Math.sqrt(
               lateralAcceleration / Math.max(0.0005, Math.abs(bend)) +
-                2 * 5 * Math.max(0, distance - spacing),
+                2 * braking * Math.max(0, distance - spacing),
             ),
           );
         previousX = x;
         previousZ = z;
         previousHeading = heading;
       }
-      return { candidate, blocker: undefined, freeDistance: Infinity, speedLimit, curvature };
+      return {
+        candidate,
+        blocker: undefined,
+        blockerOffset: 0,
+        freeDistance: Infinity,
+        speedLimit,
+        curvature,
+      };
     }
 
     const ideal = offsetAt(targetIndex);
@@ -208,7 +235,16 @@ export function createTrafficPlanner(
       -roadLimit,
       roadLimit,
     ];
-    const plans = [...new Set(candidates)].map((candidate) => evaluate(candidate));
+    const racingPlan = evaluate(null);
+    if (racingPlan.blocker)
+      candidates.push(
+        clamp(racingPlan.blockerOffset - separation, -roadLimit, roadLimit),
+        clamp(racingPlan.blockerOffset + separation, -roadLimit, roadLimit),
+      );
+    const plans = [
+      racingPlan,
+      ...[...new Set(candidates.slice(1))].map((candidate) => evaluate(candidate)),
+    ];
     const score = (candidate: number | null) =>
       Math.abs((candidate ?? ideal) - ideal) * 0.15 +
       (candidate === lane ? 0 : 0.25) -
@@ -237,7 +273,7 @@ export function createTrafficPlanner(
       selected.candidate === null && Math.abs(lateral - offsetAt(index)) < 0.5
         ? Infinity
         : selected.speedLimit,
-      Math.sqrt(2 * 5 * Math.max(0, selected.freeDistance - 1)),
+      Math.sqrt(2 * braking * Math.max(0, selected.freeDistance - 1)),
     );
     const blocked = selected.freeDistance < 10;
     stuck = blocked && state.speed < 0.8 ? stuck + dt : 0;

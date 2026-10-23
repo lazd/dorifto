@@ -66,7 +66,7 @@ export function carPhysicsGeometry(model: THREE.Object3D) {
 }
 
 export function vehicleDimensions(
-  geometry: Pick<ReturnType<typeof carPhysicsGeometry>, 'centers' | 'collisionVertices'>,
+  geometry: Pick<ReturnType<typeof carPhysicsGeometry>, 'centers' | 'radii' | 'collisionVertices'>,
 ) {
   const bounds = new THREE.Box3().setFromPoints(geometry.collisionVertices);
   return {
@@ -79,5 +79,6 @@ export function vehicleDimensions(
     ),
     halfWidth: Math.max(Math.abs(bounds.min.x), Math.abs(bounds.max.x)),
     halfLength: Math.max(Math.abs(bounds.min.z), Math.abs(bounds.max.z)),
+    wheelRadius: geometry.radii.reduce((sum, radius) => sum + radius, 0) / geometry.radii.length,
   };
 }
