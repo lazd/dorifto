@@ -88,6 +88,12 @@ export function raceBotConfiguration(
   };
 }
 
+function readBotLearning(value: string | null) {
+  if (value === null || value === '1') return true;
+  if (value === '0') return false;
+  throw new Error('bot-learning must be 0 or 1');
+}
+
 export function readRaceBots(parameters: URLSearchParams): RaceBotOptions[] {
   const count = Number(parameters.get('bots') ?? (readBotsOnly(parameters) ? 1 : 0));
   if (!Number.isInteger(count) || count < 0 || count > 4)
@@ -105,7 +111,7 @@ export function readRaceBots(parameters: URLSearchParams): RaceBotOptions[] {
     aggression: parameters.has('bot-aggression')
       ? Number(parameters.get('bot-aggression'))
       : defaultRaceBotOptions.aggression,
-    learning: true,
+    learning: readBotLearning(parameters.get('bot-learning')),
   };
   for (const skill of skills) validateRaceBotOptions({ ...options, skill });
   for (const preset of presets)

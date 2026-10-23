@@ -201,6 +201,7 @@ bot behavior without a player vehicle influencing collisions.
   `bot-preset=grip-default` (or one comma-separated preset per bot) selects another
   built-in setup. Each preset has its own driver limits in `raceBotTunings`, searched
   with `scripts/optimize-race-bot.mjs --preset <id>`.
+- `bot-learning=0` freezes bots at their saved experience, matching optimizer runs.
 - `bot-skill=1,0.2` assigns different skills by bot index. In a two-bot spectator
   grid, bot 0 starts behind bot 1, making this a reproducible overtaking exercise.
 - Local traffic planning evaluates smooth lateral paths against oriented,
