@@ -1,4 +1,5 @@
 import { isDriveMode, type DriveMode } from './drive-modes';
+import { bindBotDialog } from './bot-dialog';
 import { createDrivingTuning } from './drift-tuning';
 import { redlineRpm } from './drivetrain';
 import { courseRoute, racetracks, type CourseDefinition } from './courses';
@@ -847,6 +848,7 @@ export function bindGameUI(
   );
   bindDialog('#tuning', '#drift-tuning');
   bindDialog('#settings', '#settings-dialog');
+  bindDialog('#bots', '#bots-dialog', bindBotDialog(element('#bots-dialog')));
   bindDialog('#help', '#help-dialog');
   let courseWeights = { ...defaultCourseWeights };
   const getCourseWeights = () => courseWeights;

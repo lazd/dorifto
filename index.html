@@ -316,6 +316,16 @@
         >
           🛠️
         </button>
+        <button
+          id="bots"
+          class="keycap"
+          type="button"
+          aria-haspopup="dialog"
+          aria-controls="bots-dialog"
+          title="Bots"
+        >
+          🤖
+        </button>
         <button id="help" class="keycap" type="button" aria-haspopup="dialog">❓</button>
       </div>
     </header>
@@ -452,6 +462,25 @@
           </div>
         </div>
       </section>
+    </dialog>
+    <dialog id="bots-dialog" class="slider-dialog" aria-labelledby="bots-title">
+      <form method="dialog" class="dialog-close">
+        <button type="submit" aria-label="Close" title="Close">×</button>
+      </form>
+      <h2 id="bots-title" tabindex="-1" autofocus>Bots</h2>
+      <p>Race bots join the current course. Applying reloads the page.</p>
+      <fieldset>
+        <label class="slider-control checkbox-control">
+          <input class="bots-only" type="checkbox" />
+          <span>Bots only (spectate the first bot)</span>
+        </label>
+      </fieldset>
+      <div class="bot-list"></div>
+      <p role="alert"></p>
+      <div class="dialog-actions">
+        <button class="bot-add keycap" type="button">Add bot</button>
+        <button class="bots-apply keycap" type="button">Apply</button>
+      </div>
     </dialog>
     <dialog id="help-dialog" aria-labelledby="help-title">
       <form method="dialog" class="dialog-close">

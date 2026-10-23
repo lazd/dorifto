@@ -1,6 +1,8 @@
 :root {
   --header-padding: 20px;
   --accent: #9ee8d5;
+  --border: #525c59;
+  --surface-sunken: #10191f;
   font-family: ui-sans-serif, system-ui, sans-serif;
   color: #eef6f5;
   background: #10191f;
@@ -782,6 +784,7 @@ dialog h2 {
 .slider-control {
   display: grid;
   grid-template-columns: 1fr auto;
+  align-items: center;
   gap: 5px 8px;
   margin-bottom: 14px;
 }
@@ -800,13 +803,14 @@ dialog h2 {
 .slider-dialog fieldset:disabled {
   opacity: 0.5;
 }
-#drift-tuning .assist-toggle {
+.checkbox-control {
+  display: grid;
   grid-template-columns: auto 1fr;
   align-items: center;
+  gap: 8px;
 }
-#drift-tuning .assist-toggle input {
+.slider-dialog .checkbox-control input {
   grid-column: 1;
-  width: auto;
 }
 .dialog-actions {
   display: flex;
@@ -814,8 +818,50 @@ dialog h2 {
   gap: 12px;
   margin-top: 20px;
 }
-#custom-course-error {
+.well {
+  padding: 14px 16px;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: inset 0 2px 6px #0009;
+}
+.well + .well {
+  margin-top: 12px;
+}
+.well-header,
+.well-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.well-header {
+  margin-bottom: 14px;
+}
+.avatar {
+  display: inline-grid;
+  place-content: center;
+  padding: 4px;
+  line-height: 1;
+  background: var(--avatar-color, var(--border));
+  border-radius: 6px;
+}
+.well-header h3 {
+  justify-content: flex-start;
+  align-items: center;
+  gap: 10px;
+  margin: 0 auto 0 0;
+  color: inherit;
+  font-size: 18px;
+}
+.well-footer {
+  justify-content: space-between;
+}
+#custom-course-error,
+#bots-dialog [role='alert'] {
   color: #ffb8a8;
+}
+#bots-dialog [role='alert']:empty {
+  display: none;
 }
 
 #controller-status {

@@ -17,6 +17,7 @@ import {
   validateRaceBotOptions,
   raceBotConfiguration,
   raceBotGridSpacing,
+  maxRaceBots,
   raceBotTunings,
   type DrivingMap,
   type RaceBotPreset,
@@ -61,7 +62,8 @@ function lapState(laps: LapTimer): LapState {
 export function createPhysicsSimulation(Ammo: typeof AmmoFactory, data: PhysicsInit) {
   const botsOnly = data.botsOnly ?? false;
   if (botsOnly && !data.bots?.length) throw new Error('Bots-only mode requires at least one bot');
-  if ((data.bots?.length ?? 0) > 4) throw new Error('At most four race bots are supported');
+  if ((data.bots?.length ?? 0) > maxRaceBots)
+    throw new Error(`At most ${maxRaceBots} race bots are supported`);
   data.bots?.forEach(validateRaceBotOptions);
   let configuration = data.configuration;
   let controls: PhysicsControls = {

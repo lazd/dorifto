@@ -6,13 +6,13 @@ dedicated Web Worker; there are no runtime CDN dependencies.
 
 ## Bot drivers
 
-Race bots are available through URL parameters:
+Race bots are configured with the 🤖 button or through URL parameters:
 
 ```text
 ?course=hillside&bots=2&bot-skill=0.8&bot-aggression=0.4
 ```
 
-`bots` accepts 0-4 (default 0); skill and aggression accept 0-1. Bots use real,
+`bots` accepts 0-8 (default 0); skill and aggression accept 0-1. Bots use real,
 colliding vehicles with independent **Grip / Fast (`grip-fast`)** setups, start ahead of the player and
 drive automatically. They derive a line and speed profile from any selected
 course, including reversed courses. A local traffic planner checks road-constrained

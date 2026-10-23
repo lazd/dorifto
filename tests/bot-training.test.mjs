@@ -16,6 +16,8 @@ let createRaceBot;
 let createDrivingMap;
 let vehicleDimensions;
 let readRaceBots;
+let writeRaceBots;
+let maxRaceBots;
 let defaultRaceBotOptions;
 let trainingCourses;
 let createVehiclePhysics;
@@ -42,6 +44,8 @@ before(async () => {
     createRaceBot,
     createDrivingMap,
     readRaceBots,
+    writeRaceBots,
+    maxRaceBots,
     defaultRaceBotOptions,
     trainingCourses,
     raceBotConfiguration,
@@ -137,7 +141,7 @@ test('driver rejects incompatible experience and invalid configuration', () => {
       }),
     /invalid/,
   );
-  assert.throws(() => readRaceBots(new URLSearchParams('bots=5')), /Bot count/);
+  assert.throws(() => readRaceBots(new URLSearchParams(`bots=${maxRaceBots + 1}`)), /Bot count/);
   assert.throws(() => readRaceBots(new URLSearchParams('bot-skill=NaN')), /skill/);
   assert.equal(
     readRaceBots(new URLSearchParams('bots=2&bot-skill=0.5&bot-aggression=1')).length,
@@ -151,6 +155,15 @@ test('driver rejects incompatible experience and invalid configuration', () => {
   );
   assert.throws(() => readRaceBots(new URLSearchParams('bots=3&bot-skill=1,0.2')), /per bot/);
   assert.throws(() => readRaceBots(new URLSearchParams('bots=2&bot-skill=1,nope')), /skill/);
+  const configured = readRaceBots(
+    new URLSearchParams(
+      'bots=2&bot-skill=1,0.2&bot-aggression=0,1&bot-preset=grip-default,grip-fast&bot-learning=0,1',
+    ),
+  );
+  const written = new URLSearchParams('course=hillside');
+  writeRaceBots(written, configured, true);
+  assert.deepEqual(readRaceBots(written), configured);
+  assert.equal(written.get('bots-only'), '1');
 });
 
 test('a skilled rear bot overtakes a less-skilled front bot in the shared world', () => {

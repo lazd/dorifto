@@ -13,6 +13,7 @@ import type {
 
 export const raceBotVersion = 5;
 export const raceBotGridSpacing = 12;
+export const maxRaceBots = 8;
 export const raceBotPresets = ['grip-default', 'grip-fast'] as const;
 export type RaceBotPreset = (typeof raceBotPresets)[number];
 export interface RaceBotTuning {
@@ -97,41 +98,73 @@ export function raceBotDriverName({ preset = 'grip-fast', skill }: RaceBotOption
   return `bot v${raceBotVersion} ${preset} ${id} skill ${skill}`;
 }
 
-function readBotLearning(value: string | null) {
-  if (value === null || value === '1') return true;
+function readBotLearning(value: string) {
+  if (value === '1') return true;
   if (value === '0') return false;
   throw new Error('bot-learning must be 0 or 1');
 }
 
+/** Reads a parameter holding one value for every bot or one comma-separated value per bot. */
+function readPerBot<Key extends keyof RaceBotOptions>(
+  parameters: URLSearchParams,
+  name: string,
+  key: Key,
+  count: number,
+  parse: (value: string) => RaceBotOptions[Key],
+) {
+  const parameter = parameters.get(name);
+  const values =
+    parameter === null
+      ? [defaultRaceBotOptions[key]]
+      : parameter.split(',').map((value) => parse(value.trim()));
+  for (const value of values) validateRaceBotOptions({ ...defaultRaceBotOptions, [key]: value });
+  if (values.length !== 1 && values.length !== count)
+    throw new Error(`${name} must be one value or one comma-separated value per bot`);
+  return Array.from({ length: count }, (_, index) => values[values.length === 1 ? 0 : index]);
+}
+
 export function readRaceBots(parameters: URLSearchParams): RaceBotOptions[] {
   const count = Number(parameters.get('bots') ?? (readBotsOnly(parameters) ? 1 : 0));
-  if (!Number.isInteger(count) || count < 0 || count > 4)
-    throw new Error('Bot count must be an integer from 0 to 4');
-  const skills = (parameters.get('bot-skill') ?? String(defaultRaceBotOptions.skill))
-    .split(',')
-    .map((value) => (value.trim() ? Number(value) : NaN));
-  if (skills.length !== 1 && skills.length !== count)
-    throw new Error('bot-skill must be one skill or one comma-separated skill per bot');
-  const presets = (parameters.get('bot-preset') ?? 'grip-fast').split(',').map((id) => id.trim());
-  if (presets.length !== 1 && presets.length !== count)
-    throw new Error('bot-preset must be one preset or one comma-separated preset per bot');
-  const options = {
-    skill: skills[0],
-    aggression: parameters.has('bot-aggression')
-      ? Number(parameters.get('bot-aggression'))
-      : defaultRaceBotOptions.aggression,
-    learning: readBotLearning(parameters.get('bot-learning')),
-  };
-  for (const skill of skills) validateRaceBotOptions({ ...options, skill });
-  for (const preset of presets)
-    validateRaceBotOptions({ ...options, preset: preset as RaceBotPreset });
+  if (!Number.isInteger(count) || count < 0 || count > maxRaceBots)
+    throw new Error(`Bot count must be an integer from 0 to ${maxRaceBots}`);
   if (readBotsOnly(parameters) && count === 0)
     throw new Error('Bots-only mode requires at least one bot');
-  return Array.from({ length: count }, (_, index) => ({
-    ...options,
-    skill: skills[skills.length === 1 ? 0 : index],
-    preset: presets[presets.length === 1 ? 0 : index] as RaceBotPreset,
+  const number = (value: string) => (value ? Number(value) : NaN);
+  const skills = readPerBot(parameters, 'bot-skill', 'skill', count, number);
+  const aggressions = readPerBot(parameters, 'bot-aggression', 'aggression', count, number);
+  const learning = readPerBot(parameters, 'bot-learning', 'learning', count, readBotLearning);
+  const presets = readPerBot(
+    parameters,
+    'bot-preset',
+    'preset',
+    count,
+    (value) => value as RaceBotPreset,
+  );
+  return skills.map((skill, index) => ({
+    skill,
+    aggression: aggressions[index],
+    learning: learning[index],
+    preset: presets[index],
   }));
+}
+
+/** Writes bots in the comma-separated URL form that `readRaceBots` reads. */
+export function writeRaceBots(
+  parameters: URLSearchParams,
+  bots: readonly RaceBotOptions[],
+  botsOnly: boolean,
+) {
+  const lists = {
+    'bot-skill': bots.map((bot) => bot.skill),
+    'bot-aggression': bots.map((bot) => bot.aggression),
+    'bot-preset': bots.map((bot) => bot.preset ?? defaultRaceBotOptions.preset),
+    'bot-learning': bots.map((bot) => (bot.learning ? 1 : 0)),
+  };
+  for (const name of ['bots', 'bots-only', ...Object.keys(lists)]) parameters.delete(name);
+  if (!bots.length) return;
+  parameters.set('bots', String(bots.length));
+  for (const [name, values] of Object.entries(lists)) parameters.set(name, values.join(','));
+  if (botsOnly) parameters.set('bots-only', '1');
 }
 
 export function readBotsOnly(parameters: URLSearchParams) {
@@ -171,7 +204,7 @@ export function createDrivingMap(
     normalAt(x: number, z: number): THREE.Vector3;
   },
   halfWidth: number,
-  edgeMargin: number,
+  edgeMargin = raceBotTunings['grip-fast'].edgeMargin,
 ) {
   const route = courseRoute(definition);
   const length = route.getLength();
