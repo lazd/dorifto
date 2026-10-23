@@ -4,7 +4,6 @@ import {
   raceBotPresets,
   readBotsOnly,
   readRaceBots,
-  writeRaceBots,
   type RaceBotOptions,
   type RaceBotPreset,
 } from './race-bot';
@@ -23,8 +22,10 @@ function control<T extends HTMLElement>(parent: HTMLElement, tag: string, text: 
   return { label, input };
 }
 
-/** Edits the bot URL parameters and reloads, since bots-only mode is fixed at startup. */
-export function bindBotDialog(root: HTMLElement) {
+export function bindBotDialog(
+  root: HTMLElement,
+  applySettings: (bots: RaceBotOptions[], botsOnly: boolean) => void | Promise<void>,
+) {
   const list = root.querySelector<HTMLElement>('.bot-list')!;
   const add = root.querySelector<HTMLButtonElement>('.bot-add')!;
   const botsOnly = root.querySelector<HTMLInputElement>('.bots-only')!;
@@ -116,10 +117,23 @@ export function bindBotDialog(root: HTMLElement) {
     bots.push({ ...defaultRaceBotOptions });
     render();
   });
-  root.querySelector('.bots-apply')!.addEventListener('click', () => {
-    const url = new URL(location.href);
-    writeRaceBots(url.searchParams, bots, botsOnly.checked);
-    location.assign(url);
+  const apply = root.querySelector<HTMLButtonElement>('.bots-apply')!;
+  apply.addEventListener('click', async () => {
+    apply.disabled = true;
+    error.textContent = '';
+    try {
+      await applySettings(
+        bots.map((bot) => ({ ...bot })),
+        botsOnly.checked,
+      );
+      root.closest('dialog')?.close();
+    } catch (problem) {
+      error.textContent = `Unable to apply bot settings: ${
+        problem instanceof Error ? problem.message : String(problem)
+      }`;
+    } finally {
+      apply.disabled = false;
+    }
   });
 
   return () => {

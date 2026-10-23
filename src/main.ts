@@ -42,7 +42,14 @@ import { createTireEffects } from './tire-effects';
 import { createMinimap } from './minimap';
 import { createLeaderboard } from './leaderboard';
 import { createPhysicsClient } from './physics-client';
-import { raceBotDriverName, raceBotTunings, readBotsOnly, readRaceBots } from './race-bot';
+import {
+  raceBotDriverName,
+  raceBotTunings,
+  readBotsOnly,
+  readRaceBots,
+  writeRaceBots,
+  type RaceBotOptions,
+} from './race-bot';
 import type { PhysicsRecord } from './physics-messages';
 import { readTurnSignMode } from './turn-sign';
 import { createGhostCar } from './ghost-car';
@@ -179,16 +186,21 @@ async function start() {
     history.replaceState(null, '', settingsUrl);
   }
   const courseUrl = new URL(location.href);
-  const botsOnly = readBotsOnly(courseUrl.searchParams);
+  let botsOnly = readBotsOnly(courseUrl.searchParams);
+  let botOptions = readRaceBots(courseUrl.searchParams);
   // Recordings follow the primary car: the player, or the first bot in bots-only mode.
   const botRunLaps = 3;
-  const recordedBot = botsOnly ? readRaceBots(courseUrl.searchParams)[0] : null;
-  const recordedDriver = recordedBot
-    ? {
-        driver: raceBotDriverName(recordedBot),
-        botTuning: { ...raceBotTunings[recordedBot.preset ?? 'grip-fast'] },
-      }
-    : { driver: 'human' };
+  const recordedDriverFor = (bots: RaceBotOptions[], only: boolean) => {
+    const recordedBot = only ? bots[0] : null;
+    return recordedBot
+      ? {
+          driver: raceBotDriverName(recordedBot),
+          botTuning: { ...raceBotTunings[recordedBot.preset ?? 'grip-fast'] },
+        }
+      : { driver: 'human' };
+  };
+  let recordedBot = botsOnly ? botOptions[0] : null;
+  let recordedDriver = recordedDriverFor(botOptions, botsOnly);
   if (botsOnly)
     configurationState.update({
       driveMode: 'grip',
@@ -379,8 +391,12 @@ async function start() {
 
   async function createCourseSession(
     nextDefinition: CourseDefinition,
-    course = createCourse(scene, nextDefinition, car.width),
+    existingCourse?: ReturnType<typeof createCourse>,
+    nextBots: RaceBotOptions[] = botOptions,
+    nextBotsOnly = botsOnly,
   ) {
+    const ownsCourse = existingCourse === undefined;
+    const course = existingCourse ?? createCourse(scene, nextDefinition, car.width);
     let physics: ReturnType<typeof createPhysicsClient> | undefined;
     try {
       const spawn = courseSpawn(nextDefinition);
@@ -389,8 +405,8 @@ async function start() {
       course.setLapGates(lapGateMode);
       course.terrain.grass.visible = showGrass;
       physics = createPhysicsClient({
-        bots: readRaceBots(courseUrl.searchParams),
-        botsOnly,
+        bots: nextBots,
+        botsOnly: nextBotsOnly,
         car,
         course,
         definition: nextDefinition,
@@ -429,8 +445,8 @@ async function start() {
       lighting.setupMaterials();
       return { course, terrain: course.terrain, spawn, laps, physics, drivingCamera };
     } catch (error) {
-      physics?.dispose();
-      course.dispose();
+      physics?.dispose(!botsOnly);
+      if (ownsCourse) course.dispose();
       throw error;
     }
   }
@@ -612,6 +628,51 @@ async function start() {
     syncLapRecorder();
   }
 
+  async function applyBotSettings(nextBots: RaceBotOptions[], nextBotsOnly: boolean) {
+    if (changingCourse) throw new Error('Wait for the current course change to finish');
+    changingCourse = true;
+    controls.clear();
+    audio.reset();
+    clearLapRecording();
+    gameState.update({ status: { visible: true, error: false, message: 'Resetting race…' } });
+    const previousSettings = configurationState.getState();
+    try {
+      const url = new URL(location.href);
+      const nextMode = readOption('mode', requestedMode, isDriveMode);
+      const nextCamera = readOption('camera', requestedCamera, isCameraStyle);
+      configurationState.update({
+        driveMode: nextBotsOnly ? 'grip' : nextMode,
+        cameraStyle: nextBotsOnly && !url.searchParams.has('camera') ? 'corner' : nextCamera,
+      });
+      const next = await createCourseSession(activeDefinition, course, nextBots, nextBotsOnly);
+      const previousPhysics = physics;
+      ({ course, terrain, spawn, laps, physics, drivingCamera } = next);
+      previousPhysics.dispose(botsOnly && !nextBotsOnly);
+      botsOnly = nextBotsOnly;
+      botOptions = nextBots;
+      recordedBot = botsOnly ? botOptions[0] : null;
+      recordedDriver = recordedDriverFor(botOptions, botsOnly);
+      if (botsOnly) controlKeys.add('Tab');
+      else controlKeys.delete('Tab');
+      writeRaceBots(url.searchParams, botOptions, botsOnly);
+      history.replaceState(null, '', url);
+      cameraNeedsReset = true;
+      gameState.update({ status: { visible: false, error: false, message: '' } });
+    } catch (error) {
+      configurationState.update({
+        driveMode: previousSettings.driveMode,
+        cameraStyle: previousSettings.cameraStyle,
+      });
+      physics.captureVisuals(true);
+      throw error;
+    } finally {
+      lastTime = 0;
+      changingCourse = false;
+    }
+  }
+
+  ui.setBotSettingsHandler(applyBotSettings);
+
   function reset() {
     controls.clear();
     audio.reset();
@@ -787,7 +848,7 @@ async function start() {
       const previousCourse = course;
       ({ course, terrain, spawn, laps, physics, drivingCamera } = next);
       tireEffects.setCourse(terrain, course.isAsphalt);
-      previousPhysics.dispose();
+      previousPhysics.dispose(false);
       previousCourse.dispose();
       const url = new URL(location.href);
       updateUrl(url);

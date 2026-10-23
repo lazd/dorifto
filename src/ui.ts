@@ -26,6 +26,7 @@ import { formatLapTime } from './laps';
 import type { Store } from './store';
 import { isTurnSignMode } from './turn-sign';
 import { isStereoStationSelection, stereoStations } from './stereo';
+import type { RaceBotOptions } from './race-bot';
 import {
   courseGenerationFields,
   defaultCourseWeights,
@@ -827,6 +828,12 @@ export function bindGameUI(
   game: Store<GameState>,
   reportError: (error: unknown) => void,
 ) {
+  let applyBotSettings: (
+    bots: RaceBotOptions[],
+    botsOnly: boolean,
+  ) => void | Promise<void> = () => {
+    throw new Error('Bot settings are not ready yet');
+  };
   const dismissError = bindStatusUI(game);
   bindCourseDisclosure();
   const speed = bindText('#speed');
@@ -848,7 +855,11 @@ export function bindGameUI(
   );
   bindDialog('#tuning', '#drift-tuning');
   bindDialog('#settings', '#settings-dialog');
-  bindDialog('#bots', '#bots-dialog', bindBotDialog(element('#bots-dialog')));
+  bindDialog(
+    '#bots',
+    '#bots-dialog',
+    bindBotDialog(element('#bots-dialog'), (bots, botsOnly) => applyBotSettings(bots, botsOnly)),
+  );
   bindDialog('#help', '#help-dialog');
   let courseWeights = { ...defaultCourseWeights };
   const getCourseWeights = () => courseWeights;
@@ -1074,5 +1085,12 @@ export function bindGameUI(
     },
     ['telemetry', 'controllerStatus'],
   );
-  return { getCourseWeights, setCourseWeights, dismissError };
+  return {
+    getCourseWeights,
+    setCourseWeights,
+    setBotSettingsHandler(handler: typeof applyBotSettings) {
+      applyBotSettings = handler;
+    },
+    dismissError,
+  };
 }

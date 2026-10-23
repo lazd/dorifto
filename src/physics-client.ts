@@ -471,14 +471,14 @@ export function createPhysicsClient({
         cone.visible = enabled && (!onlyCorners || corners.has(cone));
       });
     },
-    dispose() {
+    dispose(restoreCarPaint = true) {
       disposed = true;
       worker.terminate();
       recycled.length = 0;
       records = [];
       botCars.forEach((bot) => bot.dispose());
       botEffects.forEach((effect) => effect.dispose());
-      if (botsOnly) car.setPaintColor(carPaintColor);
+      if (botsOnly && restoreCarPaint) car.setPaintColor(carPaintColor);
     },
     get engine() {
       return observedTelemetry().engine;

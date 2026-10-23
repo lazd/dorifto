@@ -72,8 +72,8 @@ export interface RaceBotOptions {
 export const defaultRaceBotOptions: RaceBotOptions = {
   skill: 0.8,
   aggression: 0.4,
-  learning: true,
-  preset: 'grip-fast',
+  learning: false,
+  preset: 'grip-default',
 };
 
 export function raceBotConfiguration(
