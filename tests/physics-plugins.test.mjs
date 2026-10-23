@@ -3,6 +3,7 @@ import { after, before, test } from 'node:test';
 import * as THREE from 'three';
 import AmmoFactory from 'ammojs-typed';
 import { createServer } from 'vite';
+import { loadTrainingCarModel } from '../scripts/bot-assets.mjs';
 
 let server;
 let Ammo;
@@ -263,7 +264,7 @@ test('worker snapshots include independently driven bots through reset, reversal
   const initial = new Float32Array(snapshot.buffer);
   const botZ = initial[vehiclePoseCount * snapshotStride + 1 + poseStride + 2];
   let standings;
-  for (let i = 0; i < 30; i++) {
+  for (let i = 0; i < 45; i++) {
     snapshot = simulation.handle({
       type: 'advance',
       dt: physicsStep * 4,
@@ -318,13 +319,14 @@ test('worker snapshots include independently driven bots through reset, reversal
   assert.equal(snapshot.bots[0].metrics.elapsed, 0, 'bots do not participate in recorded replays');
   assert.equal(snapshot.standings, undefined, 'replays do not publish live standings');
   snapshot = simulation.handle({ type: 'reset', revision: 3, input: setup.input });
-  snapshot = simulation.handle({
-    type: 'advance',
-    dt: physicsStep * 4,
-    revision: 3,
-    input: setup.input,
-    recycled: [],
-  });
+  for (let i = 0; i < 31; i++)
+    snapshot = simulation.handle({
+      type: 'advance',
+      dt: physicsStep * 4,
+      revision: 3,
+      input: setup.input,
+      recycled: [],
+    });
   assert.ok(snapshot.bots[0].metrics.elapsed > 0, 'bots resume after replay reset');
   assert.equal(snapshot.standings.length, 2, 'reset publishes fresh standings on the first step');
 });
@@ -343,7 +345,7 @@ test('bots-only mode has no player vehicle and follows bot telemetry through rev
     'exactly one car is present, not a hidden player plus a bot',
   );
   Object.assign(setup.input.controls, { throttle: 0, brake: 1, reverse: 1, handbrake: true });
-  for (let i = 0; i < 10; i++)
+  for (let i = 0; i < 40; i++)
     snapshot = simulation.handle({
       type: 'advance',
       dt: physicsStep * 4,
@@ -406,6 +408,30 @@ test('lap limits receive each tire center and both full-width tread edges', () =
 async function clientFixture(t, options = {}) {
   const fixture = workerFixture();
   if (options.bots?.length) {
+    const previousDocument = globalThis.document;
+    const context = {
+      fillRect() {},
+      save() {},
+      restore() {},
+      translate() {},
+      scale() {},
+      beginPath() {},
+      moveTo() {},
+      lineTo() {},
+      stroke() {},
+    };
+    globalThis.document = { createElement: () => ({ getContext: () => context }) };
+    const model = await loadTrainingCarModel(server);
+    fixture.car.chassis.add(model);
+    t.after(() => {
+      if (previousDocument === undefined) delete globalThis.document;
+      else globalThis.document = previousDocument;
+      model.traverse((mesh) => {
+        if (!mesh.isMesh) return;
+        mesh.geometry.dispose();
+        mesh.material.dispose();
+      });
+    });
     fixture.simulation.dispose();
     Object.assign(fixture.data, options);
     fixture.simulation = createPhysicsSimulation(Ammo, fixture.data);
@@ -469,7 +495,7 @@ test('spectating swaps the full model, camera telemetry and laps without resetti
   });
   client.advance(physicsStep * 4);
   const snapshot = worker.reply();
-  assert.deepEqual(client.standings, snapshot.standings);
+  assert.deepEqual(client.standings, snapshot.standings ?? []);
   assert.deepEqual(
     client.raceEntrants.map(({ name }) => name),
     ['Cyan', 'Yellow'],

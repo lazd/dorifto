@@ -28,6 +28,7 @@ let raceBotConfiguration;
 let raceBotGridSpacing;
 let defaultTuningPresets;
 let createTrafficPlanner;
+let chaseSkillBonus;
 
 before(async () => {
   server = await createServer({
@@ -51,6 +52,7 @@ before(async () => {
     trainingCourses,
     raceBotConfiguration,
     raceBotGridSpacing,
+    chaseSkillBonus,
   } = await server.ssrLoadModule('/src/race-bot.ts'));
   ({ vehicleDimensions } = await server.ssrLoadModule('/src/car-geometry.ts'));
   ({ createVehiclePhysics, createPhysicsResources, createPhysicsWorld } =
@@ -157,8 +159,23 @@ test('driver rejects incompatible experience and invalid configuration', () => {
   assert.throws(() => readRaceBots(new URLSearchParams('bots=2&bot-skill=1,nope')), /skill/);
   const configured = readRaceBots(
     new URLSearchParams(
-      'bots=2&bot-skill=1,0.2&bot-aggression=0,1&bot-preset=grip-default,grip-fast&bot-learning=0,1',
+      'bots=2&bot-skill=1,0.2&bot-aggression=0,1&bot-preset=grip-default,grip-fast&bot-learning=0,1&bot-attack-throttle-boost=0,1',
     ),
+  );
+  assert.deepEqual(
+    configured.map(({ attackThrottleBoost }) => attackThrottleBoost),
+    [false, true],
+  );
+  assert.ok(
+    readRaceBots(new URLSearchParams()).every(({ attackThrottleBoost }) => attackThrottleBoost),
+  );
+  assert.throws(
+    () => readRaceBots(new URLSearchParams('bot-attack-throttle-boost=yes')),
+    /bot-attack-throttle-boost/,
+  );
+  assert.throws(
+    () => readRaceBots(new URLSearchParams('bots=3&bot-attack-throttle-boost=0,1')),
+    /per bot/,
   );
   const written = new URLSearchParams('course=hillside');
   writeRaceBots(written, configured, true);
@@ -167,6 +184,7 @@ test('driver rejects incompatible experience and invalid configuration', () => {
   writeRaceBots(written, [], false);
   assert.equal(written.get('bots'), '0');
   assert.equal(written.has('bots-only'), false);
+  assert.equal(written.has('bot-attack-throttle-boost'), false);
   assert.deepEqual(readRaceBots(written), []);
 });
 
@@ -270,6 +288,7 @@ test('a close inside-pass attempt boosts target speed without changing the solo 
   assert.deepEqual(solo.thinking, {
     phase: 'driving',
     maneuver: 'racing-line',
+    racePosition: null,
     conditions: { slowing: false, braking: false, stabilizing: false, stoppingBackward: false },
   });
   chasing.update(state, 1 / 120, [state, opponentAt(32)]);
@@ -278,8 +297,58 @@ test('a close inside-pass attempt boosts target speed without changing the solo 
   const planner = createTrafficPlanner(map, dimensions);
   assert.equal(planner.update(state, index, index, [state, opponent]).maneuver, 'attacking');
   chasing.update(state, 1 / 120, [state, opponent]);
-  assert.equal(chasing.metrics.targetSpeed, solo.metrics.targetSpeed * 1.06);
+  const higherSkill = createRaceBot(map, configuration, dimensions, {
+    ...options,
+    skill: options.skill + chaseSkillBonus,
+  });
+  higherSkill.update(state, 1 / 120);
+  assert.ok(Math.abs(chasing.metrics.targetSpeed - higherSkill.metrics.targetSpeed) < 1e-12);
+  assert.equal(chasing.metrics.effectiveSkill, options.skill + chaseSkillBonus);
   assert.equal(chasing.thinking.maneuver, 'attacking');
+  const boosted = createRaceBot(map, configuration, dimensions, {
+    ...options,
+    attackThrottleBoost: true,
+  });
+  const unboosted = createRaceBot(map, configuration, dimensions, {
+    ...options,
+    attackThrottleBoost: false,
+  });
+  let comparedPartialThrottle = false;
+  for (const point of map.samples) {
+    const sampleState = { ...state, x: point.x, z: point.z, heading: point.heading };
+    unboosted.reset();
+    unboosted.update(sampleState, 0.5);
+    const speed = unboosted.metrics.targetSpeed - 0.1;
+    const moving = {
+      ...sampleState,
+      speed,
+      vx: Math.sin(point.heading) * speed,
+      vz: Math.cos(point.heading) * speed,
+    };
+    const distance = dimensions.halfLength * 2 + 1;
+    const nearby = {
+      ...moving,
+      x: moving.x + Math.sin(point.heading) * distance,
+      z: moving.z + Math.cos(point.heading) * distance,
+    };
+    boosted.reset();
+    unboosted.reset();
+    boosted.update(moving, 0.5, [nearby], 2);
+    unboosted.update(moving, 0.5, [nearby], 2);
+    assert.equal(boosted.metrics.targetSpeed, unboosted.metrics.targetSpeed);
+    assert.equal(boosted.controls.steer, unboosted.controls.steer);
+    assert.equal(boosted.controls.brake, unboosted.controls.brake);
+    if (
+      unboosted.thinking.maneuver === 'attacking' &&
+      unboosted.controls.throttle > 0 &&
+      unboosted.controls.throttle < 0.8
+    ) {
+      assert.ok(Math.abs(boosted.controls.throttle - unboosted.controls.throttle * 1.25) < 1e-12);
+      comparedPartialThrottle = true;
+      break;
+    }
+  }
+  assert.ok(comparedPartialThrottle, 'on/off comparison exercises unsaturated attack throttle');
   chasing.update(state, 1 / 120);
   assert.equal(chasing.metrics.targetSpeed, solo.metrics.targetSpeed);
   assert.equal(chasing.thinking.maneuver, 'returning');
@@ -294,17 +363,134 @@ test('a close inside-pass attempt boosts target speed without changing the solo 
   assert.deepEqual(chasing.thinking, {
     phase: 'driving',
     maneuver: 'racing-line',
+    racePosition: null,
     conditions: { slowing: false, braking: false, stabilizing: false, stoppingBackward: false },
   });
   const stationary = { ...state, speed: 0, vx: 0, vz: 0 };
   chasing.update(stationary, 0.01);
   assert.equal(chasing.thinking.phase, 'launching');
-  chasing.update(stationary, 2.6);
+  chasing.update(stationary, 0.99);
+  assert.equal(chasing.thinking.phase, 'launching');
+  assert.equal(chasing.controls.steer, 0, 'holds initial heading for one second');
+  chasing.update(stationary, 1.99);
+  assert.equal(chasing.thinking.phase, 'launching');
+  chasing.update(stationary, 0.02);
   assert.equal(chasing.thinking.phase, 'driving');
+});
+
+test('trailing race position enables chase pace without inside-line steering or attack throttle', () => {
+  const dimensions = vehicleDimensions(geometry);
+  const map = createDrivingMap(definition, terrain, dimensions.halfWidth);
+  const options = { ...defaultRaceBotOptions, learning: false };
+  const leader = createRaceBot(map, configuration, dimensions, options);
+  const chaser = createRaceBot(map, configuration, dimensions, options);
+  const point = map.samples[0];
+  const state = {
+    x: point.x,
+    z: point.z,
+    heading: point.heading,
+    speed: 15,
+    vx: Math.sin(point.heading) * 15,
+    vz: Math.cos(point.heading) * 15,
+    slipAngle: 0,
+    yawRate: 0,
+  };
+  const planner = createTrafficPlanner(map, dimensions);
+  const normal = { ...planner.update(state, 0, 2, [], 1 / 120, 1) };
+  const chase = { ...planner.update(state, 0, 2, [], 1 / 120, 2) };
+  assert.deepEqual(chase, { ...normal, maneuver: 'chasing' });
+  assert.equal(planner.update(state, 0, 2, [], 1 / 120, 1).maneuver, 'racing-line');
+  leader.update(state, 1 / 120, [], 1);
+  chaser.update(state, 1 / 120, [], 2);
+  assert.equal(chaser.thinking.racePosition, 2);
+  assert.equal(chaser.thinking.maneuver, 'chasing');
+  const higherSkill = createRaceBot(map, configuration, dimensions, {
+    ...options,
+    skill: Math.min(1, options.skill + chaseSkillBonus),
+  });
+  higherSkill.update(state, 1 / 120);
+  assert.ok(Math.abs(chaser.metrics.targetSpeed - higherSkill.metrics.targetSpeed) < 1e-12);
+  assert.equal(chaser.controls.steer, leader.controls.steer);
+  chaser.update(state, 1 / 120, [], 1);
+  assert.equal(chaser.thinking.maneuver, 'racing-line');
+  assert.equal(chaser.metrics.targetSpeed, leader.metrics.targetSpeed);
+  chaser.reset();
+  assert.equal(chaser.thinking.racePosition, null);
+});
+
+test('chase uses the full higher-skill control profile, capped at skill 1.01', () => {
+  const dimensions = vehicleDimensions(geometry);
+  const map = createDrivingMap(definition, terrain, dimensions.halfWidth);
+  for (const skill of [0.9, 0.95, 1]) {
+    const effectiveSkill = Math.min(1.01, skill + chaseSkillBonus);
+    const options = {
+      ...defaultRaceBotOptions,
+      skill,
+      learning: false,
+      attackThrottleBoost: false,
+    };
+    const chaser = createRaceBot(map, configuration, dimensions, options);
+    const reference = createRaceBot(map, configuration, dimensions, {
+      ...options,
+      skill: Math.min(1, effectiveSkill),
+    });
+    let brakingSamples = 0;
+    let throttleSamples = 0;
+    for (const point of map.samples) {
+      for (const speed of [15, 30, 45]) {
+        const state = {
+          x: point.x,
+          z: point.z,
+          heading: point.heading,
+          speed,
+          vx: Math.sin(point.heading) * speed,
+          vz: Math.cos(point.heading) * speed,
+          slipAngle: 0,
+          yawRate: 0,
+        };
+        chaser.reset();
+        reference.reset();
+        chaser.update(state, 0.5, [], 2);
+        reference.update(state, 0.5, [], effectiveSkill > 1 ? 2 : 1);
+        assert.equal(chaser.metrics.effectiveSkill, effectiveSkill);
+        assert.ok(Math.abs(chaser.metrics.targetSpeed - reference.metrics.targetSpeed) < 1e-10);
+        for (const key of ['steer', 'throttle', 'brake'])
+          assert.ok(Math.abs(chaser.controls[key] - reference.controls[key]) < 1e-10, key);
+        if (chaser.controls.brake > 0) brakingSamples++;
+        if (chaser.controls.throttle > 0) throttleSamples++;
+      }
+    }
+    assert.ok(brakingSamples > 0 && throttleSamples > 0, 'compares braking and acceleration');
+    chaser.update(
+      {
+        x: map.samples[0].x,
+        z: map.samples[0].z,
+        heading: map.samples[0].heading,
+        speed: 15,
+        vx: 0,
+        vz: 15,
+        slipAngle: 0,
+        yawRate: 0,
+      },
+      1 / 120,
+      [],
+      1,
+    );
+    assert.equal(chaser.metrics.effectiveSkill, skill);
+    chaser.reset();
+    assert.equal(chaser.metrics.effectiveSkill, skill);
+  }
 });
 
 for (const scenario of [
   { name: 'a skilled rear bot overtakes a less-skilled front bot', skills: '1,0.2', pass: true },
+  {
+    name: 'player and bots can rev while held for settling',
+    skills: '1,0.2',
+    pass: true,
+    player: true,
+  },
+  { name: 'a 0.90 chasing bot gains on a 0.95 leader', skills: '0.9,0.95', pass: false },
 ])
   test(`${scenario.name} in the shared world`, () => {
     const bots = readRaceBots(new URLSearchParams(`bots=2&bot-skill=${scenario.skills}`));
@@ -312,7 +498,7 @@ for (const scenario of [
       definition,
       configuration,
       bots,
-      botsOnly: true,
+      botsOnly: !scenario.player,
       terrain: terrain.physicsData(),
       car: {
         centers: geometry.centers.map((point) => point.toArray()),
@@ -326,7 +512,13 @@ for (const scenario of [
     });
     const input = {
       configuration,
-      controls: { throttle: 0, brake: 0, reverse: 0, steer: 0, handbrake: false },
+      controls: {
+        throttle: scenario.player ? 1 : 0,
+        brake: 0,
+        reverse: 0,
+        steer: 0,
+        handbrake: false,
+      },
       signs: [],
       lights: {
         headlights: false,
@@ -340,7 +532,49 @@ for (const scenario of [
     const clearance = raceBotGridSpacing + vehicleDimensions(geometry).halfLength * 2;
     let reachedTarget = false;
     try {
-      for (let step = 0; step < 40 * 20; step++) {
+      snapshot = simulation.handle({
+        type: 'advance',
+        revision: 0,
+        dt: 1 / 120,
+        input,
+        recycled: [snapshot.buffer],
+      });
+      assert.ok(snapshot.bots.every(({ metrics }) => metrics.elapsed === 0));
+      assert.ok(snapshot.bots.every(({ thinking }) => thinking.phase === 'settling'));
+      const initialRpm = snapshot.bots[0].engine.rpm;
+      const playerRpm = snapshot.telemetry.engine.rpm;
+      for (let step = 0; step < 10; step++)
+        snapshot = simulation.handle({
+          type: 'advance',
+          revision: 0,
+          dt: 0.05,
+          input,
+          recycled: [snapshot.buffer],
+        });
+      assert.ok(snapshot.bots[0].engine.rpm > initialRpm, 'bots rev while settling');
+      assert.ok(snapshot.bots.every(({ metrics }) => metrics.elapsed === 0));
+      assert.ok(snapshot.bots.every(({ braking, spawnBrakeHeld }) => braking && spawnBrakeHeld));
+      if (scenario.player) {
+        assert.ok(snapshot.telemetry.engine.rpm > playerRpm, 'player can rev while held');
+        assert.equal(snapshot.telemetry.spawnBrakeHeld, true);
+        assert.equal(snapshot.telemetry.braking, true);
+        assert.ok(snapshot.telemetry.motion.speed < 0.5, 'revving does not drive the held car');
+      }
+      for (let step = 0; step < 10; step++)
+        snapshot = simulation.handle({
+          type: 'advance',
+          revision: 0,
+          dt: 0.05,
+          input,
+          recycled: [snapshot.buffer],
+        });
+      assert.deepEqual(
+        snapshot.bots.map(({ thinking }) => thinking.racePosition),
+        [2, 1],
+      );
+      assert.equal(snapshot.bots[0].thinking.maneuver, 'chasing');
+      assert.equal(snapshot.bots[1].thinking.maneuver, 'racing-line');
+      for (let step = 0; step < (scenario.pass ? 40 : 180) * 20; step++) {
         snapshot = simulation.handle({
           type: 'advance',
           revision: 0,
@@ -349,15 +583,20 @@ for (const scenario of [
           recycled: [snapshot.buffer],
         });
         if (
+          (scenario.pass || snapshot.bots[0].metrics.elapsed > 20) &&
           snapshot.bots[0].metrics.progress - snapshot.bots[1].metrics.progress >
-          (scenario.pass ? clearance : raceBotGridSpacing / 2)
+            (scenario.pass ? clearance : raceBotGridSpacing / 2)
         ) {
           reachedTarget = true;
           break;
         }
       }
       assert.ok(reachedTarget, JSON.stringify(snapshot.bots.map(({ metrics }) => metrics)));
-      assert.ok(snapshot.bots.every(({ metrics }) => metrics.offTrackSeconds === 0));
+      const checkedBots = scenario.pass ? snapshot.bots : snapshot.bots.slice(0, 1);
+      assert.ok(
+        checkedBots.every(({ metrics }) => metrics.offTrackSeconds === 0),
+        JSON.stringify(snapshot.bots.map(({ metrics }) => metrics)),
+      );
       assert.ok(snapshot.bots.every(({ thinking }) => thinking.phase === 'driving'));
     } finally {
       simulation.dispose();

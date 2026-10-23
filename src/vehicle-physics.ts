@@ -338,7 +338,7 @@ export function createVehiclePhysics({
     velocity.set(0, 0, 0);
   }
 
-  function beforeStep() {
+  function beforeStep(startHeld = false) {
     const { driveMode, profiles } = configurationState.getState();
     const tune = driveModes[driveMode];
     const tireTune = profiles[driveMode];
@@ -350,11 +350,11 @@ export function createVehiclePhysics({
     tireForward.set(0, 0, 1).applyQuaternion(physicsRotation);
     const forwardSpeed =
       linear.x() * tireForward.x + linear.y() * tireForward.y + linear.z() * tireForward.z;
-    if (controls.throttle > 0 || controls.reverse > 0) spawnBrakeHeld = false;
+    if (!startHeld && (controls.throttle > 0 || controls.reverse > 0)) spawnBrakeHeld = false;
     if (spawnBrakeHeld || controls.throttle > 0 || controls.reverse === 0) reversing = false;
     else if (Math.abs(forwardSpeed) < 0.5 && Math.abs(angular.y()) < 0.5 && speed < 4)
       reversing = true;
-    const input = controls.steer;
+    const input = startHeld ? 0 : controls.steer;
     const steeringLimit =
       THREE.MathUtils.lerp(tune.steeringLow, tune.steeringHigh, Math.min(speed / 140, 1)) *
       tireTune.steeringScale;
@@ -362,12 +362,16 @@ export function createVehiclePhysics({
     const smoothedSteering = THREE.MathUtils.damp(steering, targetSteering, 10, fixedStep);
     const maxChange = tireTune.steeringRate * fixedStep;
     steering += THREE.MathUtils.clamp(smoothedSteering - steering, -maxChange, maxChange);
-    const brakeAmount = spawnBrakeHeld ? 1 : reversing ? 0 : controls.brake;
+    const brakeAmount = startHeld || spawnBrakeHeld ? 1 : reversing ? 0 : controls.brake;
     const braking = brakeAmount > 0;
-    const handbrake = controls.handbrake;
+    const handbrake = startHeld || controls.handbrake;
     const throttle = reversing ? controls.reverse : controls.throttle;
     brakestand =
-      throttle > 0 && braking && !reversing && speed < settings.brakes.brakestandMaxSpeedKmh;
+      !startHeld &&
+      throttle > 0 &&
+      braking &&
+      !reversing &&
+      speed < settings.brakes.brakestandMaxSpeedKmh;
     burnout = 0;
     for (const tire of tireSounds) tire.slip = tire.speed = tire.load = 0;
     for (const plugin of plugins) plugin.beforeStep?.(fixedStep);
@@ -597,7 +601,7 @@ export function createVehiclePhysics({
     body.applyCentralForce(vector);
   }
 
-  function afterStep() {
+  function afterStep(startHeld = false) {
     for (const plugin of plugins) plugin.afterStep?.(fixedStep);
     const lapOrigin = body.getWorldTransform().getOrigin();
     lapPosition.set(lapOrigin.x(), lapOrigin.y(), lapOrigin.z());
@@ -624,7 +628,7 @@ export function createVehiclePhysics({
       lapTirePoints[i * 3 + 1].copy(center).add(lapTireAcross);
       lapTirePoints[i * 3 + 2].copy(center).sub(lapTireAcross);
     }
-    laps.update(lapPosition, fixedStep, lapTirePoints);
+    if (!startHeld) laps.update(lapPosition, fixedStep, lapTirePoints);
     offTrackTime = isAsphalt(lapPosition) ? 0 : offTrackTime + fixedStep;
     car.setHazards(offTrackTime > 3 && (offTrackTime - 3) % 0.8 < 0.4, offTrackTime > 3);
     for (let i = 0; i < 4; i++) {

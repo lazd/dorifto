@@ -35,6 +35,7 @@ export function createTrafficPlanner(
     targetIndex: number,
     traffic: readonly VehicleState[],
     dt = 1 / 120,
+    racePosition: number | null = null,
   ) {
     headingAdjustment = MathUtils.lerp(headingAdjustment, 0, 1 - Math.exp(-dt / 0.4));
     if (Math.abs(headingAdjustment) < 0.0001) headingAdjustment = 0;
@@ -42,7 +43,7 @@ export function createTrafficPlanner(
     result.x = target.x;
     result.z = target.z;
     result.curvature = map.samples[index].curvature;
-    result.maneuver = 'racing-line';
+    result.maneuver = racePosition !== null && racePosition > 1 ? 'chasing' : 'racing-line';
     const right = map.rights[index];
     const separation = dimensions.halfWidth * 2 + 0.5;
     let nearest = dimensions.halfLength * 2 + 3;

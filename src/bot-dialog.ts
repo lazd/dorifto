@@ -95,14 +95,19 @@ export function bindBotDialog(
           bots.splice(index, 1);
           render();
         });
-        const learning = control<HTMLInputElement>(footer, 'input', 'Learns between laps');
-        learning.label.className = 'checkbox-control';
-        learning.label.prepend(learning.input);
-        learning.input.type = 'checkbox';
-        learning.input.checked = bot.learning;
-        learning.input.addEventListener('change', () => {
-          bot.learning = learning.input.checked;
-        });
+        for (const [key, text] of [
+          ['learning', 'Learns between laps'],
+          ['attackThrottleBoost', 'Attack throttle boost'],
+        ] as const) {
+          const { label, input } = control<HTMLInputElement>(footer, 'input', text);
+          label.className = 'checkbox-control';
+          label.prepend(input);
+          input.type = 'checkbox';
+          input.checked = key === 'learning' ? bot.learning : bot.attackThrottleBoost !== false;
+          input.addEventListener('change', () => {
+            bot[key] = input.checked;
+          });
+        }
         footer.append(remove);
         well.append(footer);
         return well;

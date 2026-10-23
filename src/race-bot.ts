@@ -66,13 +66,15 @@ export const raceBotTunings: Record<RaceBotPreset, RaceBotTuning> = {
 };
 /** Acceleration the speed profile and throttle assume at full throttle, m/s². */
 const driveAcceleration = 5;
-const chaseSkillLimit = 1.06;
+export const chaseSkillBonus = 0.06;
 export const trainingCourses = { race: 'hillside', drift: 'sweeper' } as const;
 export type VehicleState = ReturnType<ReturnType<typeof createVehiclePhysics>['readState']>;
 
 export interface BotThinking {
-  phase: 'launching' | 'driving';
-  maneuver: 'racing-line' | 'attacking' | 'returning';
+  phase: 'settling' | 'launching' | 'driving';
+  maneuver: 'racing-line' | 'chasing' | 'attacking' | 'returning';
+  /** One-based race position, or null when driving without race standings. */
+  racePosition: number | null;
   conditions: {
     slowing: boolean;
     braking: boolean;
@@ -85,6 +87,8 @@ export interface RaceBotOptions {
   skill: number;
   aggression: number;
   learning: boolean;
+  /** Extra 25% pedal request during inside attacks; enabled when omitted. */
+  attackThrottleBoost?: boolean;
   /** Built-in car setup the bot drives; defaults to Grip / Fast. */
   preset?: RaceBotPreset;
 }
@@ -93,6 +97,7 @@ export const defaultRaceBotOptions: RaceBotOptions = {
   skill: 0.8,
   aggression: 0.4,
   learning: false,
+  attackThrottleBoost: true,
   preset: 'grip-default',
 };
 
@@ -118,10 +123,10 @@ export function raceBotDriverName({ preset = 'grip-fast', skill }: RaceBotOption
   return `bot v${raceBotVersion} ${preset} ${id} skill ${skill}`;
 }
 
-function readBotLearning(value: string) {
+function readBotBoolean(name: string, value: string) {
   if (value === '1') return true;
   if (value === '0') return false;
-  throw new Error('bot-learning must be 0 or 1');
+  throw new Error(`${name} must be 0 or 1`);
 }
 
 /** Reads a parameter holding one value for every bot or one comma-separated value per bot. */
@@ -152,7 +157,16 @@ export function readRaceBots(parameters: URLSearchParams): RaceBotOptions[] {
   const number = (value: string) => (value ? Number(value) : NaN);
   const skills = readPerBot(parameters, 'bot-skill', 'skill', count, number);
   const aggressions = readPerBot(parameters, 'bot-aggression', 'aggression', count, number);
-  const learning = readPerBot(parameters, 'bot-learning', 'learning', count, readBotLearning);
+  const learning = readPerBot(parameters, 'bot-learning', 'learning', count, (value) =>
+    readBotBoolean('bot-learning', value),
+  );
+  const attackThrottleBoost = readPerBot(
+    parameters,
+    'bot-attack-throttle-boost',
+    'attackThrottleBoost',
+    count,
+    (value) => readBotBoolean('bot-attack-throttle-boost', value),
+  );
   const presets = readPerBot(
     parameters,
     'bot-preset',
@@ -164,6 +178,7 @@ export function readRaceBots(parameters: URLSearchParams): RaceBotOptions[] {
     skill,
     aggression: aggressions[index],
     learning: learning[index],
+    attackThrottleBoost: attackThrottleBoost[index],
     preset: presets[index],
   }));
 }
@@ -179,6 +194,7 @@ export function writeRaceBots(
     'bot-aggression': bots.map((bot) => bot.aggression),
     'bot-preset': bots.map((bot) => bot.preset ?? defaultRaceBotOptions.preset),
     'bot-learning': bots.map((bot) => (bot.learning ? 1 : 0)),
+    'bot-attack-throttle-boost': bots.map((bot) => (bot.attackThrottleBoost !== false ? 1 : 0)),
   };
   for (const name of ['bots', 'bots-only', ...Object.keys(lists)]) parameters.delete(name);
   parameters.set('bots', String(bots.length));
@@ -213,6 +229,8 @@ export function validateRaceBotOptions(options: RaceBotOptions) {
       throw new Error(`Race bot ${key} must be between 0 and 1`);
   }
   if (typeof options.learning !== 'boolean') throw new Error('Invalid race bot learning option');
+  if (options.attackThrottleBoost !== undefined && typeof options.attackThrottleBoost !== 'boolean')
+    throw new Error('Invalid race bot attack throttle boost option');
   if (options.preset !== undefined && !raceBotPresets.includes(options.preset))
     throw new Error(`Race bot preset must be one of ${raceBotPresets.join(', ')}`);
 }
@@ -325,14 +343,8 @@ export function createRaceBot(
     steer: 0,
     handbrake: false,
   };
-  const speeds = new Float64Array(count);
   const tune = driveModes[configuration.driveMode];
   const tuning = configuration.profiles[configuration.driveMode];
-  // Skill is how close to the car's limits the driver dares to run, not a different car.
-  const limit = THREE.MathUtils.lerp(0.85, 1, options.skill);
-  const lateralAcceleration =
-    driver.corneringGrip * Math.min(tuning.frontGrip, tuning.rearGrip) * limit;
-  const brakingDeceleration = driver.brakingLimit * limit;
   const { frontTorqueNm, rearTorqueNm } = vehicleSettings.brakes;
   const fullBrakeDeceleration =
     (2 * (frontTorqueNm + rearTorqueNm)) / dimensions.wheelRadius / vehicleSettings.massKg;
@@ -360,6 +372,7 @@ export function createRaceBot(
   const thinking: BotThinking = {
     phase: 'driving',
     maneuver: 'racing-line',
+    racePosition: null,
     conditions: {
       slowing: false,
       braking: false,
@@ -368,14 +381,28 @@ export function createRaceBot(
     },
   };
 
-  const cornerGrip = samples.map((sample) =>
-    Math.max(2, lateralAcceleration - Math.sign(sample.curvature) * sample.bank * 9.81),
-  );
   const { verticalCurvatures } = map;
   const loadAt = (i: number, speed: number) =>
     Math.max(0.2, 1 + (speed ** 2 * verticalCurvatures[i]) / 9.81);
+  function createSpeedProfile(skill: number) {
+    // Skill changes the driver's limits, never the vehicle's physical performance.
+    const limit = THREE.MathUtils.lerp(0.85, 1, skill);
+    const lateralAcceleration =
+      driver.corneringGrip * Math.min(tuning.frontGrip, tuning.rearGrip) * limit;
+    return {
+      skill,
+      brakingDeceleration: driver.brakingLimit * limit,
+      cornerGrip: samples.map((sample) =>
+        Math.max(2, lateralAcceleration - Math.sign(sample.curvature) * sample.bank * 9.81),
+      ),
+      speeds: new Float64Array(count),
+    };
+  }
+  const normalProfile = createSpeedProfile(options.skill);
+  const chaseProfile = createSpeedProfile(Math.min(1.01, options.skill + chaseSkillBonus));
+  let profile = normalProfile;
   // Friction circle: grip spent cornering is not available for braking or accelerating.
-  const remainingGrip = (i: number, speed: number) =>
+  const remainingGrip = (cornerGrip: readonly number[], i: number, speed: number) =>
     loadAt(i, speed) *
     Math.sqrt(
       Math.max(
@@ -385,7 +412,13 @@ export function createRaceBot(
       ),
     );
 
-  function rebuildSpeeds() {
+  function rebuildProfile({
+    skill,
+    speeds,
+    cornerGrip,
+    brakingDeceleration,
+  }: typeof normalProfile) {
+    const paceRatio = (0.9 + skill * 0.05) / (0.9 + options.skill * 0.05);
     for (let i = 0; i < count; i++) {
       // Solves v²|κ| = grip·(1 + v²κᵥ/g) so crests lower the corner speed.
       const cornerSpeed = Math.sqrt(
@@ -395,7 +428,7 @@ export function createRaceBot(
             0.0005,
           ),
       );
-      speeds[i] = Math.min(65, cornerSpeed) * experience.pace[sectorAt(i)];
+      speeds[i] = Math.min(65, cornerSpeed) * experience.pace[sectorAt(i)] * paceRatio;
     }
     // Two circular passes propagate braking across the start line.
     for (let pass = 0; pass < 2; pass++) {
@@ -403,7 +436,8 @@ export function createRaceBot(
         const next = (i + 1) % count;
         const deceleration = Math.max(
           2,
-          brakingDeceleration * remainingGrip(next, speeds[next]) + samples[i].grade * 9.81,
+          brakingDeceleration * remainingGrip(cornerGrip, next, speeds[next]) +
+            samples[i].grade * 9.81,
         );
         speeds[i] = Math.min(speeds[i], Math.sqrt(speeds[next] ** 2 + 2 * deceleration * spacing));
       }
@@ -411,7 +445,8 @@ export function createRaceBot(
         const previous = wrap(i - 1, count);
         const acceleration = Math.max(
           1,
-          driveAcceleration * remainingGrip(previous, speeds[previous]) - samples[i].grade * 9.81,
+          driveAcceleration * remainingGrip(cornerGrip, previous, speeds[previous]) -
+            samples[i].grade * 9.81,
         );
         speeds[i] = Math.min(
           speeds[i],
@@ -419,6 +454,10 @@ export function createRaceBot(
         );
       }
     }
+  }
+  function rebuildSpeeds() {
+    rebuildProfile(normalProfile);
+    rebuildProfile(chaseProfile);
   }
   rebuildSpeeds();
 
@@ -434,6 +473,7 @@ export function createRaceBot(
   }
 
   function reset() {
+    profile = normalProfile;
     trafficPlanner.reset();
     index = sector = -1;
     troubled = false;
@@ -446,12 +486,18 @@ export function createRaceBot(
     launchHeading = undefined;
     thinking.phase = 'driving';
     thinking.maneuver = 'racing-line';
+    thinking.racePosition = null;
     for (const key of Object.keys(thinking.conditions) as (keyof BotThinking['conditions'])[])
       thinking.conditions[key] = false;
     Object.assign(controls, { throttle: 0, brake: 0, reverse: 0, steer: 0, handbrake: false });
   }
 
-  function update(state: VehicleState, dt: number, traffic: readonly VehicleState[] = []) {
+  function update(
+    state: VehicleState,
+    dt: number,
+    traffic: readonly VehicleState[] = [],
+    racePosition: number | null = null,
+  ) {
     if (index < 0 && state.speed < 2) launchHeading = state.heading;
     let nearest = index;
     let bestDistance = Infinity;
@@ -494,9 +540,14 @@ export function createRaceBot(
 
     const lookahead = 5 + state.speed * driver.lookaheadTime;
     const targetIndex = wrap(index + Math.max(1, Math.round(lookahead / spacing)), count);
-    const target = trafficPlanner.update(state, index, targetIndex, traffic, dt);
-    thinking.phase = launchHeading !== undefined && elapsed < 2.6 ? 'launching' : 'driving';
+    const target = trafficPlanner.update(state, index, targetIndex, traffic, dt, racePosition);
+    const attacking = target.maneuver === 'attacking';
+    profile =
+      attacking || (racePosition !== null && racePosition > 1) ? chaseProfile : normalProfile;
+    const { speeds, cornerGrip, brakingDeceleration } = profile;
+    thinking.phase = launchHeading !== undefined && elapsed < 3 ? 'launching' : 'driving';
     thinking.maneuver = target.maneuver;
+    thinking.racePosition = racePosition;
     const slipLimit = driver.countersteerSlip;
     const dx = target.x - state.x;
     const dz = target.z - state.z;
@@ -505,7 +556,7 @@ export function createRaceBot(
       launchHeading === undefined
         ? lineHeading
         : launchHeading +
-          angle(lineHeading - launchHeading) * THREE.MathUtils.smoothstep(elapsed, 0.6, 2.6);
+          angle(lineHeading - launchHeading) * THREE.MathUtils.smoothstep(elapsed, 1, 3);
     const bearing = angle(heading - state.heading);
     const wheelAngle = Math.atan2(
       2 * dimensions.wheelbase * Math.sin(bearing),
@@ -536,8 +587,7 @@ export function createRaceBot(
     );
     const adjacent = wrap(index + (fraction < 0 ? -1 : 1), count);
     const plannedSpeed = THREE.MathUtils.lerp(speeds[index], speeds[adjacent], Math.abs(fraction));
-    const attacking = target.maneuver === 'attacking';
-    targetSpeed = plannedSpeed * (attacking ? chaseSkillLimit : 1);
+    targetSpeed = plannedSpeed;
     controls.reverse = 0;
     thinking.conditions.stoppingBackward =
       state.vx * Math.sin(state.heading) + state.vz * Math.cos(state.heading) < -0.3;
@@ -597,7 +647,7 @@ export function createRaceBot(
       : 0;
     // Invert the drivetrain's sqrt(pedal) response so small torque requests stay small.
     let throttle = braking ? 0 : clamp((desired + coast) / driveAcceleration, 0, 1) ** 2;
-    if (attacking) throttle = Math.min(1, throttle * 1.25);
+    if (attacking && options.attackThrottleBoost !== false) throttle = Math.min(1, throttle * 1.25);
     if (state.speed > 5)
       throttle *=
         1 - THREE.MathUtils.smoothstep(Math.abs(state.slipAngle), slipLimit, slipLimit * 2);
@@ -636,6 +686,7 @@ export function createRaceBot(
         brakeApplications,
         throttleLifts,
         targetSpeed,
+        effectiveSkill: profile.skill,
         lateralError,
       };
     },

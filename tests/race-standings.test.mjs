@@ -77,6 +77,8 @@ function fixture(reverse = false, starts = [-10, -20]) {
 for (const reverse of [false, true]) {
   test(`live projection, time gaps and overtakes${reverse ? ' on a reversed course' : ''}`, () => {
     const race = fixture(reverse);
+    assert.equal(race.tracker.position(0), 1);
+    assert.equal(race.tracker.position(1), 2);
     let standings = race.drive(5, [20, 20]);
     assert.deepEqual(
       standings.map(({ entrant }) => entrant),
@@ -89,6 +91,8 @@ for (const reverse of [false, true]) {
     assert.ok(Math.abs(standings[1].gap - 2.5) < standingsGapInterval + 0.03);
     standings = race.drive(5, [5, 30]);
     assert.equal(standings[0].entrant, 1, 'ordering changes without a finish-line crossing');
+    assert.equal(race.tracker.position(1), 1);
+    assert.equal(race.tracker.position(0), 2);
     assert.ok(standings[1].gap > 0);
   });
 }

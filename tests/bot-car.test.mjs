@@ -63,6 +63,17 @@ test('bot exteriors isolate lamps and render thinking on independent segmented p
       }
     }
     assert.equal(botPlateText({ ...thinking, phase: 'launching' }), botPlateText(thinking));
+    assert.equal(botPlateText({ ...thinking, phase: 'settling' }).split('\n')[0], 'ANTILAG');
+    for (const maneuver of ['racing-line', 'chasing', 'attacking', 'returning']) {
+      const text = botPlateText({ ...thinking, phase: 'launching', maneuver });
+      assert.equal(
+        text.split('\n')[0],
+        maneuver === 'racing-line' || maneuver === 'chasing'
+          ? 'LAUNCH'
+          : botPlateText({ ...thinking, maneuver }).split('\n')[0],
+      );
+    }
+    assert.equal(botPlateText({ ...thinking, maneuver: 'chasing' }), 'CHASE\nBRAKE STOP\nOH SHIT');
     assert.equal(
       botPlateText({
         ...thinking,
@@ -88,6 +99,28 @@ test('bot exteriors isolate lamps and render thinking on independent segmented p
     assert.notEqual(originalPlate.material.map, texture);
     fullDetailPlate.dispose();
     assert.equal(originalPlate.geometry, geometry);
+    assert.equal(originalPlate.material, material);
+    const previousSession = createBotPlate(model);
+    const nextSession = createBotPlate(model);
+    const nextGeometry = originalPlate.geometry;
+    const nextMaterial = originalPlate.material;
+    previousSession.dispose();
+    assert.equal(originalPlate.geometry, nextGeometry, 'old session preserves the new plate');
+    assert.equal(originalPlate.material, nextMaterial);
+    nextSession.setThinking(thinking);
+    nextSession.dispose();
+    assert.equal(originalPlate.geometry, geometry);
+    assert.equal(originalPlate.material, material);
+    const retainedSession = createBotPlate(model);
+    const retainedMaterial = originalPlate.material;
+    const failedSession = createBotPlate(model);
+    failedSession.dispose();
+    assert.equal(
+      originalPlate.material,
+      retainedMaterial,
+      'failed handoff restores the active plate',
+    );
+    retainedSession.dispose();
     assert.equal(originalPlate.material, material);
     const lamps = [];
     model.traverse((mesh) => {

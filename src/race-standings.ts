@@ -103,6 +103,14 @@ export function createRaceStandings(
   let gapLeader = -1;
   const gaps: (number | null)[] = entrants.map(() => null);
   const order = entrants.map((_, i) => i);
+  const positions = entrants.map(() => 0);
+
+  function rank() {
+    order.sort((a, b) => states[b].distance - states[a].distance || a - b);
+    order.forEach((entrant, index) => {
+      positions[entrant] = index + 1;
+    });
+  }
 
   function project(
     position: RaceEntrant['position'],
@@ -155,6 +163,7 @@ export function createRaceStandings(
       state.marker = state.distance;
       state.history.reset(state.distance, elapsed);
     });
+    rank();
   }
 
   function update(dt: number): RaceStanding[] | undefined {
@@ -187,9 +196,9 @@ export function createRaceStandings(
       state.lap = entrant.laps.lap;
       state.lapStartedAt = entrant.laps.lapStartedAt;
     });
+    rank();
     if (elapsed + 1e-9 < nextStandings) return;
     nextStandings = elapsed + standingsInterval;
-    order.sort((a, b) => states[b].distance - states[a].distance || a - b);
     const leader = states[order[0]];
     if (!leader) return [];
     if (elapsed + 1e-9 >= nextGaps || gapLeader !== order[0]) {
@@ -209,5 +218,5 @@ export function createRaceStandings(
   }
 
   reset();
-  return { reset, update };
+  return { reset, update, position: (entrant: number) => positions[entrant] };
 }

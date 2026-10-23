@@ -192,7 +192,13 @@ live experience import, and automatic tuning searches remain future work.
 
 ### Race presentation and pace follow-up
 
-From a standing launch, bots hold their initial heading for 0.6 seconds to build
+Races with bots first run one second of settling physics with all cars held on
+the brakes and their clutches disengaged. The player can rev with the accelerator;
+bots rev at 60% throttle. Bot launch timers, lap timing, and race progress tracking
+start after release. Resets and settings/direction changes restart settling.
+Solo driving and headless solo training retain their existing immediate start.
+
+From a standing launch, bots hold their initial heading for 1 second to build
 speed, then smoothly blend into racing-line steering over 2 seconds. Rolling
 starts use racing-line steering immediately; resets restart the launch phase.
 
@@ -205,16 +211,39 @@ Every live bot has a three-row segmented license-plate readout, including the
 full-detail car used when observing bots. It reports the controller's `thinking`
 snapshot independently of numeric metrics, with lettering tinted to match the car:
 
-- **Maneuver:** `CRUISE`, `ATTACK`, or `RETURN` while the passing offset eases away.
+- **Maneuver:** `CRUISE` when leading/solo, `CHASE` when behind in race position,
+  `ATTACK` for a close inside pass, or `RETURN` while the passing offset eases away.
 - **Speed control:** `BRAKE` when requesting braking, otherwise `LIFT` when planning
   to slow without braking. These labels are mutually exclusive. `STOP` also appears
   when braking backward motion. No active conditions is `--`.
 - **Stabilization:** `OH SHIT` during excess-slip stabilization, otherwise `--`.
 
-The launch/driving phase remains available in telemetry but is not shown on the plate.
+During the one-second pre-start settling/revving period the plate reads `ANTILAG`.
+This is a presentation label, not an additional engine/boost physics effect.
+During the launch hold and the full steering blend, `LAUNCH` replaces `CRUISE`
+and `CHASE`. `ATTACK` and `RETURN` take priority immediately.
 
 These categories overlap: an attacking bot can still brake or countersteer.
-Attack pace is tied to the inside-pass attempt, not a separate distant chase mode.
+The controller receives its one-based `racePosition` from the same progress/lap
+ranking used by the standings, including the player. Ranking updates every physics
+step independently of HUD publication; resets and direction changes rebuild it.
+Trailing bots use an effective skill of `min(1.01, configured skill + 0.06)` regardless
+of the distance to the leader, without changing their racing line. Both the current
+target and braking lookahead use that skill's complete cornering/braking speed
+profile and initial pace scaling. Normal and boosted profiles are cached and rebuilt
+only when learning changes pace. Learned experience remains owned by the configured
+skill; its relative pace adjustments are preserved in the boosted profile.
+Close inside attacks use the same skill bump, adjust the line, and optionally
+request 25% more throttle. Chase and attack skill bumps do not stack. Returning
+from an attack keeps chase pace if still behind, but only eases away the existing
+heading offset. Solo training has no race position or chase boost.
+
+Each bot's **Attack throttle boost** checkbox enables/disables only the extra
+25% throttle request during attacks (enabled by default). The +0.06 effective-skill
+bump, passing line, chase behavior, and slip/braking safeguards are unchanged.
+`bot-attack-throttle-boost=0,1` disables it for the first bot and enables it for
+the second; a single `0` or `1` applies to all bots. The dialog applies settings
+through the URL and reloads, allowing repeatable on/off comparisons.
 The readout describes decisions, not necessarily the instantaneous pedal position
 while controls are smoothing. Textures update only when the displayed text changes;
 resets and replay clear stale labels to `--`. Replays do not record bot thinking.

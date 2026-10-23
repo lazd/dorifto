@@ -185,6 +185,7 @@ export function createPhysicsSimulation(Ammo: typeof AmmoFactory, data: PhysicsI
   const physics = playerPhysics ?? bots[0].physics;
   if (botsOnly) controls = bots[0].controls;
   const vehicles = [...(playerPhysics ? [playerPhysics] : []), ...bots.map((bot) => bot.physics)];
+  let settlingTime = 0;
   function createStandings() {
     return vehicles.length > 1
       ? createRaceStandings(mapDefinition, [
@@ -255,6 +256,7 @@ export function createPhysicsSimulation(Ammo: typeof AmmoFactory, data: PhysicsI
   }
 
   function reset() {
+    settlingTime = bots.length ? 1 : 0;
     accumulator = recordingSteps = 0;
     replay = null;
     impacts.length = 0;
@@ -291,19 +293,40 @@ export function createPhysicsSimulation(Ammo: typeof AmmoFactory, data: PhysicsI
           physics.stepReplay(replayBefore, replayAfter, physicsStep);
           capture(false, true);
         } else {
-          if (bots.length) {
+          const startHeld = settlingTime > 1e-9;
+          if (startHeld) {
+            for (const bot of bots)
+              Object.assign(bot.controls, {
+                throttle: 0.6,
+                brake: 1,
+                reverse: 0,
+                steer: 0,
+                handbrake: false,
+              });
+          } else if (bots.length) {
             const states = vehicles.map((vehicle) => vehicle.readState());
             bots.forEach((bot, index) => {
               bot.previousVelocity.copy(bot.physics.simulationVelocity);
               const stateIndex = index + (botsOnly ? 0 : 1);
-              Object.assign(bot.controls, bot.bot.update(states[stateIndex], physicsStep, states));
+              Object.assign(
+                bot.controls,
+                bot.bot.update(
+                  states[stateIndex],
+                  physicsStep,
+                  states,
+                  raceStandings?.position(stateIndex) ?? null,
+                ),
+              );
             });
           }
-          for (const vehicle of vehicles) vehicle.beforeStep();
+          for (const vehicle of vehicles) vehicle.beforeStep(startHeld);
           simulationWorld.step(physicsStep);
-          for (const vehicle of vehicles) vehicle.afterStep();
+          for (const vehicle of vehicles) vehicle.afterStep(startHeld);
           capture(false);
-          standings = raceStandings?.update(physicsStep) ?? standings;
+          if (startHeld) {
+            settlingTime = Math.max(0, settlingTime - physicsStep);
+            if (settlingTime <= 1e-9) raceStandings?.reset();
+          } else standings = raceStandings?.update(physicsStep) ?? standings;
           if (!physics.spawnBrakeHeld) {
             const record: PhysicsRecord = { laps: lapState(laps) };
             if (recordingSteps++ % sampleSteps === 0) {
@@ -423,7 +446,8 @@ export function createPhysicsSimulation(Ammo: typeof AmmoFactory, data: PhysicsI
       bots: bots.map((bot) => ({
         laps: lapState(bot.laps),
         metrics: bot.bot.metrics,
-        thinking: bot.bot.thinking,
+        thinking:
+          settlingTime > 1e-9 ? { ...bot.bot.thinking, phase: 'settling' } : bot.bot.thinking,
         engine: { ...bot.physics.engine },
         tireSounds: bot.physics.tireSounds.map((tire) => ({ ...tire })),
         wheelContacts: [...bot.physics.wheelContacts],
