@@ -18,16 +18,14 @@ export class TireSmoke {
   private readonly dust = new Float32Array(count);
   private readonly lighting = new Float32Array(count * 3);
   private readonly localLights: {
-    light: THREE.SpotLight | THREE.RectAreaLight;
+    light: THREE.SpotLight;
     position: THREE.Vector3;
     direction: THREE.Vector3;
-    inverse: THREE.Matrix4;
   }[] = [];
   private readonly daylight: (THREE.HemisphereLight | THREE.DirectionalLight)[] = [];
   private readonly ambient = new THREE.Color();
   private readonly illumination = new THREE.Color();
   private readonly lightOffset = new THREE.Vector3();
-  private readonly nearestLightPoint = new THREE.Vector3();
   private readonly particlePosition = new THREE.Vector3();
   private readonly geometry = new THREE.InstancedBufferGeometry();
   private readonly depthTarget = new THREE.WebGLRenderTarget(1, 1, {
@@ -134,12 +132,11 @@ export class TireSmoke {
     private readonly chassis: THREE.Object3D,
   ) {
     scene.traverse((object) => {
-      if (object instanceof THREE.SpotLight || object instanceof THREE.RectAreaLight) {
+      if (object instanceof THREE.SpotLight) {
         this.localLights.push({
           light: object,
           position: new THREE.Vector3(),
           direction: new THREE.Vector3(),
-          inverse: new THREE.Matrix4(),
         });
       } else if (
         object instanceof THREE.HemisphereLight ||
@@ -266,16 +263,10 @@ export class TireSmoke {
       this.ambient.g += light.color.g * strength;
       this.ambient.b += light.color.b * strength;
     }
-    for (const entry of this.localLights) {
-      const { light, position, direction, inverse } = entry;
+    for (const { light, position, direction } of this.localLights) {
       position.setFromMatrixPosition(light.matrixWorld);
-      if (light instanceof THREE.SpotLight) {
-        light.target.updateWorldMatrix(true, false);
-        direction.setFromMatrixPosition(light.target.matrixWorld).sub(position).normalize();
-      } else {
-        direction.set(0, 0, -1).transformDirection(light.matrixWorld);
-        inverse.copy(light.matrixWorld).invert();
-      }
+      light.target.updateWorldMatrix(true, false);
+      direction.setFromMatrixPosition(light.target.matrixWorld).sub(position).normalize();
     }
     for (let i = 0; i < this.geometry.instanceCount; i++) {
       this.particlePosition.fromArray(this.centers, i * 3);
@@ -288,45 +279,22 @@ export class TireSmoke {
         this.illumination.g = THREE.MathUtils.lerp(luminance, this.ambient.g, 0.2);
         this.illumination.b = THREE.MathUtils.lerp(luminance, this.ambient.b, 0.2);
       }
-      for (const { light, position, direction, inverse } of this.localLights) {
+      for (const { light, position, direction } of this.localLights) {
         if (!light.visible || light.intensity <= 0) continue;
-        let strength: number;
-        if (light instanceof THREE.SpotLight) {
-          this.lightOffset.copy(this.particlePosition).sub(position);
-          const distance = this.lightOffset.length();
-          if (light.distance > 0 && distance >= light.distance) continue;
-          const angle = this.lightOffset
-            .multiplyScalar(1 / Math.max(distance, 0.001))
-            .dot(direction);
-          const cone = THREE.MathUtils.smoothstep(
-            angle,
-            Math.cos(light.angle),
-            Math.cos(light.angle * (1 - light.penumbra)),
-          );
-          const cutoff =
-            light.distance > 0 ? Math.pow(1 - Math.pow(distance / light.distance, 4), 2) : 1;
-          strength =
-            (0.08 * light.intensity * cone * cutoff) /
-            Math.max(Math.pow(distance, light.decay), 0.01);
-        } else {
-          // Approximate the strip as a one-sided area emitter, not a point at its center.
-          this.nearestLightPoint.copy(this.particlePosition).applyMatrix4(inverse);
-          this.nearestLightPoint
-            .set(
-              THREE.MathUtils.clamp(this.nearestLightPoint.x, -light.width / 2, light.width / 2),
-              THREE.MathUtils.clamp(this.nearestLightPoint.y, -light.height / 2, light.height / 2),
-              0,
-            )
-            .applyMatrix4(light.matrixWorld);
-          this.lightOffset.copy(this.particlePosition).sub(this.nearestLightPoint);
-          const distance = this.lightOffset.length();
-          const facing = this.lightOffset
-            .multiplyScalar(1 / Math.max(distance, 0.001))
-            .dot(direction);
-          const area = light.width * light.height;
-          strength =
-            (0.2 * light.intensity * area * Math.max(facing, 0)) / (distance * distance + area);
-        }
+        this.lightOffset.copy(this.particlePosition).sub(position);
+        const distance = this.lightOffset.length();
+        if (light.distance > 0 && distance >= light.distance) continue;
+        const angle = this.lightOffset.multiplyScalar(1 / Math.max(distance, 0.001)).dot(direction);
+        const cone = THREE.MathUtils.smoothstep(
+          angle,
+          Math.cos(light.angle),
+          Math.cos(light.angle * (1 - light.penumbra)),
+        );
+        const cutoff =
+          light.distance > 0 ? Math.pow(1 - Math.pow(distance / light.distance, 4), 2) : 1;
+        let strength =
+          (0.08 * light.intensity * cone * cutoff) /
+          Math.max(Math.pow(distance, light.decay), 0.01);
         strength = Math.min(strength, 3);
         this.illumination.r += light.color.r * strength;
         this.illumination.g += light.color.g * strength;

@@ -76,6 +76,7 @@ export function createPhysicsClient({
       course.isAsphalt,
     );
   });
+  const groundHeight = (x: number, z: number) => course.terrain.heightAt(x, z);
   let botTelemetry: PhysicsSnapshot['bots'] = [];
   const botVelocity = botCars.map(() => new THREE.Vector3());
   const listenerRight = new THREE.Vector3();
@@ -97,7 +98,7 @@ export function createPhysicsClient({
   }));
   for (const bot of botCars) {
     if (!car.chassis.parent) throw new Error('Bot cars require a scene');
-    car.chassis.parent.add(bot.chassis, ...bot.wheels, ...bot.hubs);
+    car.chassis.parent.add(bot.chassis, ...bot.wheels, ...bot.hubs, ...bot.groundGlows);
   }
   const worker = new Worker(new URL('./physics-worker.ts', import.meta.url), { type: 'module' });
   const objects = [
@@ -403,6 +404,7 @@ export function createPhysicsClient({
         }
         car.setHeadlights(headlights);
         car.setUnderglow(time === 'night');
+        car.updateGround(groundHeight);
         const velocity = botVelocity[index].fromArray(state.velocity);
         const speed = velocity.length();
         const slip =

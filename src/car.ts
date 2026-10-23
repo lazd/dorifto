@@ -1,18 +1,17 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { Reflector } from 'three/addons/objects/Reflector.js';
-import { RectAreaLightUniformsLib } from 'three/addons/lights/RectAreaLightUniformsLib.js';
 import { normalizeCarModel, carPhysicsGeometry, carCorner } from './car-geometry';
 import { idleRpm, redlineRpm } from './drivetrain';
 import type { ConfigurationState } from './configuration-state';
+import { createUnderglow, type GroundHeight } from './ground-glow';
 import { clockText, createSegmentedDisplay, mapDisplaySurface } from './segmented-display';
 
 type StandardMesh = THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>;
 
 export const carLightLayers = { headlights: 2, interior: 3 } as const;
-export const headlightIntensity = 550;
+const headlightIntensity = 550;
 export const carUnderglowColor = 0xff1824;
-export const underglowIntensity = 18;
 
 export const carPaintColor = 0xe51b23;
 const WHEEL_COLOR = 0x111216;
@@ -23,10 +22,6 @@ const CABIN_LIGHTING = {
   night: { color: 0xffd9b0, intensity: 0.06 },
 } satisfies Record<ConfigurationState['timeOfDay'], { color: number; intensity: number }>;
 const GAUGE_LIGHT_INTENSITY = 0.8;
-// Chassis offsets in meters: X is lateral, +Z is forward.
-const UNDERGLOW_SIDE_OFFSET = 0.55;
-const UNDERGLOW_FRONT_OFFSET = 1.85;
-const UNDERGLOW_REAR_OFFSET = 1.5;
 // Needle sweeps measured from the instrument-cluster texture.
 const SPEEDO_DEG_PER_KMH = 1.338;
 const TACH_DEG_PER_RPM = 0.02759;
@@ -389,11 +384,6 @@ export async function loadCar(onProgress?: (fraction: number) => void) {
     light.position.copy(box.getCenter(new THREE.Vector3()));
     light.position.z = box.min.z - 0.18;
     light.target.position.set(light.position.x, light.position.y - 0.35, light.position.z - 2.5);
-    light.castShadow = true;
-    light.shadow.mapSize.set(256, 256);
-    light.shadow.camera.near = 0.03;
-    light.shadow.normalBias = 0.015;
-    light.visible = false;
     chassis.add(light, light.target);
     return light;
   }
@@ -442,10 +432,7 @@ export async function loadCar(onProgress?: (fraction: number) => void) {
   function setReversing(reversing: boolean) {
     setIntensity(reverseLenses, reversing ? 4 : 0);
     for (const material of reverseLenses) material.color.setHex(reversing ? 0xffffff : 0x555555);
-    for (const light of reverseLights) {
-      light.intensity = reversing ? 4 : 0;
-      light.visible = reversing;
-    }
+    for (const light of reverseLights) light.intensity = reversing ? 4 : 0;
   }
   function setBraking(braking: boolean) {
     brakingActive = braking;
@@ -453,34 +440,10 @@ export async function loadCar(onProgress?: (fraction: number) => void) {
     setIntensity(brakeLenses, braking ? 2.5 : headlightsOn ? 0.65 : 0);
     setIntensity(rearPositionBulbs, braking || headlightsOn ? 4 : 0);
     setIntensity(thirdBrakeLight, braking ? 5 : 0);
-    for (const light of brakeLights) {
-      light.intensity = braking ? 8 : 0;
-      light.visible = braking;
-    }
+    for (const light of brakeLights) light.intensity = braking ? 8 : 0;
   }
 
-  RectAreaLightUniformsLib.init();
-  const underglow: THREE.RectAreaLight[] = [];
-  const lightStrips = [
-    { x: -UNDERGLOW_SIDE_OFFSET, z: 0, width: 0.08, length: 1.6 }, // Right (driver) side
-    { x: UNDERGLOW_SIDE_OFFSET, z: 0, width: 0.08, length: 1.6 }, // Left (passenger) side
-    { x: 0, z: UNDERGLOW_FRONT_OFFSET, width: 1, length: 0.08 }, // Front
-    { x: 0, z: -UNDERGLOW_REAR_OFFSET, width: 1.25, length: 0.08 }, // Rear
-  ];
-  for (const strip of lightStrips) {
-    const light = new THREE.RectAreaLight(
-      carUnderglowColor,
-      underglowIntensity,
-      strip.width,
-      strip.length,
-    );
-    light.name = 'red-underglow';
-    light.position.set(strip.x, -0.38, strip.z);
-    light.rotation.x = -Math.PI / 2;
-    light.intensity = 0;
-    chassis.add(light);
-    underglow.push(light);
-  }
+  const underglow = createUnderglow('underglow', carUnderglowColor);
 
   const headlightFront = meshBounds(/^hlglass_/).max.z + 0.015;
   const glowGeometry = new THREE.PlaneGeometry(1, 1);
@@ -517,6 +480,7 @@ export async function loadCar(onProgress?: (fraction: number) => void) {
       drop,
       spread,
       front,
+      castShadow = false,
     }: {
       name: string;
       intensity: number;
@@ -525,21 +489,21 @@ export async function loadCar(onProgress?: (fraction: number) => void) {
       drop: number;
       spread: number;
       front: number;
+      castShadow?: boolean;
     },
   ) {
     return sideBounds(pattern).map((box) => {
       const lamp = box.getCenter(new THREE.Vector3());
-      const light = new THREE.SpotLight(0xffe2b8, intensity, range, angle, 0.55, 1.2);
+      const light = new THREE.SpotLight(0xffe2b8, 0, range, angle, 0.55, 1.2);
       light.layers.set(carLightLayers.headlights);
       light.name = name;
       light.position.set(lamp.x, lamp.y, front + 0.035);
       light.target.position.set(lamp.x * spread, lamp.y - drop, light.position.z + 20);
-      light.castShadow = true;
+      light.castShadow = castShadow;
       light.shadow.mapSize.set(512, 512);
       light.shadow.camera.near = 0.08;
       light.shadow.camera.far = range;
       light.shadow.normalBias = 0.02;
-      light.visible = false;
       const glow = new THREE.Mesh(glowGeometry, glowMaterial);
       glow.name = `${name}-glow`;
       glow.position.set(lamp.x, lamp.y, front);
@@ -558,6 +522,7 @@ export async function loadCar(onProgress?: (fraction: number) => void) {
     drop: 1.1,
     spread: 1.5,
     front: headlightFront,
+    castShadow: true,
   });
   const highBeams = headlightPair(/^LightsInside_004_001_LightChrome_0$/, {
     name: 'high-beam',
@@ -581,25 +546,24 @@ export async function loadCar(onProgress?: (fraction: number) => void) {
     if (fogLightsOn === enabled) return;
     fogLightsOn = enabled;
     setIntensity(fogLenses, enabled ? 8 : 0);
-    for (const { light, glow } of fogLights) light.visible = glow.visible = enabled;
-    updateFrontShadows();
+    setBeams(fogLights, enabled);
   }
-  function updateFrontShadows() {
-    // Leave texture units for the environment, material maps, underglow, and rear lamps.
-    for (const { light } of headlights) light.castShadow = !(highBeamsOn && fogLightsOn);
+  // Lights stay visible at zero intensity: changing the number of visible lights recompiles every lit shader.
+  function setBeams(beams: typeof headlights, enabled: boolean) {
+    for (const { light, glow, intensity } of beams) {
+      light.intensity = enabled ? intensity : 0;
+      glow.visible = enabled;
+    }
   }
   function updateHeadlights() {
     setIntensity(projectors, headlightsOn ? 8 : 0);
     setIntensity(highBeamLenses, highBeamsOn ? 8 : 0);
-    for (const { light, glow, intensity } of headlights) {
-      light.visible = true;
-      light.intensity = headlightsOn ? intensity : 0;
+    setBeams(headlights, headlightsOn);
+    for (const { light } of headlights) {
       light.shadow.autoUpdate = headlightsOn;
       light.shadow.needsUpdate = headlightsOn || light.shadow.map === null;
-      glow.visible = headlightsOn;
     }
-    for (const { light, glow } of highBeams) light.visible = glow.visible = highBeamsOn;
-    updateFrontShadows();
+    setBeams(highBeams, highBeamsOn);
     for (const material of headlightCovers)
       material.opacity = headlightsOn || highBeamsOn ? 0.2 : 0.6;
     setDashLight('highBeam', highBeamsOn);
@@ -641,7 +605,7 @@ export async function loadCar(onProgress?: (fraction: number) => void) {
     cabinLight.color.set(cabin.color);
     cabinLight.intensity = cabin.intensity;
     gaugeLight.intensity = enabled ? GAUGE_LIGHT_INTENSITY : 0;
-    for (const light of underglow) light.intensity = night ? underglowIntensity : 0;
+    underglow.mesh.visible = night;
   }
 
   // Replace the flat mirror-glass mesh with live planar reflections.
@@ -996,8 +960,13 @@ export async function loadCar(onProgress?: (fraction: number) => void) {
     setPaintColor(color: THREE.ColorRepresentation) {
       for (const { material } of named(/_Paint_0$/)) material.color.set(color);
     },
-    setUnderglowColor(color: THREE.ColorRepresentation) {
-      for (const light of underglow) light.color.set(color);
+    /** Unlit glow drawn on the terrain; add it to the scene alongside the chassis. */
+    underglow: underglow.mesh,
+    setUnderglowColor: underglow.setColor,
+    updateUnderglow(heightAt: GroundHeight) {
+      if (!underglow.mesh.visible) return;
+      chassis.updateMatrix();
+      underglow.update(chassis.matrix, heightAt);
     },
     setReversing,
     setHazards,

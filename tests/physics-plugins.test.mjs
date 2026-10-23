@@ -84,6 +84,7 @@ function fixture(slopeX = 0, slopeZ = 0, simulationWorld) {
     setBraking() {},
     setReversing() {},
     setHazards() {},
+    setUnderglowColor() {},
   };
   const cones = [new THREE.Group(), new THREE.Group()];
   cones[0].position.set(5, 1, 5);

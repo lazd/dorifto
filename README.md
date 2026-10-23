@@ -26,10 +26,11 @@ Color-matched minimap arrows show their positions and
 headings. Bots have distance-attenuated stereo engine/tire audio, real-slip smoke
 and tire marks, glowing running lamps and telemetry-driven brake lamps.
 Their low-beam headlights and lens glow follow the player's headlight setting.
-Each bot has its own pair of projected beams without shadows, fog lights, or high
-beams. Changing bot settings warms the shaders for the new light count before
-resuming the race. At night, bots also have underglow matching their paint color,
-including the observed car in bots-only mode. Their exterior includes the model's
+Bots have no real lights: their beams are an unlit additive glow on the road
+ahead, and at night their underglow is a paint-colored additive glow beneath
+the car, using the same glow as the player's (the observed car in bots-only mode
+recolors its own to its paint color). Both are draped over the terrain each frame and fade with fog and while a car is not upright. Lit shaders compile per count
+of each light type, so adding, removing, or hiding bots never recompiles shaders. Their exterior includes the model's
 black underbody so overturned bots do not expose an empty cabin.
 Opponent audio shares the player's mute control and audio context.
 Bots are hidden and removed from physics during replays;
@@ -623,21 +624,16 @@ with stronger, longer-range beams aimed slightly higher (0.25 m down over 20 m,
 versus 1.1 m for low beams). A blue dashboard indicator follows both flashed
 and latched high beams.
 The lower fog lights have the same warm-white lens emission and halos, with
-shorter, wider shadow-casting beams aimed farther down and outward
+shorter, wider beams aimed farther down and outward
 (3 m down over 20 m, versus 1.1 m for low beams).
-When all three front pairs are on, the high and fog beams take priority for
-shadow casting; the low beams still illuminate the scene. This caps front shadow
-maps at four, keeping the night scene within WebGL's 16 fragment-texture-unit minimum.
+Only the low beams cast shadows; high beams, fog lights and rear lamps do not,
+keeping the night scene within WebGL's 16 fragment-texture-unit minimum.
 All three pairs have soft additive, forward-facing lens halos rendered as scene geometry,
 so their glow also appears in live mirrors without a separate bloom pass.
-Every headlight, high-beam, fog-light, rear-lamp (off, braking, reversing), and
-cabin/chase lighting combination is checked during the startup warmup for the
-selected time of day. Combinations with the same count of each visible light type and shadow
-caster share shaders, so each distinct layout is compiled and rendered only once.
-Cabin, gauge, underglow, and ghost lights
-are included before the game canvas becomes visible, to avoid first-toggle shader
-compilation. The stereo light stays registered at zero intensity when off, so
-powering it on does not change shader layouts. All three mirror render targets
+Lit shaders compile per count of each visible light type and shadow caster, so
+every car, cabin, stereo and ghost light stays registered at zero
+intensity when off. Switching any lamp never recompiles shaders, and startup
+compiles just the chase and cabin views for the selected time of day. All three mirror render targets
 are also compiled and rendered during startup, even when starting in chase view
 or with mirrors off. The selected light and mirror settings are restored afterward;
 warmup does not start radio playback. Switching time of day for the first time
@@ -669,7 +665,7 @@ Rear brake and reverse covers have 35% smoked tint when off and become
 clear independently when their lamps are on; turn-signal covers stay tinted and
 window glass is unchanged. This keeps the unlit lenses subdued without washing
 their illuminated colors white.
-When braking, short-range shadow-casting red spotlights illuminate the ground
+When braking, short-range red spotlights illuminate the ground
 and nearby objects behind all three brake lenses.
 Brake and reverse spill uses soft, narrow rearward beams with reduced intensity
 and a 4 m range to limit bumper highlights without dimming the illuminated lenses.
@@ -888,9 +884,9 @@ full red emission when braking so brake application stays visible at Sunset/Nigh
 when braking; the spoiler strip remains brake-only. Front turn signals glow dim amber
 and brighten during hazard flashes; rear signals illuminate only for hazards.
 Side markers glow amber. Soft red
-underglow uses downward-facing area-light strips tucked inward and below the
-side skirts (between the wheel wells) and behind the front/rear bumpers to keep
-the light on the ground rather than the body, without visible point sources.
+underglow is an unlit additive glow draped over the terrain beneath the car each
+frame, shared with the bots; it adds no scene lights, fades with fog, and fades
+out while the car is not upright.
 Underglow is Night-only. Foot braking, hazards, and reverse lights
 still work at any time of day, independently of the running-light state.
 The selection is saved in `?time=noon`, `?time=sunset`, or `?time=night` and
@@ -1003,8 +999,8 @@ Rear tires detect the paved corridor, including the shoulder. Off pavement,
 sliding/spinning tires emit tan dust at half the smoke rate with slightly lower
 opacity and less upward drift, and leave muted brown dirt tracks rather than
 dark rubber stripes. Dust opacity is capped at 14% per puff before edge/lifetime
-fading. Smoke and dust receive per-puff colored lighting from daylight/moonlight,
-headlight and brake/reverse beams, and downward underglow strips. Beam angle,
+fading. Smoke and dust receive per-puff colored lighting from daylight/moonlight
+and headlight and brake/reverse beams. Beam angle,
 distance falloff, and light state control illumination; unlit nighttime puffs
 remain faint. Lighting is calculated once per puff with the existing instanced
 draw and depth pass, without additional rendering passes or shadow-map sampling.

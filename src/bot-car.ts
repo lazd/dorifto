@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { PhysicsCar } from './vehicle-physics';
 import { createBotPlate } from './bot-plate';
-import { headlightIntensity, underglowIntensity } from './car';
+import { createGroundGlow, createUnderglow, type GroundHeight } from './ground-glow';
 
 // Share exterior geometry/textures; omit cabin instruments and mirror renderers.
 const exterior =
@@ -45,6 +45,51 @@ export function botColor(index: number) {
   return new THREE.Color().setHSL(botPalette[index % botPalette.length].hue, 0.8, 0.45).getStyle();
 }
 
+function createBotLights(source: THREE.Object3D) {
+  source.updateMatrixWorld(true);
+  const inverse = source.matrixWorld.clone().invert();
+  const glows: THREE.Object3D[] = [];
+  let front = 0;
+  source.traverse((object) => {
+    if (object.name !== 'headlight-beam-glow') return;
+    const glow = object.clone(false);
+    glow.matrix.copy(inverse).multiply(object.matrixWorld);
+    glow.matrix.decompose(glow.position, glow.quaternion, glow.scale);
+    glow.matrixAutoUpdate = false;
+    glow.visible = false;
+    glows.push(glow);
+    front = Math.max(front, glow.position.z);
+  });
+  const headlightPool = createGroundGlow(
+    'bot-headlight-pool',
+    0xfff2e0,
+    0.8,
+    { x: 0, z: front + 9 },
+    { width: 15, length: 25 },
+  );
+  const underglow = createUnderglow('bot-underglow', 0xffffff);
+  const ground = [headlightPool, underglow];
+  return {
+    lensGlows: glows,
+    groundGlows: ground.map(({ mesh }) => mesh),
+    setHeadlights(enabled: boolean) {
+      for (const glow of [...glows, headlightPool.mesh]) glow.visible = enabled;
+    },
+    setUnderglow(enabled: boolean) {
+      underglow.mesh.visible = enabled;
+    },
+    setColor(color: THREE.ColorRepresentation) {
+      underglow.setColor(color);
+    },
+    updateGround(matrix: THREE.Matrix4, heightAt: GroundHeight) {
+      for (const glow of ground) if (glow.mesh.visible) glow.update(matrix, heightAt);
+    },
+    dispose() {
+      for (const glow of ground) glow.dispose();
+    },
+  };
+}
+
 export function createBotCar(source: PhysicsCar, index: number) {
   const chassis = new THREE.Group();
   const materials: THREE.Material[] = [];
@@ -53,45 +98,9 @@ export function createBotCar(source: PhysicsCar, index: number) {
     material: THREE.MeshStandardMaterial;
     settings: (typeof botLampSettings)[number];
   }[] = [];
-  const headlights: THREE.SpotLight[] = [];
-  const headlightGlows: THREE.Object3D[] = [];
-  const underglow: THREE.RectAreaLight[] = [];
   source.chassis.updateMatrixWorld(true);
   const inverse = source.chassis.matrixWorld.clone().invert();
-  function cloneAtChassis<T extends THREE.Object3D>(object: T): T {
-    const copy = object.clone();
-    copy.matrix.copy(inverse).multiply(object.matrixWorld);
-    copy.matrix.decompose(copy.position, copy.quaternion, copy.scale);
-    return copy;
-  }
   source.chassis.traverse((object) => {
-    if (object instanceof THREE.RectAreaLight && object.name === 'red-underglow') {
-      const light = cloneAtChassis(object);
-      light.name = 'bot-underglow';
-      light.color.setStyle(botColor(index));
-      light.intensity = 0;
-      underglow.push(light);
-      chassis.add(light);
-      return;
-    }
-    if (object instanceof THREE.SpotLight && object.name === 'headlight-beam') {
-      const light = cloneAtChassis(object);
-      light.target = cloneAtChassis(object.target);
-      // Bot beams do not consume the shadow samplers needed by the player's lights.
-      light.castShadow = false;
-      light.visible = true;
-      light.intensity = 0;
-      headlights.push(light);
-      chassis.add(light, light.target);
-      return;
-    }
-    if (object.name === 'headlight-beam-glow') {
-      const glow = cloneAtChassis(object);
-      glow.visible = false;
-      headlightGlows.push(glow);
-      chassis.add(glow);
-      return;
-    }
     if (!(object instanceof THREE.Mesh)) return;
     const lamp = botLampSettings.find(({ pattern }) => pattern.test(object.name));
     if (!exterior.test(object.name) && !lamp) return;
@@ -168,21 +177,29 @@ export function createBotCar(source: PhysicsCar, index: number) {
   }
   const plate = createBotPlate(chassis);
   plate.setColor(botColor(index));
+  const lights = createBotLights(source.chassis);
+  chassis.add(...lights.lensGlows);
+  lights.setColor(botColor(index));
   return {
     chassis,
     wheels,
     hubs,
+    groundGlows: lights.groundGlows,
+    /** Drape lit ground glows over the terrain at the chassis' current pose. */
+    updateGround(heightAt: GroundHeight) {
+      chassis.updateMatrix();
+      lights.updateGround(chassis.matrix, heightAt);
+    },
     setThinking: plate.setThinking,
     setColor(color: THREE.ColorRepresentation) {
       for (const material of paintMaterials) material.color.set(color);
-      for (const light of underglow) light.color.set(color);
+      lights.setColor(color);
       plate.setColor(color);
     },
     setUnderglow(enabled: boolean) {
       if (underglowOn === enabled) return;
       underglowOn = enabled;
-      const intensity = enabled ? underglowIntensity : 0;
-      for (const light of underglow) light.intensity = intensity;
+      lights.setUnderglow(enabled);
     },
     setBraking(value: boolean) {
       if (braking === value) return;
@@ -192,8 +209,7 @@ export function createBotCar(source: PhysicsCar, index: number) {
     setHeadlights(value: boolean) {
       if (headlightsOn === value) return;
       headlightsOn = value;
-      for (const light of headlights) light.intensity = value ? headlightIntensity : 0;
-      for (const glow of headlightGlows) glow.visible = value;
+      lights.setHeadlights(value);
       updateLamps();
     },
     setReversing(value: boolean) {
@@ -203,10 +219,10 @@ export function createBotCar(source: PhysicsCar, index: number) {
     },
     dispose() {
       plate.dispose();
+      lights.dispose();
       chassis.removeFromParent();
       for (const object of [...wheels, ...hubs]) object.removeFromParent();
       materials.forEach((material) => material.dispose());
-      headlights.forEach((light) => light.dispose());
     },
   };
 }

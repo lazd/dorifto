@@ -28,32 +28,19 @@ test('bot exteriors share underbody and isolate lighting and segmented plates', 
   });
   const { createBotCar, botLampSettings, botColor } = await server.ssrLoadModule('/src/bot-car.ts');
   const { createBotPlate, botPlateText } = await server.ssrLoadModule('/src/bot-plate.ts');
-  const { headlightIntensity, carLightLayers, underglowIntensity } =
-    await server.ssrLoadModule('/src/car.ts');
   const model = await loadTrainingCarModel(server);
-  const sourceHeadlights = [-1, 1].map((side) => {
-    const light = new THREE.SpotLight();
-    light.name = 'headlight-beam';
-    light.layers.set(carLightLayers.headlights);
-    light.position.set(side, 0.5, 2);
-    light.target.position.set(side, 0, 20);
-    light.castShadow = true;
-    light.intensity = 0;
+  const glowAt = (name, x) => {
     const glow = new THREE.Mesh(new THREE.PlaneGeometry(), new THREE.MeshBasicMaterial());
-    glow.name = 'headlight-beam-glow';
-    glow.position.copy(light.position);
-    model.add(light, light.target, glow);
-    return { light, glow };
-  });
-  for (const name of ['fog-light', 'high-beam']) {
-    const light = new THREE.SpotLight();
-    light.name = name;
-    model.add(light);
-  }
-  const sourceUnderglow = new THREE.RectAreaLight();
-  sourceUnderglow.name = 'red-underglow';
-  sourceUnderglow.intensity = 0;
-  model.add(sourceUnderglow);
+    glow.name = `${name}-glow`;
+    glow.position.set(x, 0.5, 2);
+    model.add(glow);
+    return glow;
+  };
+  const sourceGlows = [-1, 1].map((x) => glowAt('headlight-beam', x));
+  for (const name of ['fog-light', 'high-beam']) glowAt(name, 0);
+  const sourceLight = new THREE.SpotLight();
+  sourceLight.name = 'headlight-beam';
+  model.add(sourceLight, new THREE.RectAreaLight());
   model.position.set(5, 2, -3);
   model.rotation.y = Math.PI / 3;
   const bot = createBotCar(
@@ -65,32 +52,44 @@ test('bot exteriors share underbody and isolate lighting and segmented plates', 
     0,
   );
   try {
-    const botHeadlights = bot.chassis.children.filter((object) => object.isSpotLight);
+    // Lit shaders compile per count of scene lights, so bots must not add any.
+    bot.chassis.traverse((object) => assert.ok(!object.isLight, object.name));
     const botGlows = bot.chassis.children.filter((object) => object.name === 'headlight-beam-glow');
-    assert.equal(botHeadlights.length, sourceHeadlights.length, 'only low beams are copied');
-    assert.equal(botGlows.length, sourceHeadlights.length);
+    assert.equal(botGlows.length, sourceGlows.length, 'only low-beam glows are copied');
+    botGlows.forEach((glow, index) => {
+      assert.ok(glow.position.distanceTo(sourceGlows[index].position) < 1e-10);
+    });
+    const [headlightPool, underglow] = bot.groundGlows;
+    for (const glow of bot.groundGlows) assert.ok(!bot.chassis.getObjectById(glow.id));
     const underbody = bot.chassis.getObjectByName('Cube_Black_0');
     assert.ok(underbody, 'bots retain the existing underbody');
     assert.equal(underbody.geometry, model.getObjectByName(underbody.name).geometry);
-    const underglow = bot.chassis.getObjectByName('bot-underglow');
-    assert.ok(underglow?.isRectAreaLight);
-    assert.notEqual(underglow, sourceUnderglow);
-    assert.equal(underglow.color.getHex(), new THREE.Color(botColor(0)).getHex());
+    const underglowColor = () => underglow.material.uniforms.color.value.getHex();
+    assert.equal(underglowColor(), new THREE.Color(botColor(0)).getHex());
     for (const enabled of [true, false]) {
       bot.setUnderglow(enabled);
-      assert.equal(underglow.intensity, enabled ? underglowIntensity : 0);
-      assert.equal(sourceUnderglow.intensity, 0);
+      assert.equal(underglow.visible, enabled);
     }
-    botHeadlights.forEach((light, index) => {
-      const source = sourceHeadlights[index].light;
-      assert.notEqual(light, source);
-      assert.notEqual(light.target, source.target);
-      assert.ok(light.position.distanceTo(source.position) < 1e-10);
-      assert.ok(light.target.position.distanceTo(source.target.position) < 1e-10);
-      assert.equal(light.target.parent, bot.chassis);
-      assert.equal(light.layers.mask, source.layers.mask);
-      assert.equal(light.castShadow, false);
-    });
+    // Ground glows drape over the terrain ahead of the car's heading instead of a flat plane.
+    bot.chassis.position.set(10, 3, -4);
+    bot.chassis.rotation.set(0.2, Math.PI / 2, 0);
+    bot.setHeadlights(true);
+    const slope = (x, z) => 0.1 * x + 0.05 * z * z;
+    bot.updateGround(slope);
+    const positions = headlightPool.geometry.getAttribute('position');
+    const point = new THREE.Vector3();
+    const center = new THREE.Vector3();
+    for (let i = 0; i < positions.count; i++) {
+      point.fromBufferAttribute(positions, i);
+      assert.ok(Math.abs(point.y - slope(point.x, point.z) - 0.05) < 1e-6);
+      center.add(point);
+    }
+    center.divideScalar(positions.count);
+    assert.ok(
+      center.x > 15 && Math.abs(center.z + 4) < 1e-6,
+      'the pool lies ahead of a car heading +x',
+    );
+    bot.setHeadlights(false);
     let originalPlate;
     model.traverse((mesh) => {
       if (/^Frontplate_.*_ext_plate_rear_0$/.test(mesh.name)) originalPlate = mesh;
@@ -144,7 +143,7 @@ test('bot exteriors share underbody and isolate lighting and segmented plates', 
     assert.equal(texture.version, version + 1, 'unchanged text does not upload a texture');
     bot.setColor(botColor(1));
     assert.equal(botPlate.material.color.getHex(), new THREE.Color(botColor(1)).getHex());
-    assert.equal(underglow.color.getHex(), new THREE.Color(botColor(1)).getHex());
+    assert.equal(underglowColor(), new THREE.Color(botColor(1)).getHex());
     assert.equal(texture.version, version + 1, 'color changes do not redraw the texture');
     const geometry = originalPlate.geometry;
     const material = originalPlate.material;
@@ -186,12 +185,8 @@ test('bot exteriors share underbody and isolate lighting and segmented plates', 
     });
     for (const headlights of [false, true]) {
       bot.setHeadlights(headlights);
-      for (const light of botHeadlights) {
-        assert.equal(light.visible, true, 'switching headlights preserves the light count');
-        assert.equal(light.intensity, headlights ? headlightIntensity : 0);
-      }
-      for (const glow of botGlows) assert.equal(glow.visible, headlights);
-      for (const { light } of sourceHeadlights) assert.equal(light.intensity, 0);
+      for (const glow of [...botGlows, headlightPool]) assert.equal(glow.visible, headlights);
+      for (const glow of sourceGlows) assert.equal(glow.visible, true);
       for (const braking of [false, true]) {
         bot.setBraking(braking);
         for (const mesh of lamps) {
@@ -219,9 +214,9 @@ test('bot exteriors share underbody and isolate lighting and segmented plates', 
       assert.equal(mesh.material.emissiveIntensity, 0);
       bot.setReversing(true);
     }
-  } finally {
     bot.dispose();
-    for (const { light } of sourceHeadlights) light.dispose();
+  } finally {
+    sourceLight.dispose();
     model.traverse((mesh) => {
       if (!mesh.isMesh) return;
       mesh.geometry.dispose();
