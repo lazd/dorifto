@@ -73,6 +73,10 @@ States: approach, initiate, sustain, transition, straighten and recover.
 Initiate using brief handbrake input, releasing once rotation develops.
 Control trajectory, body slip angle and yaw rate through countersteer and throttle,
 not fixed opposite steering or holding the handbrake throughout the turn.
+Build on the race bot's slip-based countersteer (`excessSlip` in `src/race-bot.ts`),
+which points the front wheels along the car's velocity once body slip exceeds a
+threshold. For drifting, make the threshold a target slip angle per style and
+hold it with throttle instead of recovering from it.
 
 Gameplay presets over one controller:
 
@@ -193,8 +197,10 @@ bot behavior without a player vehicle influencing collisions.
 ### Controller version 3 follow-up
 
 - Live race bots and the training CLI default to the application's built-in
-  **Grip / Fast (`grip-fast`)** tuning, independent of player tuning. The headless
-  training function still accepts explicit configurations for future tuning searches.
+  **Grip / Fast (`grip-fast`)** tuning, independent of player tuning.
+  `bot-preset=grip-default` (or one comma-separated preset per bot) selects another
+  built-in setup. Each preset has its own driver limits in `raceBotTunings`, searched
+  with `scripts/optimize-race-bot.mjs --preset <id>`.
 - `bot-skill=1,0.2` assigns different skills by bot index. In a two-bot spectator
   grid, bot 0 starts behind bot 1, making this a reproducible overtaking exercise.
 - Local traffic planning evaluates smooth lateral paths against oriented,

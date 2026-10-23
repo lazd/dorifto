@@ -11,23 +11,52 @@ import type {
   createVehiclePhysics,
 } from './vehicle-physics';
 
-export const raceBotVersion = 4;
+export const raceBotVersion = 5;
 export const raceBotGridSpacing = 12;
-/** Driver model constants; `scripts/optimize-race-bot.mjs` searches these for lap time. */
-export const raceBotTuning = {
+export const raceBotPresets = ['grip-default', 'grip-fast'] as const;
+export type RaceBotPreset = (typeof raceBotPresets)[number];
+export interface RaceBotTuning {
   /** Cornering limit on asphalt, m/s² per unit of tire grip. */
-  corneringGrip: 16.34,
+  corneringGrip: number;
   /** Straight-line braking limit, m/s². */
-  brakingLimit: 5.55,
-  /** Deceleration from lifting off (engine braking, drag and tire scrub), m/s². */
-  liftDeceleration: 7.22,
-  /** Speed drops (m/s) small enough to make by lifting rather than braking. */
-  smallSpeedDrop: 3.95,
+  brakingLimit: number;
+  /** Speed drops (m/s) small enough to coast into rather than brake for. */
+  smallSpeedDrop: number;
+  /** Deceleration beyond coasting (m/s²) worth touching the brakes for. */
+  brakeThreshold: number;
   /** Steering lookahead, seconds of travel beyond a fixed 5 m. */
-  lookaheadTime: 0.17,
+  lookaheadTime: number;
   /** Gap kept between the car body and the road edge on the racing line, m. */
-  edgeMargin: 0.08,
+  edgeMargin: number;
+  /** Body slip (rad) beyond which the front wheels are pointed along the car's velocity. */
+  countersteerSlip: number;
+}
+/**
+ * Driver model constants per car setup; `scripts/optimize-race-bot.mjs --preset <id>` searches
+ * them for lap time. Grip / Default has not been optimized yet and starts from Grip / Fast.
+ */
+export const raceBotTunings: Record<RaceBotPreset, RaceBotTuning> = {
+  'grip-default': {
+    corneringGrip: 14.49,
+    brakingLimit: 5.88,
+    smallSpeedDrop: 4.56,
+    brakeThreshold: 2.27,
+    lookaheadTime: 0.11,
+    edgeMargin: 0.64,
+    countersteerSlip: 0.092,
+  },
+  'grip-fast': {
+    corneringGrip: 14.48,
+    brakingLimit: 5.89,
+    smallSpeedDrop: 4.5,
+    brakeThreshold: 2.29,
+    lookaheadTime: 0.106,
+    edgeMargin: 0.64,
+    countersteerSlip: 0.092,
+  },
 };
+/** Acceleration the speed profile and throttle assume at full throttle, m/s². */
+const driveAcceleration = 5;
 export const trainingCourses = { race: 'hillside', drift: 'sweeper' } as const;
 export type VehicleState = ReturnType<ReturnType<typeof createVehiclePhysics>['readState']>;
 
@@ -35,17 +64,23 @@ export interface RaceBotOptions {
   skill: number;
   aggression: number;
   learning: boolean;
+  /** Built-in car setup the bot drives; defaults to Grip / Fast. */
+  preset?: RaceBotPreset;
 }
 
 export const defaultRaceBotOptions: RaceBotOptions = {
   skill: 0.8,
   aggression: 0.4,
   learning: true,
+  preset: 'grip-fast',
 };
 
-export function raceBotConfiguration(configuration: PhysicsConfiguration): PhysicsConfiguration {
-  const preset = defaultTuningPresets().find(({ id }) => id === 'grip-fast');
-  if (!preset || preset.mode !== 'grip') throw new Error('Missing built-in grip-fast preset');
+export function raceBotConfiguration(
+  configuration: PhysicsConfiguration,
+  id: RaceBotPreset = 'grip-fast',
+): PhysicsConfiguration {
+  const preset = defaultTuningPresets().find((preset) => preset.id === id);
+  if (!preset || preset.mode !== 'grip') throw new Error(`Missing built-in ${id} preset`);
   return {
     ...configuration,
     driveMode: 'grip',
@@ -62,6 +97,9 @@ export function readRaceBots(parameters: URLSearchParams): RaceBotOptions[] {
     .map((value) => (value.trim() ? Number(value) : NaN));
   if (skills.length !== 1 && skills.length !== count)
     throw new Error('bot-skill must be one skill or one comma-separated skill per bot');
+  const presets = (parameters.get('bot-preset') ?? 'grip-fast').split(',').map((id) => id.trim());
+  if (presets.length !== 1 && presets.length !== count)
+    throw new Error('bot-preset must be one preset or one comma-separated preset per bot');
   const options = {
     skill: skills[0],
     aggression: parameters.has('bot-aggression')
@@ -70,11 +108,14 @@ export function readRaceBots(parameters: URLSearchParams): RaceBotOptions[] {
     learning: true,
   };
   for (const skill of skills) validateRaceBotOptions({ ...options, skill });
+  for (const preset of presets)
+    validateRaceBotOptions({ ...options, preset: preset as RaceBotPreset });
   if (readBotsOnly(parameters) && count === 0)
     throw new Error('Bots-only mode requires at least one bot');
   return Array.from({ length: count }, (_, index) => ({
     ...options,
     skill: skills[skills.length === 1 ? 0 : index],
+    preset: presets[presets.length === 1 ? 0 : index] as RaceBotPreset,
   }));
 }
 
@@ -104,6 +145,8 @@ export function validateRaceBotOptions(options: RaceBotOptions) {
       throw new Error(`Race bot ${key} must be between 0 and 1`);
   }
   if (typeof options.learning !== 'boolean') throw new Error('Invalid race bot learning option');
+  if (options.preset !== undefined && !raceBotPresets.includes(options.preset))
+    throw new Error(`Race bot preset must be one of ${raceBotPresets.join(', ')}`);
 }
 
 export function createDrivingMap(
@@ -113,6 +156,7 @@ export function createDrivingMap(
     normalAt(x: number, z: number): THREE.Vector3;
   },
   halfWidth: number,
+  edgeMargin: number,
 ) {
   const route = courseRoute(definition);
   const length = route.getLength();
@@ -123,7 +167,7 @@ export function createDrivingMap(
     const tangent = route.getTangentAt(i / count);
     return new THREE.Vector3(tangent.z, 0, -tangent.x);
   });
-  const clearance = definition.width / 2 - halfWidth - raceBotTuning.edgeMargin;
+  const clearance = definition.width / 2 - halfWidth - edgeMargin;
   if (clearance <= 0) throw new Error('Course is too narrow for this vehicle');
   const line = optimizeRacingLine(centers, clearance);
   const at = (i: number) => line[wrap(i, count)];
@@ -151,7 +195,14 @@ export function createDrivingMap(
       heading: Math.atan2(tangent.x, tangent.z),
     };
   });
-  return { definition, length, spacing, centers, rights, samples };
+  // Crests (negative) unload the tires; dips (positive) load them.
+  const verticalCurvatures = samples.map(
+    (_, i) =>
+      (samples[(i + 1) % samples.length].grade -
+        samples[(i - 1 + samples.length) % samples.length].grade) /
+      (2 * spacing),
+  );
+  return { definition, length, spacing, centers, rights, samples, verticalCurvatures };
 }
 
 export type DrivingMap = ReturnType<typeof createDrivingMap>;
@@ -164,6 +215,7 @@ export function createRaceBot(
   saved?: RaceExperience,
 ) {
   validateRaceBotOptions(options);
+  const driver = raceBotTunings[options.preset ?? 'grip-fast'];
   const { samples, spacing } = map;
   const count = samples.length;
   const sectorCount = Math.ceil(map.length / 25);
@@ -211,8 +263,8 @@ export function createRaceBot(
   // Skill is how close to the car's limits the driver dares to run, not a different car.
   const limit = THREE.MathUtils.lerp(0.85, 1, options.skill);
   const lateralAcceleration =
-    raceBotTuning.corneringGrip * Math.min(tuning.frontGrip, tuning.rearGrip) * limit;
-  const brakingDeceleration = raceBotTuning.brakingLimit * limit;
+    driver.corneringGrip * Math.min(tuning.frontGrip, tuning.rearGrip) * limit;
+  const brakingDeceleration = driver.brakingLimit * limit;
   const { frontTorqueNm, rearTorqueNm } = vehicleSettings.brakes;
   const fullBrakeDeceleration =
     (2 * (frontTorqueNm + rearTorqueNm)) / dimensions.wheelRadius / vehicleSettings.massKg;
@@ -229,25 +281,43 @@ export function createRaceBot(
   let maxSlip = 0;
   let offTrackSeconds = 0;
   let saturationSeconds = 0;
+  let brakeApplications = 0;
+  let throttleLifts = 0;
   let elapsed = 0;
   let progress = 0;
   let targetSpeed = 0;
   let lateralError = 0;
   let braking = false;
+  let slowing = false;
+  let previousSpeed = 0;
+  let coastDeceleration = 2;
 
   const cornerGrip = samples.map((sample) =>
     Math.max(2, lateralAcceleration - Math.sign(sample.curvature) * sample.bank * 9.81),
   );
+  const { verticalCurvatures } = map;
+  const loadAt = (i: number, speed: number) =>
+    Math.max(0.2, 1 + (speed ** 2 * verticalCurvatures[i]) / 9.81);
   // Friction circle: grip spent cornering is not available for braking or accelerating.
   const remainingGrip = (i: number, speed: number) =>
+    loadAt(i, speed) *
     Math.sqrt(
-      Math.max(0.15, 1 - ((speed ** 2 * Math.abs(samples[i].curvature)) / cornerGrip[i]) ** 2),
+      Math.max(
+        0.15,
+        1 -
+          ((speed ** 2 * Math.abs(samples[i].curvature)) / (cornerGrip[i] * loadAt(i, speed))) ** 2,
+      ),
     );
 
   function rebuildSpeeds() {
     for (let i = 0; i < count; i++) {
+      // Solves v²|κ| = grip·(1 + v²κᵥ/g) so crests lower the corner speed.
       const cornerSpeed = Math.sqrt(
-        cornerGrip[i] / Math.max(Math.abs(samples[i].curvature), 0.0005),
+        cornerGrip[i] /
+          Math.max(
+            Math.abs(samples[i].curvature) - (cornerGrip[i] * verticalCurvatures[i]) / 9.81,
+            0.0005,
+          ),
       );
       speeds[i] = Math.min(65, cornerSpeed) * experience.pace[sectorAt(i)];
     }
@@ -265,7 +335,7 @@ export function createRaceBot(
         const previous = wrap(i - 1, count);
         const acceleration = Math.max(
           1,
-          5 * remainingGrip(previous, speeds[previous]) - samples[i].grade * 9.81,
+          driveAcceleration * remainingGrip(previous, speeds[previous]) - samples[i].grade * 9.81,
         );
         speeds[i] = Math.min(
           speeds[i],
@@ -292,8 +362,10 @@ export function createRaceBot(
     index = sector = -1;
     troubled = false;
     passageTime = maxSlip = offTrackSeconds = saturationSeconds = elapsed = progress = 0;
+    brakeApplications = throttleLifts = 0;
     targetSpeed = lateralError = 0;
-    braking = false;
+    braking = slowing = false;
+    previousSpeed = 0;
     Object.assign(controls, { throttle: 0, brake: 0, reverse: 0, steer: 0, handbrake: false });
   }
 
@@ -337,7 +409,7 @@ export function createRaceBot(
     maxSlip = Math.max(maxSlip, Math.abs(state.slipAngle));
     if (outside || (state.speed > 5 && Math.abs(state.slipAngle) > 0.18)) troubled = true;
 
-    const lookahead = 5 + state.speed * raceBotTuning.lookaheadTime;
+    const lookahead = 5 + state.speed * driver.lookaheadTime;
     const targetIndex = wrap(index + Math.max(1, Math.round(lookahead / spacing)), count);
     const target = trafficPlanner.update(state, index, lateralError, targetIndex, dt, traffic);
     const dx = target.x - state.x;
@@ -354,7 +426,11 @@ export function createRaceBot(
         Math.min((state.speed * 3.6) / 140, 1),
       ) * tuning.steeringScale;
     const yawError = state.yawRate - state.speed * target.curvature;
-    const stabilization = state.speed > 5 ? state.slipAngle * 0.3 - yawError * 0.08 : 0;
+    // Beyond normal cornering slip, point the front wheels along the car's velocity.
+    const excessSlip =
+      Math.sign(state.slipAngle) * Math.max(0, Math.abs(state.slipAngle) - driver.countersteerSlip);
+    const stabilization =
+      state.speed > 5 ? state.slipAngle * 0.3 + excessSlip - yawError * 0.08 : 0;
     controls.steer = clamp((wheelAngle + stabilization) / steeringLimit, -1, 1);
     if (Math.abs(controls.steer) > 0.95) saturationSeconds += dt;
     const sample = samples[index];
@@ -387,11 +463,27 @@ export function createRaceBot(
       controls.brake = 1;
       return controls;
     }
-    // Small speed drops are made by lifting early; large ones by braking as late as the profile allows.
-    const { liftDeceleration, smallSpeedDrop } = raceBotTuning;
-    let required = (state.speed - targetSpeed) * 1.5;
+    // Learn how hard the car slows off the pedals (engine braking, drag, scrub), net of grade.
+    const grade = samples[index].grade * 9.81;
+    if (
+      previousSpeed > 10 &&
+      controls.throttle === 0 &&
+      controls.brake === 0 &&
+      Math.abs(state.slipAngle) < 0.06
+    )
+      coastDeceleration = THREE.MathUtils.lerp(
+        coastDeceleration,
+        clamp((previousSpeed - state.speed) / dt - grade, 0.3, 6),
+        Math.min(1, dt),
+      );
+    previousSpeed = state.speed;
+    const coast = Math.max(0.3, coastDeceleration + grade);
+    // One acceleration request, blended from throttle through coasting to brake. Small speed
+    // drops are coasted into early; large ones are braked as late as the profile allows.
+    const { smallSpeedDrop, brakeThreshold } = driver;
+    let required = 0;
     let slowest = targetSpeed;
-    const reach = state.speed ** 2 / (2 * liftDeceleration);
+    const reach = state.speed ** 2 / (2 * coast);
     for (let k = 1; (k - fraction) * spacing < reach; k++) {
       const ahead = speeds[wrap(index + k, count)];
       if (ahead >= state.speed) continue;
@@ -401,26 +493,32 @@ export function createRaceBot(
         (state.speed ** 2 - ahead ** 2) / (2 * Math.max((k - fraction) * spacing, 1)),
       );
     }
-    const lifting = state.speed - slowest < smallSpeedDrop;
-    const brakeAt = lifting ? liftDeceleration * 1.5 : brakingDeceleration * 0.9;
-    braking = targetSpeed === 0 || required > (braking ? liftDeceleration : brakeAt);
+    const onset = state.speed - slowest < smallSpeedDrop ? coast : brakingDeceleration * 0.9;
+    slowing = required > (slowing ? coast * 0.5 : onset);
+    let desired = (targetSpeed - state.speed) * 1.5;
+    if (slowing) desired = Math.min(desired, -required);
+    const excess = -desired - coast;
+    braking = targetSpeed === 0 || excess > (braking ? 0 : brakeThreshold);
     // Like the throttle, ease off the brakes as soon as the car starts to slide.
     const brake = braking
-      ? clamp(required / fullBrakeDeceleration, 0, 1) *
+      ? clamp(excess / fullBrakeDeceleration, 0, 1) *
         (1 - THREE.MathUtils.smoothstep(Math.abs(state.slipAngle), 0.06, 0.2))
       : 0;
     // Invert the drivetrain's sqrt(pedal) response so small torque requests stay small.
-    let throttle =
-      braking || (lifting && required > liftDeceleration * 0.9)
-        ? 0
-        : clamp((targetSpeed - state.speed) * 2, 0, 1) ** 2;
+    let throttle = braking ? 0 : clamp((desired + coast) / driveAcceleration, 0, 1) ** 2;
     if (state.speed > 5)
       throttle *= 1 - THREE.MathUtils.smoothstep(Math.abs(state.slipAngle), 0.1, 0.28);
-    controls.brake = targetSpeed === 0 ? 1 : approach(controls.brake, brake, dt * 8);
-    controls.throttle =
-      controls.brake > 0
-        ? 0
-        : approach(controls.throttle, throttle, dt * (throttle > controls.throttle ? 4 : 6));
+    const { brake: previousBrake, throttle: previousThrottle } = controls;
+    // Feed the throttle out before touching the brake; snapping off it unsettles the car.
+    controls.throttle = approach(
+      controls.throttle,
+      braking ? 0 : throttle,
+      dt * (throttle > controls.throttle ? 4 : 5),
+    );
+    controls.brake =
+      targetSpeed === 0 ? 1 : controls.throttle > 0 ? 0 : approach(controls.brake, brake, dt * 8);
+    if (previousBrake === 0 && controls.brake > 0) brakeApplications++;
+    if (previousThrottle > 0 && controls.throttle === 0) throttleLifts++;
     return controls;
   }
 
@@ -439,6 +537,8 @@ export function createRaceBot(
         maxSlip,
         offTrackSeconds,
         saturationSeconds,
+        brakeApplications,
+        throttleLifts,
         targetSpeed,
         lateralError,
       };

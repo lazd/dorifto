@@ -12,8 +12,10 @@ import {
 import {
   createDrivingMap,
   createRaceBot,
+  raceBotTunings,
   type RaceBotOptions,
   type RaceExperience,
+  type VehicleState,
 } from './race-bot';
 import { physicsStep } from './physics-messages';
 import type { CourseTerrain } from './terrain';
@@ -35,13 +37,22 @@ export function trainRaceBot(
   options: RaceBotOptions,
   runs: number,
   saved?: RaceExperience,
-  maxSeconds = 600,
+  {
+    maxSeconds = 600,
+    laps: lapCount = 3,
+    onStep,
+  }: {
+    maxSeconds?: number;
+    laps?: number;
+    onStep?: (state: VehicleState, bot: ReturnType<typeof createRaceBot>) => void;
+  } = {},
 ) {
   if (!Number.isInteger(runs) || runs < 1 || runs > 100)
     throw new Error('Training runs must be an integer from 1 to 100');
   if (!Number.isFinite(maxSeconds) || maxSeconds <= 0) throw new Error('Invalid training timeout');
   const dimensions = vehicleDimensions(geometry);
-  const map = createDrivingMap(definition, terrain, dimensions.halfWidth);
+  const { edgeMargin } = raceBotTunings[options.preset ?? 'grip-fast'];
+  const map = createDrivingMap(definition, terrain, dimensions.halfWidth, edgeMargin);
   const bot = createRaceBot(map, configuration, dimensions, options, saved);
   const car: PhysicsCar = {
     ...geometry,
@@ -78,6 +89,7 @@ export function trainRaceBot(
       for (let step = 0; step < maxSeconds / physicsStep; step++) {
         const state = physics.readState();
         bot.update(state, physicsStep);
+        onStep?.(state, bot);
         const wasInvalid = laps.invalid;
         const lapTime = laps.current;
         physics.step();
@@ -112,7 +124,7 @@ export function trainRaceBot(
           }
           lastLap = laps.lap;
           lapOffTrack = metrics.offTrackSeconds;
-          if (times.length === 3) {
+          if (times.length === lapCount) {
             failure = null;
             break;
           }
@@ -121,7 +133,7 @@ export function trainRaceBot(
       bot.finishRun();
       results.push({
         run,
-        completed: times.length === 3,
+        completed: times.length === lapCount,
         failure,
         laps: times,
         metrics: bot.metrics,

@@ -11,6 +11,7 @@ const { values } = parseArgs({
     course: { type: 'string' },
     runs: { type: 'string', default: '3' },
     skill: { type: 'string', default: '0.8' },
+    preset: { type: 'string', default: 'grip-fast' },
     aggression: { type: 'string', default: '0.4' },
     frozen: { type: 'boolean', default: false },
     reverse: { type: 'boolean', default: false },
@@ -35,16 +36,20 @@ try {
   const definition = { ...course, reverse: values.reverse };
   const geometry = await loadTrainingCarGeometry(server);
   const state = createConfigurationState().getState();
-  const configuration = raceBotConfiguration({
-    driveMode: 'grip',
-    profiles: state.profiles,
-    coneMode: 'off',
-  });
+  const configuration = raceBotConfiguration(
+    {
+      driveMode: 'grip',
+      profiles: state.profiles,
+      coneMode: 'off',
+    },
+    values.preset,
+  );
   const terrain = new CourseTerrain(definition, false);
   const options = {
     skill: Number(values.skill),
     aggression: Number(values.aggression),
     learning: !values.frozen,
+    preset: values.preset,
   };
   const saved = values.experience
     ? JSON.parse(await readFile(values.experience, 'utf8')).experience

@@ -17,6 +17,9 @@ import {
   validateRaceBotOptions,
   raceBotConfiguration,
   raceBotGridSpacing,
+  raceBotTunings,
+  type DrivingMap,
+  type RaceBotPreset,
 } from './race-bot';
 import { LapTimer } from './laps';
 import { TerrainSurface, heightAt, normalAt } from './terrain-query';
@@ -110,10 +113,22 @@ export function createPhysicsSimulation(Ammo: typeof AmmoFactory, data: PhysicsI
     isAsphalt: (position: THREE.Vector3) => surface.isAsphalt(position),
   };
   const dimensions = vehicleDimensions(car);
-  const botConfiguration = raceBotConfiguration(configuration);
-  let drivingMap = data.bots?.length
-    ? createDrivingMap(data.definition, course.terrain, dimensions.halfWidth)
-    : null;
+  // Each preset has its own edge margin, so maps are built (and shared) per preset.
+  let drivingMaps = new Map<RaceBotPreset, DrivingMap>();
+  let mapDefinition = data.definition;
+  const drivingMap = (preset: RaceBotPreset) => {
+    let map = drivingMaps.get(preset);
+    if (!map) {
+      map = createDrivingMap(
+        mapDefinition,
+        course.terrain,
+        dimensions.halfWidth,
+        raceBotTunings[preset].edgeMargin,
+      );
+      drivingMaps.set(preset, map);
+    }
+    return map;
+  };
   const simulationWorld = createPhysicsWorld(Ammo, resources, data.terrain);
   const playerPhysics = botsOnly
     ? null
@@ -139,8 +154,9 @@ export function createPhysicsSimulation(Ammo: typeof AmmoFactory, data: PhysicsI
             hubs: Array.from({ length: 4 }, () => new THREE.Object3D()),
             setHazards() {},
           };
-    if (!drivingMap) throw new Error('Race bot driving map was not initialized');
-    const bot = createRaceBot(drivingMap, botConfiguration, dimensions, options);
+    const preset = options.preset ?? 'grip-fast';
+    const botConfiguration = raceBotConfiguration(configuration, preset);
+    const bot = createRaceBot(drivingMap(preset), botConfiguration, dimensions, options);
     const botControls = { ...bot.controls };
     const botLaps = botsOnly && index === 0 ? laps : new LapTimer(data.definition);
     const vehicle = createVehiclePhysics({
@@ -301,16 +317,21 @@ export function createPhysicsSimulation(Ammo: typeof AmmoFactory, data: PhysicsI
     } else if (request.type === 'direction') {
       laps = new LapTimer(request.definition);
       physics.setCourseDirection(request.spawn, laps);
-      if (bots.length)
-        drivingMap = createDrivingMap(request.definition, course.terrain, dimensions.halfWidth);
+      drivingMaps = new Map();
+      mapDefinition = request.definition;
       bots.forEach((bot, index) => {
         bot.laps = botsOnly && index === 0 ? laps : new LapTimer(request.definition);
         bot.physics.setCourseDirection(
           courseSpawn(request.definition, 30 - (index + (botsOnly ? 0 : 1)) * raceBotGridSpacing),
           bot.laps,
         );
-        if (!drivingMap) throw new Error('Race bot driving map was not initialized');
-        bot.bot = createRaceBot(drivingMap, botConfiguration, dimensions, bot.options);
+        const preset = bot.options.preset ?? 'grip-fast';
+        bot.bot = createRaceBot(
+          drivingMap(preset),
+          raceBotConfiguration(configuration, preset),
+          dimensions,
+          bot.options,
+        );
       });
       reset();
     } else if (request.type === 'replay') {

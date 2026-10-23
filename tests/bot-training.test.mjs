@@ -105,7 +105,7 @@ test('race driver completes repeated three-lap runs and serializes bounded learn
     frozen,
     1,
     saved,
-    0.1,
+    { maxSeconds: 0.1 },
   );
   assert.equal(failed.runs[0].completed, false);
   assert.equal(failed.runs[0].failure, 'timeout');

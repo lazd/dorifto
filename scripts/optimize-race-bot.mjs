@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Searches the race bot's driver constants (`raceBotTuning`) for the fastest valid laps across
+// Searches the race bot's driver constants (`raceBotTunings[preset]`) for the fastest valid laps across
 // several courses, using a (1+λ) evolution strategy evaluated in parallel child processes.
 import { fork } from 'node:child_process';
 import { availableParallelism } from 'node:os';
@@ -14,19 +14,24 @@ import { loadTrainingCarGeometry } from './bot-assets.mjs';
 const bounds = {
   corneringGrip: [8, 24],
   brakingLimit: [5, 13],
-  liftDeceleration: [1, 8],
   smallSpeedDrop: [0, 15],
+  brakeThreshold: [0, 4],
   lookaheadTime: [0.1, 0.7],
   edgeMargin: [0, 1.5],
+  countersteerSlip: [0.03, 0.4],
 };
 const tracks = [
   { course: 'hillside', reverse: false },
   { course: 'hillside', reverse: true },
   { course: 'sweeper', reverse: false },
   { course: 'hilly-drift', reverse: false },
+  // Long lap with crests and off-camber corners; one lap keeps generations short.
+  { course: 'sonoma-raceway', reverse: false, laps: 1, maxSeconds: 240 },
 ];
 const failurePenalty = 2;
 const invalidLapPenalty = 0.05;
+// Cost per brake application or full throttle lift per lap; about 0.1 s each on Hillside.
+const pedalChangePenalty = 0.003;
 
 if (process.argv[2] === '--worker') await worker();
 else await main();
@@ -37,14 +42,18 @@ async function main() {
       generations: { type: 'string', default: '12' },
       workers: { type: 'string', default: String(Math.max(1, availableParallelism() - 1)) },
       skill: { type: 'string', default: '1' },
-      output: { type: 'string', default: '.bot-training/race-tuning.json' },
+      preset: { type: 'string', default: 'grip-fast' },
+      output: { type: 'string' },
       resume: { type: 'boolean', default: false },
     },
   });
+  values.output ??= `.bot-training/race-tuning-${values.preset}.json`;
   const generations = Number(values.generations);
   const workerCount = Number(values.workers);
   const pool = Array.from({ length: workerCount }, () =>
-    fork(fileURLToPath(import.meta.url), ['--worker', values.skill], { stdio: 'inherit' }),
+    fork(fileURLToPath(import.meta.url), ['--worker', values.skill, values.preset], {
+      stdio: 'inherit',
+    }),
   );
   const idle = [...pool];
   const waiting = [];
@@ -65,14 +74,15 @@ async function main() {
       else waiting.push(run);
     });
 
-  const { raceBotTuning } = await importTuning();
+  const { raceBotTunings } = await importTuning();
+  if (!raceBotTunings[values.preset]) throw new Error(`Unknown race bot preset: ${values.preset}`);
   let reference;
   const start = values.resume
     ? JSON.parse(await readFile(path.resolve(values.output), 'utf8')).tuning
-    : raceBotTuning;
+    : raceBotTunings[values.preset];
   let best = { tuning: { ...start } };
   best = { ...best, ...(await score(best.tuning)) };
-  reference = best.times;
+  reference = [...best.times];
   // Step sizes start at a sixth of each range and adapt with the 1/5th success rule.
   const steps = Object.fromEntries(
     Object.entries(bounds).map(([key, [low, high]]) => [key, (high - low) / 6]),
@@ -121,13 +131,19 @@ async function main() {
   async function score(tuning) {
     const results = await Promise.all(tracks.map((track) => evaluate(tuning, track)));
     const times = results.map(({ lapTime }) => lapTime);
+    // A track the start values failed takes its first completed lap as the reference.
+    if (reference)
+      times.forEach((time, i) => {
+        if (!Number.isFinite(reference[i]) && Number.isFinite(time)) reference[i] = time;
+      });
     const cost = results.reduce(
       (sum, result, i) =>
         sum +
         (result.failure
           ? failurePenalty
           : result.lapTime / (Number.isFinite(reference?.[i]) ? reference[i] : result.lapTime) +
-            result.invalidLaps * invalidLapPenalty),
+            result.invalidLaps * invalidLapPenalty +
+            (result.brakesPerLap + result.liftsPerLap) * pedalChangePenalty),
       0,
     );
     return { cost, times, results };
@@ -136,7 +152,10 @@ async function main() {
   async function save(result) {
     const output = path.resolve(values.output);
     await mkdir(path.dirname(output), { recursive: true });
-    await writeFile(output, `${JSON.stringify({ tracks, ...result }, null, 2)}\n`);
+    await writeFile(
+      output,
+      `${JSON.stringify({ preset: values.preset, tracks, ...result }, null, 2)}\n`,
+    );
   }
 }
 
@@ -152,12 +171,13 @@ function mutate(tuning, steps) {
 
 function formatLaps(results, previous) {
   return results
-    .map(({ failure, lapTime, invalidLaps }, i) => {
+    .map(({ failure, lapTime, invalidLaps, brakesPerLap, liftsPerLap }, i) => {
       const name = `${tracks[i].course}${tracks[i].reverse ? '-rev' : ''}`;
       if (failure) return `${name} ${failure}`;
       const before = previous?.[i];
       const change = before && !before.failure ? ` (${signed(lapTime - before.lapTime)})` : '';
-      return `${name} ${lapTime.toFixed(2)}s${change}${invalidLaps ? ` [${invalidLaps} invalid]` : ''}`;
+      const pedals = ` ${brakesPerLap.toFixed(0)}b/${liftsPerLap.toFixed(0)}l`;
+      return `${name} ${lapTime.toFixed(2)}s${change}${pedals}${invalidLaps ? ` [${invalidLaps} invalid]` : ''}`;
     })
     .join(', ');
 }
@@ -200,23 +220,27 @@ function viteServer() {
 
 async function worker() {
   const skill = Number(process.argv[3]);
+  const preset = process.argv[4];
   const server = await viteServer();
   const { courses } = await server.ssrLoadModule('/src/courses.ts');
   const { CourseTerrain } = await server.ssrLoadModule('/src/terrain.ts');
   const { createConfigurationState } = await server.ssrLoadModule('/src/configuration-state.ts');
   const { trainRaceBot } = await server.ssrLoadModule('/src/bot-training.ts');
-  const { raceBotTuning, raceBotConfiguration } = await server.ssrLoadModule('/src/race-bot.ts');
+  const { raceBotTunings, raceBotConfiguration } = await server.ssrLoadModule('/src/race-bot.ts');
   const geometry = await loadTrainingCarGeometry(server);
-  const configuration = raceBotConfiguration({
-    driveMode: 'grip',
-    profiles: createConfigurationState().getState().profiles,
-    coneMode: 'off',
-  });
+  const configuration = raceBotConfiguration(
+    {
+      driveMode: 'grip',
+      profiles: createConfigurationState().getState().profiles,
+      coneMode: 'off',
+    },
+    preset,
+  );
   const Ammo = await AmmoFactory.call({});
   const terrains = new Map();
   process.on('message', ({ tuning, track }) => {
     try {
-      Object.assign(raceBotTuning, tuning);
+      Object.assign(raceBotTunings[preset], tuning);
       const definition = {
         ...courses.find(({ id }) => id === track.course),
         reverse: track.reverse,
@@ -229,16 +253,19 @@ async function worker() {
         terrains.get(key),
         geometry,
         configuration,
-        { skill, aggression: 0.5, learning: false },
+        { skill, aggression: 0.5, learning: false, preset },
         1,
         undefined,
-        150,
+        { maxSeconds: track.maxSeconds ?? 150, laps: track.laps ?? 3 },
       ).runs;
       const times = run.laps.map(({ time }) => time);
       process.send({
         failure: run.completed ? null : run.failure,
         lapTime: times.length ? Math.min(...times) : Infinity,
         invalidLaps: run.laps.filter(({ valid }) => !valid).length,
+        // Includes the approach lap, so these slightly overstate per-lap counts.
+        brakesPerLap: run.metrics.brakeApplications / Math.max(1, run.laps.length),
+        liftsPerLap: run.metrics.throttleLifts / Math.max(1, run.laps.length),
       });
     } catch (error) {
       process.send({ error: String(error?.stack ?? error) });
