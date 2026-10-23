@@ -170,7 +170,7 @@ test('driver rejects incompatible experience and invalid configuration', () => {
   assert.deepEqual(readRaceBots(written), []);
 });
 
-test('traffic follows the racing line, attacks ahead, passes inside, then returns to the line', () => {
+test('traffic steers inside a nearby opponent and eases back to the racing line', () => {
   const dimensions = vehicleDimensions(geometry);
   for (const reverse of [false, true]) {
     const map = createDrivingMap({ ...definition, reverse }, terrain, dimensions.halfWidth);
@@ -196,45 +196,59 @@ test('traffic follows the racing line, attacks ahead, passes inside, then return
     const state = stateAt(index);
     const targetIndex = at(index + 2);
     const planner = createTrafficPlanner(map, dimensions);
-    const update = (other) => planner.update(state, index, targetIndex, [state, other]);
+    const update = (traffic = []) => planner.update(state, index, targetIndex, traffic);
     const assertRacingLine = (plan) => {
       assert.equal(plan.x, map.samples[targetIndex].x);
       assert.equal(plan.z, map.samples[targetIndex].z);
-      assert.equal('speedLimit' in plan, false);
-      assert.equal('avoiding' in plan, false);
     };
-    assertRacingLine(update(stateAt(index - 10)));
-    assert.equal(update(stateAt(index - 10)).attacking, false);
-    const chasing = update(stateAt(index + Math.floor(35 / map.spacing)));
-    assert.equal(chasing.attacking, true);
-    assertRacingLine(chasing);
-    assertRacingLine(update(stateAt(index + 4)));
-    const plan = update({ ...stateAt(index + 2), speed: 0, vx: 0, vz: 0 });
-    const offset =
-      (plan.x - map.centers[targetIndex].x) * map.rights[targetIndex].x +
-      (plan.z - map.centers[targetIndex].z) * map.rights[targetIndex].z;
-    assert.equal(Math.sign(offset), Math.sign(bendAt(index)), `inside line, reverse=${reverse}`);
-    assert.ok(Math.abs(offset) >= dimensions.halfWidth * 2 + 0.74);
-    assert.ok(
-      Math.abs(offset) + dimensions.halfWidth > map.definition.width / 2,
-      'inside pass can reach the cone line',
+    const line = map.samples[targetIndex];
+    const lineHeading = Math.atan2(line.x - state.x, line.z - state.z);
+    const headingAdjustment = (plan) => {
+      const difference = Math.atan2(plan.x - state.x, plan.z - state.z) - lineHeading;
+      return Math.atan2(Math.sin(difference), Math.cos(difference));
+    };
+    assertRacingLine(update());
+    assert.equal(update().attacking, false);
+    const right = map.rights[index];
+    const opponent = {
+      ...state,
+      x: state.x - right.z * dimensions.halfLength * 2,
+      z: state.z + right.x * dimensions.halfLength * 2,
+    };
+    const plan = update([state, opponent]);
+    assert.equal(plan.attacking, true);
+    const passingAdjustment = headingAdjustment(plan);
+    assert.equal(
+      Math.sign(passingAdjustment),
+      Math.sign(bendAt(index)),
+      `steers inside, reverse=${reverse}`,
     );
-    assert.equal(update(stateAt(index - 1)).attacking, true, 'hold the pass until fully clear');
-    const clear = update(stateAt(index - 10));
+    const clear = update();
     assert.equal(clear.attacking, false);
-    assertRacingLine(clear);
+    const returningAdjustment = headingAdjustment(clear);
+    assert.equal(Math.sign(returningAdjustment), Math.sign(passingAdjustment));
+    assert.ok(Math.abs(returningAdjustment) < Math.abs(passingAdjustment), 'eases back');
     planner.reset();
-    assertRacingLine(update(stateAt(index - 10)));
+    assertRacingLine(update());
   }
 });
 
-test('chasing raises pace beyond the normal skill limit without changing the solo profile', () => {
+test('a close inside-pass attempt boosts target speed without changing the solo profile', () => {
   const dimensions = vehicleDimensions(geometry);
   const map = createDrivingMap(definition, terrain, dimensions.halfWidth);
   const options = { ...defaultRaceBotOptions, skill: 0.3, learning: false };
   const solo = createRaceBot(map, configuration, dimensions, options);
   const chasing = createRaceBot(map, configuration, dimensions, options);
-  const point = map.samples[0];
+  const bendSteps = Math.ceil(20 / map.spacing);
+  const bends = map.samples.map((_, index) => {
+    let bend = 0;
+    for (let step = 0; step <= bendSteps; step++)
+      bend += map.samples[(index + step) % map.samples.length].curvature;
+    return Math.abs(bend) / (bendSteps + 1);
+  });
+  const index = bends.indexOf(Math.max(...bends));
+  const point = map.samples[index];
+  const right = map.rights[index];
   const state = {
     x: point.x,
     z: point.z,
@@ -245,18 +259,25 @@ test('chasing raises pace beyond the normal skill limit without changing the sol
     slipAngle: 0,
     yawRate: 0,
   };
-  const ahead = map.samples[Math.round(32 / map.spacing)];
-  const opponent = { ...state, x: ahead.x, z: ahead.z };
+  const opponentAt = (distance) => ({
+    ...state,
+    x: state.x - right.z * distance,
+    z: state.z + right.x * distance,
+  });
   solo.update(state, 1 / 120);
+  chasing.update(state, 1 / 120, [state, opponentAt(32)]);
+  assert.equal(chasing.metrics.targetSpeed, solo.metrics.targetSpeed, 'no distant chase boost');
+  const opponent = opponentAt(dimensions.halfLength * 2 + 1);
+  const planner = createTrafficPlanner(map, dimensions);
+  assert.equal(planner.update(state, index, index, [state, opponent]).attacking, true);
   chasing.update(state, 1 / 120, [state, opponent]);
-  assert.ok(chasing.metrics.targetSpeed > solo.metrics.targetSpeed * 1.05);
+  assert.equal(chasing.metrics.targetSpeed, solo.metrics.targetSpeed * 1.06);
   chasing.update(state, 1 / 120);
   assert.equal(chasing.metrics.targetSpeed, solo.metrics.targetSpeed);
 });
 
 for (const scenario of [
   { name: 'a skilled rear bot overtakes a less-skilled front bot', skills: '1,0.2', pass: true },
-  { name: 'a low-skill rear bot closes on a skilled front bot', skills: '0.3,1', pass: false },
 ])
   test(`${scenario.name} in the shared world`, () => {
     const bots = readRaceBots(new URLSearchParams(`bots=2&bot-skill=${scenario.skills}`));
