@@ -3,6 +3,7 @@ import type { CourseDefinition } from './courses';
 import {
   courseCornerAt,
   courseKerbSegments,
+  courseLineWidth,
   courseRoute,
   courseShoulderWidth,
   startDistance,
@@ -200,7 +201,7 @@ function buildCourse(scene: THREE.Group, definition: CourseDefinition) {
     pad.receiveShadow = true;
     scene.add(pad);
   } else ribbon(0, definition.width + courseShoulderWidth * 2, 0.008, asphalt);
-  for (const side of [-1, 1]) ribbon((side * definition.width) / 2, 0.16, 0.016, white);
+  for (const side of [-1, 1]) ribbon((side * definition.width) / 2, courseLineWidth, 0.016, white);
   const columns = Math.ceil(definition.width / 0.5);
   const tileWidth = definition.width / columns;
   const start = route.getPointAt(startDistance / length);

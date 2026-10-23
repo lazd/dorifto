@@ -4,6 +4,7 @@ import type { CourseGenerationWeights } from './course-generation';
 
 export const startDistance = 5;
 export const courseShoulderWidth = 1.6;
+export const courseLineWidth = 0.16;
 const spawnDistance = 30;
 
 export interface CourseDefinition {

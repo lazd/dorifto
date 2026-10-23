@@ -7,6 +7,7 @@ let courses;
 let courseRoute;
 let courseSpawn;
 let courseStartDistance;
+let courseLineWidth;
 let courseTurns;
 let startDistance;
 let readCourseReverse;
@@ -25,6 +26,7 @@ before(async () => {
     courseRoute,
     courseSpawn,
     courseStartDistance,
+    courseLineWidth,
     courseTurns,
     startDistance,
     readCourseReverse,
@@ -130,7 +132,7 @@ test('turn directions invert at the same physical bends and reverse warnings are
   );
 });
 
-test('lap gates accept complete reversed laps and reject driving the wrong way', () => {
+test('start/finish counts complete reversed laps and rejects driving the wrong way', () => {
   for (const definition of definitions()) {
     for (const reverse of [false, true]) {
       const directed = { ...definition, reverse };
@@ -143,7 +145,8 @@ test('lap gates accept complete reversed laps and reject driving the wrong way',
         const spacing = 0.75;
         for (let distance = spacing; distance < length + 60; distance += spacing) {
           const t = ((((origin + direction * distance) / length) % 1) + 1) % 1;
-          timer.update(route.getPointAt(t), 1 / 60);
+          const point = route.getPointAt(t);
+          timer.update(point, 1 / 60, [point, point, point, point]);
         }
         return timer;
       }
@@ -152,5 +155,115 @@ test('lap gates accept complete reversed laps and reject driving the wrong way',
       assert.ok(completed.last > 0);
       assert.equal(drive(-1).lap, 0, `wrong way: ${definition.id}, reverse=${reverse}`);
     }
+  }
+});
+
+test('all four tires outside the white lines invalidates until reset or the next start crossing', () => {
+  for (const reverse of [false, true]) {
+    const definition = { ...courses[0], reverse };
+    const route = courseRoute(definition);
+    const length = route.getLength();
+    const t = courseStartDistance(definition, length) / length;
+    const center = route.getPointAt(t);
+    const forward = route.getTangentAt(t);
+    const timer = new LapTimer(definition);
+    function pointAt(distance, offset = 0) {
+      const point = center.clone().addScaledVector(forward, distance);
+      point.x += forward.z * offset;
+      point.z -= forward.x * offset;
+      return point;
+    }
+    function update(point, tires = [point, point, point, point]) {
+      timer.update(point, 0.1, tires);
+    }
+    function cross() {
+      update(pointAt(-1));
+      update(pointAt(1));
+    }
+    function driveLap() {
+      for (let distance = 2; distance < length + 2; distance += 0.75) {
+        const point = route.getPointAt((((t + distance / length) % 1) + 1) % 1);
+        update(point);
+      }
+    }
+    timer.reset(pointAt(-1));
+    cross();
+    assert.equal(timer.lap, 1);
+    driveLap();
+    assert.equal(timer.lap, 2);
+    const inside = pointAt(2, definition.width / 2 - 0.2);
+    const outside = pointAt(2, definition.width / 2 + 0.2);
+    update(pointAt(2), [outside, outside, outside, inside]);
+    assert.equal(timer.invalid, false, 'one tire inside keeps the lap valid');
+    update(pointAt(2), [outside, outside, outside, outside]);
+    assert.equal(timer.invalid, true);
+    update(pointAt(2));
+    assert.equal(timer.invalid, true, 'rejoining does not recover an invalid lap');
+    const last = timer.last;
+    const best = timer.best;
+    const startedAt = timer.lapStartedAt;
+    timer.hitCone(7);
+    cross();
+    assert.equal(timer.invalid, false);
+    assert.equal(timer.lap, 2, 'a discarded attempt does not count as a completed lap');
+    assert.equal(timer.last, last);
+    assert.equal(timer.best, best);
+    assert.equal(timer.conesHit, 0);
+    assert.ok(timer.lapStartedAt > startedAt);
+    assert.ok(Math.abs(timer.current - 0.05) < 1e-9, 'restart uses the exact line crossing');
+    driveLap();
+    assert.equal(timer.lap, 3, 'the fresh attempt can complete without hitting training gates');
+    update(pointAt(2), [outside, outside, outside, outside]);
+    assert.equal(timer.invalid, true);
+    timer.reset(pointAt(-1));
+    assert.equal(timer.invalid, false);
+  }
+});
+
+test('the white-line boundary is inclusive and asphalt shoulders are outside track limits', () => {
+  const definition = {
+    id: 'straight-boundary',
+    name: 'Straight boundary',
+    width: 8,
+    points: [
+      [0, 0],
+      [50, 0],
+      [100, 0],
+      [150, 0],
+      [150, 100],
+      [100, 100],
+      [50, 100],
+      [0, 100],
+      [-50, 100],
+      [-50, 0],
+    ],
+  };
+  const route = courseRoute(definition);
+  const length = route.getLength();
+  const start = courseStartDistance(definition, length);
+  const before = route.getPointAt((start - 1) / length);
+  const after = route.getPointAt((start + 1) / length);
+  for (const side of [-1, 1]) {
+    const timer = new LapTimer(definition);
+    timer.reset(before);
+    timer.update(after, 0.1, [after, after, after, after]);
+    const tire = after.clone();
+    for (const offset of [0, courseLineWidth / 4, courseLineWidth / 2]) {
+      tire.z = side * (definition.width / 2 + offset);
+      timer.update(after, 0.1, [tire, tire, tire, tire]);
+      assert.equal(timer.invalid, false, 'the entire white line is within track limits');
+    }
+    const halfTreadWidth = 0.12;
+    tire.z += side * halfTreadWidth;
+    const innerEdge = tire.clone();
+    innerEdge.z -= side * halfTreadWidth;
+    const outerEdge = tire.clone();
+    outerEdge.z += side * halfTreadWidth;
+    const tirePoints = [tire, innerEdge, outerEdge];
+    timer.update(after, 0.1, Array.from({ length: 4 }, () => tirePoints).flat());
+    assert.equal(timer.invalid, false, 'a tread edge touching the stripe keeps the lap valid');
+    for (const point of tirePoints) point.z += side * 0.0001;
+    timer.update(after, 0.1, Array.from({ length: 4 }, () => tirePoints).flat());
+    assert.equal(timer.invalid, true, 'all tread edges beyond the stripe invalidates the lap');
   }
 });

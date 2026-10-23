@@ -41,8 +41,9 @@ function createPose(data: PoseData) {
 }
 
 function lapState(laps: LapTimer): LapState {
-  const { lap, current, last, best, lastCones, elapsedTime, lapStartedAt, conesHit } = laps;
-  return { lap, current, last, best, lastCones, elapsedTime, lapStartedAt, conesHit };
+  const { lap, invalid, current, last, best, lastCones, elapsedTime, lapStartedAt, conesHit } =
+    laps;
+  return { lap, invalid, current, last, best, lastCones, elapsedTime, lapStartedAt, conesHit };
 }
 
 export function createPhysicsSimulation(Ammo: typeof AmmoFactory, data: PhysicsInit) {
@@ -62,6 +63,7 @@ export function createPhysicsSimulation(Ammo: typeof AmmoFactory, data: PhysicsI
     hubs: Array.from({ length: 4 }, () => new THREE.Object3D()),
     centers: data.car.centers.map((center) => new THREE.Vector3().fromArray(center)),
     radii: data.car.radii,
+    widths: data.car.widths,
     collisionVertices: data.car.collisionVertices.map((point) =>
       new THREE.Vector3().fromArray(point),
     ),

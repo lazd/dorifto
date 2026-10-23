@@ -61,6 +61,7 @@ function fixture(slopeX = 0, slopeZ = 0) {
       new THREE.Vector3(0.75, 0, -1.3),
     ],
     radii: [0.32, 0.32, 0.32, 0.32],
+    widths: [0.24, 0.24, 0.24, 0.24],
     collisionVertices: [-1, 1].flatMap((x) =>
       [-1, 1].flatMap((y) =>
         [-1, 1].map((z) => new THREE.Vector3(x * 0.75, y < 0 ? -0.1 : 0.3, z * 2)),
@@ -168,6 +169,33 @@ function workerFixture() {
     configurationState,
   };
 }
+
+test('lap limits receive each tire center and both full-width tread edges', () => {
+  const { physics, laps, car, controls } = fixture();
+  let points;
+  laps.update = (_position, _dt, tirePoints) => {
+    points = tirePoints.map((point) => point.clone());
+  };
+  try {
+    controls.steer = 1;
+    controls.throttle = 0.2;
+    for (let step = 0; step < 60; step++) physics.step();
+    assert.equal(points.length, 12);
+    for (let i = 0; i < 4; i++) {
+      const [center, left, right] = points.slice(i * 3, i * 3 + 3);
+      assert.ok(Math.abs(left.distanceTo(right) - car.widths[i]) < 1e-8);
+      assert.ok(center.distanceTo(left.clone().add(right).multiplyScalar(0.5)) < 1e-8);
+    }
+    const front = points[1].clone().sub(points[2]).normalize();
+    const rear = points[7].clone().sub(points[8]).normalize();
+    assert.ok(
+      front.dot(rear) < 0.99,
+      'front tread edges follow steering rather than chassis width',
+    );
+  } finally {
+    physics.dispose();
+  }
+});
 
 test('worker client bounds in-flight advances, ignores pre-reset replies, preserves snap samples, and surfaces failures', async (t) => {
   const fixture = workerFixture();

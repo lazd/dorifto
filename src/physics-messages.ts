@@ -22,6 +22,7 @@ export interface PhysicsInit {
   car: {
     centers: [number, number, number][];
     radii: number[];
+    widths: number[];
     collisionVertices: [number, number, number][];
   };
   cones: PoseData[];
@@ -32,7 +33,7 @@ export interface PhysicsInit {
 
 export function createPhysicsInit(
   definition: CourseDefinition,
-  car: Pick<PhysicsCar, 'centers' | 'radii' | 'collisionVertices'>,
+  car: Pick<PhysicsCar, 'centers' | 'radii' | 'widths' | 'collisionVertices'>,
   course: {
     cones: THREE.Object3D[];
     cornerCones: THREE.Object3D[];
@@ -51,6 +52,7 @@ export function createPhysicsInit(
     car: {
       centers: car.centers.map((center) => center.toArray()),
       radii: car.radii,
+      widths: car.widths,
       collisionVertices: car.collisionVertices.map((point) => point.toArray()),
     },
     cones: course.cones.map(pose),
@@ -65,12 +67,21 @@ export function createPhysicsInit(
 
 export type LapState = Pick<
   LapTimer,
-  'lap' | 'current' | 'last' | 'best' | 'lastCones' | 'elapsedTime' | 'lapStartedAt' | 'conesHit'
+  | 'lap'
+  | 'invalid'
+  | 'current'
+  | 'last'
+  | 'best'
+  | 'lastCones'
+  | 'elapsedTime'
+  | 'lapStartedAt'
+  | 'conesHit'
 >;
 
 export function emptyLapState(): LapState {
   return {
     lap: 0,
+    invalid: false,
     current: 0,
     last: null,
     best: null,

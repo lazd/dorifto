@@ -648,6 +648,11 @@ async function start() {
     }
     if (run.lapStarts.length < timing.lap && timing.last !== null)
       run.completeLap(timing.lapStartedAt - runOrigin, timing.last, timing.lastCones ?? 0);
+    else if (
+      run.started &&
+      run.lapStarts[run.lapStarts.length - 1] !== timing.lapStartedAt - runOrigin
+    )
+      run.lapStarts[run.lapStarts.length - 1] = timing.lapStartedAt - runOrigin;
     if (!sample) return;
     run.pushSample(sample);
     keepRunRecord();
@@ -1102,6 +1107,7 @@ async function start() {
         gear: engine.gear,
         limiter: engine.limiterCut,
         ...timing,
+        invalid: !replaying && laps.invalid,
         cones: replaying ? 0 : laps.conesHit,
         driving: spawnBrakeHeld
           ? 'brakes-held'

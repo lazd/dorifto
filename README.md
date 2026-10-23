@@ -97,13 +97,23 @@ A seven-segment LED-style MPH speedometer sits in the center with a gear readout
 below it. Driving-state messages (brakes held, sliding, burnout, etc.) are not shown.
 A persistent minimap shows the current lap number on the left
 (`--` before crossing the start line) and the current lap time on the right
-with the best time directly underneath, including in cabin view. There is
+with the current run's best time labeled **RECORD** directly underneath, including in cabin view.
+Setting a new run record flashes the label and time gold for two seconds; reduced-motion
+mode uses a steady gold highlight instead. Replay does not trigger record celebrations. There is
 no separate lap timing panel. It shows the complete course, a white start/finish line, and an amber arrow
 for the car's live position and heading. It follows course changes automatically;
 **Settings > Map orientation** selects **North up** (`?minimap=north-up`)
 or **Follow heading** (default, `?minimap=heading-up`). Follow heading rotates the course
 so the car always points up, fitting the entire course at any angle. The lap
 times stay upright. The choice is retained in the URL across reloads and course changes.
+When all four tires, including their tread edges, are beyond the outer edges of the white lines (farther than
+half the track width plus half the 16 cm stripe width from the centerline), the current lap time turns red and pulses (solid red with
+reduced motion enabled). Asphalt shoulders do not count as inside the track. The warning
+stays latched after rejoining; reset clears it, or crossing start/finish discards the invalid
+attempt and starts fresh without changing completed times or the best lap. Airborne tires
+use their projected wheel positions rather than stale ground-contact points. The check includes
+the loaded model's tire widths and front-wheel steering, so a tread edge touching the line
+keeps the lap valid even when the tire's center is outside.
 
 ## Runtime modules
 
