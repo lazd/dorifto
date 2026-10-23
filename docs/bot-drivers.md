@@ -63,6 +63,9 @@ reset and serialization. Key saved experience to course geometry/direction,
 vehicle setup, driver parameters and controller version. Reject incompatible or
 malformed experience rather than silently applying it.
 
+Reset transient controller estimates, including coasting deceleration, between runs
+so frozen evaluation repeats from the same state without clearing saved experience.
+
 The evaluator orchestrates repeated runs and comparisons; the bot itself observes
 and updates its driving. Frozen evaluation on held-out courses and human driving
 are still required: adaptation on Hillside is not proof of general competence.

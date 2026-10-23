@@ -670,9 +670,12 @@ test('static friction cannot hold beyond tire grip or stop freely rolling wheels
       physics.captureVisuals(true);
       const start = car.chassis.position.clone();
       if (release === 'grip') {
-        const { profiles } = configurationState.getState();
+        const { driveMode, profiles } = configurationState.getState();
         configurationState.update({
-          profiles: { ...profiles, drift: { ...profiles.drift, frontGrip: 0.01, rearGrip: 0.01 } },
+          profiles: {
+            ...profiles,
+            [driveMode]: { ...profiles[driveMode], frontGrip: 0.01, rearGrip: 0.01 },
+          },
         });
       } else {
         controls.throttle = 1;

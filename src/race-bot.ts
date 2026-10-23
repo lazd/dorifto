@@ -414,6 +414,7 @@ export function createRaceBot(
     targetSpeed = lateralError = 0;
     braking = slowing = false;
     previousSpeed = 0;
+    coastDeceleration = 2;
     Object.assign(controls, { throttle: 0, brake: 0, reverse: 0, steer: 0, handbrake: false });
   }
 
