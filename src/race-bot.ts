@@ -124,7 +124,7 @@ function readPerBot<Key extends keyof RaceBotOptions>(
 }
 
 export function readRaceBots(parameters: URLSearchParams): RaceBotOptions[] {
-  const count = Number(parameters.get('bots') ?? (readBotsOnly(parameters) ? 1 : 0));
+  const count = Number(parameters.get('bots') ?? (readBotsOnly(parameters) ? 1 : 2));
   if (!Number.isInteger(count) || count < 0 || count > maxRaceBots)
     throw new Error(`Bot count must be an integer from 0 to ${maxRaceBots}`);
   if (readBotsOnly(parameters) && count === 0)
@@ -161,8 +161,8 @@ export function writeRaceBots(
     'bot-learning': bots.map((bot) => (bot.learning ? 1 : 0)),
   };
   for (const name of ['bots', 'bots-only', ...Object.keys(lists)]) parameters.delete(name);
-  if (!bots.length) return;
   parameters.set('bots', String(bots.length));
+  if (!bots.length) return;
   for (const [name, values] of Object.entries(lists)) parameters.set(name, values.join(','));
   if (botsOnly) parameters.set('bots-only', '1');
 }

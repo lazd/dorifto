@@ -140,12 +140,12 @@ export function createConfigurationState(storage?: Storage) {
     ? loadTuningPresets(storage, defaultTuningPresets())
     : defaultTuningPresets();
   const store = createStore<ConfigurationState>({
-    driveMode: 'drift',
+    driveMode: 'grip',
     profiles: { drift: defaultTuning('drift'), grip: defaultTuning('grip') },
     selectedTuningPresets: { drift: 'drift-default', grip: 'grip-default' },
     tuningPresets,
-    cameraStyle: 'corner',
-    timeOfDay: 'noon',
+    cameraStyle: 'cabin',
+    timeOfDay: 'sunset',
     minimapOrientation: 'heading-up',
     cabinHeadMotion: true,
     mirrorResolution: 'low',

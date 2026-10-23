@@ -4,6 +4,9 @@ A small Three.js + Ammo.js driving playground built with TypeScript and Vite.
 Ammo.js is installed through the `ammojs-typed` npm distribution and runs in a
 dedicated Web Worker; there are no runtime CDN dependencies.
 
+With no query parameters, the game starts on Hillside Circuit at sunset with two bots,
+the Grip / Default (`grip-default`) preset, and the cabin camera.
+
 ## Bot drivers
 
 Race bots are configured with the 🤖 button or through URL parameters:
@@ -12,7 +15,7 @@ Race bots are configured with the 🤖 button or through URL parameters:
 ?course=hillside&bots=2&bot-skill=0.8&bot-aggression=0.4
 ```
 
-`bots` accepts 0-8 (default 0); skill and aggression accept 0-1. Bots use real,
+`bots` accepts 0-8 (default 2); use `?bots=0` to drive alone. Skill and aggression accept 0-1. Bots use real,
 colliding vehicles with independent **Grip / Fast (`grip-fast`)** setups, start ahead of the player and
 drive automatically. They derive a line and speed profile from any selected
 course, including reversed courses. A local traffic planner checks road-constrained
@@ -879,7 +882,7 @@ the light on the ground rather than the body, without visible point sources.
 Underglow is Night-only. Foot braking, hazards, and reverse lights
 still work at any time of day, independently of the running-light state.
 The selection is saved in `?time=noon`, `?time=sunset`, or `?time=night` and
-preserved when switching courses or generating a random layout. Noon is the default.
+preserved when switching courses or generating a random layout. Sunset is the default.
 
 ## Courses
 

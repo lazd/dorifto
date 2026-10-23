@@ -109,8 +109,12 @@ async function start() {
       },
       fallback,
     );
-  const requestedCamera = readOption('camera', 'corner', isCameraStyle);
-  const requestedMode = readOption('mode', 'drift', isDriveMode);
+  const requestedCamera = readOption(
+    'camera',
+    configurationState.getState().cameraStyle,
+    isCameraStyle,
+  );
+  const requestedMode = readOption('mode', configurationState.getState().driveMode, isDriveMode);
   const requestedStation = readOption('station', 'off', isStereoStationSelection);
   configurationState.update({ stereoStation: requestedStation });
   const requestedPresetId =
@@ -245,9 +249,7 @@ async function start() {
       ? generateCustomCourse(seed, requestedWeights)
       : requestedCourse === 'random'
         ? generateCourse(seed)
-        : requestedCourse
-          ? availableCourses.find((course) => course.id === requestedCourse)
-          : courses[0];
+        : availableCourses.find((course) => course.id === (requestedCourse ?? 'hillside'));
   if (!definition) throw new Error(`Unknown course: ${requestedCourse}`);
   // Download the car while the sky, lighting, and course are built.
   const carLoad = loadCar((fraction) => showLoading('Loading models…', 0.2 * fraction));
@@ -265,7 +267,7 @@ async function start() {
   const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 1500);
   camera.layers.enable(1);
   const lighting = createLighting(scene, renderer, camera);
-  const requestedTime = readOption('time', 'noon', isTimeOfDay);
+  const requestedTime = readOption('time', configurationState.getState().timeOfDay, isTimeOfDay);
   configurationState.update({ timeOfDay: requestedTime });
   lighting.apply(requestedTime);
   const initialDefinition = { ...definition, reverse: requestedReverse };

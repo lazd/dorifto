@@ -25,6 +25,10 @@ test('configuration and game snapshots and notifications are completely independ
   const configuration = createConfigurationState();
   const game = createGameState();
   const initialConfiguration = configuration.getState();
+  assert.equal(initialConfiguration.timeOfDay, 'sunset');
+  assert.equal(initialConfiguration.driveMode, 'grip');
+  assert.equal(initialConfiguration.selectedTuningPresets.grip, 'grip-default');
+  assert.equal(initialConfiguration.cameraStyle, 'cabin');
   let configurationUpdates = 0;
   let gameUpdates = 0;
   configuration.subscribe(() => {
@@ -50,7 +54,7 @@ test('configuration and game snapshots and notifications are completely independ
 
   const lastGame = game.getState();
   configuration.update({
-    driveMode: 'grip',
+    driveMode: 'drift',
     stereoStation: 'scrtagnt',
     coneMode: 'off',
     muted: true,
@@ -79,12 +83,12 @@ test('each configuration subscription runs only when its settings actually chang
   };
   const changes = {
     stereoStation: 'scrtagnt',
-    driveMode: 'grip',
+    driveMode: 'drift',
     profiles,
     selectedTuningPresets: { ...original.selectedTuningPresets, drift: null },
     coneMode: 'off',
     muted: true,
-    cameraStyle: 'cabin',
+    cameraStyle: 'corner',
   };
   for (const [key, value] of Object.entries(changes)) {
     configuration.update({ [key]: value });

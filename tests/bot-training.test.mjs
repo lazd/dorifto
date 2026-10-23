@@ -143,6 +143,11 @@ test('driver rejects incompatible experience and invalid configuration', () => {
   );
   assert.throws(() => readRaceBots(new URLSearchParams(`bots=${maxRaceBots + 1}`)), /Bot count/);
   assert.throws(() => readRaceBots(new URLSearchParams('bot-skill=NaN')), /skill/);
+  assert.deepEqual(readRaceBots(new URLSearchParams()), [
+    defaultRaceBotOptions,
+    defaultRaceBotOptions,
+  ]);
+  assert.deepEqual(readRaceBots(new URLSearchParams('bots=0')), []);
   assert.equal(
     readRaceBots(new URLSearchParams('bots=2&bot-skill=0.5&bot-aggression=1')).length,
     2,
@@ -164,6 +169,10 @@ test('driver rejects incompatible experience and invalid configuration', () => {
   writeRaceBots(written, configured, true);
   assert.deepEqual(readRaceBots(written), configured);
   assert.equal(written.get('bots-only'), '1');
+  writeRaceBots(written, [], false);
+  assert.equal(written.get('bots'), '0');
+  assert.equal(written.has('bots-only'), false);
+  assert.deepEqual(readRaceBots(written), []);
 });
 
 test('a skilled rear bot overtakes a less-skilled front bot in the shared world', () => {
