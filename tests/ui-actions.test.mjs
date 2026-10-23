@@ -114,7 +114,7 @@ test('recognizes already-open UI and preserves tuning focus input clearing', (t)
   assert.equal(ui.cleared(), 1);
 });
 
-test('lap recorder stays hidden until the game has loaded', (t) => {
+test('lap recorder visibility follows its mode', (t) => {
   const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'document');
   const document = new EventTarget();
   const node = () => {
@@ -156,11 +156,9 @@ test('lap recorder stays hidden until the game has loaded', (t) => {
   const container = elements.get('.lap-recorder');
   assert.equal(container.hidden, true);
   store.update({ lapRecorder: { ...store.getState().lapRecorder, mode: 'ready' } });
-  assert.equal(container.hidden, true, 'recorder remains hidden during loading');
-  store.update({ gameLoaded: true });
-  assert.equal(container.hidden, false, 'current recorder mode is applied after loading');
+  assert.equal(container.hidden, false);
   store.update({ lapRecorder: { ...store.getState().lapRecorder, mode: 'off' } });
-  assert.equal(container.hidden, true, 'visibility continues to follow recorder mode');
+  assert.equal(container.hidden, true);
 });
 
 function statusFixture(t) {
@@ -216,7 +214,17 @@ function statusFixture(t) {
     document.dispatchEvent(event);
     return event;
   };
-  return { document, store, status, message, close, footer, dismiss, key, renders: () => renders };
+  return {
+    document,
+    store,
+    status,
+    message,
+    close,
+    footer,
+    dismiss,
+    key,
+    renders: () => renders,
+  };
 }
 
 test('status binding never runs for telemetry, focus, sound, or lap-recorder updates', (t) => {

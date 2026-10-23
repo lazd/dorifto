@@ -336,10 +336,7 @@ async function start() {
       car.setStereo(powered);
       const { status } = gameState.getState();
       if (powered && status.error && status.message.startsWith('Stereo unavailable:')) {
-        gameState.update({
-          gameLoaded: true,
-          status: { visible: false, error: false, message: '' },
-        });
+        gameState.update({ status: { visible: false, error: false, message: '' } });
       }
     },
     (error) => {
@@ -1421,13 +1418,15 @@ async function start() {
     renderer.setRenderTarget(previousTarget);
   }
   gameState.update({ status: { visible: false, error: false, message: '' } });
+  document.querySelectorAll('.hide-when-loading').forEach((node) => {
+    node.classList.remove('hide-when-loading');
+  });
   let firstFrame = true;
   renderer.setAnimationLoop((time) => {
     try {
       frame(time);
       if (firstFrame) {
         renderer.domElement.style.visibility = '';
-        document.body.classList.remove('loading');
         firstFrame = false;
       }
     } catch (error) {

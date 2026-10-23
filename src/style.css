@@ -70,18 +70,11 @@ h1 span {
   max-width: 90vw;
   text-align: center;
 }
-#status[hidden],
-.telemetry[hidden],
-.loading header,
-.loading .course-hud,
-.loading .telemetry {
-  display: none;
-}
 #status.error {
   border-color: #ff927a;
   color: #ffb8a8;
 }
-#status:has(#status-close:not([hidden])) {
+#status:has(#status-close) {
   padding-right: 62px;
 }
 #status-close {
@@ -110,9 +103,6 @@ h1 span {
   transform: scaleX(var(--progress));
   transform-origin: left;
   transition: transform 0.2s ease-out;
-}
-.progress-bar[hidden] {
-  display: none;
 }
 .telemetry {
   left: 32px;
@@ -217,7 +207,7 @@ h1 span {
   flex: 1;
   min-width: 0;
 }
-#save-course-form:not([hidden]) {
+#save-course-form {
   display: grid;
   gap: 8px;
 }
@@ -920,10 +910,12 @@ dialog h2 {
   align-items: center;
   gap: 8px;
 }
+/* hide any element with hidden attribute, no need for separate selectors */
+.hide-when-loading,
 *[hidden] {
   display: none !important;
 }
-#lap-replay-controls:not([hidden]) {
+#lap-replay-controls {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -933,7 +925,7 @@ dialog h2 {
   font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
-.loading #lap-replay-controls:not([hidden]) {
+.loading #lap-replay-controls {
   display: none;
 }
 .chase-view .lap-recorder {
