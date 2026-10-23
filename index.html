@@ -6,8 +6,8 @@
     <meta name="theme-color" content="#10191f" />
     <meta name="referrer" content="no-referrer" />
     <title>Dorifto — Z32 Playground</title>
-    <script type="module" crossorigin src="./assets/index-1OQ22huR.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-H6EFWF1X.css">
+    <script type="module" crossorigin src="./assets/index-K9XPGoIT.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-CEiwDgYv.css">
   </head>
   <body class="loading" hidden>
     <div id="app"></div>
@@ -49,13 +49,14 @@
           </span>
           <span class="minimap-timing" role="group" aria-label="Lap timing">
             <strong id="lap-current" aria-label="Current lap time">--:--.---</strong>
-            <span class="minimap-best"
-              ><span>RECORD</span
-              ><span id="lap-best" aria-label="Current run record lap time">--:--.---</span></span
-            >
+            <span class="minimap-best">
+              <span>BEST</span>
+              <span id="lap-best" aria-label="Current run record lap time">--:--.---</span>
+            </span>
           </span>
         </span>
       </button>
+      <ol id="leaderboard" class="leaderboard" aria-label="Live race standings" hidden></ol>
       <div id="course-menu" hidden>
         <div id="course-options" class="course-options">
           <label class="checkbox">
@@ -318,6 +319,16 @@
         >
           🛠️
         </button>
+        <button
+          id="bots"
+          class="keycap"
+          type="button"
+          aria-haspopup="dialog"
+          aria-controls="bots-dialog"
+          title="Bots"
+        >
+          🤖
+        </button>
         <button id="help" class="keycap" type="button" aria-haspopup="dialog">❓</button>
       </div>
     </header>
@@ -444,8 +455,35 @@
               <option value="off">Off</option>
             </select>
           </div>
+          <div class="settings-control-row">
+            <label for="show-lap-gates">Racing line training gates</label>
+            <select id="show-lap-gates">
+              <option value="off">Off</option>
+              <option value="on">On</option>
+              <option value="rainbow">Rainbow</option>
+            </select>
+          </div>
         </div>
       </section>
+    </dialog>
+    <dialog id="bots-dialog" class="slider-dialog" aria-labelledby="bots-title">
+      <form method="dialog" class="dialog-close">
+        <button type="submit" aria-label="Close" title="Close">×</button>
+      </form>
+      <h2 id="bots-title" tabindex="-1" autofocus>Bots</h2>
+      <p>Race bots join the current course. Applying resets the race.</p>
+      <fieldset>
+        <label class="slider-control checkbox-control">
+          <input class="bots-only" type="checkbox" />
+          <span>Bots only (spectate the first bot)</span>
+        </label>
+      </fieldset>
+      <div class="bot-list"></div>
+      <p role="alert"></p>
+      <div class="dialog-actions">
+        <button class="bot-add keycap" type="button">Add bot</button>
+        <button class="bots-apply keycap" type="button">Apply</button>
+      </div>
     </dialog>
     <dialog id="help-dialog" aria-labelledby="help-title">
       <form method="dialog" class="dialog-close">
