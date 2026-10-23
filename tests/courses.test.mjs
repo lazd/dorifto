@@ -14,7 +14,7 @@ before(async () => {
     server: { middlewareMode: true, hmr: false, ws: false, watch: null },
     appType: 'custom',
   });
-  ({ courses, racetracks, courseRoute, courseSpawn, generateCourse } =
+  ({ courses, courseRoute, courseSpawn, generateCourse } =
     await server.ssrLoadModule('/src/courses.ts'));
   ({ terrainBaseHeight } = await server.ssrLoadModule('/src/terrain-profile.ts'));
 });
