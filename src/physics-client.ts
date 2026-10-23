@@ -10,6 +10,7 @@ import type { Store } from './store';
 import type { RunRecording } from './lap-recording';
 import { idleRpm } from './drivetrain';
 import { botColor, botName, createBotCar } from './bot-car';
+import { createBotPlate } from './bot-plate';
 import type { RaceBotOptions } from './race-bot';
 import type { RaceStanding } from './race-standings';
 import {
@@ -64,6 +65,7 @@ export function createPhysicsClient({
   const botCars = bots
     .slice(botOffset)
     .map((_options, index) => createBotCar(car, index + botOffset));
+  const observedPlate = botsOnly ? createBotPlate(car.chassis) : null;
   const botEffects = botCars.map((bot) => {
     const scene = car.chassis.parent;
     if (!(scene instanceof THREE.Scene)) throw new Error('Bot effects require a scene');
@@ -250,6 +252,7 @@ export function createPhysicsClient({
 
   if (botsOnly) {
     car.setPaintColor(botColors[observedBot]);
+    observedPlate?.setColor(botColors[observedBot]);
     botCars.forEach((car, index) => car.setColor(botColors[botForModel(index + 1)]));
   }
   const data = createPhysicsInit(definition, car, course, input().configuration, bots, botsOnly);
@@ -311,6 +314,9 @@ export function createPhysicsClient({
       car.setBraking(state.braking);
       car.setReversing(state.reversing);
       car.setHazards(!botsOnly && telemetry.hazards, !botsOnly && telemetry.hazardsEnabled);
+      observedPlate?.setThinking(
+        replayTime === null && !resetting ? (botTelemetry[observedBot]?.thinking ?? null) : null,
+      );
     }
     markerCars.forEach((_car, index) => {
       const car = markerCars[botForModel(index)];
@@ -323,6 +329,7 @@ export function createPhysicsClient({
       const state = botTelemetry[botForModel(index + botOffset)];
       car.setBraking(state?.braking ?? false);
       car.setReversing(state?.reversing ?? false);
+      car.setThinking(replayTime === null && !resetting ? (state?.thinking ?? null) : null);
     });
     linearVelocity.lerpVectors(beforeVelocity, afterVelocity, Math.min(alpha, 1));
     return velocity.copy(linearVelocity).setY(0);
@@ -347,6 +354,7 @@ export function createPhysicsClient({
         return false;
       observedBot = (observedBot + 1) % bots.length;
       car.setPaintColor(botColors[observedBot]);
+      observedPlate?.setColor(botColors[observedBot]);
       botCars.forEach((car, index) => car.setColor(botColors[botForModel(index + 1)]));
       botEffects.forEach((effect) => effect.reset());
       syncObservedState();
@@ -481,6 +489,7 @@ export function createPhysicsClient({
       recycled.length = 0;
       records = [];
       botCars.forEach((bot) => bot.dispose());
+      observedPlate?.dispose();
       botEffects.forEach((effect) => effect.dispose());
       if (botsOnly && restoreCarPaint) car.setPaintColor(carPaintColor);
     },

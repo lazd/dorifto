@@ -122,3 +122,36 @@ test('display UVs face the cabin without mirroring or stretching outside the pan
   assert.deepEqual(Array.from(geometry.getAttribute('uv').array), [1, 0, 0, 0, 1, 1, 0, 1]);
   geometry.dispose();
 });
+
+test('multiline displays draw separate rows and upload only changed text', (t) => {
+  const previousDocument = globalThis.document;
+  const translations = [];
+  const context = {
+    fillRect() {},
+    save() {},
+    restore() {},
+    translate(x, y) {
+      if (y !== 0) translations.push(y);
+    },
+    scale() {},
+    beginPath() {},
+    moveTo() {},
+    lineTo() {},
+    stroke() {},
+  };
+  globalThis.document = { createElement: () => ({ getContext: () => context }) };
+  t.after(() => {
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+  });
+  const readout = display.createSegmentedDisplay(1024, 512, '#111516', '#c8ffc8', 23, 3);
+  readout.setText('DRIVING\nATTACK\nOH SHIT');
+  assert.equal(translations.length, 3);
+  assert.ok(translations[0] < translations[1] && translations[1] < translations[2]);
+  const version = readout.texture.version;
+  readout.setText('driving\nattack\noh shit');
+  assert.equal(readout.texture.version, version);
+  readout.setText('DRIVING\nRETURN\n--');
+  assert.equal(readout.texture.version, version + 1);
+  readout.texture.dispose();
+});

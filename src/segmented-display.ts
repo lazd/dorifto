@@ -71,9 +71,12 @@ export function createSegmentedDisplay(
   background: string,
   color: string,
   columns: number,
+  rows = 1,
 ) {
   if (!Number.isInteger(columns) || columns <= 0)
     throw new Error('Display columns must be a positive integer.');
+  if (!Number.isInteger(rows) || rows <= 0)
+    throw new Error('Display rows must be a positive integer.');
   const canvas = document.createElement('canvas');
   canvas.width = width;
   canvas.height = height;
@@ -85,37 +88,47 @@ export function createSegmentedDisplay(
   return {
     texture,
     setText(text: string) {
-      text = text.toUpperCase().slice(0, columns).padEnd(columns, ' ');
+      const lines = text.toUpperCase().split('\n');
+      text = Array.from({ length: rows }, (_, row) =>
+        (lines[row] ?? '').slice(0, columns).padEnd(columns, ' '),
+      ).join('\n');
       if (text === previous) return;
       previous = text;
-      const scale = Math.min(width / (columns * 15 + 16), height / 21);
+      const rowHeight = height / rows;
       context.fillStyle = background;
       context.fillRect(0, 0, width, height);
-      context.save();
-      context.translate((width - columns * 15 * scale) / 2, (height - 18 * scale) / 2);
-      context.scale(scale, scale);
-      context.strokeStyle = color;
-      context.fillStyle = color;
-      context.lineWidth = 1.15;
-      context.lineCap = 'square';
-      for (const character of text) {
-        if (character === ':') {
-          context.fillRect(5, 5, 2, 2);
-          context.fillRect(5, 12, 2, 2);
-        } else {
-          const segments = glyphs[character];
-          if (!segments) throw new Error(`Unsupported segmented display character: ${character}`);
-          for (const index of segments) {
-            const [x1, y1, x2, y2] = strokes[index];
-            context.beginPath();
-            context.moveTo(x1, y1);
-            context.lineTo(x2, y2);
-            context.stroke();
+      for (const [row, paddedLine] of text.split('\n').entries()) {
+        const line = rows === 1 ? paddedLine : paddedLine.trimEnd();
+        const scale = Math.min(width / (line.length * 15 + 16), rowHeight / 21);
+        context.save();
+        context.translate(
+          (width - line.length * 15 * scale) / 2,
+          row * rowHeight + (rowHeight - 18 * scale) / 2,
+        );
+        context.scale(scale, scale);
+        context.strokeStyle = color;
+        context.fillStyle = color;
+        context.lineWidth = 1.15;
+        context.lineCap = 'square';
+        for (const character of line) {
+          if (character === ':') {
+            context.fillRect(5, 5, 2, 2);
+            context.fillRect(5, 12, 2, 2);
+          } else {
+            const segments = glyphs[character];
+            if (!segments) throw new Error(`Unsupported segmented display character: ${character}`);
+            for (const index of segments) {
+              const [x1, y1, x2, y2] = strokes[index];
+              context.beginPath();
+              context.moveTo(x1, y1);
+              context.lineTo(x2, y2);
+              context.stroke();
+            }
           }
+          context.translate(15, 0);
         }
-        context.translate(15, 0);
+        context.restore();
       }
-      context.restore();
       texture.needsUpdate = true;
     },
   };

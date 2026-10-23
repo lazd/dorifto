@@ -423,6 +423,7 @@ export function createPhysicsSimulation(Ammo: typeof AmmoFactory, data: PhysicsI
       bots: bots.map((bot) => ({
         laps: lapState(bot.laps),
         metrics: bot.bot.metrics,
+        thinking: bot.bot.thinking,
         engine: { ...bot.physics.engine },
         tireSounds: bot.physics.tireSounds.map((tire) => ({ ...tire })),
         wheelContacts: [...bot.physics.wheelContacts],

@@ -188,6 +188,7 @@ export interface PhysicsSnapshot {
   bots: {
     laps: LapState;
     metrics: ReturnType<typeof createRaceBot>['metrics'];
+    thinking: ReturnType<typeof createRaceBot>['thinking'];
     engine: DrivetrainState;
     tireSounds: ReplayTireState[];
     wheelContacts: boolean[];

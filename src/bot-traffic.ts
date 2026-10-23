@@ -1,11 +1,16 @@
 import { MathUtils } from 'three';
-import type { DrivingMap, VehicleState } from './race-bot';
+import type { BotThinking, DrivingMap, VehicleState } from './race-bot';
 
 export function createTrafficPlanner(
   map: DrivingMap,
   dimensions: { halfWidth: number; halfLength: number },
 ) {
-  const result = { x: 0, z: 0, curvature: 0, attacking: false };
+  const result: { x: number; z: number; curvature: number; maneuver: BotThinking['maneuver'] } = {
+    x: 0,
+    z: 0,
+    curvature: 0,
+    maneuver: 'racing-line',
+  };
   let headingAdjustment = 0;
 
   function reset() {
@@ -14,6 +19,7 @@ export function createTrafficPlanner(
 
   function adjustedTarget(state: VehicleState) {
     if (headingAdjustment === 0) return result;
+    if (result.maneuver !== 'attacking') result.maneuver = 'returning';
     const dx = result.x - state.x;
     const dz = result.z - state.z;
     const heading = Math.atan2(dx, dz) + headingAdjustment;
@@ -36,7 +42,7 @@ export function createTrafficPlanner(
     result.x = target.x;
     result.z = target.z;
     result.curvature = map.samples[index].curvature;
-    result.attacking = false;
+    result.maneuver = 'racing-line';
     const right = map.rights[index];
     const separation = dimensions.halfWidth * 2 + 0.5;
     let nearest = dimensions.halfLength * 2 + 3;
@@ -57,7 +63,7 @@ export function createTrafficPlanner(
     for (let step = 0; step <= bendSteps; step++)
       bend += map.samples[(index + step) % map.samples.length].curvature;
     if (Math.abs(bend) / (bendSteps + 1) < 0.003) return adjustedTarget(state);
-    result.attacking = true;
+    result.maneuver = 'attacking';
     const center = map.centers[index];
     const opponentOffset = (opponent.x - center.x) * right.x + (opponent.z - center.z) * right.z;
     // Positive curvature turns toward the map's right vector.

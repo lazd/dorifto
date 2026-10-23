@@ -4,12 +4,30 @@ import * as THREE from 'three';
 import { createServer } from 'vite';
 import { loadTrainingCarModel } from '../scripts/bot-assets.mjs';
 
-test('bot exteriors retain light geometry and isolate running, braking and reverse lamps', async () => {
+test('bot exteriors isolate lamps and render thinking on independent segmented plates', async (t) => {
+  const previousDocument = globalThis.document;
+  const context = {
+    fillRect() {},
+    save() {},
+    restore() {},
+    translate() {},
+    scale() {},
+    beginPath() {},
+    moveTo() {},
+    lineTo() {},
+    stroke() {},
+  };
+  globalThis.document = { createElement: () => ({ getContext: () => context }) };
+  t.after(() => {
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+  });
   const server = await createServer({
     server: { middlewareMode: true, hmr: false, ws: false, watch: null },
     appType: 'custom',
   });
-  const { createBotCar, botLampSettings } = await server.ssrLoadModule('/src/bot-car.ts');
+  const { createBotCar, botLampSettings, botColor } = await server.ssrLoadModule('/src/bot-car.ts');
+  const { createBotPlate, botPlateText } = await server.ssrLoadModule('/src/bot-plate.ts');
   const model = await loadTrainingCarModel(server);
   const bot = createBotCar(
     {
@@ -20,6 +38,57 @@ test('bot exteriors retain light geometry and isolate running, braking and rever
     0,
   );
   try {
+    let originalPlate;
+    model.traverse((mesh) => {
+      if (/^Frontplate_.*_ext_plate_rear_0$/.test(mesh.name)) originalPlate = mesh;
+    });
+    assert.ok(originalPlate);
+    const botPlate = bot.chassis.getObjectByName(originalPlate.name);
+    assert.ok(botPlate);
+    assert.notEqual(botPlate.geometry, originalPlate.geometry);
+    assert.notEqual(botPlate.material, originalPlate.material);
+    const thinking = {
+      phase: 'driving',
+      maneuver: 'attacking',
+      conditions: { slowing: true, braking: true, stabilizing: true, stoppingBackward: true },
+    };
+    assert.equal(botPlateText(thinking), 'ATTACK\nBRAKE STOP\nOH SHIT');
+    for (const slowing of [false, true]) {
+      for (const braking of [false, true]) {
+        const text = botPlateText({
+          ...thinking,
+          conditions: { slowing, braking, stabilizing: false, stoppingBackward: false },
+        });
+        assert.equal(text, `ATTACK\n${braking ? 'BRAKE' : slowing ? 'LIFT' : '--'}\n--`);
+      }
+    }
+    assert.equal(botPlateText({ ...thinking, phase: 'launching' }), botPlateText(thinking));
+    assert.equal(
+      botPlateText({
+        ...thinking,
+        maneuver: 'racing-line',
+        conditions: { slowing: false, braking: false, stabilizing: false, stoppingBackward: false },
+      }),
+      'CRUISE\n--\n--',
+    );
+    const texture = botPlate.material.map;
+    assert.equal(botPlate.material.color.getHex(), new THREE.Color(botColor(0)).getHex());
+    const version = texture.version;
+    bot.setThinking(thinking);
+    assert.equal(texture.version, version + 1);
+    bot.setThinking(structuredClone(thinking));
+    assert.equal(texture.version, version + 1, 'unchanged text does not upload a texture');
+    bot.setColor(botColor(1));
+    assert.equal(botPlate.material.color.getHex(), new THREE.Color(botColor(1)).getHex());
+    assert.equal(texture.version, version + 1, 'color changes do not redraw the texture');
+    const geometry = originalPlate.geometry;
+    const material = originalPlate.material;
+    const fullDetailPlate = createBotPlate(model);
+    fullDetailPlate.setThinking(thinking);
+    assert.notEqual(originalPlate.material.map, texture);
+    fullDetailPlate.dispose();
+    assert.equal(originalPlate.geometry, geometry);
+    assert.equal(originalPlate.material, material);
     const lamps = [];
     model.traverse((mesh) => {
       if (!mesh.isMesh || !botLampSettings.some(({ pattern }) => pattern.test(mesh.name))) return;

@@ -201,6 +201,24 @@ retaining normal braking and slip-based throttle reduction.
 After an inside attempt ends, its heading adjustment eases back to the racing
 line with a 0.4-second time constant instead of disappearing immediately.
 
+Every live bot has a three-row segmented license-plate readout, including the
+full-detail car used when observing bots. It reports the controller's `thinking`
+snapshot independently of numeric metrics, with lettering tinted to match the car:
+
+- **Maneuver:** `CRUISE`, `ATTACK`, or `RETURN` while the passing offset eases away.
+- **Speed control:** `BRAKE` when requesting braking, otherwise `LIFT` when planning
+  to slow without braking. These labels are mutually exclusive. `STOP` also appears
+  when braking backward motion. No active conditions is `--`.
+- **Stabilization:** `OH SHIT` during excess-slip stabilization, otherwise `--`.
+
+The launch/driving phase remains available in telemetry but is not shown on the plate.
+
+These categories overlap: an attacking bot can still brake or countersteer.
+Attack pace is tied to the inside-pass attempt, not a separate distant chase mode.
+The readout describes decisions, not necessarily the instantaneous pedal position
+while controls are smoothing. Textures update only when the displayed text changes;
+resets and replay clear stale labels to `--`. Replays do not record bot thinking.
+
 Controller version 2 starts closer to its intended skill-dependent pace, uses more
 assertive acceleration and stabilizes slip/yaw without changing vehicle physics.
 On Hillside at skill 1, three successive three-lap runs completed cleanly, with

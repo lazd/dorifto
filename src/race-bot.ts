@@ -70,6 +70,17 @@ const chaseSkillLimit = 1.06;
 export const trainingCourses = { race: 'hillside', drift: 'sweeper' } as const;
 export type VehicleState = ReturnType<ReturnType<typeof createVehiclePhysics>['readState']>;
 
+export interface BotThinking {
+  phase: 'launching' | 'driving';
+  maneuver: 'racing-line' | 'attacking' | 'returning';
+  conditions: {
+    slowing: boolean;
+    braking: boolean;
+    stabilizing: boolean;
+    stoppingBackward: boolean;
+  };
+}
+
 export interface RaceBotOptions {
   skill: number;
   aggression: number;
@@ -346,6 +357,16 @@ export function createRaceBot(
   let slowing = false;
   let previousSpeed = 0;
   let coastDeceleration = 2;
+  const thinking: BotThinking = {
+    phase: 'driving',
+    maneuver: 'racing-line',
+    conditions: {
+      slowing: false,
+      braking: false,
+      stabilizing: false,
+      stoppingBackward: false,
+    },
+  };
 
   const cornerGrip = samples.map((sample) =>
     Math.max(2, lateralAcceleration - Math.sign(sample.curvature) * sample.bank * 9.81),
@@ -423,6 +444,10 @@ export function createRaceBot(
     previousSpeed = 0;
     coastDeceleration = 2;
     launchHeading = undefined;
+    thinking.phase = 'driving';
+    thinking.maneuver = 'racing-line';
+    for (const key of Object.keys(thinking.conditions) as (keyof BotThinking['conditions'])[])
+      thinking.conditions[key] = false;
     Object.assign(controls, { throttle: 0, brake: 0, reverse: 0, steer: 0, handbrake: false });
   }
 
@@ -470,6 +495,8 @@ export function createRaceBot(
     const lookahead = 5 + state.speed * driver.lookaheadTime;
     const targetIndex = wrap(index + Math.max(1, Math.round(lookahead / spacing)), count);
     const target = trafficPlanner.update(state, index, targetIndex, traffic, dt);
+    thinking.phase = launchHeading !== undefined && elapsed < 2.6 ? 'launching' : 'driving';
+    thinking.maneuver = target.maneuver;
     const slipLimit = driver.countersteerSlip;
     const dx = target.x - state.x;
     const dz = target.z - state.z;
@@ -496,6 +523,7 @@ export function createRaceBot(
       Math.sign(state.slipAngle) * Math.max(0, Math.abs(state.slipAngle) - slipLimit);
     const stabilization =
       state.speed > 5 ? state.slipAngle * 0.3 + excessSlip - yawError * 0.08 : 0;
+    thinking.conditions.stabilizing = state.speed > 5 && excessSlip !== 0;
     controls.steer = clamp((wheelAngle + stabilization) / steeringLimit, -1, 1);
     if (Math.abs(controls.steer) > 0.95) saturationSeconds += dt;
     const sample = samples[index];
@@ -508,9 +536,14 @@ export function createRaceBot(
     );
     const adjacent = wrap(index + (fraction < 0 ? -1 : 1), count);
     const plannedSpeed = THREE.MathUtils.lerp(speeds[index], speeds[adjacent], Math.abs(fraction));
-    targetSpeed = plannedSpeed * (target.attacking ? chaseSkillLimit : 1);
+    const attacking = target.maneuver === 'attacking';
+    targetSpeed = plannedSpeed * (attacking ? chaseSkillLimit : 1);
     controls.reverse = 0;
-    if (state.vx * Math.sin(state.heading) + state.vz * Math.cos(state.heading) < -0.3) {
+    thinking.conditions.stoppingBackward =
+      state.vx * Math.sin(state.heading) + state.vz * Math.cos(state.heading) < -0.3;
+    if (thinking.conditions.stoppingBackward) {
+      thinking.conditions.slowing = false;
+      thinking.conditions.braking = true;
       controls.throttle = 0;
       controls.brake = 1;
       return controls;
@@ -551,6 +584,8 @@ export function createRaceBot(
     if (slowing) desired = Math.min(desired, -required);
     const excess = -desired - coast;
     braking = targetSpeed === 0 || excess > (braking ? 0 : brakeThreshold);
+    thinking.conditions.slowing = slowing;
+    thinking.conditions.braking = braking;
     // Friction circle on the measured cornering load, so it can't trail-brake into a slide.
     const cornering =
       (state.speed * state.yawRate) / (cornerGrip[index] * loadAt(index, state.speed));
@@ -562,7 +597,7 @@ export function createRaceBot(
       : 0;
     // Invert the drivetrain's sqrt(pedal) response so small torque requests stay small.
     let throttle = braking ? 0 : clamp((desired + coast) / driveAcceleration, 0, 1) ** 2;
-    if (target.attacking) throttle = Math.min(1, throttle * 1.25);
+    if (attacking) throttle = Math.min(1, throttle * 1.25);
     if (state.speed > 5)
       throttle *=
         1 - THREE.MathUtils.smoothstep(Math.abs(state.slipAngle), slipLimit, slipLimit * 2);
@@ -585,6 +620,9 @@ export function createRaceBot(
     update,
     reset,
     finishRun: finishPassage,
+    get thinking(): BotThinking {
+      return { ...thinking, conditions: { ...thinking.conditions } };
+    },
     exportExperience(): RaceExperience {
       return { ...experience, pace: [...experience.pace], visits: [...experience.visits] };
     },

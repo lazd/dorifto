@@ -208,7 +208,7 @@ test('traffic steers inside a nearby opponent and eases back to the racing line'
       return Math.atan2(Math.sin(difference), Math.cos(difference));
     };
     assertRacingLine(update());
-    assert.equal(update().attacking, false);
+    assert.equal(update().maneuver, 'racing-line');
     const right = map.rights[index];
     const opponent = {
       ...state,
@@ -216,7 +216,7 @@ test('traffic steers inside a nearby opponent and eases back to the racing line'
       z: state.z + right.x * dimensions.halfLength * 2,
     };
     const plan = update([state, opponent]);
-    assert.equal(plan.attacking, true);
+    assert.equal(plan.maneuver, 'attacking');
     const passingAdjustment = headingAdjustment(plan);
     assert.equal(
       Math.sign(passingAdjustment),
@@ -224,10 +224,12 @@ test('traffic steers inside a nearby opponent and eases back to the racing line'
       `steers inside, reverse=${reverse}`,
     );
     const clear = update();
-    assert.equal(clear.attacking, false);
+    assert.equal(clear.maneuver, 'returning');
     const returningAdjustment = headingAdjustment(clear);
     assert.equal(Math.sign(returningAdjustment), Math.sign(passingAdjustment));
     assert.ok(Math.abs(returningAdjustment) < Math.abs(passingAdjustment), 'eases back');
+    for (let i = 0; i < 600; i++) update();
+    assert.equal(update().maneuver, 'racing-line');
     planner.reset();
     assertRacingLine(update());
   }
@@ -265,15 +267,40 @@ test('a close inside-pass attempt boosts target speed without changing the solo 
     z: state.z + right.x * distance,
   });
   solo.update(state, 1 / 120);
+  assert.deepEqual(solo.thinking, {
+    phase: 'driving',
+    maneuver: 'racing-line',
+    conditions: { slowing: false, braking: false, stabilizing: false, stoppingBackward: false },
+  });
   chasing.update(state, 1 / 120, [state, opponentAt(32)]);
   assert.equal(chasing.metrics.targetSpeed, solo.metrics.targetSpeed, 'no distant chase boost');
   const opponent = opponentAt(dimensions.halfLength * 2 + 1);
   const planner = createTrafficPlanner(map, dimensions);
-  assert.equal(planner.update(state, index, index, [state, opponent]).attacking, true);
+  assert.equal(planner.update(state, index, index, [state, opponent]).maneuver, 'attacking');
   chasing.update(state, 1 / 120, [state, opponent]);
   assert.equal(chasing.metrics.targetSpeed, solo.metrics.targetSpeed * 1.06);
+  assert.equal(chasing.thinking.maneuver, 'attacking');
   chasing.update(state, 1 / 120);
   assert.equal(chasing.metrics.targetSpeed, solo.metrics.targetSpeed);
+  assert.equal(chasing.thinking.maneuver, 'returning');
+  chasing.update({ ...state, slipAngle: 0.5 }, 1 / 120, [opponent]);
+  assert.equal(chasing.thinking.maneuver, 'attacking');
+  assert.equal(chasing.thinking.conditions.stabilizing, true);
+  chasing.update({ ...state, vx: -state.vx, vz: -state.vz }, 1 / 120);
+  assert.equal(chasing.thinking.conditions.stoppingBackward, true);
+  assert.equal(chasing.thinking.conditions.braking, true);
+  assert.equal(chasing.thinking.conditions.slowing, false);
+  chasing.reset();
+  assert.deepEqual(chasing.thinking, {
+    phase: 'driving',
+    maneuver: 'racing-line',
+    conditions: { slowing: false, braking: false, stabilizing: false, stoppingBackward: false },
+  });
+  const stationary = { ...state, speed: 0, vx: 0, vz: 0 };
+  chasing.update(stationary, 0.01);
+  assert.equal(chasing.thinking.phase, 'launching');
+  chasing.update(stationary, 2.6);
+  assert.equal(chasing.thinking.phase, 'driving');
 });
 
 for (const scenario of [
@@ -331,6 +358,7 @@ for (const scenario of [
       }
       assert.ok(reachedTarget, JSON.stringify(snapshot.bots.map(({ metrics }) => metrics)));
       assert.ok(snapshot.bots.every(({ metrics }) => metrics.offTrackSeconds === 0));
+      assert.ok(snapshot.bots.every(({ thinking }) => thinking.phase === 'driving'));
     } finally {
       simulation.dispose();
     }

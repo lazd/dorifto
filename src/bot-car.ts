@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { PhysicsCar } from './vehicle-physics';
+import { createBotPlate } from './bot-plate';
 
 // Share exterior geometry/textures; omit cabin instruments, lights and mirror renderers.
 const exterior =
@@ -127,12 +128,16 @@ export function createBotCar(source: PhysicsCar, index: number) {
       object.matrixAutoUpdate = false;
     });
   }
+  const plate = createBotPlate(chassis);
+  plate.setColor(botColor(index));
   return {
     chassis,
     wheels,
     hubs,
+    setThinking: plate.setThinking,
     setColor(color: THREE.ColorRepresentation) {
       for (const material of paintMaterials) material.color.set(color);
+      plate.setColor(color);
     },
     setBraking(value: boolean) {
       if (braking === value) return;
@@ -150,6 +155,7 @@ export function createBotCar(source: PhysicsCar, index: number) {
       updateLamps();
     },
     dispose() {
+      plate.dispose();
       chassis.removeFromParent();
       for (const object of [...wheels, ...hubs]) object.removeFromParent();
       materials.forEach((material) => material.dispose());
