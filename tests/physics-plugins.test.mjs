@@ -19,6 +19,7 @@ let physicsStep;
 let snapshotStride;
 let poseStride;
 let vehiclePoseCount;
+let raceGridSpawn;
 let courseSpawn;
 let courses;
 let RunRecording;
@@ -42,6 +43,7 @@ before(async () => {
   ({ createPhysicsInit, physicsStep, snapshotStride, poseStride, vehiclePoseCount, replayData } =
     await server.ssrLoadModule('/src/physics-messages.ts'));
   ({ courses, courseSpawn } = await server.ssrLoadModule('/src/courses.ts'));
+  ({ raceGridSpawn } = await server.ssrLoadModule('/src/race-bot.ts'));
   ({ RunRecording, createReplayFrame } = await server.ssrLoadModule('/src/lap-recording.ts'));
   Ammo = await AmmoFactory.call({});
 });
@@ -213,6 +215,39 @@ function workerFixture() {
     configurationState,
   };
 }
+
+test('starts bots in a two-wide grid with the player in the last slot', (t) => {
+  const setup = workerFixture();
+  setup.simulation.dispose();
+  setup.data.bots = [
+    { skill: 0.5, aggression: 0.5, learning: false },
+    { skill: 0.5, aggression: 0.5, learning: false },
+  ];
+  const simulation = createPhysicsSimulation(Ammo, setup.data);
+  t.after(() => simulation.dispose());
+  const snapshot = simulation.handle({ type: 'init', revision: 0 });
+  const poses = new Float32Array(snapshot.buffer);
+  const positionFor = (objectIndex) => {
+    for (let i = 0; i < snapshot.count; i++) {
+      const offset = i * snapshotStride;
+      if (poses[offset] === objectIndex)
+        return [poses[offset + 1 + poseStride], poses[offset + 1 + poseStride + 2]];
+    }
+    assert.fail(`Missing pose for object ${objectIndex}`);
+  };
+  const expectedPositions = [
+    raceGridSpawn(setup.definition, 0).position,
+    raceGridSpawn(setup.definition, 1).position,
+    raceGridSpawn(setup.definition, 2).position,
+  ];
+  const actualPositions = [positionFor(9), positionFor(18), positionFor(0)];
+  for (const [actual, expected] of actualPositions.map((position, index) => [
+    position,
+    expectedPositions[index],
+  ])) {
+    assert.ok(Math.hypot(actual[0] - expected[0], actual[1] - expected[1]) < 1e-4);
+  }
+});
 
 test('worker snapshots include independently driven bots through reset, reversal and replay', (t) => {
   const setup = workerFixture();
@@ -619,8 +654,8 @@ test('worker resets, direction changes, and replay share the live physics world 
     assert.equal(directed.telemetry.spawnBrakeHeld, true);
     assert.equal(directed.laps.elapsedTime, 0);
     const pose = new Float32Array(directed.buffer);
-    assert.ok(Math.abs(pose[1 + poseStride] - courseSpawn(reverse).position[0]) < 1e-4);
-    assert.ok(Math.abs(pose[3 + poseStride] - courseSpawn(reverse).position[1]) < 1e-4);
+    assert.ok(Math.abs(pose[1 + poseStride] - raceGridSpawn(reverse, 0).position[0]) < 1e-4);
+    assert.ok(Math.abs(pose[3 + poseStride] - raceGridSpawn(reverse, 0).position[1]) < 1e-4);
     const reset = simulation.handle({ type: 'reset', input, revision: 3 });
     assert.equal(reset.revision, 3);
     assert.equal(reset.count, vehiclePoseCount + data.cones.length);

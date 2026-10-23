@@ -9,14 +9,13 @@ import {
 } from './vehicle-physics';
 import { createConePhysics } from './cone-physics';
 import { createTurnSignPhysics } from './turn-sign-physics';
-import { courseSpawn } from './courses';
 import { vehicleDimensions } from './car-geometry';
 import {
   createDrivingMap,
   createRaceBot,
   validateRaceBotOptions,
   raceBotConfiguration,
-  raceBotGridSpacing,
+  raceGridSpawn,
   maxRaceBots,
   raceBotTunings,
   type DrivingMap,
@@ -143,7 +142,7 @@ export function createPhysicsSimulation(Ammo: typeof AmmoFactory, data: PhysicsI
         controls,
         configurationState: { getState: () => configuration },
         course,
-        spawn: courseSpawn(data.definition),
+        spawn: raceGridSpawn(data.definition, data.bots?.length ?? 0),
         laps,
       });
   const bots = (data.bots ?? []).map((options, index) => {
@@ -170,7 +169,7 @@ export function createPhysicsSimulation(Ammo: typeof AmmoFactory, data: PhysicsI
       controls: botControls,
       course,
       configurationState: { getState: () => botConfiguration },
-      spawn: courseSpawn(data.definition, 30 - (index + (botsOnly ? 0 : 1)) * raceBotGridSpacing),
+      spawn: raceGridSpawn(data.definition, index),
       laps: botLaps,
     });
     return {
@@ -331,15 +330,15 @@ export function createPhysicsSimulation(Ammo: typeof AmmoFactory, data: PhysicsI
       reset();
     } else if (request.type === 'direction') {
       laps = new LapTimer(request.definition);
-      physics.setCourseDirection(request.spawn, laps);
+      physics.setCourseDirection(
+        raceGridSpawn(request.definition, botsOnly ? 0 : bots.length),
+        laps,
+      );
       drivingMaps = new Map();
       mapDefinition = request.definition;
       bots.forEach((bot, index) => {
         bot.laps = botsOnly && index === 0 ? laps : new LapTimer(request.definition);
-        bot.physics.setCourseDirection(
-          courseSpawn(request.definition, 30 - (index + (botsOnly ? 0 : 1)) * raceBotGridSpacing),
-          bot.laps,
-        );
+        bot.physics.setCourseDirection(raceGridSpawn(request.definition, index), bot.laps);
         const preset = bot.options.preset ?? 'grip-fast';
         bot.bot = createRaceBot(
           drivingMap(preset),

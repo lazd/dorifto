@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { courseRoute, type CourseDefinition } from './courses';
+import { courseRoute, courseSpawn, type CourseDefinition } from './courses';
 import { driveModes } from './drive-modes';
 import { createTrafficPlanner } from './bot-traffic';
 import { optimizeRacingLine } from './racing-line';
@@ -14,6 +14,14 @@ import type {
 export const raceBotVersion = 5;
 export const raceBotGridSpacing = 12;
 export const maxRaceBots = 8;
+const raceGridLaneOffset = 2.5;
+
+export function raceGridSpawn(definition: CourseDefinition, slot: number) {
+  const row = Math.floor(slot / 2);
+  const lateralOffset = slot % 2 === 0 ? -raceGridLaneOffset : raceGridLaneOffset;
+  return courseSpawn(definition, 30 + row * raceBotGridSpacing, lateralOffset);
+}
+
 export const raceBotPresets = ['grip-default', 'grip-fast'] as const;
 export type RaceBotPreset = (typeof raceBotPresets)[number];
 export interface RaceBotTuning {

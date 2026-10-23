@@ -246,7 +246,11 @@ export function readCourseReverse(parameters: URLSearchParams) {
   throw new Error(`Invalid reverse course option: ${value}`);
 }
 
-export function courseSpawn(definition: CourseDefinition, approachDistance = spawnDistance) {
+export function courseSpawn(
+  definition: CourseDefinition,
+  approachDistance = spawnDistance,
+  lateralOffset = 0,
+) {
   const route = courseRoute(definition);
   // Spawn on the approach side of the same physical start line in either direction.
   const length = route.getLength();
@@ -257,7 +261,14 @@ export function courseSpawn(definition: CourseDefinition, approachDistance = spa
     ) / length;
   const position = route.getPointAt(t);
   const tangent = route.getTangentAt(t);
-  return { position: [position.x, position.z] as const, heading: Math.atan2(tangent.x, tangent.z) };
+  const heading = Math.atan2(tangent.x, tangent.z);
+  return {
+    position: [
+      position.x + Math.cos(heading) * lateralOffset,
+      position.z - Math.sin(heading) * lateralOffset,
+    ] as const,
+    heading,
+  };
 }
 
 export function courseHasClearance(route: THREE.Curve<THREE.Vector3>, width: number) {
