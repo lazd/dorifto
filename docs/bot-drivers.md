@@ -226,20 +226,25 @@ snapshot independently of numeric metrics, with lettering tinted to match the ca
 During the three-second pre-start settling/revving period the plate reads `ANTILAG`.
 Revving above 2,500 RPM in this neutral produces frequent exhaust pops, brief flames,
 and mixed black/white smoke from all four tailpipes. Throttle lift above 3,000 RPM in forward
-gear can also produce quieter, less frequent burbles/flames for a short period;
-it does not emit the pre-start black smoke. Sound and flames use the same event
+gear has a 35% chance per throttle lift to produce quieter, less frequent
+burbles/flames for a short period; skipped lifts stay silent until the next lift.
+Overrun does not emit the pre-start black smoke. Sound and flames use the same event
 trigger. This does not add engine power or alter the turbo model. Replay exhaust
 effects are disabled because exhaust events are not recorded.
 Emitter positions are derived from each rear pipe lip, not the wider muffler bounds,
 so flames and smoke align with all four openings.
-Neutral uses a 125 RPM limiter hysteresis for rapid cuts (normal driving keeps
-350 RPM). Smoke jets rearward at 7-11 m/s before drag slows it and buoyancy
+Neutral uses a 200 RPM limiter hysteresis for rapid cuts (normal driving keeps
+350 RPM). Audio limiter cuts suppress loaded combustion while preserving the
+underlying unloaded engine sound instead of nearly muting the entire engine.
+Smoke jets rearward at 7-11 m/s before drag slows it and buoyancy
 lifts it gently. Puffs are approximately 80% black and 20% white, with low upward
 velocity to keep the plume flatter than tire smoke.
 Exhaust pops use randomized waiting times rather than a fixed cadence;
 deceleration burbles are substantially quieter and less frequent than pre-start pops.
-ANTILAG backfires combine a brief crack with a low-frequency punch and rumbling
-decay; overrun backfires are deeper and longer-bodied. Pitch, decay, and crack/body
+ANTILAG averages roughly six pops per second, with randomized gaps. Its backfires
+are dominated by a sharp noise crack, followed by a subdued punch and short rumbling
+decay rather than a drum-like tone; overrun backfires are deeper and longer-bodied.
+Pitch, decay, and crack/body
 balance vary per event. Both share event timing with their visible flame.
 Overrun detection remembers throttle use through a gradual lift, rather than
 requiring an abrupt single-frame pedal release. Its deeper backfires have uneven

@@ -37,12 +37,17 @@ function trigger(processor, boost, backfire = 0, backfireBody = 0) {
   });
 }
 
-test('backfires have a low-frequency body and vary pitch, duration, and crack per event', () => {
+test('ANTILAG has a sharp crack with a short body and per-event sound variation', () => {
   for (const rate of [44100, 48000, 96000]) {
     const processor = createProcessor(rate);
+    const overrun = createProcessor(rate);
     const signatures = [];
     for (let event = 0; event < 4; event++) {
       trigger(processor, 0, 0.8);
+      trigger(overrun, 0, 0.8, 1);
+      assert.ok(processor.backfireFrequency > overrun.backfireFrequency);
+      assert.ok(processor.backfireDecay < overrun.backfireDecay);
+      assert.ok(processor.backfireCrack > overrun.backfireCrack);
       signatures.push([
         processor.backfireFrequency,
         processor.backfireDecay,
@@ -51,8 +56,8 @@ test('backfires have a low-frequency body and vary pitch, duration, and crack pe
       const head = render(processor, 0.03, rate, 3);
       const tail = render(processor, 0.04, rate, 3);
       const roughness = energy(head.slice(1).map((value, i) => value - head[i])) / energy(head);
-      assert.ok(roughness < 0.3, 'body dominates instead of a broadband popcorn click');
-      assert.ok(energy(tail) > energy(head) * 0.01, 'backfire has a substantial body');
+      assert.ok(roughness > 0.4, 'sharp noise attack dominates instead of a tonal drum');
+      assert.ok(energy(tail) < energy(head) * 0.3, 'the body does not overpower the crack');
       render(processor, 0.5, rate, 3);
     }
     for (let parameter = 0; parameter < 3; parameter++)
@@ -78,6 +83,27 @@ function render(processor, seconds, sampleRate = 48000, channel = 1) {
 function energy(samples) {
   return samples.reduce((sum, value) => sum + value * value, 0) / samples.length;
 }
+
+test('limiter cuts reduce combustion while preserving the unloaded engine sound', () => {
+  for (const rate of [44100, 48000, 96000]) {
+    const levels = [];
+    for (const [load, limiter] of [
+      [1, 0],
+      [0, 1],
+      [0, 0],
+    ]) {
+      const processor = createProcessor(rate);
+      trigger(processor, 0);
+      Object.assign(processor.target, { rpm: 4500, load, limiter });
+      render(processor, 0.15, rate, 0);
+      levels.push(energy(render(processor, 0.06, rate, 0)));
+    }
+    const [powered, limited, unloaded] = levels;
+    assert.ok(limited < powered * 0.7, 'limiter cuts remain audible');
+    assert.ok(limited > powered * 0.04, 'engine retains at least 20% RMS during cuts');
+    assert.ok(Math.abs(limited - unloaded) < unloaded * 0.05, 'unloaded sound survives cuts');
+  }
+});
 
 test('backfires are short decaying transients and smaller burbles are quieter', () => {
   for (const rate of [44100, 48000, 96000]) {

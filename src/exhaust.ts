@@ -8,8 +8,8 @@ export function createExhaustActivity(random = Math.random) {
   let overrun = 0;
   let previousMode = '';
   const interval = (antilag: boolean) =>
-    (antilag ? 0.14 : 0.3) -
-    Math.log(1 - Math.min(random(), 1 - Number.EPSILON)) * (antilag ? 0.35 : 0.75);
+    (antilag ? 0.05 : 0.3) -
+    Math.log(1 - Math.min(random(), 1 - Number.EPSILON)) * (antilag ? 0.1 : 0.75);
   return {
     reset() {
       cooldown = overrun = 0;
@@ -20,7 +20,7 @@ export function createExhaustActivity(random = Math.random) {
       const antilag = engine.gear === 0 && engine.throttle > 0.1 && engine.rpm > 2500;
       if (engine.gear > 0 && engine.throttle > 0.2) liftArmed = true;
       if (liftArmed && engine.throttle < 0.1 && engine.gear > 0) {
-        overrun = 1.4;
+        overrun = random() < 0.35 ? 1.4 : 0;
         liftArmed = false;
       } else overrun = Math.max(0, overrun - dt);
       if (engine.gear <= 0) liftArmed = false;

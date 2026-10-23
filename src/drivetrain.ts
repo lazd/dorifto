@@ -86,7 +86,7 @@ export class Drivetrain {
     const shaftSpeed = input.wheelSpeed * direction * ratio;
     const clutchCapacity = input.startNeutral ? 0 : this.getClutchCapacity(input, shaftSpeed);
     const revLimit = input.startNeutral ? startRevLimitRpm : redlineRpm;
-    this.updateRevLimiter(revLimit, input.startNeutral ? 125 : 350);
+    this.updateRevLimiter(revLimit, input.startNeutral ? 200 : 350);
     const load = this.getEngineLoad(throttle, input.speedLimited);
     this.updateBoost(dt, throttle);
     const engineTorque = this.getEngineTorque(input, throttle, load);

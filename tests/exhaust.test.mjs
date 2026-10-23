@@ -21,21 +21,32 @@ before(async () => {
 });
 after(async () => server?.close());
 
+function seededRandom() {
+  let seed = 738291;
+  return () => {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+    return seed / 4294967296;
+  };
+}
+
 test('pre-start pops are irregular and overrun burbles are quieter, sparser, and smoke-free', () => {
   const engine = { ...new Drivetrain().state, gear: 0, rpm: startRevLimitRpm, throttle: 0.8 };
-  const randomValues = [0.15, 0.85, 0.4, 0.65, 0.2, 0.7];
-  let next = 0;
-  const activity = createExhaustActivity(() => randomValues[next++ % randomValues.length]);
+  let random = seededRandom();
+  const activity = createExhaustActivity(() => random());
   const times = [];
   for (let step = 0; step < 180; step++) {
     const event = activity.update(1 / 60, engine);
     assert.equal(event.smoke, true);
     if (event.backfire) times.push(step / 60);
   }
-  assert.ok(times.length >= 2 && times.length < 12);
+  assert.ok(
+    times.length >= 12 && times.length <= 25,
+    `ANTILAG produces frequent pops (got ${times.length} in three seconds)`,
+  );
   const intervals = times.slice(1).map((time, index) => time - times[index]);
   assert.ok(Math.max(...intervals) - Math.min(...intervals) > 0.1);
   activity.reset();
+  random = () => 0.15;
   activity.update(0.01, { ...engine, gear: 1 });
   let burbles = 0;
   for (let i = 0; i < 120; i++) {
@@ -53,7 +64,7 @@ test('pre-start pops are irregular and overrun burbles are quieter, sparser, and
 });
 
 test('gradual throttle lift triggers audible overrun without requiring a single-frame drop', () => {
-  const activity = createExhaustActivity(() => 0.5);
+  const activity = createExhaustActivity(() => 0.25);
   const engine = { ...new Drivetrain().state, gear: 2, rpm: 4000 };
   for (const throttle of [0.8, 0.6, 0.4, 0.2, 0.15, 0.1, 0.05])
     activity.update(1 / 60, { ...engine, throttle });
@@ -70,7 +81,24 @@ test('gradual throttle lift triggers audible overrun without requiring a single-
   assert.equal(activity.update(1, { ...engine, throttle: 0 }).backfire, 0);
 });
 
-test('four exhaust outlets emit bounded smoke and flames and reset/dispose cleanly', async () => {
+test('a skipped lift stays silent until a new throttle application and lift', () => {
+  let chance = 0.9;
+  const activity = createExhaustActivity(() => chance);
+  const engine = { ...new Drivetrain().state, gear: 2, rpm: 4000 };
+  activity.update(1 / 60, { ...engine, throttle: 0.8 });
+  assert.equal(activity.update(1 / 60, { ...engine, throttle: 0 }).backfire, 0);
+  chance = 0.1;
+  for (let i = 0; i < 120; i++)
+    assert.equal(activity.update(1 / 60, { ...engine, throttle: 0 }).backfire, 0);
+  activity.update(1 / 60, { ...engine, throttle: 0.8 });
+  let pops = 0;
+  for (let i = 0; i < 90; i++)
+    if (activity.update(1 / 60, { ...engine, throttle: 0 }).backfire) pops++;
+  assert.ok(pops > 0);
+});
+
+test('four exhaust outlets emit bounded smoke and flames and reset/dispose cleanly', async (t) => {
+  t.mock.method(Math, 'random', seededRandom());
   const chassis = new THREE.Group();
   chassis.add(await loadTrainingCarModel(server));
   const scene = new THREE.Scene();

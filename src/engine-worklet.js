@@ -133,12 +133,19 @@ class VehicleSoundProcessor extends AudioWorkletProcessor {
             this.backfireRandom = (Math.imul(this.backfireRandom, 1664525) + 1013904223) >>> 0;
             return this.backfireRandom / 4294967296;
           };
-          this.backfireFrequency = (this.backfireBody ? 55 : 80) + variation() * 35;
+          this.backfireFrequency = this.backfireBody
+            ? 55 + variation() * 35
+            : 115 + variation() * 45;
           const duration = this.backfireBody
             ? 0.045 + variation() * 0.025
-            : 0.028 + variation() * 0.018;
+            : 0.022 + variation() * 0.014;
           this.backfireDecay = Math.exp(-1 / (sampleRate * duration));
-          this.backfireCrack = 0.15 + variation() * 0.2;
+          this.backfireCrack = this.backfireBody
+            ? 0.15 + variation() * 0.2
+            : 0.8 + variation() * 0.35;
+          this.backfireCrackDecay = Math.exp(
+            -1 / (sampleRate * (this.backfireBody ? 0.004 : 0.007)),
+          );
           this.backfireCrackEnvelope = 1;
           this.backfireGurglePhase = 0;
           this.backfireGurgleRate = 18 + variation() * 18;
@@ -228,10 +235,11 @@ class VehicleSoundProcessor extends AudioWorkletProcessor {
         Math.sin(crank) * 0.14 +
         Math.sin(crank * 2) * 0.08 +
         Math.sin(crank * 3) * 0.03;
+      const firingLoad = state.load * (1 - limiterCut);
       const combustion =
-        firing * (0.24 + state.load * 0.55) * (1 + lope * idleLope * 0.44) +
-        this.noiseLow * state.load * 0.26 +
-        Math.sin(crank * 3 + Math.sin(crank) * 0.15) * state.load * 0.0325;
+        firing * (0.24 + firingLoad * 0.55) * (1 + lope * idleLope * 0.44) +
+        this.noiseLow * firingLoad * 0.26 +
+        Math.sin(crank * 3 + Math.sin(crank) * 0.15) * firingLoad * 0.0325;
       this.exhaust +=
         (combustion - this.exhaust) *
         Math.min(0.65, (((380 + state.rpm * 0.08) * (1 - idleBlend * 0.4)) / sampleRate) * 6.28);
@@ -240,8 +248,7 @@ class VehicleSoundProcessor extends AudioWorkletProcessor {
         (Math.tanh(this.exhaust * (2 + state.load)) * (0.62 - idleBlend * 0.24) +
           this.exhaustBody * (0.78 + idleBlend * 0.17)) *
         (1 - idleBlend * 0.4) *
-        (1 - state.cut * 0.75) *
-        (1 - limiterCut * 0.88);
+        (1 - state.cut * 0.75);
 
       const whistleNoise =
         turboB * (noise - this.turboX2) - turboA1 * this.turboY1 - turboA2 * this.turboY2;
@@ -321,8 +328,9 @@ class VehicleSoundProcessor extends AudioWorkletProcessor {
       this.backfirePhase += (this.backfireFrequency + this.backfire * 100) / sampleRate;
       this.backfireLow += (noise - this.backfireLow) * this.backfireLowSmoothing;
       this.backfireCrackEnvelope *= this.backfireCrackDecay;
-      const backfirePunch = Math.sin(this.backfirePhase * Math.PI * 2) * 0.9;
-      const backfireRumble = Math.tanh(this.backfireLow * 3) * 0.6;
+      const backfirePunch =
+        Math.sin(this.backfirePhase * Math.PI * 2) * (this.backfireBody ? 0.9 : 0.12);
+      const backfireRumble = Math.tanh(this.backfireLow * 3) * (this.backfireBody ? 0.6 : 0.12);
       const backfireCrack =
         noise *
         (this.backfireCrackEnvelope * this.backfireCrack + (this.backfireBody ? 0.025 : 0.05));
