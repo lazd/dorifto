@@ -391,18 +391,20 @@ export function createPhysicsClient({
         const speed = velocity.length();
         const slip =
           speed > 3 ? 1 - Math.abs(botMarkers[botIndex].forward.dot(velocity) / speed) : 0;
-        effect.update(
+        const backfire = effect.update(
           dt,
           velocity,
           camera,
           state.wheelContacts,
           speed > 3 && slip > 0.045,
           state.burnout > 0.1 && (state.wheelContacts[2] || state.wheelContacts[3]),
+          state.engine,
         );
         soundOffset.subVectors(car.chassis.position, listenerPosition);
         const distance = soundOffset.length();
         botSounds.push({
           drivetrain: state.engine,
+          ...backfire,
           tires: state.tireSounds,
           distance,
           pan: distance > 0 ? soundOffset.dot(listenerRight) / distance : 0,

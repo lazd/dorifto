@@ -350,6 +350,13 @@ export function createVehiclePhysics({
     tireForward.set(0, 0, 1).applyQuaternion(physicsRotation);
     const forwardSpeed =
       linear.x() * tireForward.x + linear.y() * tireForward.y + linear.z() * tireForward.z;
+    const manualAntilag =
+      controls.handbrake &&
+      controls.throttle === 1 &&
+      controls.reverse === 0 &&
+      speed < 0.5 * 3.6 &&
+      Math.abs(angular.y()) < 0.5;
+    const neutralHeld = startHeld || manualAntilag;
     if (!startHeld && (controls.throttle > 0 || controls.reverse > 0)) spawnBrakeHeld = false;
     if (spawnBrakeHeld || controls.throttle > 0 || controls.reverse === 0) reversing = false;
     else if (Math.abs(forwardSpeed) < 0.5 && Math.abs(angular.y()) < 0.5 && speed < 4)
@@ -362,12 +369,12 @@ export function createVehiclePhysics({
     const smoothedSteering = THREE.MathUtils.damp(steering, targetSteering, 10, fixedStep);
     const maxChange = tireTune.steeringRate * fixedStep;
     steering += THREE.MathUtils.clamp(smoothedSteering - steering, -maxChange, maxChange);
-    const brakeAmount = startHeld || spawnBrakeHeld ? 1 : reversing ? 0 : controls.brake;
+    const brakeAmount = neutralHeld || spawnBrakeHeld ? 1 : reversing ? 0 : controls.brake;
     const braking = brakeAmount > 0;
     const handbrake = startHeld || controls.handbrake;
     const throttle = reversing ? controls.reverse : controls.throttle;
     brakestand =
-      !startHeld &&
+      !neutralHeld &&
       throttle > 0 &&
       braking &&
       !reversing &&
@@ -477,6 +484,7 @@ export function createVehiclePhysics({
       });
     }
     drivetrainInput.throttle = throttle;
+    drivetrainInput.startNeutral = neutralHeld;
     drivetrainInput.reversing = reversing;
     drivetrainInput.handbrake = handbrake;
     drivetrainInput.roadWheelSpeed = forwardSpeed / drivenWheelRadius;

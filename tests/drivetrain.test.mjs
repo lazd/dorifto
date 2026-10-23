@@ -5,6 +5,7 @@ import { createServer } from 'vite';
 let server;
 let Drivetrain;
 let idleRpm;
+let startRevLimitRpm;
 
 const dt = 1 / 600;
 const input = {
@@ -23,7 +24,7 @@ before(async () => {
     server: { middlewareMode: true, hmr: false, ws: false, watch: null },
     appType: 'custom',
   });
-  ({ Drivetrain, idleRpm } = await server.ssrLoadModule('/src/drivetrain.ts'));
+  ({ Drivetrain, idleRpm, startRevLimitRpm } = await server.ssrLoadModule('/src/drivetrain.ts'));
 });
 
 after(async () => {
@@ -98,4 +99,25 @@ test('positive torque and full-throttle drag retain their existing behavior', ()
       assert.equal(drivetrain.getEngineTorque(input, 1, load), combustion - drag);
     }
   }
+});
+
+test('pre-start neutral free revs at its limiter without wheel torque and releases into first', () => {
+  const drivetrain = new Drivetrain();
+  let limited = false;
+  for (let i = 0; i < 1800; i++) {
+    const torque = drivetrain.step(dt, {
+      ...input,
+      throttle: 1,
+      handbrake: false,
+      startNeutral: true,
+    });
+    assert.equal(torque, 0);
+    assert.equal(drivetrain.state.gear, 0);
+    assert.ok(drivetrain.state.rpm <= startRevLimitRpm);
+    limited ||= drivetrain.state.limiterCut;
+  }
+  assert.ok(limited, 'neutral reaches the pre-start limiter');
+  for (let i = 0; i < 100; i++) drivetrain.step(dt, { ...input, throttle: 1, handbrake: false });
+  assert.equal(drivetrain.state.gear, 1);
+  assert.equal(drivetrain.state.limiterCut, false);
 });

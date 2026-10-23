@@ -6,6 +6,7 @@ let server;
 let bindGameActions;
 let bindStatusUI;
 let bindLapRecorder;
+let createHudVisibilityCycle;
 let createGameState;
 let createConfigurationState;
 
@@ -14,13 +15,62 @@ before(async () => {
     server: { middlewareMode: true, hmr: false, ws: false, watch: null },
     appType: 'custom',
   });
-  ({ bindGameActions, bindStatusUI, bindLapRecorder } = await server.ssrLoadModule('/src/ui.ts'));
+  ({ bindGameActions, bindStatusUI, bindLapRecorder, createHudVisibilityCycle } =
+    await server.ssrLoadModule('/src/ui.ts'));
   ({ createGameState } = await server.ssrLoadModule('/src/game-state.ts'));
   ({ createConfigurationState } = await server.ssrLoadModule('/src/configuration-state.ts'));
 });
 
 after(async () => {
   await server?.close();
+});
+
+test('HUD cycle progressively hides each group and restores without changing native visibility', (t) => {
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'document');
+  const groups = [
+    ['.telemetry'],
+    ['#minimap'],
+    ['#leaderboard'],
+    ['.course-hud', '.lap-recorder', 'header', 'footer'],
+  ];
+  const nodes = new Map(
+    groups.flat().map((selector) => {
+      const classes = new Set();
+      return [
+        selector,
+        {
+          hidden: selector === '.telemetry' || selector === '#leaderboard',
+          classList: {
+            toggle: (name, enabled) => (enabled ? classes.add(name) : classes.delete(name)),
+            contains: (name) => classes.has(name),
+          },
+        },
+      ];
+    }),
+  );
+  Object.defineProperty(globalThis, 'document', {
+    configurable: true,
+    value: { querySelector: (selector) => nodes.get(selector) },
+  });
+  t.after(() => {
+    if (descriptor) Object.defineProperty(globalThis, 'document', descriptor);
+    else delete globalThis.document;
+  });
+  const cycle = createHudVisibilityCycle();
+  for (let press = 1; press <= 10; press++) {
+    cycle();
+    groups.forEach((selectors, index) => {
+      for (const selector of selectors) {
+        const node = nodes.get(selector);
+        assert.equal(node.classList.contains('hud-hidden'), press % 5 > index, selector);
+        assert.equal(
+          node.hidden,
+          selector === '.telemetry' || selector === '#leaderboard',
+          'camera and race visibility remain independent of the HUD cycle',
+        );
+      }
+    });
+  }
 });
 
 function fixture(t, initiallyOpen = false) {

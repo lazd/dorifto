@@ -445,10 +445,13 @@ simulation continues. Settings remains in the main footer.
 | C                   | Cycle corner-aware chase, classic chase, in-cabin (once per press) |
 | D                   | Toggle Grip / Drift mode (once per press)                          |
 | M                   | Toggle the bird's-eye map view of the whole course                 |
+| U                   | Hide tach, map, leaderboard, then all HUD; press again to restore  |
 | W                   | Cycle Noon / Sunset / Night (once per press)                       |
 | S                   | Turn on the stereo / next station / off after the last station     |
 
 Map view switches instantly in both directions, without an animated camera flight.
+Each U press advances one step; holding it does not repeat. Restoring the HUD preserves
+normal visibility rules (for example, the tach stays hidden in cabin view).
 
 ### Gamepad
 

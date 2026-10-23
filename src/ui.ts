@@ -51,6 +51,22 @@ function notifyUIVisibility() {
   document.dispatchEvent(new Event('driving-ui-change'));
 }
 
+export function createHudVisibilityCycle() {
+  const groups = [
+    [element('.telemetry')],
+    [element('#minimap')],
+    [element('#leaderboard')],
+    [element('.course-hud'), element('.lap-recorder'), element('header'), element('footer')],
+  ];
+  let level = 0;
+  return () => {
+    level = (level + 1) % (groups.length + 1);
+    groups.forEach((nodes, index) => {
+      nodes.forEach((node) => node.classList.toggle('hud-hidden', level > index));
+    });
+  };
+}
+
 function setCourseMenuOpen(open: boolean) {
   const menu = element('#course-menu');
   if (menu.hidden === !open) return;
@@ -835,6 +851,7 @@ export function bindGameUI(
     throw new Error('Bot settings are not ready yet');
   };
   const dismissError = bindStatusUI(game);
+  const cycleHudVisibility = createHudVisibilityCycle();
   bindCourseDisclosure();
   const speed = bindText('#speed');
   const gear = bindText('#gear');
@@ -1052,7 +1069,7 @@ export function bindGameUI(
       const mph = String(Math.round(Math.abs(t.speed) / 0.44704));
       speed(mph);
       tachometer(t.rpm, mph, t.limiter);
-      gear(t.gear < 0 ? 'R' : String(t.gear));
+      gear(t.gear < 0 ? 'R' : t.gear === 0 ? 'N' : String(t.gear));
       lap(t.lap ? String(t.lap) : '--');
       current(formatLapTime(t.lap ? t.current : null));
       if (currentLap.classList.contains('is-invalid') !== t.invalid) {
@@ -1092,5 +1109,6 @@ export function bindGameUI(
       applyBotSettings = handler;
     },
     dismissError,
+    cycleHudVisibility,
   };
 }

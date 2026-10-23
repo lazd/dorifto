@@ -9,6 +9,7 @@ import type { RaceBotOptions, VehicleState, createRaceBot } from './race-bot';
 import type { RaceStanding } from './race-standings';
 
 export const physicsStep = 1 / 120;
+export const raceStartDelay = 3;
 export const poseStride = 7;
 export const vehiclePoseCount = 9;
 export const snapshotStride = 1 + poseStride * 2;

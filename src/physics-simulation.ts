@@ -34,6 +34,7 @@ import {
 } from './lap-recording';
 import {
   physicsStep,
+  raceStartDelay,
   poseStride,
   snapshotStride,
   vehiclePoseCount,
@@ -256,7 +257,7 @@ export function createPhysicsSimulation(Ammo: typeof AmmoFactory, data: PhysicsI
   }
 
   function reset() {
-    settlingTime = bots.length ? 1 : 0;
+    settlingTime = bots.length ? raceStartDelay : 0;
     accumulator = recordingSteps = 0;
     replay = null;
     impacts.length = 0;

@@ -45,6 +45,19 @@ class VehicleSoundProcessor extends AudioWorkletProcessor {
     this.blowPhase = 0;
     this.random = 123456789;
     this.impact = 0;
+    this.backfire = 0;
+    this.backfirePhase = 0;
+    this.backfireBody = 0;
+    this.backfireLow = 0;
+    this.backfireRandom = 738291;
+    this.backfireFrequency = 90;
+    this.backfireCrack = 0.2;
+    this.backfireCrackEnvelope = 0;
+    this.backfireGurglePhase = 0;
+    this.backfireGurgleRate = 24;
+    this.backfireCrackDecay = Math.exp(-1 / (sampleRate * 0.004));
+    this.backfireDecay = Math.exp(-1 / (sampleRate * 0.035));
+    this.backfireLowSmoothing = 1 - Math.exp((-2 * Math.PI * 450) / sampleRate);
     this.impactPhase = 0;
     this.clank = 0;
     this.crash = 0;
@@ -83,6 +96,9 @@ class VehicleSoundProcessor extends AudioWorkletProcessor {
         this.lopeVariationTarget = 0;
         this.lopeNoise = 0;
         this.impact = 0;
+        this.backfire = this.backfirePhase = 0;
+        this.backfireLow = 0;
+        this.backfireCrackEnvelope = 0;
         this.clank = 0;
         this.crash = this.crashLow = 0;
         this.crashPunch = this.crashPunchPhase = 0;
@@ -108,6 +124,25 @@ class VehicleSoundProcessor extends AudioWorkletProcessor {
         this.impact = Math.max(this.impact, data.impact);
         this.impactPhase = 0;
       } else {
+        if (data.backfire > 0) {
+          this.backfire = Math.max(this.backfire, data.backfire);
+          this.backfirePhase = 0;
+          this.backfireLow = 0;
+          this.backfireBody = data.backfireBody > 0 ? 1 : 0;
+          const variation = () => {
+            this.backfireRandom = (Math.imul(this.backfireRandom, 1664525) + 1013904223) >>> 0;
+            return this.backfireRandom / 4294967296;
+          };
+          this.backfireFrequency = (this.backfireBody ? 55 : 80) + variation() * 35;
+          const duration = this.backfireBody
+            ? 0.045 + variation() * 0.025
+            : 0.028 + variation() * 0.018;
+          this.backfireDecay = Math.exp(-1 / (sampleRate * duration));
+          this.backfireCrack = 0.15 + variation() * 0.2;
+          this.backfireCrackEnvelope = 1;
+          this.backfireGurglePhase = 0;
+          this.backfireGurgleRate = 18 + variation() * 18;
+        }
         this.target = data;
         for (let i = 0; i < 4; i++) this.tires[i].target = data.tires[i];
         if (data.blow > 0) {
@@ -282,6 +317,30 @@ class VehicleSoundProcessor extends AudioWorkletProcessor {
       this.impactPhase = (this.impactPhase + (85 + this.impact * 45) / sampleRate) % 1;
       impacts[i] =
         (Math.sin(this.impactPhase * Math.PI * 2) * 0.7 + this.tireLow * 0.6) * this.impact;
+      this.backfire *= this.backfireDecay;
+      this.backfirePhase += (this.backfireFrequency + this.backfire * 100) / sampleRate;
+      this.backfireLow += (noise - this.backfireLow) * this.backfireLowSmoothing;
+      this.backfireCrackEnvelope *= this.backfireCrackDecay;
+      const backfirePunch = Math.sin(this.backfirePhase * Math.PI * 2) * 0.9;
+      const backfireRumble = Math.tanh(this.backfireLow * 3) * 0.6;
+      const backfireCrack =
+        noise *
+        (this.backfireCrackEnvelope * this.backfireCrack + (this.backfireBody ? 0.025 : 0.05));
+      this.backfireGurglePhase += this.backfireGurgleRate / sampleRate;
+      const gurgle = this.backfireBody
+        ? 0.35 +
+          0.65 *
+            Math.pow(
+              0.5 +
+                0.5 *
+                  Math.sin(
+                    this.backfireGurglePhase * Math.PI * 2 +
+                      Math.sin(this.backfireGurglePhase * 4.7) * 0.7,
+                  ),
+              2,
+            )
+        : 1;
+      impacts[i] += this.backfire * (backfirePunch + backfireRumble + backfireCrack) * gurgle;
       // Ragged crunch with a faint, quickly damped sheet-metal clang.
       this.clank *= this.clankDecay;
       this.crash *= this.crashDecay;

@@ -912,6 +912,7 @@ dialog h2 {
 }
 /* hide any element with hidden attribute, no need for separate selectors */
 .hide-when-loading,
+.hud-hidden,
 *[hidden] {
   display: none !important;
 }

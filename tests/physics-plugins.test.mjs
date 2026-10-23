@@ -17,6 +17,8 @@ let createConfigurationState;
 let createPhysicsSimulation;
 let createPhysicsInit;
 let physicsStep;
+let raceStartDelay;
+let startRevLimitRpm;
 let snapshotStride;
 let poseStride;
 let vehiclePoseCount;
@@ -41,10 +43,18 @@ before(async () => {
   ({ createConfigurationState } = await server.ssrLoadModule('/src/configuration-state.ts'));
   ({ createPhysicsSimulation } = await server.ssrLoadModule('/src/physics-simulation.ts'));
   ({ createPhysicsClient } = await server.ssrLoadModule('/src/physics-client.ts'));
-  ({ createPhysicsInit, physicsStep, snapshotStride, poseStride, vehiclePoseCount, replayData } =
-    await server.ssrLoadModule('/src/physics-messages.ts'));
+  ({
+    createPhysicsInit,
+    physicsStep,
+    raceStartDelay,
+    snapshotStride,
+    poseStride,
+    vehiclePoseCount,
+    replayData,
+  } = await server.ssrLoadModule('/src/physics-messages.ts'));
   ({ courses, courseSpawn } = await server.ssrLoadModule('/src/courses.ts'));
   ({ raceGridSpawn } = await server.ssrLoadModule('/src/race-bot.ts'));
+  ({ startRevLimitRpm } = await server.ssrLoadModule('/src/drivetrain.ts'));
   ({ RunRecording, createReplayFrame } = await server.ssrLoadModule('/src/lap-recording.ts'));
   Ammo = await AmmoFactory.call({});
 });
@@ -264,7 +274,7 @@ test('worker snapshots include independently driven bots through reset, reversal
   const initial = new Float32Array(snapshot.buffer);
   const botZ = initial[vehiclePoseCount * snapshotStride + 1 + poseStride + 2];
   let standings;
-  for (let i = 0; i < 45; i++) {
+  for (let i = 0; i < Math.ceil(raceStartDelay / (physicsStep * 4)) + 15; i++) {
     snapshot = simulation.handle({
       type: 'advance',
       dt: physicsStep * 4,
@@ -319,7 +329,7 @@ test('worker snapshots include independently driven bots through reset, reversal
   assert.equal(snapshot.bots[0].metrics.elapsed, 0, 'bots do not participate in recorded replays');
   assert.equal(snapshot.standings, undefined, 'replays do not publish live standings');
   snapshot = simulation.handle({ type: 'reset', revision: 3, input: setup.input });
-  for (let i = 0; i < 31; i++)
+  for (let i = 0; i < Math.ceil(raceStartDelay / (physicsStep * 4)) + 1; i++)
     snapshot = simulation.handle({
       type: 'advance',
       dt: physicsStep * 4,
@@ -345,7 +355,7 @@ test('bots-only mode has no player vehicle and follows bot telemetry through rev
     'exactly one car is present, not a hidden player plus a bot',
   );
   Object.assign(setup.input.controls, { throttle: 0, brake: 1, reverse: 1, handbrake: true });
-  for (let i = 0; i < 40; i++)
+  for (let i = 0; i < Math.ceil(raceStartDelay / (physicsStep * 4)) + 10; i++)
     snapshot = simulation.handle({
       type: 'advance',
       dt: physicsStep * 4,
@@ -740,6 +750,41 @@ test('static tire friction holds on banks and hills but releases under throttle'
         car.chassis.position.distanceTo(start) > 0.2,
         'throttle must release the parked car',
       );
+    } finally {
+      physics.dispose();
+    }
+  }
+});
+
+test('stopped full throttle plus handbrake enters ANTILAG neutral and releases on either input', () => {
+  for (const release of ['throttle', 'handbrake']) {
+    const { physics, controls } = fixture();
+    try {
+      physics.reset();
+      for (let i = 0; i < 300; i++) physics.step();
+      Object.assign(controls, { throttle: 0.8, handbrake: true });
+      physics.step();
+      assert.notEqual(physics.engine.gear, 0, 'partial throttle does not enter ANTILAG');
+      controls.throttle = 1;
+      for (let i = 0; i < 360; i++) {
+        physics.step();
+        assert.equal(physics.engine.gear, 0);
+        assert.ok(physics.engine.rpm <= startRevLimitRpm);
+        assert.ok(physics.readState().speed < 0.5);
+        assert.equal(physics.brakestand, false);
+      }
+      assert.ok(physics.engine.rpm > 4000);
+      if (release === 'throttle') controls.throttle = 0;
+      else controls.handbrake = false;
+      physics.step();
+      assert.equal(physics.engine.gear, 1);
+      if (release === 'handbrake') {
+        for (let i = 0; i < 120; i++) physics.step();
+        assert.ok(physics.readState().speed > 0.5, 'releasing handbrake launches the car');
+        controls.handbrake = true;
+        physics.step();
+        assert.notEqual(physics.engine.gear, 0, 'moving handbrake does not engage neutral');
+      }
     } finally {
       physics.dispose();
     }

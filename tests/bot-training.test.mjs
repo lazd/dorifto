@@ -4,6 +4,8 @@ import { createServer } from 'vite';
 import AmmoFactory from 'ammojs-typed';
 import * as THREE from 'three';
 import { loadTrainingCarGeometry } from '../scripts/bot-assets.mjs';
+let raceStartDelay;
+let startRevLimitRpm;
 
 let server;
 let Ammo;
@@ -59,6 +61,8 @@ before(async () => {
     await server.ssrLoadModule('/src/vehicle-physics.ts'));
   ({ createPhysicsSimulation } = await server.ssrLoadModule('/src/physics-simulation.ts'));
   ({ createTrafficPlanner } = await server.ssrLoadModule('/src/bot-traffic.ts'));
+  ({ raceStartDelay } = await server.ssrLoadModule('/src/physics-messages.ts'));
+  ({ startRevLimitRpm } = await server.ssrLoadModule('/src/drivetrain.ts'));
   definition = { ...courses.find(({ id }) => id === trainingCourses.race), reverse: false };
   terrain = new CourseTerrain(definition, false);
   geometry = await loadTrainingCarGeometry(server);
@@ -552,6 +556,8 @@ for (const scenario of [
           recycled: [snapshot.buffer],
         });
       assert.ok(snapshot.bots[0].engine.rpm > initialRpm, 'bots rev while settling');
+      assert.equal(snapshot.bots[0].engine.gear, 0);
+      assert.ok(snapshot.bots[0].engine.rpm <= startRevLimitRpm);
       assert.ok(snapshot.bots.every(({ metrics }) => metrics.elapsed === 0));
       assert.ok(snapshot.bots.every(({ braking, spawnBrakeHeld }) => braking && spawnBrakeHeld));
       if (scenario.player) {
@@ -560,7 +566,7 @@ for (const scenario of [
         assert.equal(snapshot.telemetry.braking, true);
         assert.ok(snapshot.telemetry.motion.speed < 0.5, 'revving does not drive the held car');
       }
-      for (let step = 0; step < 10; step++)
+      for (let step = 0; step < Math.ceil((raceStartDelay - 0.5) / 0.05); step++)
         snapshot = simulation.handle({
           type: 'advance',
           revision: 0,

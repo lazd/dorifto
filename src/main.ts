@@ -386,6 +386,7 @@ async function start() {
     'KeyS',
     'KeyF',
     'KeyH',
+    'KeyU',
   ]);
   if (botsOnly) controlKeys.add('Tab');
   let lastTime = 0;
@@ -1057,6 +1058,8 @@ async function start() {
       if (!event.repeat) cycleTimeOfDay();
     } else if (event.code === 'KeyS') {
       if (!event.repeat) pressStereo();
+    } else if (event.code === 'KeyU') {
+      if (!event.repeat) ui.cycleHudVisibility();
     } else keys.add(event.code);
   });
   window.addEventListener('keyup', (event) => {
@@ -1189,10 +1192,6 @@ async function start() {
       replaying ? playbackFrame.rightSignal : controls.rightSignal,
     );
     const spawnBrakeHeld = !replaying && physics.spawnBrakeHeld;
-    audio.update({
-      drivetrain: engine,
-      tires: replaying ? playbackFrame.tires : physics.tireSounds,
-    });
     const cameraState = configurationState.getState();
     drivingCamera.update(
       dt,
@@ -1229,7 +1228,20 @@ async function start() {
     const burningOut = replaying
       ? playbackFrame.burnout
       : physics.burnout > 0.1 && (wheelContacts[2] || wheelContacts[3]);
-    tireEffects.update(dt, velocity, camera, wheelContacts, sliding, burningOut);
+    const backfire = tireEffects.update(
+      dt,
+      velocity,
+      camera,
+      wheelContacts,
+      sliding,
+      burningOut,
+      replaying ? undefined : engine,
+    );
+    audio.update({
+      drivetrain: engine,
+      tires: replaying ? playbackFrame.tires : physics.tireSounds,
+      ...backfire,
+    });
     physics.updateBotEffects(dt, camera, frameHeadlights, !replaying);
     audio.updateOpponents(physics.botSounds);
     const timing = replay

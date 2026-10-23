@@ -3,6 +3,7 @@ import { vehicleSettings } from './vehicle-settings';
 export const redlineRpm = 7500;
 export const downshiftRpm = 4000;
 export const idleRpm = 700;
+export const startRevLimitRpm = 4500;
 const ratios = [2.97, 2.1, 1.46, 1.0, 0.8, 0.63];
 const finalDrive = 3.692;
 const reverseRatio = 3.369;
@@ -18,6 +19,7 @@ const smoothstep = (value: number, low: number, high: number) => {
 };
 
 export interface DrivetrainInput {
+  startNeutral?: boolean;
   throttle: number;
   reversing: boolean;
   wheelSpeed: number;
@@ -78,12 +80,13 @@ export class Drivetrain {
   // while the equal and opposite geared torque drives the two rear wheels.
   step(dt: number, input: DrivetrainInput): number {
     const throttle = this.updateThrottle(input.throttle);
-    this.updateShifting(dt, input);
+    if (!input.startNeutral) this.updateShifting(dt, input);
     const direction = this.reversing ? -1 : 1;
     const ratio = this.getRatio(this.reversing ? -1 : this.gearIndex + 1);
     const shaftSpeed = input.wheelSpeed * direction * ratio;
-    const clutchCapacity = this.getClutchCapacity(input, shaftSpeed);
-    this.updateRevLimiter();
+    const clutchCapacity = input.startNeutral ? 0 : this.getClutchCapacity(input, shaftSpeed);
+    const revLimit = input.startNeutral ? startRevLimitRpm : redlineRpm;
+    this.updateRevLimiter(revLimit, input.startNeutral ? 125 : 350);
     const load = this.getEngineLoad(throttle, input.speedLimited);
     this.updateBoost(dt, throttle);
     const engineTorque = this.getEngineTorque(input, throttle, load);
@@ -94,7 +97,10 @@ export class Drivetrain {
       ratio,
       clutchCapacity,
     );
+    if (input.startNeutral)
+      this.engineSpeed = Math.min(this.engineSpeed, startRevLimitRpm / radiansToRpm);
     this.updateState(throttle, load);
+    if (input.startNeutral) this.state.gear = 0;
     return wheelTorque * direction;
   }
 
@@ -163,10 +169,10 @@ export class Drivetrain {
       : Math.max(560, input.peakTorque * 1.25) * launchEngagement * shiftEngagement;
   }
 
-  private updateRevLimiter() {
+  private updateRevLimiter(revLimit: number, hysteresis: number) {
     const state = this.state;
-    if (state.rpm >= redlineRpm) state.limiterCut = true;
-    else if (state.rpm <= redlineRpm - 350) state.limiterCut = false;
+    if (state.rpm >= revLimit) state.limiterCut = true;
+    else if (state.rpm <= revLimit - hysteresis) state.limiterCut = false;
   }
 
   private getEngineLoad(throttle: number, speedLimited: boolean): number {

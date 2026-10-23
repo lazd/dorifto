@@ -21,7 +21,7 @@ function createProcessor(sampleRate = 48000, workletSource = source) {
   return new Processor({ processorOptions: { idleRpm: 750 } });
 }
 
-function trigger(processor, boost) {
+function trigger(processor, boost, backfire = 0, backfireBody = 0) {
   processor.port.onmessage({
     data: {
       rpm: 750,
@@ -30,10 +30,35 @@ function trigger(processor, boost) {
       cut: 0,
       limiter: 0,
       blow: boost,
+      backfire,
+      backfireBody,
       tires: Array.from({ length: 4 }, () => ({ level: 0, speed: 0, load: 0 })),
     },
   });
 }
+
+test('backfires have a low-frequency body and vary pitch, duration, and crack per event', () => {
+  for (const rate of [44100, 48000, 96000]) {
+    const processor = createProcessor(rate);
+    const signatures = [];
+    for (let event = 0; event < 4; event++) {
+      trigger(processor, 0, 0.8);
+      signatures.push([
+        processor.backfireFrequency,
+        processor.backfireDecay,
+        processor.backfireCrack,
+      ]);
+      const head = render(processor, 0.03, rate, 3);
+      const tail = render(processor, 0.04, rate, 3);
+      const roughness = energy(head.slice(1).map((value, i) => value - head[i])) / energy(head);
+      assert.ok(roughness < 0.3, 'body dominates instead of a broadband popcorn click');
+      assert.ok(energy(tail) > energy(head) * 0.01, 'backfire has a substantial body');
+      render(processor, 0.5, rate, 3);
+    }
+    for (let parameter = 0; parameter < 3; parameter++)
+      assert.ok(new Set(signatures.map((value) => value[parameter])).size > 1);
+  }
+});
 
 function render(processor, seconds, sampleRate = 48000, channel = 1) {
   const samples = [];
@@ -53,6 +78,21 @@ function render(processor, seconds, sampleRate = 48000, channel = 1) {
 function energy(samples) {
   return samples.reduce((sum, value) => sum + value * value, 0) / samples.length;
 }
+
+test('backfires are short decaying transients and smaller burbles are quieter', () => {
+  for (const rate of [44100, 48000, 96000]) {
+    const loud = createProcessor(rate);
+    const quiet = createProcessor(rate);
+    trigger(loud, 0, 0.8);
+    trigger(quiet, 0, 0.2);
+    const pop = render(loud, 0.08, rate, 3);
+    const burble = render(quiet, 0.08, rate, 3);
+    assert.ok(energy(pop) > energy(burble) * 8);
+    assert.ok(energy(render(loud, 0.3, rate, 3)) < energy(pop) * 0.01);
+    loud.port.onmessage({ data: { reset: true } });
+    assert.equal(energy(render(loud, 0.05, rate, 3)), 0);
+  }
+});
 
 test('metal crashes scale with impulse, decay quickly, and clear on reset at supported sample rates', () => {
   for (const rate of [44100, 48000, 96000]) {

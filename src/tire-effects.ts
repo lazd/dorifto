@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { TireSmoke } from './smoke';
 import type { PhysicsCar } from './vehicle-physics';
 import type { CourseTerrain } from './terrain';
+import { createExhaustEffects } from './exhaust';
+import type { DrivetrainState } from './drivetrain';
 
 export function createTireEffects(
   scene: THREE.Scene,
@@ -57,9 +59,11 @@ export function createTireEffects(
 
   const smoke = new TireSmoke(scene, car.chassis);
   scene.add(smoke.mesh);
+  let exhaust: ReturnType<typeof createExhaustEffects> | undefined;
 
   function reset() {
     smoke.reset();
+    exhaust?.reset();
     markCount = 0;
     markGeometry.setDrawRange(0, 0);
     marking.fill(false);
@@ -72,6 +76,7 @@ export function createTireEffects(
     wheelContacts: boolean[],
     sliding: boolean,
     burningOut: boolean,
+    engine?: Readonly<DrivetrainState>,
   ) {
     const leavingMarks = sliding || burningOut;
     for (let i = 2; i < 4; i++) wheelAsphalt[i] = isAsphalt(car.wheels[i].position);
@@ -140,6 +145,12 @@ export function createTireEffects(
       wheelAsphalt,
       (x, z) => terrain.heightAt(x, z),
     );
+    if (!engine) {
+      exhaust?.reset();
+      return { backfire: 0, backfireBody: 0 };
+    }
+    exhaust ??= createExhaustEffects(scene, car.chassis);
+    return exhaust.update(dt, engine, camera);
   }
 
   function setCourse(
@@ -164,6 +175,7 @@ export function createTireEffects(
       markGeometry.dispose();
       marks.material.dispose();
       smoke.dispose();
+      exhaust?.dispose();
     },
   };
 }

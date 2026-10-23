@@ -4,6 +4,8 @@ import { idleRpm, type DrivetrainState } from './drivetrain';
 const clamp = (value: number, low = 0, high = 1) => Math.max(low, Math.min(high, value));
 
 export interface VehicleSoundState {
+  backfire?: number;
+  backfireBody?: number;
   drivetrain: Readonly<DrivetrainState>;
   tires: readonly TireSoundState[];
 }
@@ -28,6 +30,8 @@ function soundMessage(
   const boost = Math.max(previous.boost, engine.boost);
   Object.assign(previous, { throttle: engine.throttle, gear: engine.gear, boost: engine.boost });
   return {
+    backfire: state.backfire ?? 0,
+    backfireBody: state.backfireBody ?? 0,
     rpm: engine.rpm,
     load: engine.load,
     boost: engine.boost,

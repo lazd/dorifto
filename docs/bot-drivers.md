@@ -192,11 +192,16 @@ live experience import, and automatic tuning searches remain future work.
 
 ### Race presentation and pace follow-up
 
-Races with bots first run one second of settling physics with all cars held on
-the brakes and their clutches disengaged. The player can rev with the accelerator;
-bots rev at 60% throttle. Bot launch timers, lap timing, and race progress tracking
+Races with bots first run three seconds of settling physics with all cars held on
+the brakes in neutral (`N`), with a 4,500 RPM limiter. The player can rev with the
+accelerator; bots rev at 60% throttle. Bot launch timers, lap timing, and race progress tracking
 start after release. Resets and settings/direction changes restart settling.
 Solo driving and headless solo training retain their existing immediate start.
+
+The player can also activate the same neutral/4,500 RPM ANTILAG while stopped
+(under 0.5 m/s, without spinning) by holding the handbrake and full throttle.
+Releasing either input exits neutral. Moving handbrake use and partial throttle
+retain their normal behavior; manual ANTILAG does not pause lap timing.
 
 From a standing launch, bots hold their initial heading for 1 second to build
 speed, then smoothly blend into racing-line steering over 2 seconds. Rolling
@@ -218,8 +223,29 @@ snapshot independently of numeric metrics, with lettering tinted to match the ca
   when braking backward motion. No active conditions is `--`.
 - **Stabilization:** `OH SHIT` during excess-slip stabilization, otherwise `--`.
 
-During the one-second pre-start settling/revving period the plate reads `ANTILAG`.
-This is a presentation label, not an additional engine/boost physics effect.
+During the three-second pre-start settling/revving period the plate reads `ANTILAG`.
+Revving above 2,500 RPM in this neutral produces frequent exhaust pops, brief flames,
+and mixed black/white smoke from all four tailpipes. Throttle lift above 3,000 RPM in forward
+gear can also produce quieter, less frequent burbles/flames for a short period;
+it does not emit the pre-start black smoke. Sound and flames use the same event
+trigger. This does not add engine power or alter the turbo model. Replay exhaust
+effects are disabled because exhaust events are not recorded.
+Emitter positions are derived from each rear pipe lip, not the wider muffler bounds,
+so flames and smoke align with all four openings.
+Neutral uses a 125 RPM limiter hysteresis for rapid cuts (normal driving keeps
+350 RPM). Smoke jets rearward at 7-11 m/s before drag slows it and buoyancy
+lifts it gently. Puffs are approximately 80% black and 20% white, with low upward
+velocity to keep the plume flatter than tire smoke.
+Exhaust pops use randomized waiting times rather than a fixed cadence;
+deceleration burbles are substantially quieter and less frequent than pre-start pops.
+ANTILAG backfires combine a brief crack with a low-frequency punch and rumbling
+decay; overrun backfires are deeper and longer-bodied. Pitch, decay, and crack/body
+balance vary per event. Both share event timing with their visible flame.
+Overrun detection remembers throttle use through a gradual lift, rather than
+requiring an abrupt single-frame pedal release. Its deeper backfires have uneven
+amplitude pulses for a gurgling decay and remain quieter than pre-start backfires.
+Each ANTILAG or deceleration backfire selects one random tailpipe, excluding the previous pipe; the
+other flames remain off. Smoke continues to emit from all four pipes.
 During the launch hold and the full steering blend, `LAUNCH` replaces `CRUISE`
 and `CHASE`. `ATTACK` and `RETURN` take priority immediately.
 
