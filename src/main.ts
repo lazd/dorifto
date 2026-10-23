@@ -41,7 +41,7 @@ import { createLighting } from './lighting';
 import { createTireEffects } from './tire-effects';
 import { createMinimap } from './minimap';
 import { createPhysicsClient } from './physics-client';
-import { readBotsOnly, readRaceBots } from './race-bot';
+import { raceBotDriverName, raceBotTunings, readBotsOnly, readRaceBots } from './race-bot';
 import type { PhysicsRecord } from './physics-messages';
 import { readTurnSignMode } from './turn-sign';
 import { createGhostCar } from './ghost-car';
@@ -179,6 +179,14 @@ async function start() {
   }
   const courseUrl = new URL(location.href);
   const botsOnly = readBotsOnly(courseUrl.searchParams);
+  // Recordings follow the primary car: the player, or the first bot in bots-only mode.
+  const recordedBot = botsOnly ? readRaceBots(courseUrl.searchParams)[0] : null;
+  const recordedDriver = recordedBot
+    ? {
+        driver: raceBotDriverName(recordedBot),
+        botTuning: { ...raceBotTunings[recordedBot.preset ?? 'grip-fast'] },
+      }
+    : { driver: 'human' };
   if (botsOnly)
     configurationState.update({
       driveMode: 'grip',
@@ -509,7 +517,7 @@ async function start() {
     gameState.update({ lapRecorder: { mode, runs: runOptions, selectedRun, replayLap } });
   }
 
-  function runLabel({ createdAt, laps: times }: RunSummary) {
+  function runLabel({ createdAt, laps: times, driver }: RunSummary) {
     const date = new Date(createdAt).toLocaleString(undefined, {
       month: 'short',
       day: 'numeric',
@@ -517,9 +525,10 @@ async function start() {
       minute: '2-digit',
     });
     const count = `${times.length} lap${times.length === 1 ? '' : 's'}`;
-    return times.length
+    const label = times.length
       ? `${date} · ${count} · best ${formatLapTime(Math.min(...times))}`
       : `${date} · partial lap`;
+    return driver?.startsWith('bot') ? `🤖 ${label} · ${driver}` : `🧑🏽‍🔧 ${label}`;
   }
 
   function refreshSavedRuns() {
@@ -624,7 +633,7 @@ async function start() {
   function stopRecording(finished: RunRecording) {
     const key = storageKey;
     startReplay(finished);
-    saveRun(key, finished).then(
+    saveRun(key, finished, recordedDriver).then(
       (saved) => {
         if (key !== storageKey) return;
         selectedRun = saved.id;

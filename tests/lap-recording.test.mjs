@@ -201,7 +201,7 @@ test('persists only faster record laps, independently from runs and course direc
     false,
     'ties preserve the holder',
   );
-  const saved = await recording.saveRun('map', run, storage);
+  const saved = await recording.saveRun('map', run, { driver: 'human' }, storage);
   recording.deleteRun('map', saved.id, storage);
   const loaded = await recording.loadRecordLap('map', storage);
   assert.deepEqual(loaded.lapTimes, [0.8]);
@@ -270,7 +270,7 @@ test('round-trips runs through compressed storage per course and direction', asy
       reverse: true,
     }),
   );
-  const saved = await recording.saveRun(key, run, storage);
+  const saved = await recording.saveRun(key, run, { driver: 'human' }, storage);
   assert.deepEqual(
     recording.listSavedRuns(key, storage).map((entry) => entry.id),
     [saved.id],

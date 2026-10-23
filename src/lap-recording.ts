@@ -173,6 +173,10 @@ export interface RunSummary {
   laps: number[];
   cones: number[];
   duration: number;
+  /** `human`, or the bot's name from `raceBotDriverName`. Missing on older runs. */
+  driver?: string;
+  /** Exact driver constants of a bot run. */
+  botTuning?: Record<string, number>;
 }
 
 /** A continuous run from launch. Times are seconds from the first recorded sample. */
@@ -583,18 +587,23 @@ function readIndex(storage: Storage, key: string): StoredRun[] {
 }
 
 export function listSavedRuns(key: string, storage: Storage = localStorage): RunSummary[] {
-  return readIndex(storage, key).map(({ id, createdAt, laps, cones, duration }) => ({
-    id,
-    createdAt,
-    laps,
-    cones,
-    duration,
-  }));
+  return readIndex(storage, key).map(
+    ({ id, createdAt, laps, cones, duration, driver, botTuning }) => ({
+      id,
+      createdAt,
+      laps,
+      cones,
+      duration,
+      driver,
+      botTuning,
+    }),
+  );
 }
 
 export async function saveRun(
   key: string,
   recording: RunRecording,
+  driver: Pick<RunSummary, 'driver' | 'botTuning'>,
   storage: Storage = localStorage,
 ): Promise<RunSummary> {
   const id = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
@@ -604,6 +613,7 @@ export async function saveRun(
     laps: [...recording.lapTimes],
     cones: [...recording.lapCones],
     duration: recording.duration,
+    ...driver,
     firstTime: recording.firstTime,
     interval: recording.interval,
     lapStarts: [...recording.lapStarts],
@@ -619,7 +629,14 @@ export async function saveRun(
     storage.removeItem(dataKey);
     throw error;
   }
-  return { id, createdAt: run.createdAt, laps: run.laps, cones: run.cones, duration: run.duration };
+  return {
+    id,
+    createdAt: run.createdAt,
+    laps: run.laps,
+    cones: run.cones,
+    duration: run.duration,
+    ...driver,
+  };
 }
 
 export async function loadRun(key: string, id: string, storage: Storage = localStorage) {
