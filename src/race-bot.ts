@@ -38,13 +38,13 @@ export interface RaceBotTuning {
  */
 export const raceBotTunings: Record<RaceBotPreset, RaceBotTuning> = {
   'grip-default': {
-    corneringGrip: 14.61,
-    brakingLimit: 5,
-    smallSpeedDrop: 5.44,
-    brakeThreshold: 2.02,
-    lookaheadTime: 0.1,
-    edgeMargin: 0.92,
-    countersteerSlip: 0.126,
+    corneringGrip: 15.841387714303071,
+    brakingLimit: 6.401737263379588,
+    smallSpeedDrop: 9.57267570513978,
+    brakeThreshold: 3.62743782967485,
+    lookaheadTime: 0.1275034420668279,
+    edgeMargin: 1.1791642519879832,
+    countersteerSlip: 0.06329072191677534,
   },
   'grip-fast': {
     corneringGrip: 14.48,
