@@ -991,6 +991,14 @@ export function bindGameUI(
     (value) => ({ showGrass: value === 'on' }),
     isToggle,
   );
+  select<'on' | 'off'>(
+    '#show-lap-gates',
+    'lap-gates',
+    'showLapGates',
+    (state) => (state.showLapGates ? 'on' : 'off'),
+    (value) => ({ showLapGates: value === 'on' }),
+    isToggle,
+  );
   const focus = () => game.update({ focused: document.hasFocus() && !document.hidden });
   window.addEventListener('focus', focus);
   window.addEventListener('blur', focus);

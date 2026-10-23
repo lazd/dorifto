@@ -114,6 +114,22 @@ attempt and starts fresh without changing completed times or the best lap. Airbo
 use their projected wheel positions rather than stale ground-contact points. The check includes
 the loaded model's tire widths and front-wheel steering, so a tread edge touching the line
 keeps the lap valid even when the tire's center is outside.
+**Settings > Map > Racing line training gates** (`?lap-gates=on`) shows visual targets
+3 times the loaded car's width, spaced roughly 22.5 m along a geometry-based,
+minimum-curvature racing-line approximation. This is not a vehicle-specific optimal line.
+Bounded geometric relaxation minimizes squared second differences around the closed route,
+leaving room for the full gate width. There are no forced corner-entry or apex targets.
+The box-constrained quadratic is solved using accelerated projected gradient (FISTA),
+with a projected-gradient convergence check rather than a fixed number of smoothing passes.
+Unlike averaging offsets initialized to zero, this produces an actual change from the centerline.
+It is a lightweight geometric approximation, not the 3D minimum-lap-time optimal-control
+solver in [TUM's planner](https://github.com/TUMRT/online_3D_racing_line_planning), which also
+models vehicle acceleration limits, speed, banking, and elevation.
+Targets are 36 cm-thick tubular semicircular arches, visible from overhead, emerging from the terrain with a bright core and soft additive
+glow, without lights, shadows, or bloom render passes. The first target is red and the rest cyan.
+The 3x car-width measurement is the diameter of the arch's luminous centerline.
+Missing training gates never affects lap validity
+or counting; they update with the course and driving direction.
 
 ## Runtime modules
 

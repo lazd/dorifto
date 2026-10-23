@@ -11,6 +11,8 @@ import {
 import { surfaceMaterial } from './surfaces';
 import { CourseTerrain } from './terrain';
 import { courseTurnSignPlacements, createTurnSignFactory, type TurnSignMode } from './turn-sign';
+import { createTrainingGates } from './racing-line';
+import { createTrainingGateGeometry, createTrainingGateMaterial } from './training-gates';
 
 export const coneDimensions = {
   height: 0.595,
@@ -21,7 +23,7 @@ export const coneDimensions = {
   centerOfMassHeight: 0.09,
 };
 
-export function createCourse(scene: THREE.Scene, definition: CourseDefinition) {
+export function createCourse(scene: THREE.Scene, definition: CourseDefinition, carWidth: number) {
   const group = new THREE.Group();
   group.name = 'course';
   function dispose() {
@@ -46,7 +48,7 @@ export function createCourse(scene: THREE.Scene, definition: CourseDefinition) {
     group.clear();
   }
   try {
-    const course = buildCourse(group, definition);
+    const course = buildCourse(group, definition, carWidth);
     scene.add(group);
     return { ...course, dispose };
   } catch (error) {
@@ -55,10 +57,27 @@ export function createCourse(scene: THREE.Scene, definition: CourseDefinition) {
   }
 }
 
-function buildCourse(scene: THREE.Group, definition: CourseDefinition) {
+function buildCourse(scene: THREE.Group, definition: CourseDefinition, carWidth: number) {
   const route = courseRoute({ ...definition, reverse: false });
   const terrain = new CourseTerrain(definition);
   scene.add(terrain.mesh);
+  let trainingReverse: boolean | undefined;
+  function updateTrainingGates(reverse: boolean) {
+    if (trainingReverse === reverse) return;
+    const lapGateGeometry = createTrainingGateGeometry(
+      createTrainingGates({ ...definition, reverse }, carWidth),
+      (x, z) => terrain.heightAt(x, z),
+    );
+    lapGateMesh.geometry.dispose();
+    lapGateMesh.geometry = lapGateGeometry;
+    trainingReverse = reverse;
+  }
+  const lapGateMaterial = createTrainingGateMaterial();
+  const lapGateMesh = new THREE.Mesh(new THREE.BufferGeometry(), lapGateMaterial);
+  lapGateMesh.name = 'debug-lap-gates';
+  lapGateMesh.renderOrder = 10;
+  lapGateMesh.visible = false;
+  scene.add(lapGateMesh);
   const { height, bottomRadius, topRadius, baseWidth, baseHeight, centerOfMassHeight } =
     coneDimensions;
   const originOffset = height / 2 - centerOfMassHeight;
@@ -261,6 +280,7 @@ function buildCourse(scene: THREE.Group, definition: CourseDefinition) {
   let turnSignMode: TurnSignMode = 'several';
   let directionReverse = definition.reverse ?? false;
   function setDirection(reverse: boolean) {
+    updateTrainingGates(reverse);
     directionReverse = reverse;
     turnSignGroups.forEach((group, i) => {
       group.visible = signVariants[i].mode === turnSignMode && signVariants[i].reverse === reverse;
@@ -314,6 +334,9 @@ function buildCourse(scene: THREE.Group, definition: CourseDefinition) {
     cornerCones,
     turnSignGroups,
     terrain,
+    setLapGates(visible: boolean) {
+      lapGateMesh.visible = visible;
+    },
     setDirection,
     setTurnSignMode,
     isAsphalt: (position: THREE.Vector3) => terrain.isAsphalt(position),

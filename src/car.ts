@@ -1023,6 +1023,9 @@ export async function loadCar(onProgress?: (fraction: number) => void) {
     centers,
     radii,
     widths,
+    width: new THREE.Box3()
+      .setFromPoints([...collisionVertices, ...tireBounds.flatMap((box) => [box.min, box.max])])
+      .getSize(new THREE.Vector3()).x,
     collisionVertices: [...collisionVertices],
     setBraking,
     setReversing,
