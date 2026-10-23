@@ -27,8 +27,8 @@ import {
   type PhysicsTelemetry,
 } from './physics-messages';
 
-/** Longest frame time the simulation catches up on; longer stalls are dropped from both clocks. */
-const maxPendingTime = 0.05;
+/** Most simulation time per request (the worker's own cap); stalls beyond it are dropped. */
+const maxRequestTime = 0.05;
 /** Beyond this the drawn pose holds rather than extrapolating further past the newest tick. */
 const maxExtrapolation = 0.05;
 
@@ -140,8 +140,8 @@ export function createPhysicsClient({
   let failed = false;
   let initialized = false;
   let resetting = false;
-  let pendingTime = 0;
-  // Simulation-time clocks: render time runs ahead of sent time by the unsent pending time.
+  // Simulation-time clocks. Requests run the worker one frame ahead of render time so the next
+  // frame normally interpolates between delivered ticks instead of extrapolating past them.
   let sentTime = 0;
   let renderTime = 0;
   let currentTickTime = 0;
@@ -246,7 +246,6 @@ export function createPhysicsClient({
 
   function invalidate() {
     revision++;
-    pendingTime = 0;
     renderTime = currentTickTime = sentTime;
     records = [];
     resetting = true;
@@ -400,14 +399,17 @@ export function createPhysicsClient({
     fixedStep: physicsStep,
     advance(dt: number) {
       if (disposed || failed) return;
-      const added = Math.min(pendingTime + dt, maxPendingTime) - pendingTime;
-      pendingTime += added;
-      renderTime += added;
+      renderTime += dt;
       if (pendingResponses) return;
+      let request = renderTime + dt - sentTime;
+      if (request > maxRequestTime) {
+        renderTime -= request - maxRequestTime;
+        request = maxRequestTime;
+      }
+      if (request <= 0) return;
       const buffers = recycled.splice(0);
-      sentTime += pendingTime;
-      send({ type: 'advance', dt: pendingTime, input: input(), recycled: buffers }, buffers);
-      pendingTime = 0;
+      sentTime += request;
+      send({ type: 'advance', dt: request, input: input(), recycled: buffers }, buffers);
     },
     takeRecords() {
       const result = records;
@@ -443,7 +445,6 @@ export function createPhysicsClient({
       send({ type: 'replay', recording: data, time, input: input() }, [data.data.buffer]);
     },
     captureVisuals(_snap = true) {
-      pendingTime = 0;
       renderTime = currentTickTime = sentTime;
       send({ type: 'snap', input: input() });
     },
