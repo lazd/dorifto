@@ -33,17 +33,17 @@ export interface RaceBotTuning {
 }
 /**
  * Driver model constants per car setup; `scripts/optimize-race-bot.mjs --preset <id>` searches
- * them for lap time. Grip / Default has not been optimized yet and starts from Grip / Fast.
+ * them for lap time.
  */
 export const raceBotTunings: Record<RaceBotPreset, RaceBotTuning> = {
   'grip-default': {
-    corneringGrip: 14.49,
-    brakingLimit: 5.88,
-    smallSpeedDrop: 4.56,
-    brakeThreshold: 2.27,
-    lookaheadTime: 0.11,
-    edgeMargin: 0.64,
-    countersteerSlip: 0.092,
+    corneringGrip: 14.61,
+    brakingLimit: 5,
+    smallSpeedDrop: 5.44,
+    brakeThreshold: 2.02,
+    lookaheadTime: 0.1,
+    edgeMargin: 0.92,
+    countersteerSlip: 0.126,
   },
   'grip-fast': {
     corneringGrip: 14.48,
@@ -86,6 +86,15 @@ export function raceBotConfiguration(
     driveMode: 'grip',
     profiles: { ...configuration.profiles, grip: { ...preset.tuning } },
   };
+}
+
+/** Identifies a bot driver in saved runs; the hash changes whenever its preset's values do. */
+export function raceBotDriverName({ preset = 'grip-fast', skill }: RaceBotOptions) {
+  let hash = 0;
+  for (const char of JSON.stringify(raceBotTunings[preset]))
+    hash = (Math.imul(hash, 31) + char.charCodeAt(0)) | 0;
+  const id = (hash >>> 0).toString(36).slice(-4);
+  return `bot v${raceBotVersion} ${preset} ${id} skill ${skill}`;
 }
 
 function readBotLearning(value: string | null) {
@@ -505,15 +514,25 @@ export function createRaceBot(
     if (slowing) desired = Math.min(desired, -required);
     const excess = -desired - coast;
     braking = targetSpeed === 0 || excess > (braking ? 0 : brakeThreshold);
+    // Friction circle on the measured cornering load, so it can't trail-brake into a slide.
+    const cornering =
+      (state.speed * state.yawRate) / (cornerGrip[index] * loadAt(index, state.speed));
+    const brakeLimit = brakingDeceleration * Math.sqrt(Math.max(0.15, 1 - cornering ** 2));
     // Like the throttle, ease off the brakes as soon as the car starts to slide.
     const brake = braking
-      ? clamp(excess / fullBrakeDeceleration, 0, 1) *
+      ? clamp(Math.min(excess, brakeLimit) / fullBrakeDeceleration, 0, 1) *
         (1 - THREE.MathUtils.smoothstep(Math.abs(state.slipAngle), 0.06, 0.2))
       : 0;
     // Invert the drivetrain's sqrt(pedal) response so small torque requests stay small.
     let throttle = braking ? 0 : clamp((desired + coast) / driveAcceleration, 0, 1) ** 2;
     if (state.speed > 5)
-      throttle *= 1 - THREE.MathUtils.smoothstep(Math.abs(state.slipAngle), 0.1, 0.28);
+      throttle *=
+        1 -
+        THREE.MathUtils.smoothstep(
+          Math.abs(state.slipAngle),
+          driver.countersteerSlip,
+          driver.countersteerSlip * 2,
+        );
     const { brake: previousBrake, throttle: previousThrottle } = controls;
     // Feed the throttle out before touching the brake; snapping off it unsettles the car.
     controls.throttle = approach(

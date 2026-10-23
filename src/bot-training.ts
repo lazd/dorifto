@@ -84,7 +84,9 @@ export function trainRaceBot(
       let lapOffTrack = 0;
       let offTrack = 0;
       let stuck = 0;
-      let spinning = 0;
+      // Speed when the current slide began and its peak slip angle; 0 when not sliding.
+      let slideSpeed = 0;
+      let slidePeak = 0;
       let failure: TrainingRun['failure'] = 'timeout';
       for (let step = 0; step < maxSeconds / physicsStep; step++) {
         const state = physics.readState();
@@ -97,7 +99,17 @@ export function trainRaceBot(
         offTrack =
           Math.abs(metrics.lateralError) > definition.width / 2 ? offTrack + physicsStep : 0;
         stuck = state.speed < 0.5 ? stuck + physicsStep : 0;
-        spinning = state.speed > 3 && Math.abs(state.slipAngle) > 1 ? spinning + physicsStep : 0;
+        const slip = Math.abs(state.slipAngle);
+        if (slip < 0.3 || state.speed < 1) slideSpeed = slidePeak = 0;
+        else {
+          slideSpeed ||= state.speed;
+          slidePeak = Math.max(slidePeak, slip);
+        }
+        // Slides are fine; a spin is one past ~45° that scrubs off most of its speed, or any
+        // slide past sideways.
+        const spun =
+          (slidePeak > 0.8 && state.speed < slideSpeed * 0.4) ||
+          (state.speed > 3 && slip > Math.PI / 2);
         if (offTrack > 3) {
           failure = 'off-track';
           break;
@@ -106,7 +118,7 @@ export function trainRaceBot(
           failure = 'stuck';
           break;
         }
-        if (spinning > 1) {
+        if (spun) {
           failure = 'spin';
           break;
         }

@@ -180,6 +180,7 @@ async function start() {
   const courseUrl = new URL(location.href);
   const botsOnly = readBotsOnly(courseUrl.searchParams);
   // Recordings follow the primary car: the player, or the first bot in bots-only mode.
+  const botRunLaps = 3;
   const recordedBot = botsOnly ? readRaceBots(courseUrl.searchParams)[0] : null;
   const recordedDriver = recordedBot
     ? {
@@ -631,8 +632,12 @@ async function start() {
   }
 
   function stopRecording(finished: RunRecording) {
-    const key = storageKey;
     startReplay(finished);
+    storeRun(finished);
+  }
+
+  function storeRun(finished: RunRecording) {
+    const key = storageKey;
     saveRun(key, finished, recordedDriver).then(
       (saved) => {
         if (key !== storageKey) return;
@@ -682,6 +687,13 @@ async function start() {
       run.lapStarts[run.lapStarts.length - 1] !== timing.lapStartedAt - runOrigin
     )
       run.lapStarts[run.lapStarts.length - 1] = timing.lapStartedAt - runOrigin;
+    // Bots save each three-lap run and start over, so unattended sessions log repeatable runs.
+    if (recordedBot && run.lapTimes.length >= botRunLaps) {
+      const finished = run;
+      reset();
+      storeRun(finished);
+      return;
+    }
     if (!sample) return;
     run.pushSample(sample);
     keepRunRecord();
@@ -1055,7 +1067,11 @@ async function start() {
     }
     const dt = lastTime ? Math.min((time - lastTime) / 1000, 0.05) : fixedStep;
     lastTime = time;
-    for (const record of physics.takeRecords()) recordStep(record);
+    for (const record of physics.takeRecords()) {
+      // Records already taken belong to the run a bot reset just ended.
+      if (physics.resetting) break;
+      recordStep(record);
+    }
     if (cameraNeedsReset && !physics.resetting) {
       physics.interpolate(1);
       drivingCamera.reset(spawn.heading);

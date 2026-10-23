@@ -32,6 +32,9 @@ const failurePenalty = 2;
 const invalidLapPenalty = 0.05;
 // Cost per brake application or full throttle lift per lap; about 0.1 s each on Hillside.
 const pedalChangePenalty = 0.003;
+// Each track is driven several times with every value nudged by up to this fraction. Laps are
+// chaotic, so values must survive small differences (like the game's timing), not one replay.
+const jitter = 0.01;
 
 if (process.argv[2] === '--worker') await worker();
 else await main();
@@ -45,11 +48,13 @@ async function main() {
       preset: { type: 'string', default: 'grip-fast' },
       output: { type: 'string' },
       resume: { type: 'boolean', default: false },
+      samples: { type: 'string', default: '3' },
     },
   });
   values.output ??= `.bot-training/race-tuning-${values.preset}.json`;
   const generations = Number(values.generations);
   const workerCount = Number(values.workers);
+  const samples = Number(values.samples);
   const pool = Array.from({ length: workerCount }, () =>
     fork(fileURLToPath(import.meta.url), ['--worker', values.skill, values.preset], {
       stdio: 'inherit',
@@ -81,7 +86,7 @@ async function main() {
     ? JSON.parse(await readFile(path.resolve(values.output), 'utf8')).tuning
     : raceBotTunings[values.preset];
   let best = { tuning: { ...start } };
-  best = { ...best, ...(await score(best.tuning)) };
+  best = { ...best, ...(await score(best.tuning)), evaluations: 1 };
   reference = [...best.times];
   // Step sizes start at a sixth of each range and adapt with the 1/5th success rule.
   const steps = Object.fromEntries(
@@ -93,8 +98,10 @@ async function main() {
     console.log(`\ngeneration ${generation}/${generations}: next ${formatSteps(steps)}`);
     const parent = best;
     const candidates = Array.from({ length: workerCount }, () => mutate(parent.tuning, steps));
-    const scored = await Promise.all(
-      candidates.map(async (tuning, i) => {
+    // Re-score the parent too, so one lucky evaluation can't hold the lead forever.
+    const [again, ...scored] = await Promise.all([
+      score(parent.tuning),
+      ...candidates.map(async (tuning, i) => {
         const result = { tuning, ...(await score(tuning)) };
         const delta = result.cost - parent.cost;
         console.log(
@@ -104,13 +111,16 @@ async function main() {
         );
         return result;
       }),
-    );
+    ]);
+    parent.cost = (parent.cost * parent.evaluations + again.cost) / (parent.evaluations + 1);
+    parent.evaluations++;
+    console.log(`  parent re-scored ${again.cost.toFixed(3)}, averaging ${parent.cost.toFixed(3)}`);
     const winner = scored.reduce((a, b) => (b.cost < a.cost ? b : a));
     const successes = scored.filter(({ cost }) => cost < parent.cost).length;
     const factor = successes / scored.length > 0.2 ? 1.3 : 0.8;
     for (const key of Object.keys(steps)) steps[key] *= factor;
     if (winner.cost < parent.cost) {
-      best = winner;
+      best = { ...winner, evaluations: 1 };
       console.log(
         `improved: cost ${parent.cost.toFixed(3)} -> ${best.cost.toFixed(3)} | ${formatLaps(best.results, parent.results)}\n` +
           `  ${formatTuning(best.tuning, parent.tuning)}`,
@@ -129,23 +139,27 @@ async function main() {
   for (const child of pool) child.kill();
 
   async function score(tuning) {
-    const results = await Promise.all(tracks.map((track) => evaluate(tuning, track)));
+    const runs = await Promise.all(
+      tracks.flatMap((track) =>
+        Array.from({ length: samples }, () => evaluate(perturb(tuning), track)),
+      ),
+    );
+    const results = tracks.map((_, i) => summarize(runs.slice(i * samples, (i + 1) * samples)));
     const times = results.map(({ lapTime }) => lapTime);
     // A track the start values failed takes its first completed lap as the reference.
     if (reference)
       times.forEach((time, i) => {
         if (!Number.isFinite(reference[i]) && Number.isFinite(time)) reference[i] = time;
       });
-    const cost = results.reduce(
-      (sum, result, i) =>
-        sum +
-        (result.failure
-          ? failurePenalty
-          : result.lapTime / (Number.isFinite(reference?.[i]) ? reference[i] : result.lapTime) +
-            result.invalidLaps * invalidLapPenalty +
-            (result.brakesPerLap + result.liftsPerLap) * pedalChangePenalty),
-      0,
-    );
+    const cost = results.reduce((sum, result, i) => {
+      const finished = samples - result.failures;
+      const lap = finished
+        ? result.lapTime / (Number.isFinite(reference?.[i]) ? reference[i] : result.lapTime) +
+          result.invalidLaps * invalidLapPenalty +
+          (result.brakesPerLap + result.liftsPerLap) * pedalChangePenalty
+        : 0;
+      return sum + (result.failures * failurePenalty + finished * lap) / samples;
+    }, 0);
     return { cost, times, results };
   }
 
@@ -157,6 +171,30 @@ async function main() {
       `${JSON.stringify({ preset: values.preset, tracks, ...result }, null, 2)}\n`,
     );
   }
+}
+
+function perturb(tuning) {
+  return Object.fromEntries(
+    Object.entries(tuning).map(([key, value]) => [
+      key,
+      value * (1 + (Math.random() * 2 - 1) * jitter),
+    ]),
+  );
+}
+
+// Averages a track's runs; lap figures cover only the runs that finished.
+function summarize(runs) {
+  const finished = runs.filter(({ failure }) => !failure);
+  const mean = (key) =>
+    finished.length ? finished.reduce((sum, run) => sum + run[key], 0) / finished.length : 0;
+  return {
+    failures: runs.length - finished.length,
+    failure: runs.find(({ failure }) => failure)?.failure ?? null,
+    lapTime: finished.length ? mean('lapTime') : Infinity,
+    invalidLaps: mean('invalidLaps'),
+    brakesPerLap: mean('brakesPerLap'),
+    liftsPerLap: mean('liftsPerLap'),
+  };
 }
 
 function mutate(tuning, steps) {
@@ -171,13 +209,16 @@ function mutate(tuning, steps) {
 
 function formatLaps(results, previous) {
   return results
-    .map(({ failure, lapTime, invalidLaps, brakesPerLap, liftsPerLap }, i) => {
+    .map(({ failures, failure, lapTime, invalidLaps, brakesPerLap, liftsPerLap }, i) => {
       const name = `${tracks[i].course}${tracks[i].reverse ? '-rev' : ''}`;
-      if (failure) return `${name} ${failure}`;
+      if (!Number.isFinite(lapTime)) return `${name} ${failure}`;
       const before = previous?.[i];
-      const change = before && !before.failure ? ` (${signed(lapTime - before.lapTime)})` : '';
+      const change =
+        before && Number.isFinite(before.lapTime) ? ` (${signed(lapTime - before.lapTime)})` : '';
+      const failed = failures ? ` [${failures} ${failure}]` : '';
       const pedals = ` ${brakesPerLap.toFixed(0)}b/${liftsPerLap.toFixed(0)}l`;
-      return `${name} ${lapTime.toFixed(2)}s${change}${pedals}${invalidLaps ? ` [${invalidLaps} invalid]` : ''}`;
+      const invalid = invalidLaps ? ` [${invalidLaps.toFixed(1)} invalid]` : '';
+      return `${name} ${lapTime.toFixed(2)}s${change}${pedals}${invalid}${failed}`;
     })
     .join(', ');
 }
