@@ -23,7 +23,7 @@ export class CourseTerrain {
   private readonly halfWidth: number;
   private readonly padRadius?: number;
 
-  constructor(definition: CourseDefinition) {
+  constructor(definition: CourseDefinition, buildVisuals = true) {
     this.halfWidth = definition.width / 2 + courseShoulderWidth;
     this.padRadius = definition.padRadius;
     // Driving direction must not change the heightfield or its banking.
@@ -178,6 +178,15 @@ export class CourseTerrain {
     // Bullet needs a nonzero vertical range even for an entirely flat heightfield.
     this.minHeight = min === max ? min - 0.01 : min;
     this.maxHeight = min === max ? max + 0.01 : max;
+    if (!buildVisuals) {
+      this.mesh = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshStandardMaterial());
+      this.grass = new THREE.InstancedMesh(
+        new THREE.BufferGeometry(),
+        new THREE.MeshStandardMaterial(),
+        0,
+      );
+      return;
+    }
     const indices: number[] = [];
     for (let z = 0; z < this.rows - 1; z++) {
       for (let x = 0; x < this.columns - 1; x++) {

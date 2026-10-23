@@ -841,6 +841,9 @@ dialog h2 {
   font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
+.loading #lap-replay-controls:not([hidden]) {
+  display: none;
+}
 .chase-view .lap-recorder {
   left: auto;
   bottom: auto;

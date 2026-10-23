@@ -10,6 +10,7 @@
     "deploy": "npm run build && gh-pages --dist dist --remote origin --branch gh-pages --nojekyll",
     "preview": "vite preview --open",
     "import-track": "node scripts/import-track.mjs",
+    "train:bot": "node scripts/train-bot.mjs",
     "lint": "oxlint",
     "format": "oxfmt",
     "format:check": "oxfmt --check",

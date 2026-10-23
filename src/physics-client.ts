@@ -1,13 +1,16 @@
 import * as THREE from 'three';
-import type { loadCar } from './car';
+import { carPaintColor, type loadCar } from './car';
 import type { createCourse } from './course';
 import type { CourseDefinition, courseSpawn } from './courses';
 import type { DrivingControls } from './controls';
-import type { VehicleAudio } from './audio';
+import type { VehicleAudio, OpponentSoundState } from './audio';
+import { createTireEffects } from './tire-effects';
 import type { ConfigurationState } from './configuration-state';
 import type { Store } from './store';
 import type { RunRecording } from './lap-recording';
 import { idleRpm } from './drivetrain';
+import { botColor, createBotCar } from './bot-car';
+import type { RaceBotOptions } from './race-bot';
 import {
   createPhysicsInit,
   emptyLapState,
@@ -24,7 +27,14 @@ import {
   type PhysicsTelemetry,
 } from './physics-messages';
 
+/** Longest frame time the simulation catches up on; longer stalls are dropped from both clocks. */
+const maxPendingTime = 0.05;
+/** Beyond this the drawn pose holds rather than extrapolating further past the newest tick. */
+const maxExtrapolation = 0.05;
+
 interface PhysicsClientOptions {
+  botsOnly?: boolean;
+  bots?: RaceBotOptions[];
   car: Awaited<ReturnType<typeof loadCar>>;
   course: ReturnType<typeof createCourse>;
   definition: CourseDefinition;
@@ -44,12 +54,49 @@ export function createPhysicsClient({
   audio,
   lights,
   onError,
+  bots = [],
+  botsOnly = false,
 }: PhysicsClientOptions) {
+  const botOffset = botsOnly ? 1 : 0;
+  let observedBot = 0;
+  const botCars = bots
+    .slice(botOffset)
+    .map((_options, index) => createBotCar(car, index + botOffset));
+  const botEffects = botCars.map((bot) => {
+    const scene = car.chassis.parent;
+    if (!(scene instanceof THREE.Scene)) throw new Error('Bot effects require a scene');
+    return createTireEffects(
+      scene,
+      { ...bot, widths: car.widths },
+      course.terrain,
+      course.isAsphalt,
+    );
+  });
+  let botTelemetry: PhysicsSnapshot['bots'] = [];
+  const botVelocity = botCars.map(() => new THREE.Vector3());
+  const listenerRight = new THREE.Vector3();
+  const listenerPosition = new THREE.Vector3();
+  const soundOffset = new THREE.Vector3();
+  const botSounds: OpponentSoundState[] = [];
+  const markerCars = [...(botsOnly ? [car] : []), ...botCars];
+  const botColors = markerCars.map((_car, index) => botColor(index));
+  if (botsOnly) car.setPaintColor(botColors[observedBot]);
+  const botMarkers = markerCars.map((_car, index) => ({
+    position: new THREE.Vector3(),
+    forward: new THREE.Vector3(),
+    color: botColors[index],
+    visible: false,
+  }));
+  for (const bot of botCars) {
+    if (!car.chassis.parent) throw new Error('Bot cars require a scene');
+    car.chassis.parent.add(bot.chassis, ...bot.wheels, ...bot.hubs);
+  }
   const worker = new Worker(new URL('./physics-worker.ts', import.meta.url), { type: 'module' });
   const objects = [
     car.chassis,
     ...car.wheels,
     ...car.hubs,
+    ...botCars.flatMap((bot) => [bot.chassis, ...bot.wheels, ...bot.hubs]),
     ...course.cones,
     ...course.turnSignGroups.flatMap((group) => group.children),
   ];
@@ -63,6 +110,8 @@ export function createPhysicsClient({
   const position = new THREE.Vector3();
   const quaternion = new THREE.Quaternion();
   let telemetry: PhysicsTelemetry = {
+    motion: { x: 0, y: 0, z: 0, heading: 0, vx: 0, vz: 0, speed: 0, slipAngle: 0, yawRate: 0 },
+    tires: [],
     engine: {
       rpm: idleRpm,
       gear: 1,
@@ -92,8 +141,11 @@ export function createPhysicsClient({
   let initialized = false;
   let resetting = false;
   let pendingTime = 0;
-  let receivedAt = 0;
-  let remainder = 0;
+  // Simulation-time clocks: render time runs ahead of sent time by the unsent pending time.
+  let sentTime = 0;
+  let renderTime = 0;
+  let currentTickTime = 0;
+  const requestTimes: number[] = [];
   let replayTime: number | null = null;
   let records: PhysicsRecord[] = [];
   const recycled: ArrayBuffer[] = [];
@@ -123,6 +175,7 @@ export function createPhysicsClient({
   function send(command: PhysicsCommand, transfer: Transferable[] = []) {
     if (disposed || failed) return;
     pendingResponses++;
+    requestTimes.push(sentTime);
     worker.postMessage({ ...command, revision }, transfer);
   }
 
@@ -134,7 +187,11 @@ export function createPhysicsClient({
     else onError(error);
   }
 
-  function accept(snapshot: PhysicsSnapshot) {
+  function accept(snapshot: PhysicsSnapshot, endTime: number) {
+    for (const bot of botCars) {
+      for (const object of [bot.chassis, ...bot.wheels, ...bot.hubs])
+        object.visible = snapshot.replayTime === null;
+    }
     previous.set(current);
     const data = new Float32Array(snapshot.buffer);
     for (let i = 0; i < snapshot.count; i++) {
@@ -145,13 +202,11 @@ export function createPhysicsClient({
     }
     recycled.push(snapshot.buffer);
     telemetry = snapshot.telemetry;
-    beforeVelocity.fromArray(telemetry.previousVelocity);
-    afterVelocity.fromArray(telemetry.velocity);
-    Object.assign(laps, snapshot.laps);
+    botTelemetry = snapshot.bots;
     records.push(...snapshot.records);
-    remainder = snapshot.alpha;
+    currentTickTime = endTime - snapshot.alpha * physicsStep;
     replayTime = snapshot.replayTime;
-    receivedAt = performance.now();
+    syncObservedState(snapshot.laps);
     resetting = false;
     for (const impact of snapshot.impacts) {
       if (impact.type === 'cone') audio.hitCone(impact.impulse);
@@ -167,6 +222,7 @@ export function createPhysicsClient({
   worker.onmessage = ({ data }: MessageEvent<PhysicsResponse>) => {
     if (disposed || failed) return;
     pendingResponses--;
+    const endTime = requestTimes.shift() ?? sentTime;
     if (data.type === 'error') {
       const error = new Error(`Physics worker: ${data.message}`);
       if (data.stack) error.stack = data.stack;
@@ -177,7 +233,7 @@ export function createPhysicsClient({
       recycled.push(data.buffer);
       return;
     }
-    accept(data);
+    accept(data, endTime);
   };
   worker.onerror = (event) => {
     event.preventDefault();
@@ -185,24 +241,53 @@ export function createPhysicsClient({
   };
   worker.onmessageerror = () => fail(new Error('Unable to deserialize a physics worker message'));
 
-  const data = createPhysicsInit(definition, car, course, input().configuration);
+  const data = createPhysicsInit(definition, car, course, input().configuration, bots, botsOnly);
   send({ type: 'init', data });
 
   function invalidate() {
     revision++;
     pendingTime = 0;
+    renderTime = currentTickTime = sentTime;
     records = [];
     resetting = true;
-    remainder = 1;
+    botTelemetry = [];
     Object.assign(laps, emptyLapState());
+  }
+
+  function botForModel(index: number) {
+    if (!botsOnly || replayTime !== null) return index;
+    return index === 0 ? observedBot : index === observedBot ? 0 : index;
+  }
+
+  function observedTelemetry() {
+    return botsOnly && replayTime === null && botTelemetry.length
+      ? botTelemetry[observedBot]
+      : telemetry;
+  }
+
+  function syncObservedState(primaryLaps = laps) {
+    const state = observedTelemetry();
+    beforeVelocity.fromArray(state.previousVelocity);
+    afterVelocity.fromArray(state.velocity);
+    Object.assign(
+      laps,
+      botsOnly && replayTime === null && botTelemetry.length
+        ? botTelemetry[observedBot].laps
+        : primaryLaps,
+    );
   }
 
   function interpolate(alpha = interpolationAlpha(), replayOnly = false) {
     objects.forEach((object, index) => {
-      if (replayOnly && index < vehiclePoseCount) return;
+      if (replayOnly && index < vehiclePoseCount * (1 + botCars.length)) return;
       // Invisible props retain their last pose until their next activation snapshot.
       if (!object.visible) return;
-      const offset = index * poseStride;
+      const modelIndex = Math.floor(index / vehiclePoseCount);
+      const sourceIndex =
+        botsOnly && modelIndex < bots.length
+          ? botForModel(modelIndex) * vehiclePoseCount + (index % vehiclePoseCount)
+          : index;
+      const offset = sourceIndex * poseStride;
       object.position.fromArray(previous, offset);
       position.fromArray(current, offset);
       object.position.lerp(position, alpha);
@@ -211,27 +296,116 @@ export function createPhysicsClient({
       object.quaternion.slerp(quaternion, alpha);
     });
     if (!replayOnly) {
-      car.setBraking(telemetry.braking);
-      car.setReversing(telemetry.reversing);
-      car.setHazards(telemetry.hazards, telemetry.hazardsEnabled);
+      const state = observedTelemetry();
+      car.setBraking(state.braking);
+      car.setReversing(state.reversing);
+      car.setHazards(!botsOnly && telemetry.hazards, !botsOnly && telemetry.hazardsEnabled);
     }
-    linearVelocity.lerpVectors(beforeVelocity, afterVelocity, alpha);
+    markerCars.forEach((_car, index) => {
+      const car = markerCars[botForModel(index)];
+      const marker = botMarkers[index];
+      marker.visible = car.chassis.visible && replayTime === null && !resetting;
+      marker.position.copy(car.chassis.position);
+      marker.forward.set(0, 0, 1).applyQuaternion(car.chassis.quaternion);
+    });
+    botCars.forEach((car, index) => {
+      const state = botTelemetry[botForModel(index + botOffset)];
+      car.setBraking(state?.braking ?? false);
+      car.setReversing(state?.reversing ?? false);
+    });
+    linearVelocity.lerpVectors(beforeVelocity, afterVelocity, Math.min(alpha, 1));
     return velocity.copy(linearVelocity).setY(0);
   }
 
+  /**
+   * Places the render clock between the snapshot's two ticks. Past the newest tick (the reply for
+   * this frame's time is still in flight) poses extrapolate along the last tick's motion, so the
+   * drawn time never depends on when the worker's message happened to arrive.
+   */
   function interpolationAlpha() {
-    return Math.min(1, remainder + (performance.now() - receivedAt) / (physicsStep * 1000));
+    return THREE.MathUtils.clamp(
+      1 + (renderTime - currentTickTime) / physicsStep,
+      0,
+      1 + maxExtrapolation / physicsStep,
+    );
   }
 
   return {
+    cycleObservedBot() {
+      if (!botsOnly || bots.length < 2 || replayTime !== null || resetting || !initialized)
+        return false;
+      observedBot = (observedBot + 1) % bots.length;
+      car.setPaintColor(botColors[observedBot]);
+      botCars.forEach((car, index) => car.setColor(botColors[botForModel(index + 1)]));
+      botEffects.forEach((effect) => effect.reset());
+      syncObservedState();
+      interpolate(1);
+      return true;
+    },
+    get observedBot() {
+      return observedBot;
+    },
+    botMarkers,
+    botSounds,
+    get botSmokeActive() {
+      return botEffects.some((effect) => effect.active);
+    },
+    updateBotEffects(dt: number, camera: THREE.Camera, headlights: boolean, active = true) {
+      botSounds.length = 0;
+      listenerRight.setFromMatrixColumn(camera.matrixWorld, 0).normalize();
+      camera.getWorldPosition(listenerPosition);
+      botCars.forEach((car, index) => {
+        const botIndex = botForModel(index + botOffset);
+        const state = botTelemetry[botIndex];
+        const effect = botEffects[index];
+        if (!active || !state || !car.chassis.visible || resetting) {
+          car.setHeadlights(false);
+          effect.reset();
+          return;
+        }
+        car.setHeadlights(headlights);
+        const velocity = botVelocity[index].fromArray(state.velocity);
+        const speed = velocity.length();
+        const slip =
+          speed > 3 ? 1 - Math.abs(botMarkers[botIndex].forward.dot(velocity) / speed) : 0;
+        effect.update(
+          dt,
+          velocity,
+          camera,
+          state.wheelContacts,
+          speed > 3 && slip > 0.045,
+          state.burnout > 0.1 && (state.wheelContacts[2] || state.wheelContacts[3]),
+        );
+        soundOffset.subVectors(car.chassis.position, listenerPosition);
+        const distance = soundOffset.length();
+        botSounds.push({
+          drivetrain: state.engine,
+          tires: state.tireSounds,
+          distance,
+          pan: distance > 0 ? soundOffset.dot(listenerRight) / distance : 0,
+        });
+      });
+    },
+    captureBotDepth(
+      renderer: THREE.WebGLRenderer,
+      scene: THREE.Scene,
+      camera: THREE.PerspectiveCamera,
+      depth: THREE.DepthTexture | null,
+    ) {
+      if (!depth) throw new Error('Bot smoke requires the shared scene depth texture');
+      botEffects.forEach((effect) => effect.captureDepth(renderer, scene, camera, false, depth));
+    },
     ready,
     laps,
     fixedStep: physicsStep,
     advance(dt: number) {
       if (disposed || failed) return;
-      pendingTime = Math.min(pendingTime + dt, 0.05);
+      const added = Math.min(pendingTime + dt, maxPendingTime) - pendingTime;
+      pendingTime += added;
+      renderTime += added;
       if (pendingResponses) return;
       const buffers = recycled.splice(0);
+      sentTime += pendingTime;
       send({ type: 'advance', dt: pendingTime, input: input(), recycled: buffers }, buffers);
       pendingTime = 0;
     },
@@ -241,6 +415,7 @@ export function createPhysicsClient({
       return result;
     },
     reset() {
+      botEffects.forEach((effect) => effect.reset());
       invalidate();
       telemetry = {
         ...telemetry,
@@ -257,6 +432,7 @@ export function createPhysicsClient({
       send({ type: 'reset', input: input() });
     },
     setCourseDirection(spawn: ReturnType<typeof courseSpawn>, definition: CourseDefinition) {
+      botEffects.forEach((effect) => effect.reset());
       invalidate();
       send({ type: 'direction', spawn, definition, input: input() });
     },
@@ -268,6 +444,7 @@ export function createPhysicsClient({
     },
     captureVisuals(_snap = true) {
       pendingTime = 0;
+      renderTime = currentTickTime = sentTime;
       send({ type: 'snap', input: input() });
     },
     interpolate,
@@ -286,33 +463,39 @@ export function createPhysicsClient({
       worker.terminate();
       recycled.length = 0;
       records = [];
+      botCars.forEach((bot) => bot.dispose());
+      botEffects.forEach((effect) => effect.dispose());
+      if (botsOnly) car.setPaintColor(carPaintColor);
     },
     get engine() {
-      return telemetry.engine;
+      return observedTelemetry().engine;
     },
     get burnout() {
-      return telemetry.burnout;
+      return observedTelemetry().burnout;
+    },
+    get braking() {
+      return observedTelemetry().braking;
     },
     get steering() {
-      return telemetry.steering;
+      return observedTelemetry().steering;
     },
     get reversing() {
-      return telemetry.reversing;
+      return observedTelemetry().reversing;
     },
     get spawnBrakeHeld() {
-      return telemetry.spawnBrakeHeld;
+      return observedTelemetry().spawnBrakeHeld;
     },
     get linearVelocity() {
       return linearVelocity;
     },
     get brakestand() {
-      return telemetry.brakestand;
+      return observedTelemetry().brakestand;
     },
     get wheelContacts() {
-      return telemetry.wheelContacts;
+      return observedTelemetry().wheelContacts;
     },
     get tireSounds() {
-      return telemetry.tireSounds;
+      return observedTelemetry().tireSounds;
     },
     get replayTime() {
       return replayTime;

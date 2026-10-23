@@ -70,6 +70,8 @@ export function createDrivingCamera(
   const lookTarget = new THREE.Vector3();
   const desiredLookTarget = new THREE.Vector3();
   const travelVelocity = new THREE.Vector3();
+  const previousCarPosition = new THREE.Vector3();
+  const carDisplacement = new THREE.Vector3();
 
   // Bird's-eye map: straight down over the whole course, with the course's +Z at the top.
   const mapBounds = new THREE.Box3()
@@ -99,6 +101,7 @@ export function createDrivingCamera(
     cabinOffset.set(0, 0, 0);
     cabinOffsetVelocity.set(0, 0, 0);
     cameraDirection.set(Math.sin(heading), 0, Math.cos(heading));
+    previousCarPosition.copy(car.chassis.position);
     camera.position.copy(car.chassis.position).addScaledVector(cameraDirection, -9);
     camera.position.y += cameraHeight;
     lookTarget.copy(car.chassis.position).add(new THREE.Vector3(0, 0.65, 0));
@@ -156,6 +159,13 @@ export function createDrivingCamera(
       // Resume the driving camera from its saved pose, not from the map.
       camera.position.copy(chasePosition);
       camera.quaternion.copy(chaseQuaternion);
+    }
+    carDisplacement.subVectors(car.chassis.position, previousCarPosition);
+    previousCarPosition.copy(car.chassis.position);
+    if (cameraStyle !== 'cabin') {
+      // Follow translation on the same sample as the car; damp only the camera's relative pose.
+      camera.position.add(carDisplacement);
+      lookTarget.add(carDisplacement);
     }
     const tune = driveModes[driveMode];
     updateCabinMotion(dt, velocity, cabinHeadMotion);

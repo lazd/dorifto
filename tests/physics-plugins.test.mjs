@@ -8,6 +8,7 @@ let server;
 let Ammo;
 let createVehiclePhysics;
 let createPhysicsResources;
+let createPhysicsWorld;
 let createConePhysics;
 let createPhysicsVisuals;
 let createTurnSignPhysics;
@@ -30,7 +31,7 @@ before(async () => {
     server: { middlewareMode: true, hmr: false, ws: false, watch: null },
     appType: 'custom',
   });
-  ({ createVehiclePhysics, createPhysicsResources } =
+  ({ createVehiclePhysics, createPhysicsResources, createPhysicsWorld } =
     await server.ssrLoadModule('/src/vehicle-physics.ts'));
   ({ createConePhysics } = await server.ssrLoadModule('/src/cone-physics.ts'));
   ({ createPhysicsVisuals } = await server.ssrLoadModule('/src/physics-plugin.ts'));
@@ -49,7 +50,7 @@ after(async () => {
   await server?.close();
 });
 
-function fixture(slopeX = 0, slopeZ = 0) {
+function fixture(slopeX = 0, slopeZ = 0, simulationWorld) {
   const car = {
     chassis: new THREE.Group(),
     wheels: Array.from({ length: 4 }, () => new THREE.Group()),
@@ -105,6 +106,7 @@ function fixture(slopeX = 0, slopeZ = 0) {
   const controls = { throttle: 0, brake: 0, reverse: 0, steer: 0, handbrake: false };
   const configurationState = createConfigurationState();
   const physics = createVehiclePhysics({
+    simulationWorld,
     Ammo,
     resources: createPhysicsResources(Ammo),
     car,
@@ -116,6 +118,48 @@ function fixture(slopeX = 0, slopeZ = 0) {
   });
   return { physics, course, laps, hits, car, controls, configurationState };
 }
+
+test('shared vehicles integrate once, collide, and can be independently removed', (t) => {
+  const setup = fixture();
+  setup.physics.dispose();
+  const world = createPhysicsWorld(Ammo, createPhysicsResources(Ammo), setup.course.terrain);
+  const first = fixture(0, 0, world);
+  const second = fixture(0, 0, world);
+  t.after(() => {
+    first.physics.dispose();
+    second.physics.dispose();
+    world.dispose();
+  });
+  second.physics.setCourseDirection({ position: [0, 7], heading: 0 }, second.laps);
+  first.physics.reset();
+  second.physics.reset();
+  first.controls.throttle = 1;
+  assert.throws(() => first.physics.step(), /Shared vehicles/);
+  const advance = (steps) => {
+    for (let i = 0; i < steps; i++) {
+      first.physics.beforeStep();
+      if (second.enabled !== false) second.physics.beforeStep();
+      world.step(first.physics.fixedStep);
+      first.physics.afterStep();
+      if (second.enabled !== false) second.physics.afterStep();
+    }
+  };
+  advance(360);
+  assert.ok(
+    first.physics.readState().z < second.physics.readState().z - 3.5,
+    'cars must collide rather than passing through each other',
+  );
+  second.physics.setEnabled(false);
+  second.enabled = false;
+  const before = first.physics.readState().z;
+  advance(180);
+  assert.ok(
+    first.physics.readState().z > before + 2,
+    'removing the blocker permits normal driving',
+  );
+  second.physics.setEnabled(true);
+  second.enabled = true;
+});
 
 function workerFixture() {
   const { physics, car, course, controls, configurationState } = fixture();
@@ -169,8 +213,139 @@ function workerFixture() {
   };
 }
 
-test('worker client bounds in-flight advances, ignores pre-reset replies, preserves snap samples, and surfaces failures', async (t) => {
+test('worker snapshots include independently driven bots through reset, reversal and replay', (t) => {
+  const setup = workerFixture();
+  setup.simulation.dispose();
+  setup.data.bots = [{ skill: 0.8, aggression: 0.4, learning: true }];
+  const simulation = createPhysicsSimulation(Ammo, setup.data);
+  t.after(() => simulation.dispose());
+  let snapshot = simulation.handle({ type: 'init', revision: 0 });
+  assert.equal(snapshot.bots.length, 1);
+  assert.equal(snapshot.bots[0].braking, true);
+  assert.equal(snapshot.bots[0].tireSounds.length, 4);
+  assert.equal(snapshot.bots[0].wheelContacts.length, 4);
+  const initial = new Float32Array(snapshot.buffer);
+  const botZ = initial[vehiclePoseCount * snapshotStride + 1 + poseStride + 2];
+  for (let i = 0; i < 30; i++)
+    snapshot = simulation.handle({
+      type: 'advance',
+      dt: physicsStep * 4,
+      revision: 0,
+      input: setup.input,
+      recycled: [],
+    });
+
+  assert.ok(snapshot.bots[0].metrics.elapsed > 0);
+  assert.ok(snapshot.bots[0].engine.rpm > 0);
+  assert.equal(snapshot.bots[0].velocity.length, 3);
+  assert.equal(snapshot.bots[0].laps.elapsedTime, snapshot.laps.elapsedTime);
+  assert.equal(snapshot.telemetry.tires.length, 4);
+  const moved = new Float32Array(snapshot.buffer);
+  assert.notEqual(
+    moved[vehiclePoseCount * snapshotStride + 1 + poseStride + 2],
+    botZ,
+    JSON.stringify(snapshot.bots[0]),
+  );
+  const reversed = { ...setup.definition, reverse: true };
+  snapshot = simulation.handle({
+    type: 'direction',
+    revision: 1,
+    definition: reversed,
+    spawn: courseSpawn(reversed),
+    input: setup.input,
+  });
+  assert.equal(snapshot.bots[0].laps.elapsedTime, 0);
+  assert.equal(snapshot.bots[0].metrics.elapsed, 0);
+  const recording = new RunRecording();
+  const frame = createReplayFrame();
+  recording.push(frame);
+  recording.push(frame);
+  snapshot = simulation.handle({
+    type: 'replay',
+    revision: 2,
+    recording: replayData(recording),
+    time: 0,
+    input: setup.input,
+  });
+  snapshot = simulation.handle({
+    type: 'advance',
+    dt: physicsStep * 4,
+    revision: 2,
+    input: setup.input,
+    recycled: [],
+  });
+  assert.equal(snapshot.bots[0].metrics.elapsed, 0, 'bots do not participate in recorded replays');
+  snapshot = simulation.handle({ type: 'reset', revision: 3, input: setup.input });
+  snapshot = simulation.handle({
+    type: 'advance',
+    dt: physicsStep * 4,
+    revision: 3,
+    input: setup.input,
+    recycled: [],
+  });
+  assert.ok(snapshot.bots[0].metrics.elapsed > 0, 'bots resume after replay reset');
+});
+
+test('bots-only mode has no player vehicle and follows bot telemetry through reversal and reset', (t) => {
+  const setup = workerFixture();
+  setup.simulation.dispose();
+  setup.data.botsOnly = true;
+  setup.data.bots = [{ skill: 1, aggression: 0.4, learning: true }];
+  const simulation = createPhysicsSimulation(Ammo, setup.data);
+  t.after(() => simulation.dispose());
+  let snapshot = simulation.handle({ type: 'init', revision: 0 });
+  assert.equal(
+    snapshot.count,
+    vehiclePoseCount + setup.data.cones.length,
+    'exactly one car is present, not a hidden player plus a bot',
+  );
+  Object.assign(setup.input.controls, { throttle: 0, brake: 1, reverse: 1, handbrake: true });
+  for (let i = 0; i < 10; i++)
+    snapshot = simulation.handle({
+      type: 'advance',
+      dt: physicsStep * 4,
+      revision: 0,
+      input: setup.input,
+      recycled: [],
+    });
+  assert.equal(snapshot.telemetry.spawnBrakeHeld, false, 'bot launches without player input');
+  assert.deepEqual(snapshot.telemetry.engine, snapshot.bots[0].engine);
+  assert.deepEqual(snapshot.laps, snapshot.bots[0].laps);
+  assert.equal(snapshot.telemetry.brakestand, false, 'player brake/handbrake inputs are ignored');
+  const reversed = { ...setup.definition, reverse: true };
+  simulation.handle({
+    type: 'direction',
+    revision: 1,
+    definition: reversed,
+    spawn: courseSpawn(reversed),
+    input: setup.input,
+  });
+  snapshot = simulation.handle({
+    type: 'advance',
+    dt: physicsStep * 4,
+    revision: 1,
+    input: setup.input,
+    recycled: [],
+  });
+  assert.deepEqual(snapshot.laps, snapshot.bots[0].laps);
+  snapshot = simulation.handle({ type: 'reset', revision: 2, input: setup.input });
+  assert.equal(snapshot.laps.elapsedTime, 0);
+  assert.equal(snapshot.bots[0].metrics.elapsed, 0);
+});
+
+async function clientFixture(t, options = {}) {
   const fixture = workerFixture();
+  if (options.bots?.length) {
+    fixture.simulation.dispose();
+    Object.assign(fixture.data, options);
+    fixture.simulation = createPhysicsSimulation(Ammo, fixture.data);
+    const scene = new THREE.Scene();
+    scene.add(fixture.car.chassis, ...fixture.car.wheels, ...fixture.car.hubs);
+    fixture.car.widths = fixture.car.radii.map((radius) => radius / 2);
+    fixture.car.setPaintColor = (color) => {
+      fixture.car.paintColor = color;
+    };
+  }
   let worker;
   const previousWorker = globalThis.Worker;
   globalThis.Worker = class {
@@ -203,6 +378,7 @@ test('worker client bounds in-flight advances, ignores pre-reset replies, preser
   const errors = [];
   const client = createPhysicsClient({
     ...fixture,
+    ...options,
     audio: { hitCone() {}, hitTurnSign() {} },
     lights: () => fixture.input.lights,
     onError: (error) => errors.push(error),
@@ -210,6 +386,37 @@ test('worker client bounds in-flight advances, ignores pre-reset replies, preser
   t.after(() => client.dispose());
   worker.reply();
   await client.ready;
+  return { fixture, worker, client, errors };
+}
+
+test('spectating swaps the full model, camera telemetry and laps without resetting or duplicating bots', async (t) => {
+  const { fixture, worker, client } = await clientFixture(t, {
+    botsOnly: true,
+    bots: [
+      { skill: 1, aggression: 0.4, learning: false },
+      { skill: 0.5, aggression: 0.4, learning: false },
+    ],
+  });
+  client.advance(physicsStep * 4);
+  const snapshot = worker.reply();
+  client.interpolate(1);
+  const first = fixture.car.chassis.position.clone();
+  const firstColor = fixture.car.paintColor;
+  assert.equal(client.cycleObservedBot(), true);
+  assert.equal(client.observedBot, 1);
+  assert.notEqual(fixture.car.paintColor, firstColor);
+  assert.ok(fixture.car.chassis.position.distanceTo(client.botMarkers[1].position) < 1e-8);
+  assert.ok(first.distanceTo(client.botMarkers[0].position) < 1e-8);
+  assert.deepEqual(client.engine, snapshot.bots[1].engine);
+  assert.deepEqual(client.laps, snapshot.bots[1].laps);
+  assert.equal(worker.requests.length, 0, 'switching views never resets the simulation');
+  assert.equal(client.cycleObservedBot(), true);
+  assert.equal(client.observedBot, 0);
+  assert.ok(fixture.car.chassis.position.distanceTo(first) < 1e-8);
+});
+
+test('worker client bounds in-flight advances, ignores pre-reset replies, preserves snap samples, and surfaces failures', async (t) => {
+  const { fixture, worker, client, errors } = await clientFixture(t);
   fixture.controls.throttle = 1;
   client.advance(physicsStep * 2);
   client.advance(physicsStep);
@@ -222,6 +429,14 @@ test('worker client bounds in-flight advances, ignores pre-reset replies, preser
   client.advance(physicsStep);
   assert.equal(worker.requests.length, 1, 'wait for the reset before advancing again');
   worker.reply();
+  client.advance(physicsStep * 2.5);
+  client.advance(physicsStep * 0.5);
+  const near = (actual, expected, message) =>
+    assert.ok(Math.abs(actual - expected) < 1e-6, message);
+  near(client.interpolationAlpha(), 5, 'extrapolate to render time while the reply is in flight');
+  worker.reply();
+  near(client.interpolationAlpha(), 2, 'a late reply keeps the same render time, not arrival time');
+  client.takeRecords();
   client.advance(physicsStep * 4);
   client.captureVisuals(true);
   const live = worker.reply();

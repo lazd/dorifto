@@ -43,6 +43,7 @@ test('ghost marker follows its own pose in both map orientations and hides when 
   class Element {
     attributes = new Map();
     children = [];
+    style = { setProperty: (key, value) => this.attributes.set(`style:${key}`, value) };
     setAttribute(name, value) {
       this.attributes.set(name, value);
     }
@@ -102,6 +103,36 @@ test('ghost marker follows its own pose in both map orientations and hides when 
     );
     minimap.update(position, forward, 'heading-up');
     assert.equal(ghost.getAttribute('visibility'), 'hidden');
+    const bots = [
+      { ...pose, color: '#00aaff', visible: true },
+      { position, forward, color: '#ff00ff', visible: true },
+    ];
+    const botLayer = map.children[5];
+    for (const orientation of ['north-up', 'heading-up']) {
+      minimap.update(position, forward, orientation, null, bots);
+      assert.equal(botLayer.children.length, bots.length);
+      bots.forEach((bot, index) => {
+        const marker = botLayer.children[index];
+        assert.equal(marker.getAttribute('visibility'), 'visible');
+        assert.equal(marker.getAttribute('style:fill'), bot.color);
+        assert.equal(
+          marker.getAttribute('transform'),
+          minimapMarkerTransform(
+            createMinimapLayout(courses[1]),
+            bot.position,
+            bot.forward,
+            orientation,
+          ),
+        );
+      });
+    }
+    minimap.setCourse(courses[0]);
+    assert.ok(botLayer.children.every((bot) => bot.getAttribute('visibility') === 'hidden'));
+    minimap.update(position, forward, 'north-up', null, bots);
+    minimap.update(position, forward, 'north-up', null, [bots[0]]);
+    assert.equal(botLayer.children[1].getAttribute('visibility'), 'hidden');
+    minimap.update(position, forward, 'north-up', null, []);
+    assert.ok(botLayer.children.every((bot) => bot.getAttribute('visibility') === 'hidden'));
   } finally {
     if (originalDocument === undefined) delete globalThis.document;
     else globalThis.document = originalDocument;

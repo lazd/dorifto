@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { Reflector } from 'three/addons/objects/Reflector.js';
 import { RectAreaLightUniformsLib } from 'three/addons/lights/RectAreaLightUniformsLib.js';
-import { ConvexHull } from 'three/addons/math/ConvexHull.js';
+import { normalizeCarModel, carPhysicsGeometry, carCorner } from './car-geometry';
 import { idleRpm, redlineRpm } from './drivetrain';
 import type { ConfigurationState } from './configuration-state';
 import { clockText, createSegmentedDisplay, mapDisplaySurface } from './segmented-display';
@@ -11,9 +11,7 @@ type StandardMesh = THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>
 
 export const carLightLayers = { headlights: 2, interior: 3 } as const;
 
-// Real Z32 two-seater length; the export's units are arbitrary.
-const CAR_LENGTH_M = 4.31;
-const PAINT_COLOR = 0xe51b23;
+export const carPaintColor = 0xe51b23;
 const WHEEL_COLOR = 0x111216;
 const INTERIOR_COLOR = 0x303030;
 const CABIN_LIGHTING = {
@@ -58,11 +56,7 @@ export async function loadCar(onProgress?: (fraction: number) => void) {
   );
   const chassis = new THREE.Group();
   chassis.add(model);
-  let bounds = new THREE.Box3().setFromObject(model);
-  model.scale.setScalar(CAR_LENGTH_M / bounds.getSize(new THREE.Vector3()).z);
-  bounds = new THREE.Box3().setFromObject(model);
-  const center = bounds.getCenter(new THREE.Vector3());
-  model.position.set(-center.x, -bounds.min.y - 0.55, -center.z);
+  normalizeCarModel(model);
   chassis.updateMatrixWorld(true);
 
   const meshes: StandardMesh[] = [];
@@ -93,7 +87,12 @@ export async function loadCar(onProgress?: (fraction: number) => void) {
       Object.assign(material, rest);
     }
   }
-  tune(/_Paint_0$/, { color: PAINT_COLOR, metalness: 0.25, roughness: 0.16, envMapIntensity: 0.3 });
+  tune(/_Paint_0$/, {
+    color: carPaintColor,
+    metalness: 0.25,
+    roughness: 0.16,
+    envMapIntensity: 0.3,
+  });
   tune(/^llantaoem.*_(llantaoem|wheelalu)_0$/, {
     color: WHEEL_COLOR,
     metalness: 0.35,
@@ -439,6 +438,7 @@ export async function loadCar(onProgress?: (fraction: number) => void) {
   }
   function setReversing(reversing: boolean) {
     setIntensity(reverseLenses, reversing ? 4 : 0);
+    for (const material of reverseLenses) material.color.setHex(reversing ? 0xffffff : 0x555555);
     for (const light of reverseLights) {
       light.intensity = reversing ? 4 : 0;
       light.visible = reversing;
@@ -962,23 +962,9 @@ export async function loadCar(onProgress?: (fraction: number) => void) {
   // Order: front right, front left, rear right, rear left (+X is the car's left, +Z front).
   const wheels = Array.from({ length: 4 }, () => new THREE.Group());
   const hubs = Array.from({ length: 4 }, () => new THREE.Group());
-  const tireBounds = wheels.map(() => new THREE.Box3());
-  const cornerOf = (box: THREE.Box3) => {
-    const middle = box.getCenter(new THREE.Vector3());
-    return (middle.z > 0 ? 0 : 2) + (middle.x > 0 ? 1 : 0);
-  };
-  for (const mesh of named(/^tyr_/)) {
-    const box = new THREE.Box3().setFromObject(mesh);
-    tireBounds[cornerOf(box)].union(box);
-  }
-  const centers = tireBounds.map((box) => {
-    if (box.isEmpty()) throw new Error('The car model is missing expected wheel geometry.');
-    return box.getCenter(new THREE.Vector3());
-  });
-  const radii = tireBounds.map((box) => box.getSize(new THREE.Vector3()).y / 2);
-  const widths = tireBounds.map((box) => box.getSize(new THREE.Vector3()).x);
+  const { centers, radii, widths, collisionVertices } = carPhysicsGeometry(model);
   for (const mesh of named(/^(llantaoem|tyr_|frontrotor|rearrotor|frontcaliper|rearcaliper)/)) {
-    const corner = cornerOf(new THREE.Box3().setFromObject(mesh));
+    const corner = carCorner(new THREE.Box3().setFromObject(mesh));
     const geometry = mesh.geometry.clone().applyMatrix4(mesh.matrixWorld);
     geometry.translate(-centers[corner].x, -centers[corner].y, -centers[corner].z);
     const part = new THREE.Mesh(geometry, mesh.material);
@@ -989,33 +975,6 @@ export async function loadCar(onProgress?: (fraction: number) => void) {
     mesh.removeFromParent();
   }
 
-  // Preserve underbody clearance while covering the actual roof, hatch and spoiler.
-  const collisionPoints: THREE.Vector3[] = [];
-  for (const x of [-0.86, 0.86]) {
-    for (const y of [-0.23, 0.23]) {
-      for (const z of [-2.02, 2.02]) collisionPoints.push(new THREE.Vector3(x, y, z));
-    }
-  }
-  for (const mesh of named(/^(Body2|Front|Hood|rbumper|Wing)_Paint_0$/)) {
-    const positions = mesh.geometry.getAttribute('position');
-    for (let i = 0; i < positions.count; i++) {
-      const point = new THREE.Vector3()
-        .fromBufferAttribute(positions, i)
-        .applyMatrix4(mesh.matrixWorld);
-      if (point.y >= 0) collisionPoints.push(point);
-    }
-  }
-  if (collisionPoints.length === 8)
-    throw new Error('Missing car body geometry for collision hull.');
-  const hull = new ConvexHull().setFromPoints(collisionPoints);
-  const collisionVertices = new Set<THREE.Vector3>();
-  for (const face of hull.faces) {
-    let edge = face.edge;
-    do {
-      collisionVertices.add(edge.head().point);
-      edge = edge.next;
-    } while (edge !== face.edge);
-  }
   return {
     chassis,
     wheels,
@@ -1023,8 +982,11 @@ export async function loadCar(onProgress?: (fraction: number) => void) {
     centers,
     radii,
     widths,
-    collisionVertices: [...collisionVertices],
+    collisionVertices,
     setBraking,
+    setPaintColor(color: THREE.ColorRepresentation) {
+      for (const { material } of named(/_Paint_0$/)) material.color.set(color);
+    },
     setReversing,
     setHazards,
     setTurnSignals,

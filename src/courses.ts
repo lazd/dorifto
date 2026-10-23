@@ -245,13 +245,13 @@ export function readCourseReverse(parameters: URLSearchParams) {
   throw new Error(`Invalid reverse course option: ${value}`);
 }
 
-export function courseSpawn(definition: CourseDefinition) {
+export function courseSpawn(definition: CourseDefinition, approachDistance = spawnDistance) {
   const route = courseRoute(definition);
   // Spawn on the approach side of the same physical start line in either direction.
   const length = route.getLength();
   const t =
     THREE.MathUtils.euclideanModulo(
-      courseStartDistance(definition, length) - spawnDistance,
+      courseStartDistance(definition, length) - approachDistance,
       length,
     ) / length;
   const position = route.getPointAt(t);

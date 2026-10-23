@@ -185,9 +185,13 @@ export class TireSmoke {
     this.geometry.instanceCount = 0;
   }
 
+  get active() {
+    return this.geometry.instanceCount > 0;
+  }
+
   update(
     dt: number,
-    wheels: THREE.Group[],
+    wheels: THREE.Object3D[],
     contacts: boolean[],
     emitting: boolean,
     velocity: THREE.Vector3,
@@ -338,6 +342,7 @@ export class TireSmoke {
     scene: THREE.Scene,
     camera: THREE.PerspectiveCamera,
     force = false,
+    sharedDepth?: THREE.DepthTexture,
   ) {
     if (!this.geometry.instanceCount && !force) return this.depthTarget.depthTexture;
     this.chassis.updateWorldMatrix(true, false);
@@ -348,6 +353,10 @@ export class TireSmoke {
       .multiply(camera.matrixWorld);
     this.updateLighting(scene);
     renderer.getDrawingBufferSize(this.size);
+    this.material.uniforms.nearPlane.value = camera.near;
+    this.material.uniforms.farPlane.value = camera.far;
+    this.material.uniforms.sceneDepth.value = sharedDepth ?? this.depthTarget.depthTexture;
+    if (sharedDepth) return sharedDepth;
     if (this.depthTarget.width !== this.size.x || this.depthTarget.height !== this.size.y) {
       this.depthTarget.setSize(this.size.x, this.size.y);
     }
@@ -383,5 +392,13 @@ export class TireSmoke {
       });
     }
     return this.depthTarget.depthTexture;
+  }
+
+  dispose() {
+    this.mesh.removeFromParent();
+    this.geometry.dispose();
+    this.material.dispose();
+    this.depthTarget.dispose();
+    this.depthMaterial.dispose();
   }
 }

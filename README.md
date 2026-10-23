@@ -4,6 +4,90 @@ A small Three.js + Ammo.js driving playground built with TypeScript and Vite.
 Ammo.js is installed through the `ammojs-typed` npm distribution and runs in a
 dedicated Web Worker; there are no runtime CDN dependencies.
 
+## Bot drivers
+
+Race bots are available through URL parameters:
+
+```text
+?course=hillside&bots=2&bot-skill=0.8&bot-aggression=0.4
+```
+
+`bots` accepts 0-4 (default 0); skill and aggression accept 0-1. Bots use real,
+colliding vehicles with independent **Grip / Fast (`grip-fast`)** setups, start ahead of the player and
+drive automatically. They derive a line and speed profile from any selected
+course, including reversed courses. A local traffic planner checks road-constrained
+passing paths against predicted vehicle footprints, holds a passing side until
+clear, and slows/stops when blocked. Close-range recovery checks behind before
+backing up for steering room. This is basic passing, not competitive defending.
+Color-matched minimap arrows show their positions and
+headings. Bots have distance-attenuated stereo engine/tire audio, real-slip smoke
+and tire marks, glowing running lamps and telemetry-driven brake lamps.
+Their headlight lenses follow the player's headlight setting; projected bot beams
+are not enabled yet because adding spotlights exposed a Metal shader compilation
+failure. Opponent audio shares the player's mute control and audio context.
+Bots are hidden and removed from physics during replays;
+reset restores them. Their bounded course-specific speed learning survives resets
+within the session, but course changes/reloads start fresh. Player tuning does not
+change the bots' Grip / Fast setup.
+
+One `bot-skill` value applies to all bots. A comma-separated list assigns one skill
+per bot. For a faster rear bot and slower front bot in spectator mode:
+
+```text
+?course=hillside&bots-only=1&bots=2&bot-skill=1,0.2
+```
+
+Bots use cyan, yellow, purple and green; red is reserved for the player.
+
+For a **bots-only spectator session**, add `bots-only=1`:
+
+```text
+?course=hillside&bots-only=1&bots=1&bot-skill=1
+```
+
+No player-controlled vehicle is created. The first bot uses the primary car model,
+telemetry, sound, tire effects and lap HUD, and the corner-aware chase camera
+follows it initially unless `camera` is specified. **C** cycles cameras normally;
+**Tab** cycles the observed bot, including in cabin view. The observed bot receives
+the full-detail model/interior, gauges, mirrors and matching telemetry; the other
+bots use lightweight exteriors. Minimap markers retain each bot's color and
+identity when switching views. `bots-only=1` defaults to one bot; explicitly
+requesting zero is an error. Player pedals/steering do not control the observed
+bot; reset and course/direction changes still work.
+
+Bot control and all vehicle dynamics already run in the physics worker. Rendering,
+audio updates and visual effects remain on the main thread. No added presentation
+buffer or artificial input delay is enabled. Chase cameras inherit the car's
+translation on the same rendered sample and smooth their relative offset,
+rather than independently damping world-space translation.
+
+Run repeatable solo training without rendering:
+
+```sh
+npm run train:bot -- --runs=3
+npm run train:bot -- --runs=3 --experience=.bot-training/race.json --output=.bot-training/continued.json
+npm run train:bot -- --frozen --experience=.bot-training/continued.json --output=.bot-training/evaluation.json
+```
+
+Each run attempts three timed laps on **Hillside Circuit**, excluding the approach
+to the start line. The bot itself adjusts bounded per-section speed margins from
+clean passages, excessive slip and road clearance. JSON output contains all lap
+times, validity, failure reasons, control/stability metrics, configuration and
+resumable experience. Frozen evaluation does not update experience. Experience
+must match the course, direction, vehicle setup, skill, aggression and controller
+version. Headless runs use the actual model geometry and terrain, but omit cones
+and traffic. Failed/incomplete or off-road runs return a nonzero exit status after
+saving the report. Outputs default to the ignored `.bot-training/` folder.
+
+Controller version 2 removes the blanket 15% starting pace reduction, increases
+speed/acceleration targets and adds slip/yaw stabilization and traction-aware
+throttle reduction. Older controller experience files must be retrained.
+
+Other options: `--course=<id>`, `--reverse`, `--skill=0.8`, `--aggression=0.4`,
+`--output=<path>`. Start a new experience file when changing these parameters.
+Drift driving and Sweeper Loop drift training are the next phase, not yet enabled.
+See [the implementation plan](docs/bot-drivers.md) for architecture and milestones.
+
 ## UI and game state
 
 The toolbar's **Settings** button opens sound, drive mode, time of day, camera
@@ -156,7 +240,11 @@ tab stops rendering. Visibility changes clear pending time and snap interpolatio
 Snapshots contain the last two fixed-step poses in recycled transferable buffers.
 Unchanged props are omitted after their final resting pose has been delivered.
 The main thread interpolates poses without waiting for the worker, then updates
-cameras, lights, audio, UI, and tire effects. Impact sounds arrive as impulse
+cameras, lights, audio, UI, and tire effects. Interpolation runs on a simulation-time
+clock: each reply is placed by the elapsed time already sent, and the render clock
+advances by the same frame time. While a reply is in flight, poses extrapolate
+along the newest tick (up to 50 ms). Message arrival timing therefore cannot cause
+hold-and-jump frames. Impact sounds arrive as impulse
 events. Recording samples are encoded at 30 Hz in the worker, with per-step lap
 crossings, so rendering/message frequency cannot skip samples or shift lap times.
 Replay poses drive the same worker-owned world, preserving prop collisions.

@@ -5,6 +5,7 @@ import type { LapTimer } from './laps';
 import { frameStride, type RunRecording, type ReplayTireState } from './lap-recording';
 import type { TerrainQueryData } from './terrain-query';
 import type { PhysicsCar, PhysicsConfiguration, PhysicsControls } from './vehicle-physics';
+import type { RaceBotOptions, VehicleState, createRaceBot } from './race-bot';
 
 export const physicsStep = 1 / 120;
 export const poseStride = 7;
@@ -17,6 +18,8 @@ export interface PoseData {
 }
 
 export interface PhysicsInit {
+  botsOnly?: boolean;
+  bots?: RaceBotOptions[];
   definition: CourseDefinition;
   terrain: TerrainQueryData;
   car: {
@@ -40,12 +43,16 @@ export function createPhysicsInit(
     terrain: { physicsData(): TerrainQueryData };
   },
   configuration: PhysicsConfiguration,
+  bots: RaceBotOptions[] = [],
+  botsOnly = false,
 ): PhysicsInit {
   const pose = (object: { position: THREE.Vector3; quaternion: THREE.Quaternion }): PoseData => ({
     position: object.position.toArray(),
     quaternion: object.quaternion.toArray(),
   });
   return {
+    bots,
+    botsOnly,
     definition,
     terrain: course.terrain.physicsData(),
     car: {
@@ -95,6 +102,15 @@ export interface PhysicsInput {
 }
 
 export interface PhysicsTelemetry {
+  motion: VehicleState;
+  tires: {
+    slipAngle: number;
+    slipRatio: number;
+    load: number;
+    capacity: number;
+    longitudinalForce: number;
+    lateralForce: number;
+  }[];
   engine: DrivetrainState;
   steering: number;
   burnout: number;
@@ -152,9 +168,25 @@ export interface PhysicsSnapshot {
   buffer: ArrayBuffer;
   count: number;
   alpha: number;
+  duration: number;
   replayTime: number | null;
   telemetry: PhysicsTelemetry;
   laps: LapState;
+  bots: {
+    laps: LapState;
+    metrics: ReturnType<typeof createRaceBot>['metrics'];
+    engine: DrivetrainState;
+    tireSounds: ReplayTireState[];
+    wheelContacts: boolean[];
+    burnout: number;
+    braking: boolean;
+    steering: number;
+    reversing: boolean;
+    spawnBrakeHeld: boolean;
+    brakestand: boolean;
+    velocity: [number, number, number];
+    previousVelocity: [number, number, number];
+  }[];
   records: PhysicsRecord[];
   impacts: { type: 'cone' | 'sign'; impulse: number }[];
 }

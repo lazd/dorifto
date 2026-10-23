@@ -14,15 +14,49 @@ export interface TireSoundState {
   load: number;
 }
 
+export interface OpponentSoundState extends VehicleSoundState {
+  distance: number;
+  pan: number;
+}
+
+function soundMessage(
+  state: VehicleSoundState,
+  previous: { throttle: number; gear: number; boost: number },
+) {
+  const engine = state.drivetrain;
+  const release = previous.throttle - engine.throttle > 0.15 || previous.gear !== engine.gear;
+  const boost = Math.max(previous.boost, engine.boost);
+  Object.assign(previous, { throttle: engine.throttle, gear: engine.gear, boost: engine.boost });
+  return {
+    rpm: engine.rpm,
+    load: engine.load,
+    boost: engine.boost,
+    blow: release && boost > 0.12 ? boost : 0,
+    tires: state.tires.map((tire) => ({
+      level: Math.pow(clamp(tire.slip), 1.6),
+      speed: clamp(tire.speed, 0, 50),
+      load: clamp(tire.load, 0, 2),
+    })),
+    cut: engine.shifting ? 1 : 0,
+    limiter: engine.limiterCut ? 1 : 0,
+  };
+}
+
 export class VehicleAudio {
   private context?: AudioContext;
   private node?: AudioWorkletNode;
   private master?: GainNode;
   private starting?: Promise<void>;
   private muted = false;
-  private previousThrottle = 0;
-  private previousGear = 1;
-  private previousBoost = 0;
+  private previous = { throttle: 0, gear: 1, boost: 0 };
+  private readonly opponents: {
+    node: AudioWorkletNode;
+    gain: GainNode;
+    panner: StereoPannerNode;
+    filters: BiquadFilterNode[];
+    gains: GainNode[];
+    previous: { throttle: number; gear: number; boost: number };
+  }[] = [];
   private failed = false;
 
   constructor(
@@ -90,18 +124,6 @@ export class VehicleAudio {
     if (!context) throw new Error('Audio context must be created before loading sound.');
     if (!this.node) {
       await context.audioWorklet.addModule(processorUrl);
-      const node = new AudioWorkletNode(context, 'vehicle-sound', {
-        numberOfInputs: 0,
-        numberOfOutputs: 4,
-        outputChannelCount: [1, 1, 2, 1],
-        processorOptions: { idleRpm },
-      });
-      node.onprocessorerror = () => {
-        this.failed = true;
-        this.setAudible(false);
-        this.publishState();
-        this.reportError(new Error('Vehicle audio processor failed. Reload to restart sound.'));
-      };
       const master = context.createGain();
       master.gain.value = 0;
       const limiter = context.createDynamicsCompressor();
@@ -114,27 +136,47 @@ export class VehicleAudio {
       rumbleFilter.type = 'highpass';
       rumbleFilter.frequency.value = 25;
       master.connect(rumbleFilter).connect(limiter).connect(context.destination);
-      const channels: { type: BiquadFilterType; frequency: number; gain: number; q: number }[] = [
-        { type: 'lowpass', frequency: 800, gain: 0.65, q: 0.7 },
-        { type: 'highpass', frequency: 900, gain: 0.28, q: 0.7 },
-        { type: 'lowpass', frequency: 4800, gain: 0.28, q: 0.7 },
-        { type: 'lowpass', frequency: 6500, gain: 0.9, q: 0.8 },
-      ];
-      channels.forEach((channel, i) => {
-        const filter = context.createBiquadFilter();
-        filter.type = channel.type;
-        filter.frequency.value = channel.frequency;
-        filter.Q.value = channel.q;
-        const gain = context.createGain();
-        gain.gain.value = channel.gain;
-        node.connect(filter, i);
-        filter.connect(gain).connect(master);
-      });
-      this.node = node;
+      this.node = this.createSource(context, master).node;
       this.master = master;
     }
     this.setAudible(true);
     this.publishState();
+  }
+
+  private createSource(context: AudioContext, destination: AudioNode) {
+    const node = new AudioWorkletNode(context, 'vehicle-sound', {
+      numberOfInputs: 0,
+      numberOfOutputs: 4,
+      outputChannelCount: [1, 1, 2, 1],
+      processorOptions: { idleRpm },
+    });
+    node.onprocessorerror = () => {
+      this.failed = true;
+      this.setAudible(false);
+      this.publishState();
+      this.reportError(new Error('Vehicle audio processor failed. Reload to restart sound.'));
+    };
+    const channels: { type: BiquadFilterType; frequency: number; gain: number; q: number }[] = [
+      { type: 'lowpass', frequency: 800, gain: 0.65, q: 0.7 },
+      { type: 'highpass', frequency: 900, gain: 0.28, q: 0.7 },
+      { type: 'lowpass', frequency: 4800, gain: 0.28, q: 0.7 },
+      { type: 'lowpass', frequency: 6500, gain: 0.9, q: 0.8 },
+    ];
+    const filters: BiquadFilterNode[] = [];
+    const gains: GainNode[] = [];
+    channels.forEach((channel, i) => {
+      const filter = context.createBiquadFilter();
+      filter.type = channel.type;
+      filter.frequency.value = channel.frequency;
+      filter.Q.value = channel.q;
+      const gain = context.createGain();
+      gain.gain.value = channel.gain;
+      node.connect(filter, i);
+      filter.connect(gain).connect(destination);
+      filters.push(filter);
+      gains.push(gain);
+    });
+    return { node, filters, gains };
   }
 
   private publishState() {
@@ -169,34 +211,52 @@ export class VehicleAudio {
   }
 
   reset() {
-    this.previousThrottle = 0;
-    this.previousGear = 1;
-    this.previousBoost = 0;
+    this.previous = { throttle: 0, gear: 1, boost: 0 };
     this.node?.port.postMessage({ reset: true });
+    this.clearOpponents();
   }
 
   update(state: VehicleSoundState) {
     this.setAudible(true);
-    const engine = state.drivetrain;
-    const release =
-      this.previousThrottle - engine.throttle > 0.15 || this.previousGear !== engine.gear;
-    const releaseBoost = Math.max(this.previousBoost, engine.boost);
-    const blow = release && releaseBoost > 0.12 ? releaseBoost : 0;
-    this.previousThrottle = engine.throttle;
-    this.previousGear = engine.gear;
-    this.previousBoost = engine.boost;
-    this.node?.port.postMessage({
-      rpm: engine.rpm,
-      load: engine.load,
-      boost: engine.boost,
-      blow,
-      tires: state.tires.map((tire) => ({
-        level: Math.pow(clamp(tire.slip), 1.6),
-        speed: clamp(tire.speed, 0, 50),
-        load: clamp(tire.load, 0, 2),
-      })),
-      cut: engine.shifting ? 1 : 0,
-      limiter: engine.limiterCut ? 1 : 0,
+    this.node?.port.postMessage(soundMessage(state, this.previous));
+  }
+
+  clearOpponents() {
+    for (const voice of this.opponents.splice(0)) {
+      voice.node.port.postMessage({ dispose: true });
+      voice.node.port.close();
+      voice.node.disconnect();
+      voice.filters.forEach((node) => node.disconnect());
+      voice.gains.forEach((node) => node.disconnect());
+      voice.panner.disconnect();
+      voice.gain.disconnect();
+    }
+  }
+
+  updateOpponents(states: readonly OpponentSoundState[]) {
+    const context = this.context;
+    if (!context || !this.node || !this.master || this.failed) return;
+    if (states.length !== this.opponents.length) {
+      this.clearOpponents();
+      for (let i = 0; i < states.length; i++) {
+        const gain = context.createGain();
+        gain.gain.value = 0;
+        const panner = context.createStereoPanner();
+        panner.connect(gain).connect(this.master);
+        this.opponents.push({
+          ...this.createSource(context, panner),
+          gain,
+          panner,
+          previous: { throttle: 0, gear: 1, boost: 0 },
+        });
+      }
+    }
+    this.opponents.forEach((voice, index) => {
+      const state = states[index];
+      const volume = state.distance >= 100 ? 0 : 0.65 / (1 + (state.distance / 12) ** 2);
+      voice.gain.gain.setTargetAtTime(volume, context.currentTime, 0.04);
+      voice.panner.pan.setTargetAtTime(clamp(state.pan, -1, 1), context.currentTime, 0.04);
+      voice.node.port.postMessage(soundMessage(state, voice.previous));
     });
   }
 }

@@ -72,7 +72,9 @@ class VehicleSoundProcessor extends AudioWorkletProcessor {
     this.blowDecay = Math.exp(-1 / (sampleRate * 0.16));
     this.impactDecay = Math.exp(-1 / (sampleRate * 0.055));
     this.port.onmessage = ({ data }) => {
-      if (data.reset) {
+      if (data.dispose) {
+        this.disposed = true;
+      } else if (data.reset) {
         this.blow = 0;
         this.blowPhase = 0;
         this.pulse = 0;
@@ -121,6 +123,7 @@ class VehicleSoundProcessor extends AudioWorkletProcessor {
   }
 
   process(inputs, outputs) {
+    if (this.disposed) return false;
     const engine = outputs[0][0];
     const turbo = outputs[1][0];
     const tires = outputs[2][0];

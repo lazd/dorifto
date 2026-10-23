@@ -40,6 +40,7 @@ import { createLighting } from './lighting';
 import { createTireEffects } from './tire-effects';
 import { createMinimap } from './minimap';
 import { createPhysicsClient } from './physics-client';
+import { readBotsOnly, readRaceBots } from './race-bot';
 import type { PhysicsRecord } from './physics-messages';
 import { readTurnSignMode } from './turn-sign';
 import { createGhostCar } from './ghost-car';
@@ -175,6 +176,12 @@ async function start() {
     history.replaceState(null, '', settingsUrl);
   }
   const courseUrl = new URL(location.href);
+  const botsOnly = readBotsOnly(courseUrl.searchParams);
+  if (botsOnly)
+    configurationState.update({
+      driveMode: 'grip',
+      ...(!courseUrl.searchParams.has('camera') ? { cameraStyle: 'corner' as const } : {}),
+    });
   const availableCourses = [...courses, ...loadSavedCourses(localStorage)];
   const courseId = courseUrl.searchParams.get('course');
   const requestedCourse =
@@ -354,6 +361,7 @@ async function start() {
     'KeyF',
     'KeyH',
   ]);
+  if (botsOnly) controlKeys.add('Tab');
   let lastTime = 0;
   let changingCourse = false;
 
@@ -368,6 +376,8 @@ async function start() {
       course.setTurnSignMode(turnSignMode);
       course.terrain.grass.visible = showGrass;
       physics = createPhysicsClient({
+        bots: readRaceBots(courseUrl.searchParams),
+        botsOnly,
         car,
         course,
         definition: nextDefinition,
@@ -654,6 +664,10 @@ async function start() {
   }
 
   function updateGhost(alpha: number) {
+    if (botsOnly) {
+      ghost.visible = false;
+      return;
+    }
     const mode = configurationState.getState().ghostMode;
     const source = mode === 'record' ? recordLap : run;
     const index =
@@ -910,6 +924,13 @@ async function start() {
       if (!event.repeat) reset();
     } else if (event.code === 'KeyC') {
       if (!event.repeat) cycleCamera();
+    } else if (event.code === 'Tab') {
+      if (!event.repeat && physics.cycleObservedBot()) {
+        forward.set(0, 0, 1).applyQuaternion(car.chassis.quaternion);
+        drivingCamera.reset(Math.atan2(forward.x, forward.z));
+        tireEffects.reset();
+        audio.reset();
+      }
     } else if (event.code === 'KeyD') {
       if (!event.repeat) toggleDriveMode();
     } else if (event.code === 'KeyM') {
@@ -1038,7 +1059,7 @@ async function start() {
     const engine = replaying ? replayEngine : physics.engine;
     const reversing = replaying ? playbackFrame.reversing : physics.reversing;
     const wheelContacts = replaying ? playbackFrame.contacts : physics.wheelContacts;
-    const handbrake = replaying ? playbackFrame.handbrake : controls.handbrake;
+    const handbrake = replaying ? playbackFrame.handbrake : !botsOnly && controls.handbrake;
     car.setHighBeams(replaying ? playbackFrame.highBeams : controls.highBeams);
     car.setFogLights(replaying ? playbackFrame.fogLights : vehicleLights.fogLights);
     car.setTurnSignals(
@@ -1054,7 +1075,7 @@ async function start() {
     drivingCamera.update(
       dt,
       replayVelocity3d ?? physics.linearVelocity,
-      cameraState.driveMode,
+      botsOnly ? 'grip' : cameraState.driveMode,
       cameraState.cameraStyle,
       reversing,
       cameraState.cabinHeadMotion,
@@ -1069,6 +1090,8 @@ async function start() {
       forward,
       cameraState.minimapOrientation,
       ghost.visible ? minimapGhost : null,
+      replaying ? [] : physics.botMarkers,
+      !botsOnly || replaying,
     );
     // Manifold pressure: closed-throttle vacuum through to full turbo boost.
     const manifoldMmHg =
@@ -1084,6 +1107,8 @@ async function start() {
       ? playbackFrame.burnout
       : physics.burnout > 0.1 && (wheelContacts[2] || wheelContacts[3]);
     tireEffects.update(dt, velocity, camera, wheelContacts, sliding, burningOut);
+    physics.updateBotEffects(dt, camera, frameHeadlights, !replaying);
+    audio.updateOpponents(physics.botSounds);
     const timing = replay
       ? replay.recording.timingAt(replay.time)
       : {
@@ -1093,7 +1118,11 @@ async function start() {
           best: laps.best,
           lastCones: laps.lastCones,
         };
-    const braking = replaying ? playbackFrame.braking && !reversing : controls.brake > 0;
+    const braking = replaying
+      ? playbackFrame.braking && !reversing
+      : botsOnly
+        ? physics.braking
+        : controls.brake > 0;
     gameState.update({
       controllerStatus: controls.controllerStatus,
       telemetry: {
@@ -1127,7 +1156,13 @@ async function start() {
           terrain.heightAt(car.chassis.position.x, car.chassis.position.z) - 5)
     )
       reset();
-    const sceneDepth = tireEffects.captureDepth(renderer, scene, camera, ghost.visible);
+    const sceneDepth = tireEffects.captureDepth(
+      renderer,
+      scene,
+      camera,
+      ghost.visible || physics.botSmokeActive,
+    );
+    physics.captureBotDepth(renderer, scene, camera, sceneDepth);
     renderer.render(scene, camera);
     ghost.renderGlow(renderer, camera, sceneDepth);
   }

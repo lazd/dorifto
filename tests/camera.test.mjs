@@ -118,6 +118,28 @@ for (const style of ['corner', 'classic', 'cabin']) {
   });
 }
 
+test('chase cameras follow irregular physics translations without car-relative jitter', () => {
+  for (const style of ['classic', 'corner']) {
+    const controls = { mapView: false, mapZoom: 0, cameraX: 0, cameraY: 0, lookBehind: true };
+    const car = { chassis: new THREE.Group(), aimMirrors() {} };
+    const camera = new THREE.PerspectiveCamera();
+    const driving = createDrivingCamera(camera, car, controls, courses[0], {
+      heightAt: () => -100,
+    });
+    const velocity = new THREE.Vector3(0, 0, 20);
+    driving.reset(0);
+    for (let i = 0; i < 300; i++) driving.update(1 / 60, velocity, 'grip', style, false);
+    const relative = camera.position.clone().sub(car.chassis.position);
+    const rotation = camera.quaternion.clone();
+    for (const distance of [0.16, 0.5, 0, 0.33, 0.17, 0.66]) {
+      car.chassis.position.z += distance;
+      driving.update(1 / 60, velocity, 'grip', style, false);
+      assert.ok(camera.position.clone().sub(car.chassis.position).distanceTo(relative) < 1e-8);
+      assert.ok(camera.quaternion.angleTo(rotation) < 1e-7);
+    }
+  }
+});
+
 test('map view fits a 5 km course within the clipping planes on a portrait display', () => {
   const definition = generateCustomCourse(123, { ...defaultCourseWeights, length: 5000 });
   const terrain = { heightAt: () => 0 };

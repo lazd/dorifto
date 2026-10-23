@@ -12,6 +12,13 @@ interface MapPoint {
   z: number;
 }
 
+export interface MinimapBot {
+  position: MapPoint;
+  forward: MapPoint;
+  color: string;
+  visible: boolean;
+}
+
 export function createMinimapLayout(definition: CourseDefinition) {
   const route = courseRoute({ ...definition, reverse: false });
   const points = route.getSpacedPoints(Math.max(256, Math.ceil(route.getLength() / 2)));
@@ -89,6 +96,9 @@ export function createMinimap(container: HTMLElement, definition: CourseDefiniti
   ghostMarker.setAttribute('visibility', 'hidden');
   const map = document.createElementNS(namespace, 'g');
   map.append(pad, road, start, ghostMarker, marker);
+  const botLayer = document.createElementNS(namespace, 'g');
+  map.append(botLayer);
+  const botMarkers: SVGPathElement[] = [];
   svg.append(map);
   container.append(svg);
   let layout: ReturnType<typeof createMinimapLayout>;
@@ -96,9 +106,10 @@ export function createMinimap(container: HTMLElement, definition: CourseDefiniti
     layout = createMinimapLayout(next);
     svg.setAttribute(
       'aria-label',
-      `${next.name}: bird's-eye course map with live car and ghost positions and headings`,
+      `${next.name}: bird's-eye course map with live car, bot and ghost positions and headings`,
     );
     ghostMarker.setAttribute('visibility', 'hidden');
+    for (const bot of botMarkers) bot.setAttribute('visibility', 'hidden');
     road.setAttribute('d', layout.path);
     road.setAttribute('stroke-width', String(layout.roadWidth));
     startBase.setAttribute('d', layout.startLine);
@@ -118,7 +129,10 @@ export function createMinimap(container: HTMLElement, definition: CourseDefiniti
       forward: MapPoint,
       orientation: ConfigurationState['minimapOrientation'],
       ghost?: { position: MapPoint; forward: MapPoint } | null,
+      bots: readonly MinimapBot[] = [],
+      showPlayer = true,
     ) {
+      marker.setAttribute('visibility', showPlayer ? 'visible' : 'hidden');
       map.setAttribute('transform', minimapViewTransform(forward, orientation));
       marker.setAttribute(
         'transform',
@@ -130,6 +144,23 @@ export function createMinimap(container: HTMLElement, definition: CourseDefiniti
           'transform',
           minimapMarkerTransform(layout, ghost.position, ghost.forward, orientation),
         );
+      while (botMarkers.length < bots.length) {
+        const bot = document.createElementNS(namespace, 'path');
+        bot.setAttribute('class', 'minimap-marker');
+        bot.setAttribute('d', markerPath);
+        botLayer.append(bot);
+        botMarkers.push(bot);
+      }
+      botMarkers.forEach((marker, index) => {
+        const bot = bots[index];
+        marker.setAttribute('visibility', bot?.visible ? 'visible' : 'hidden');
+        if (!bot?.visible) return;
+        marker.style.setProperty('fill', bot.color);
+        marker.setAttribute(
+          'transform',
+          minimapMarkerTransform(layout, bot.position, bot.forward, orientation),
+        );
+      });
     },
   };
 }

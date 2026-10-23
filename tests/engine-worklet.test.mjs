@@ -181,6 +181,7 @@ test('audio uses pre-release boost for lift-off and gear changes, and clears it 
     const { VehicleAudio } = await server.ssrLoadModule('/src/audio.ts');
     const messages = [];
     const audio = Object.create(VehicleAudio.prototype);
+    audio.opponents = [];
     audio.node = { port: { postMessage: (message) => messages.push(message) } };
     audio.hitTurnSign(0.9);
     assert.equal(messages.length, 0);
@@ -216,6 +217,81 @@ test('audio uses pre-release boost for lift-off and gear changes, and clears it 
   } finally {
     await server.close();
   }
+});
+
+test('opponents share the audio context, attenuate/pan, respect mute and release processors', async () => {
+  const server = await createServer({
+    server: { middlewareMode: true, hmr: false, ws: false, watch: null },
+    appType: 'custom',
+  });
+  try {
+    const { VehicleAudio } = await server.ssrLoadModule('/src/audio.ts');
+    const { Drivetrain } = await server.ssrLoadModule('/src/drivetrain.ts');
+    const parameter = () => ({
+      value: 0,
+      setTargetAtTime(value) {
+        this.value = value;
+      },
+    });
+    const node = () => ({
+      gain: parameter(),
+      pan: parameter(),
+      connect(destination) {
+        return destination;
+      },
+      disconnect() {
+        this.disconnected = true;
+      },
+    });
+    const context = { currentTime: 0, createGain: node, createStereoPanner: node };
+    const audio = Object.create(VehicleAudio.prototype);
+    audio.context = context;
+    audio.previous = { throttle: 0, gear: 1, boost: 0 };
+    audio.master = node();
+    audio.node = { port: { postMessage() {} } };
+    audio.opponents = [];
+    const sources = [];
+    audio.createSource = (shared) => {
+      assert.equal(shared, context);
+      const source = node();
+      source.port = {
+        messages: [],
+        postMessage(message) {
+          this.messages.push(message);
+        },
+        close() {
+          this.closed = true;
+        },
+      };
+      sources.push(source);
+      return { node: source, filters: [], gains: [] };
+    };
+    const state = {
+      drivetrain: new Drivetrain().state,
+      tires: Array.from({ length: 4 }, () => ({ slip: 0, speed: 0, load: 0 })),
+      distance: 10,
+      pan: -0.5,
+    };
+    audio.updateOpponents([state, { ...state, distance: 50, pan: 0.5 }]);
+    assert.equal(sources.length, 2);
+    assert.ok(audio.opponents[0].gain.gain.value > audio.opponents[1].gain.gain.value);
+    assert.equal(audio.opponents[0].panner.pan.value, state.pan);
+    assert.equal(sources[0].port.messages.at(-1).rpm, state.drivetrain.rpm);
+    audio.muted = true;
+    audio.update(state);
+    assert.equal(audio.master.gain.value, 0, 'one master mutes player and opponents');
+    audio.updateOpponents([]);
+    assert.ok(sources.every((source) => source.disconnected && source.port.closed));
+    assert.ok(sources.every((source) => source.port.messages.at(-1).dispose));
+  } finally {
+    await server.close();
+  }
+});
+
+test('disposed opponent processors stop running', () => {
+  const processor = createProcessor();
+  processor.port.onmessage({ data: { dispose: true } });
+  assert.equal(processor.process([], []), false);
 });
 
 test('blow-off decays and clears on reset at supported sample rates', () => {

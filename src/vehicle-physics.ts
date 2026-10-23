@@ -16,6 +16,8 @@ import {
   type PhysicsPluginContext,
 } from './physics-plugin';
 import type { HeightfieldData } from './terrain-query';
+import { createPhysicsResources, createPhysicsWorld } from './physics-world';
+export { createPhysicsResources, createPhysicsWorld } from './physics-world';
 
 export type PhysicsControls = Pick<
   DrivingControls,
@@ -51,34 +53,7 @@ interface VehiclePhysicsOptions {
   controls: PhysicsControls;
   configurationState: Pick<Store<PhysicsConfiguration>, 'getState'>;
   laps: LapTimer;
-}
-
-export function createPhysicsResources(Ammo: typeof AmmoFactory) {
-  const buffers: { pointer: number; capacity: number; used: boolean }[] = [];
-  // This Ammo build exposes neither _free nor a vehicle-tuning destructor.
-  // Reuse tuning and power-of-two buffers instead of leaking one per course.
-  return {
-    vehicleTuning: new Ammo.btVehicleTuning(),
-    acquireHeightfield(heights: Float32Array) {
-      let buffer = buffers.find((buffer) => !buffer.used && buffer.capacity >= heights.byteLength);
-      if (!buffer) {
-        const capacity = 2 ** Math.ceil(Math.log2(heights.byteLength));
-        const pointer = Ammo._malloc(capacity);
-        if (!pointer) throw new Error('Unable to allocate course heightfield');
-        buffer = { pointer, capacity, used: false };
-        buffers.push(buffer);
-      }
-      buffer.used = true;
-      Ammo.HEAPF32.set(heights, buffer.pointer / 4);
-      const allocated = buffer;
-      return {
-        pointer: buffer.pointer,
-        release() {
-          allocated.used = false;
-        },
-      };
-    },
-  };
+  simulationWorld?: ReturnType<typeof createPhysicsWorld>;
 }
 
 export function createVehiclePhysics({
@@ -90,6 +65,7 @@ export function createVehiclePhysics({
   controls,
   configurationState,
   laps,
+  simulationWorld,
 }: VehiclePhysicsOptions) {
   const { terrain, isAsphalt } = course;
   const settings = vehicleSettings;
@@ -103,17 +79,14 @@ export function createVehiclePhysics({
   );
   const centerOfMassOffset = new THREE.Vector3();
   const lapPosition = new THREE.Vector3();
-  const configuration = new Ammo.btDefaultCollisionConfiguration();
-  const dispatcher = new Ammo.btCollisionDispatcher(configuration);
-  const broadphase = new Ammo.btDbvtBroadphase();
-  const solver = new Ammo.btSequentialImpulseConstraintSolver();
-  const world = new Ammo.btDiscreteDynamicsWorld(dispatcher, broadphase, solver, configuration);
-  const vector = new Ammo.btVector3(0, -9.81, 0);
-  world.setGravity(vector);
+  const sharedWorld = simulationWorld ?? createPhysicsWorld(Ammo, resources, terrain);
+  const { world, dispatcher } = sharedWorld;
+  const vector = new Ammo.btVector3(0, 0, 0);
   const rigidBodies = new Map<AmmoFactory.btRigidBody, AmmoFactory.btDefaultMotionState>();
   const enabledBodies = new Set<AmmoFactory.btRigidBody>();
   const plugins: PhysicsPlugin[] = [];
   let disposed = false;
+  let enabled = true;
 
   function rigidBody(mass: number, shape: AmmoFactory.btCollisionShape, position: THREE.Vector3) {
     if (disposed) throw new Error('Cannot create a body in disposed vehicle physics');
@@ -134,30 +107,6 @@ export function createVehiclePhysics({
     return body;
   }
 
-  const heightData = resources.acquireHeightfield(terrain.heights);
-  const groundShape = new Ammo.btHeightfieldTerrainShape(
-    terrain.columns,
-    terrain.rows,
-    heightData.pointer,
-    1,
-    terrain.minHeight,
-    terrain.maxHeight,
-    1,
-    Ammo.PHY_FLOAT,
-    false,
-  );
-  vector.setValue(terrain.spacing, 1, terrain.spacing);
-  groundShape.setLocalScaling(vector);
-  groundShape.setMargin(0.01);
-  rigidBody(
-    0,
-    groundShape,
-    new THREE.Vector3(
-      terrain.minX + ((terrain.columns - 1) * terrain.spacing) / 2,
-      (terrain.minHeight + terrain.maxHeight) / 2,
-      terrain.minZ + ((terrain.rows - 1) * terrain.spacing) / 2,
-    ),
-  );
   const chassisShape = new Ammo.btConvexHullShape();
   for (let i = 0; i < car.collisionVertices.length; i++) {
     const point = car.collisionVertices[i];
@@ -381,7 +330,7 @@ export function createVehiclePhysics({
     velocity.set(0, 0, 0);
   }
 
-  function step() {
+  function beforeStep() {
     const { driveMode, profiles } = configurationState.getState();
     const tune = driveModes[driveMode];
     const tireTune = profiles[driveMode];
@@ -393,7 +342,7 @@ export function createVehiclePhysics({
     tireForward.set(0, 0, 1).applyQuaternion(physicsRotation);
     const forwardSpeed =
       linear.x() * tireForward.x + linear.y() * tireForward.y + linear.z() * tireForward.z;
-    if (controls.throttle > 0) spawnBrakeHeld = false;
+    if (controls.throttle > 0 || controls.reverse > 0) spawnBrakeHeld = false;
     if (spawnBrakeHeld || controls.throttle > 0 || controls.reverse === 0) reversing = false;
     else if (Math.abs(forwardSpeed) < 0.5 && Math.abs(angular.y()) < 0.5 && speed < 4)
       reversing = true;
@@ -638,7 +587,9 @@ export function createVehiclePhysics({
         Math.hypot(linear.x(), linear.z());
     vector.setValue(-linear.x() * drag, 0, -linear.z() * drag);
     body.applyCentralForce(vector);
-    world.stepSimulation(fixedStep, 0);
+  }
+
+  function afterStep() {
     for (const plugin of plugins) plugin.afterStep?.(fixedStep);
     const lapOrigin = body.getWorldTransform().getOrigin();
     lapPosition.set(lapOrigin.x(), lapOrigin.y(), lapOrigin.z());
@@ -648,6 +599,13 @@ export function createVehiclePhysics({
     for (let i = 0; i < 4; i++) {
       wheelContacts[i] = vehicle.getWheelInfo(i).get_m_raycastInfo().get_m_isInContact();
     }
+  }
+
+  function step() {
+    if (simulationWorld) throw new Error('Shared vehicles must be stepped through their world');
+    beforeStep();
+    sharedWorld.step(fixedStep);
+    afterStep();
   }
 
   /**
@@ -738,7 +696,7 @@ export function createVehiclePhysics({
   function dispose() {
     if (disposed) return;
     disposed = true;
-    world.removeAction(vehicle);
+    if (enabled) world.removeAction(vehicle);
     Ammo.destroy(vehicle);
     Ammo.destroy(raycaster);
     for (const [body, motion] of rigidBodies) {
@@ -750,22 +708,18 @@ export function createVehiclePhysics({
     enabledBodies.clear();
     for (const plugin of plugins) plugin.dispose?.();
     Ammo.destroy(chassisShape);
-    Ammo.destroy(groundShape);
-    heightData.release();
     Ammo.destroy(resetTransform);
     Ammo.destroy(replayTransform);
     Ammo.destroy(replayRotation);
     Ammo.destroy(forceOffset);
     Ammo.destroy(vector);
-    Ammo.destroy(world);
-    Ammo.destroy(solver);
-    Ammo.destroy(broadphase);
-    Ammo.destroy(dispatcher);
-    Ammo.destroy(configuration);
+    if (!simulationWorld) sharedWorld.dispose();
   }
 
   return {
     step,
+    beforeStep,
+    afterStep,
     stepReplay,
     captureReplayVisuals,
     interpolateReplay,
@@ -779,6 +733,44 @@ export function createVehiclePhysics({
     wheelContacts,
     tireSounds,
     tireAngles: tireAngles as readonly number[],
+    tireContacts,
+    tireSpeeds: tireSpeeds as readonly number[],
+    setEnabled(value: boolean) {
+      if (disposed) throw new Error('Cannot toggle a disposed vehicle');
+      if (value === enabled) return;
+      enabled = value;
+      if (value) {
+        world.addRigidBody(body);
+        enabledBodies.add(body);
+        world.addAction(vehicle);
+      } else {
+        world.removeAction(vehicle);
+        world.removeRigidBody(body);
+        enabledBodies.delete(body);
+      }
+    },
+    readState() {
+      const transform = body.getWorldTransform();
+      const origin = transform.getOrigin();
+      const rotation = transform.getRotation();
+      const linear = body.getLinearVelocity();
+      const angular = body.getAngularVelocity();
+      physicsRotation.set(rotation.x(), rotation.y(), rotation.z(), rotation.w());
+      tireForward.set(0, 0, 1).applyQuaternion(physicsRotation);
+      const along = linear.x() * tireForward.x + linear.z() * tireForward.z;
+      const across = linear.x() * tireForward.z - linear.z() * tireForward.x;
+      return {
+        x: origin.x(),
+        y: origin.y(),
+        z: origin.z(),
+        heading: Math.atan2(tireForward.x, tireForward.z),
+        vx: linear.x(),
+        vz: linear.z(),
+        speed: Math.hypot(linear.x(), linear.z()),
+        slipAngle: Math.atan2(across, Math.max(Math.abs(along), 0.5)),
+        yawRate: angular.y(),
+      };
+    },
     get engine() {
       return drivetrain.state;
     },

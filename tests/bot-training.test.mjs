@@ -1,0 +1,293 @@
+import assert from 'node:assert/strict';
+import { after, before, test } from 'node:test';
+import { createServer } from 'vite';
+import AmmoFactory from 'ammojs-typed';
+import * as THREE from 'three';
+import { loadTrainingCarGeometry } from '../scripts/bot-assets.mjs';
+
+let server;
+let Ammo;
+let geometry;
+let terrain;
+let definition;
+let configuration;
+let trainRaceBot;
+let createRaceBot;
+let createDrivingMap;
+let vehicleDimensions;
+let readRaceBots;
+let defaultRaceBotOptions;
+let trainingCourses;
+let createVehiclePhysics;
+let createPhysicsResources;
+let createPhysicsWorld;
+let createPhysicsSimulation;
+let raceBotConfiguration;
+let raceBotGridSpacing;
+let defaultTuningPresets;
+
+before(async () => {
+  server = await createServer({
+    server: { middlewareMode: true, hmr: false, ws: false, watch: null },
+    appType: 'custom',
+  });
+  const { courses } = await server.ssrLoadModule('/src/courses.ts');
+  const { CourseTerrain } = await server.ssrLoadModule('/src/terrain.ts');
+  const { createConfigurationState, defaultTuningPresets: presets } = await server.ssrLoadModule(
+    '/src/configuration-state.ts',
+  );
+  defaultTuningPresets = presets;
+  ({ trainRaceBot } = await server.ssrLoadModule('/src/bot-training.ts'));
+  ({
+    createRaceBot,
+    createDrivingMap,
+    readRaceBots,
+    defaultRaceBotOptions,
+    trainingCourses,
+    raceBotConfiguration,
+    raceBotGridSpacing,
+  } = await server.ssrLoadModule('/src/race-bot.ts'));
+  ({ vehicleDimensions } = await server.ssrLoadModule('/src/car-geometry.ts'));
+  ({ createVehiclePhysics, createPhysicsResources, createPhysicsWorld } =
+    await server.ssrLoadModule('/src/vehicle-physics.ts'));
+  ({ createPhysicsSimulation } = await server.ssrLoadModule('/src/physics-simulation.ts'));
+  definition = { ...courses.find(({ id }) => id === trainingCourses.race), reverse: false };
+  terrain = new CourseTerrain(definition, false);
+  geometry = await loadTrainingCarGeometry(server);
+  const { profiles } = createConfigurationState().getState();
+  configuration = raceBotConfiguration({ driveMode: 'grip', profiles, coneMode: 'off' });
+  Ammo = await AmmoFactory.call({});
+});
+
+after(async () => {
+  terrain?.mesh.geometry.dispose();
+  terrain?.mesh.material.dispose();
+  terrain?.grass.geometry.dispose();
+  terrain?.grass.material.dispose();
+  await server?.close();
+});
+
+test('race driver completes repeated three-lap runs and serializes bounded learning', () => {
+  const report = trainRaceBot(
+    Ammo,
+    definition,
+    terrain,
+    geometry,
+    configuration,
+    defaultRaceBotOptions,
+    2,
+  );
+  assert.equal(report.runs.length, 2);
+  for (const run of report.runs) {
+    assert.equal(run.completed, true);
+    assert.equal(run.failure, null);
+    assert.equal(run.laps.length, 3);
+    assert.ok(run.laps.every((lap) => lap.valid && lap.time > 0));
+  }
+  assert.ok(report.runs[1].laps[2].time < report.runs[0].laps[0].time);
+  assert.ok(report.experience.visits.every((visits) => visits > 0));
+  assert.ok(report.experience.pace.every((pace) => pace >= 0.55 && pace <= 1.05));
+  const frozen = { ...defaultRaceBotOptions, learning: false };
+  const saved = JSON.parse(JSON.stringify(report.experience));
+  const replay = trainRaceBot(Ammo, definition, terrain, geometry, configuration, frozen, 2, saved);
+  assert.deepEqual(replay.experience, saved, 'frozen evaluation must not learn');
+  assert.deepEqual(
+    replay.runs[0].laps,
+    replay.runs[1].laps,
+    'reset reproduces the same evaluation',
+  );
+  const failed = trainRaceBot(
+    Ammo,
+    definition,
+    terrain,
+    geometry,
+    configuration,
+    frozen,
+    1,
+    saved,
+    0.1,
+  );
+  assert.equal(failed.runs[0].completed, false);
+  assert.equal(failed.runs[0].failure, 'timeout');
+  assert.equal(failed.runs[0].laps.length, 0);
+});
+
+test('driver rejects incompatible experience and invalid configuration', () => {
+  assert.deepEqual(
+    configuration.profiles.grip,
+    defaultTuningPresets().find(({ id }) => id === 'grip-fast').tuning,
+  );
+  const dimensions = vehicleDimensions(geometry);
+  const map = createDrivingMap(definition, terrain, dimensions.halfWidth);
+  const bot = createRaceBot(map, configuration, dimensions);
+  const saved = bot.exportExperience();
+  assert.throws(
+    () =>
+      createRaceBot(map, configuration, dimensions, defaultRaceBotOptions, {
+        ...saved,
+        key: 'another track',
+      }),
+    /incompatible/,
+  );
+  assert.throws(
+    () =>
+      createRaceBot(map, configuration, dimensions, defaultRaceBotOptions, {
+        ...saved,
+        pace: saved.pace.map(() => Infinity),
+      }),
+    /invalid/,
+  );
+  assert.throws(() => readRaceBots(new URLSearchParams('bots=5')), /Bot count/);
+  assert.throws(() => readRaceBots(new URLSearchParams('bot-skill=NaN')), /skill/);
+  assert.equal(
+    readRaceBots(new URLSearchParams('bots=2&bot-skill=0.5&bot-aggression=1')).length,
+    2,
+  );
+  assert.equal(readRaceBots(new URLSearchParams('bots-only=1')).length, 1);
+  assert.throws(() => readRaceBots(new URLSearchParams('bots-only=1&bots=0')), /at least one/);
+  assert.deepEqual(
+    readRaceBots(new URLSearchParams('bots=2&bot-skill=1,0.2')).map(({ skill }) => skill),
+    [1, 0.2],
+  );
+  assert.throws(() => readRaceBots(new URLSearchParams('bots=3&bot-skill=1,0.2')), /per bot/);
+  assert.throws(() => readRaceBots(new URLSearchParams('bots=2&bot-skill=1,nope')), /skill/);
+});
+
+test('a skilled rear bot overtakes a less-skilled front bot in the shared world', () => {
+  const bots = readRaceBots(new URLSearchParams('bots=2&bot-skill=1,0.2'));
+  const simulation = createPhysicsSimulation(Ammo, {
+    definition,
+    configuration,
+    bots,
+    botsOnly: true,
+    terrain: terrain.physicsData(),
+    car: {
+      centers: geometry.centers.map((point) => point.toArray()),
+      radii: geometry.radii,
+      collisionVertices: geometry.collisionVertices.map((point) => point.toArray()),
+    },
+    cones: [],
+    cornerCones: [],
+    signGroups: [],
+  });
+  const input = {
+    configuration,
+    controls: { throttle: 0, brake: 0, reverse: 0, steer: 0, handbrake: false },
+    signs: [],
+    lights: {
+      headlights: false,
+      highBeams: false,
+      fogLights: false,
+      leftSignal: false,
+      rightSignal: false,
+    },
+  };
+  let snapshot = simulation.handle({ type: 'init', revision: 0 });
+  const clearance = raceBotGridSpacing + vehicleDimensions(geometry).halfLength * 2;
+  let passed = false;
+  try {
+    for (let step = 0; step < 40 * 20; step++) {
+      snapshot = simulation.handle({
+        type: 'advance',
+        revision: 0,
+        dt: 0.05,
+        input,
+        recycled: [snapshot.buffer],
+      });
+      if (snapshot.bots[0].metrics.progress - snapshot.bots[1].metrics.progress > clearance) {
+        passed = true;
+        break;
+      }
+    }
+    assert.ok(passed, JSON.stringify(snapshot.bots.map(({ metrics }) => metrics)));
+    assert.ok(snapshot.bots.every(({ metrics }) => metrics.offTrackSeconds === 0));
+  } finally {
+    simulation.dispose();
+  }
+});
+
+for (const scenario of [
+  { name: 'parked car', distance: 8, reverse: false },
+  { name: 'parked car after backing up for steering room', distance: 2, reverse: false },
+  { name: 'parked car on the reversed course', distance: 8, reverse: true },
+])
+  test(`race bot passes a ${scenario.name} using real vehicle physics`, () => {
+    const dimensions = vehicleDimensions(geometry);
+    const direction = { ...definition, reverse: scenario.reverse };
+    const map = createDrivingMap(direction, terrain, dimensions.halfWidth);
+    const count = map.samples.length;
+    const at = (i) => (i + count) % count;
+    let index = 0;
+    let best = Infinity;
+    for (let i = 0; i < count; i++) {
+      let bending = 0;
+      for (let j = -4; j <= 16; j++) bending += Math.abs(map.samples[at(i + j)].curvature);
+      if (bending < best) {
+        best = bending;
+        index = i;
+      }
+    }
+    const options = { ...defaultRaceBotOptions, skill: 1, learning: false };
+    const bot = createRaceBot(map, configuration, dimensions, options);
+    const resources = createPhysicsResources(Ammo);
+    const world = createPhysicsWorld(Ammo, resources, terrain.physicsData());
+    function vehicle(i, controls) {
+      const point = map.samples[at(i)];
+      return createVehiclePhysics({
+        Ammo,
+        resources,
+        simulationWorld: world,
+        car: {
+          ...geometry,
+          chassis: new THREE.Object3D(),
+          wheels: Array.from({ length: 4 }, () => new THREE.Object3D()),
+          hubs: Array.from({ length: 4 }, () => new THREE.Object3D()),
+          setBraking() {},
+          setReversing() {},
+          setHazards() {},
+        },
+        controls,
+        configurationState: { getState: () => configuration },
+        course: { terrain, isAsphalt: (position) => terrain.isAsphalt(position) },
+        spawn: { position: [point.x, point.z], heading: point.heading },
+        laps: { reset() {}, update() {} },
+      });
+    }
+    const driven = vehicle(index, bot.controls);
+    const parked = vehicle(index + scenario.distance, {
+      throttle: 0,
+      brake: 1,
+      reverse: 0,
+      steer: 0,
+      handbrake: true,
+    });
+    driven.reset();
+    parked.reset();
+    const original = parked.readState();
+    try {
+      for (let step = 0; step < 120 * 35; step++) {
+        const state = driven.readState();
+        bot.update(state, 1 / 120, [state, parked.readState()]);
+        driven.beforeStep();
+        parked.beforeStep();
+        world.step(1 / 120);
+        driven.afterStep();
+        parked.afterStep();
+        if (bot.metrics.progress > map.spacing * scenario.distance + 15) break;
+      }
+      assert.ok(
+        bot.metrics.progress > map.spacing * scenario.distance + 15,
+        JSON.stringify(bot.metrics),
+      );
+      assert.equal(bot.metrics.offTrackSeconds, 0);
+      const after = parked.readState();
+      assert.ok(
+        Math.hypot(after.x - original.x, after.z - original.z) < 0.5,
+        'pass without pushing the parked car',
+      );
+    } finally {
+      driven.dispose();
+      parked.dispose();
+      world.dispose();
+    }
+  });

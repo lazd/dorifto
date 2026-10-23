@@ -1,11 +1,11 @@
 import * as THREE from 'three';
 import { TireSmoke } from './smoke';
-import type { loadCar } from './car';
+import type { PhysicsCar } from './vehicle-physics';
 import type { CourseTerrain } from './terrain';
 
 export function createTireEffects(
   scene: THREE.Scene,
-  car: Awaited<ReturnType<typeof loadCar>>,
+  car: Pick<PhysicsCar, 'chassis' | 'wheels'> & { widths: number[] },
   terrain: CourseTerrain,
   isAsphalt: (position: THREE.Vector3) => boolean,
 ) {
@@ -151,5 +151,19 @@ export function createTireEffects(
     reset();
   }
 
-  return { reset, setCourse, update, captureDepth: smoke.captureDepth.bind(smoke) };
+  return {
+    get active() {
+      return smoke.active;
+    },
+    reset,
+    setCourse,
+    update,
+    captureDepth: smoke.captureDepth.bind(smoke),
+    dispose() {
+      marks.removeFromParent();
+      markGeometry.dispose();
+      marks.material.dispose();
+      smoke.dispose();
+    },
+  };
 }
