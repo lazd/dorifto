@@ -192,6 +192,15 @@ live experience import, and automatic tuning searches remain future work.
 
 ### Race presentation and pace follow-up
 
+From a standing launch, bots hold their initial heading for 0.6 seconds to build
+speed, then smoothly blend into racing-line steering over 2 seconds. Rolling
+starts use racing-line steering immediately; resets restart the launch phase.
+
+Inside passing attempts request 25% more throttle, capped at full throttle, while
+retaining normal braking and slip-based throttle reduction.
+After an inside attempt ends, its heading adjustment eases back to the racing
+line with a 0.4-second time constant instead of disappearing immediately.
+
 Controller version 2 starts closer to its intended skill-dependent pace, uses more
 assertive acceleration and stabilizes slip/yaw without changing vehicle physics.
 On Hillside at skill 1, three successive three-lap runs completed cleanly, with
@@ -212,7 +221,7 @@ optimization, rather than adding visual latency, remain the performance work.
 
 `bots-only=1` creates only bot vehicles and initially follows the first with the
 corner-aware chase camera (an explicit `camera` URL setting takes precedence).
-C cycles camera styles; Tab cycles the observed bot. The full-detail model,
+V cycles camera styles; Tab cycles the observed bot. The full-detail model,
 interior, telemetry, audio, effects and lap HUD belong to
 that bot, not to an additional hidden player. This mode also supports observing
 bot behavior without a player vehicle influencing collisions.

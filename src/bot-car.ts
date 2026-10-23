@@ -28,9 +28,19 @@ export const botLampSettings = [
   },
 ] as const;
 
+const botPalette = [
+  { name: 'Cyan', hue: 0.55 },
+  { name: 'Yellow', hue: 0.13 },
+  { name: 'Purple', hue: 0.7 },
+  { name: 'Green', hue: 0.34 },
+] as const;
+
+export function botName(index: number) {
+  return botPalette[index % botPalette.length].name;
+}
+
 export function botColor(index: number) {
-  const hues = [0.55, 0.13, 0.7, 0.34];
-  return new THREE.Color().setHSL(hues[index % hues.length], 0.8, 0.45).getStyle();
+  return new THREE.Color().setHSL(botPalette[index % botPalette.length].hue, 0.8, 0.45).getStyle();
 }
 
 export function createBotCar(source: PhysicsCar, index: number) {

@@ -472,7 +472,7 @@ test('spectating swaps the full model, camera telemetry and laps without resetti
   assert.deepEqual(client.standings, snapshot.standings);
   assert.deepEqual(
     client.raceEntrants.map(({ name }) => name),
-    ['Bot 1', 'Bot 2'],
+    ['Cyan', 'Yellow'],
   );
   const standings = client.standings;
   client.interpolate(1);
@@ -493,6 +493,30 @@ test('spectating swaps the full model, camera telemetry and laps without resetti
   assert.ok(fixture.car.chassis.position.distanceTo(first) < 1e-8);
   client.reset();
   assert.deepEqual(client.standings, [], 'clear standings while a reset is pending');
+});
+
+test('spectating restores the selected bot on initialization and preserves it on reset', async (t) => {
+  const { fixture, worker, client } = await clientFixture(t, {
+    botsOnly: true,
+    observedBot: 1,
+    bots: [
+      { skill: 1, aggression: 0.4, learning: false },
+      { skill: 0.5, aggression: 0.4, learning: false },
+    ],
+  });
+  assert.equal(client.observedBot, 1);
+  assert.equal(fixture.car.paintColor, client.raceEntrants[1].color);
+  assert.ok(fixture.car.chassis.position.distanceTo(client.botMarkers[1].position) < 1e-8);
+  client.advance(physicsStep * 4);
+  const snapshot = worker.reply();
+  assert.deepEqual(client.engine, snapshot.bots[1].engine);
+  assert.deepEqual(client.laps, snapshot.bots[1].laps);
+  client.reset();
+  worker.reply();
+  assert.equal(client.observedBot, 1);
+  assert.equal(client.cycleObservedBot(), true);
+  assert.equal(client.observedBot, 0);
+  assert.equal(fixture.car.paintColor, client.raceEntrants[0].color);
 });
 
 test('worker client bounds in-flight advances, ignores pre-reset replies, preserves snap samples, and surfaces failures', async (t) => {

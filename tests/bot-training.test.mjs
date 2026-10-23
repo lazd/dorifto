@@ -215,6 +215,10 @@ test('traffic follows the racing line, attacks ahead, passes inside, then return
       (plan.z - map.centers[targetIndex].z) * map.rights[targetIndex].z;
     assert.equal(Math.sign(offset), Math.sign(bendAt(index)), `inside line, reverse=${reverse}`);
     assert.ok(Math.abs(offset) >= dimensions.halfWidth * 2 + 0.74);
+    assert.ok(
+      Math.abs(offset) + dimensions.halfWidth > map.definition.width / 2,
+      'inside pass can reach the cone line',
+    );
     assert.equal(update(stateAt(index - 1)).attacking, true, 'hold the pass until fully clear');
     const clear = update(stateAt(index - 10));
     assert.equal(clear.attacking, false);

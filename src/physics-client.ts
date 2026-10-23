@@ -9,7 +9,7 @@ import type { ConfigurationState } from './configuration-state';
 import type { Store } from './store';
 import type { RunRecording } from './lap-recording';
 import { idleRpm } from './drivetrain';
-import { botColor, createBotCar } from './bot-car';
+import { botColor, botName, createBotCar } from './bot-car';
 import type { RaceBotOptions } from './race-bot';
 import type { RaceStanding } from './race-standings';
 import {
@@ -36,6 +36,7 @@ const maxExtrapolation = 0.05;
 interface PhysicsClientOptions {
   botsOnly?: boolean;
   bots?: RaceBotOptions[];
+  observedBot?: number;
   car: Awaited<ReturnType<typeof loadCar>>;
   course: ReturnType<typeof createCourse>;
   definition: CourseDefinition;
@@ -57,9 +58,9 @@ export function createPhysicsClient({
   onError,
   bots = [],
   botsOnly = false,
+  observedBot = 0,
 }: PhysicsClientOptions) {
   const botOffset = botsOnly ? 1 : 0;
-  let observedBot = 0;
   const botCars = bots
     .slice(botOffset)
     .map((_options, index) => createBotCar(car, index + botOffset));
@@ -83,10 +84,9 @@ export function createPhysicsClient({
   const botColors = markerCars.map((_car, index) => botColor(index));
   const raceEntrants = [
     ...(botsOnly ? [] : [{ name: 'You', color: new THREE.Color(carPaintColor).getStyle() }]),
-    ...bots.map((_bot, index) => ({ name: `Bot ${index + 1}`, color: botColor(index) })),
+    ...bots.map((_bot, index) => ({ name: botName(index), color: botColor(index) })),
   ];
   let standings: readonly RaceStanding[] = [];
-  if (botsOnly) car.setPaintColor(botColors[observedBot]);
   const botMarkers = markerCars.map((_car, index) => ({
     position: new THREE.Vector3(),
     forward: new THREE.Vector3(),
@@ -248,6 +248,10 @@ export function createPhysicsClient({
   };
   worker.onmessageerror = () => fail(new Error('Unable to deserialize a physics worker message'));
 
+  if (botsOnly) {
+    car.setPaintColor(botColors[observedBot]);
+    botCars.forEach((car, index) => car.setColor(botColors[botForModel(index + 1)]));
+  }
   const data = createPhysicsInit(definition, car, course, input().configuration, bots, botsOnly);
   send({ type: 'init', data });
 

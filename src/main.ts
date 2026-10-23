@@ -379,7 +379,7 @@ async function start() {
     'KeyZ',
     'Space',
     'KeyR',
-    'KeyC',
+    'KeyV',
     'KeyD',
     'KeyM',
     'KeyW',
@@ -409,6 +409,19 @@ async function start() {
       physics = createPhysicsClient({
         bots: nextBots,
         botsOnly: nextBotsOnly,
+        observedBot: nextBotsOnly
+          ? readParams(
+              ['observed-bot'],
+              (params) => {
+                const value = params.get('observed-bot');
+                if (value === null) return 0;
+                if (!/^\d+$/.test(value) || Number(value) >= nextBots.length)
+                  throw new Error(`Invalid observed-bot option: ${value}`);
+                return Number(value);
+              },
+              0,
+            )
+          : 0,
         car,
         course,
         definition: nextDefinition,
@@ -656,8 +669,9 @@ async function start() {
       recordedDriver = recordedDriverFor(botOptions, botsOnly);
       if (botsOnly) controlKeys.add('Tab');
       else controlKeys.delete('Tab');
-      writeRaceBots(url.searchParams, botOptions, botsOnly);
-      history.replaceState(null, '', url);
+      const botsUrl = new URL(location.href);
+      writeRaceBots(botsUrl.searchParams, botOptions, botsOnly);
+      history.replaceState(null, '', botsUrl);
       cameraNeedsReset = true;
       gameState.update({ status: { visible: false, error: false, message: '' } });
     } catch (error) {
@@ -1023,10 +1037,13 @@ async function start() {
     event.preventDefault();
     if (event.code === 'KeyR') {
       if (!event.repeat) reset();
-    } else if (event.code === 'KeyC') {
+    } else if (event.code === 'KeyV') {
       if (!event.repeat) cycleCamera();
     } else if (event.code === 'Tab') {
       if (!event.repeat && physics.cycleObservedBot()) {
+        const url = new URL(location.href);
+        url.searchParams.set('observed-bot', String(physics.observedBot));
+        history.replaceState(null, '', url);
         forward.set(0, 0, 1).applyQuaternion(car.chassis.quaternion);
         drivingCamera.reset(Math.atan2(forward.x, forward.z));
         tireEffects.reset();

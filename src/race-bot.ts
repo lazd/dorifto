@@ -66,6 +66,7 @@ export const raceBotTunings: Record<RaceBotPreset, RaceBotTuning> = {
 };
 /** Acceleration the speed profile and throttle assume at full throttle, m/s². */
 const driveAcceleration = 5;
+const chaseSkillLimit = 1.06;
 export const trainingCourses = { race: 'hillside', drift: 'sweeper' } as const;
 export type VehicleState = ReturnType<ReturnType<typeof createVehiclePhysics>['readState']>;
 
@@ -337,6 +338,7 @@ export function createRaceBot(
   let brakeApplications = 0;
   let throttleLifts = 0;
   let elapsed = 0;
+  let launchHeading: number | undefined;
   let progress = 0;
   let targetSpeed = 0;
   let lateralError = 0;
@@ -420,10 +422,12 @@ export function createRaceBot(
     braking = slowing = false;
     previousSpeed = 0;
     coastDeceleration = 2;
+    launchHeading = undefined;
     Object.assign(controls, { throttle: 0, brake: 0, reverse: 0, steer: 0, handbrake: false });
   }
 
   function update(state: VehicleState, dt: number, traffic: readonly VehicleState[] = []) {
+    if (index < 0 && state.speed < 2) launchHeading = state.heading;
     let nearest = index;
     let bestDistance = Infinity;
     const search = index < 0 ? count : Math.min(Math.ceil(count / 2), 20);
@@ -465,11 +469,17 @@ export function createRaceBot(
 
     const lookahead = 5 + state.speed * driver.lookaheadTime;
     const targetIndex = wrap(index + Math.max(1, Math.round(lookahead / spacing)), count);
-    const target = trafficPlanner.update(state, index, targetIndex, traffic);
+    const target = trafficPlanner.update(state, index, targetIndex, traffic, dt);
     const slipLimit = driver.countersteerSlip;
     const dx = target.x - state.x;
     const dz = target.z - state.z;
-    const bearing = angle(Math.atan2(dx, dz) - state.heading);
+    const lineHeading = Math.atan2(dx, dz);
+    const heading =
+      launchHeading === undefined
+        ? lineHeading
+        : launchHeading +
+          angle(lineHeading - launchHeading) * THREE.MathUtils.smoothstep(elapsed, 0.6, 2.6);
+    const bearing = angle(heading - state.heading);
     const wheelAngle = Math.atan2(
       2 * dimensions.wheelbase * Math.sin(bearing),
       Math.max(2, Math.hypot(dx, dz)),
@@ -498,7 +508,7 @@ export function createRaceBot(
     );
     const adjacent = wrap(index + (fraction < 0 ? -1 : 1), count);
     const plannedSpeed = THREE.MathUtils.lerp(speeds[index], speeds[adjacent], Math.abs(fraction));
-    targetSpeed = plannedSpeed;
+    targetSpeed = plannedSpeed * (target.attacking ? chaseSkillLimit : 1);
     controls.reverse = 0;
     if (state.vx * Math.sin(state.heading) + state.vz * Math.cos(state.heading) < -0.3) {
       controls.throttle = 0;
@@ -552,6 +562,7 @@ export function createRaceBot(
       : 0;
     // Invert the drivetrain's sqrt(pedal) response so small torque requests stay small.
     let throttle = braking ? 0 : clamp((desired + coast) / driveAcceleration, 0, 1) ** 2;
+    if (target.attacking) throttle = Math.min(1, throttle * 1.25);
     if (state.speed > 5)
       throttle *=
         1 - THREE.MathUtils.smoothstep(Math.abs(state.slipAngle), slipLimit, slipLimit * 2);

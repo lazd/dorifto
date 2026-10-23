@@ -40,7 +40,7 @@ per bot. For a faster rear bot and slower front bot in spectator mode:
 ?course=hillside&bots-only=1&bots=2&bot-skill=1,0.2
 ```
 
-Bots use cyan, yellow, purple and green; red is reserved for the player.
+Bots are named after their paint colors: Cyan, Yellow, Purple and Green; red is reserved for the player.
 
 For a **bots-only spectator session**, add `bots-only=1`:
 
@@ -50,8 +50,11 @@ For a **bots-only spectator session**, add `bots-only=1`:
 
 No player-controlled vehicle is created. The first bot uses the primary car model,
 telemetry, sound, tire effects and lap HUD, and the corner-aware chase camera
-follows it initially unless `camera` is specified. **C** cycles cameras normally;
-**Tab** cycles the observed bot, including in cabin view. The observed bot receives
+follows it initially unless `camera` is specified. **V** cycles cameras normally;
+**Tab** cycles the observed bot, including in cabin view, and saves its zero-based
+index in `observed-bot` (for example, `observed-bot=1` follows the second bot).
+The selection survives refreshes and course changes; an invalid or out-of-range
+index falls back to the first bot. The observed bot receives
 the full-detail model/interior, gauges, mirrors and matching telemetry; the other
 bots use lightweight exteriors. Minimap markers retain each bot's color and
 identity when switching views. `bots-only=1` defaults to one bot; explicitly

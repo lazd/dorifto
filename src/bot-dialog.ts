@@ -7,7 +7,7 @@ import {
   type RaceBotOptions,
   type RaceBotPreset,
 } from './race-bot';
-import { botColor } from './bot-car';
+import { botColor, botName } from './bot-car';
 import { defaultTuningPresets } from './configuration-state';
 
 const presetNames = new Map(defaultTuningPresets().map((preset) => [preset.id, preset.name]));
@@ -45,7 +45,7 @@ export function bindBotDialog(
         avatar.className = 'avatar';
         avatar.textContent = '🤖';
         avatar.style.setProperty('--avatar-color', botColor(index));
-        title.append(avatar, `Bot ${index + 1}`);
+        title.append(avatar, botName(index));
         well.setAttribute('aria-labelledby', title.id);
 
         const style = document.createElement('select');
