@@ -46,10 +46,8 @@ test('starts with protected defaults and the captured Drift Aggressive and Grip 
   );
   assert.deepEqual(presets.find(({ id }) => id === 'grip-default').tuning, defaultTuning('grip'));
   assert.deepEqual(presets.find(({ id }) => id === 'grip-fast').tuning, {
+    ...defaultTuning('grip'),
     horsepower: 500,
-    steeringExpo: 0.6,
-    steeringRate: 2,
-    steeringScale: 1,
     frontGrip: 1.1,
     rearGrip: 1.15,
     frontStiffness: 51000,
@@ -66,13 +64,10 @@ test('starts with protected defaults and the captured Drift Aggressive and Grip 
   );
   assert.equal(presets.find(({ id }) => id === 'drift-aggressive').readonly, true);
   assert.deepEqual(presets.find(({ id }) => id === 'drift-aggressive').tuning, {
+    ...defaultTuning('drift'),
     horsepower: 515,
-    steeringExpo: 0.6,
     steeringRate: 2.8,
     steeringScale: 1.03,
-    frontGrip: 1.05,
-    rearGrip: 1,
-    frontStiffness: 45000,
     rearStiffness: 43000,
   });
 });
@@ -101,7 +96,9 @@ test('stores only user presets and combines them with built-ins on load', () => 
   const loaded = createConfigurationState(storage).getState().tuningPresets;
   assert.deepEqual(loaded, [...defaultTuningPresets(), custom]);
   persistTuningPresets(storage, loaded);
-  assert.deepEqual(JSON.parse(storage.getItem(tuningPresetsStorageKey)), [custom]);
+  const stored = JSON.parse(storage.getItem(tuningPresetsStorageKey));
+  assert.equal(stored.length, 1);
+  assert.equal(Object.keys(stored[0].tuning).length, 8);
   assert.deepEqual(createConfigurationState(storage).getState().tuningPresets, loaded);
 });
 

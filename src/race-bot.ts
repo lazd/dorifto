@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 import { courseRoute, courseSpawn, type CourseDefinition } from './courses';
-import { driveModes } from './drive-modes';
 import { createTrafficPlanner } from './bot-traffic';
 import { optimizeRacingLine } from './racing-line';
 import { defaultTuningPresets } from './configuration-state';
@@ -343,7 +342,6 @@ export function createRaceBot(
     steer: 0,
     handbrake: false,
   };
-  const tune = driveModes[configuration.driveMode];
   const tuning = configuration.profiles[configuration.driveMode];
   const { frontTorqueNm, rearTorqueNm } = vehicleSettings.brakes;
   const fullBrakeDeceleration =
@@ -564,8 +562,8 @@ export function createRaceBot(
     );
     const steeringLimit =
       THREE.MathUtils.lerp(
-        tune.steeringLow,
-        tune.steeringHigh,
+        tuning.steeringLow,
+        tuning.steeringHigh,
         Math.min((state.speed * 3.6) / 140, 1),
       ) * tuning.steeringScale;
     const yawError = state.yawRate - state.speed * target.curvature;

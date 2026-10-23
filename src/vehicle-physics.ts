@@ -6,8 +6,6 @@ import type { DrivingControls } from './controls';
 import type { LapTimer } from './laps';
 import type { ConfigurationState } from './configuration-state';
 import type { Store } from './store';
-import { wattsPerHorsepower } from './configuration-state';
-import { driveModes } from './drive-modes';
 import { Drivetrain, wheelInertia, type DrivetrainInput } from './drivetrain';
 import { vehicleSettings } from './vehicle-settings';
 import {
@@ -18,6 +16,8 @@ import {
 import type { HeightfieldData } from './terrain-query';
 import { createPhysicsResources, createPhysicsWorld } from './physics-world';
 export { createPhysicsResources, createPhysicsWorld } from './physics-world';
+
+const wattsPerHorsepower = 745.699872;
 
 export type PhysicsControls = Pick<
   DrivingControls,
@@ -340,7 +340,6 @@ export function createVehiclePhysics({
 
   function beforeStep(startHeld = false) {
     const { driveMode, profiles } = configurationState.getState();
-    const tune = driveModes[driveMode];
     const tireTune = profiles[driveMode];
     const linear = body.getLinearVelocity();
     const angular = body.getAngularVelocity();
@@ -363,7 +362,7 @@ export function createVehiclePhysics({
       reversing = true;
     const input = startHeld ? 0 : controls.steer;
     const steeringLimit =
-      THREE.MathUtils.lerp(tune.steeringLow, tune.steeringHigh, Math.min(speed / 140, 1)) *
+      THREE.MathUtils.lerp(tireTune.steeringLow, tireTune.steeringHigh, Math.min(speed / 140, 1)) *
       tireTune.steeringScale;
     const targetSteering = input * steeringLimit;
     const smoothedSteering = THREE.MathUtils.damp(steering, targetSteering, 10, fixedStep);
@@ -444,7 +443,7 @@ export function createVehiclePhysics({
       const surfaceGrip = paved ? 1 : 0.65;
       const capacity =
         load *
-        (tune.friction * (rear ? tireTune.rearGrip : tireTune.frontGrip) + staticGrip) *
+        (tireTune.friction * (rear ? tireTune.rearGrip : tireTune.frontGrip) + staticGrip) *
         surfaceGrip;
       const lateralDemand =
         -(rear ? tireTune.rearStiffness : tireTune.frontStiffness) * slipAngle * surfaceGrip;
@@ -489,9 +488,9 @@ export function createVehiclePhysics({
     drivetrainInput.handbrake = handbrake;
     drivetrainInput.roadWheelSpeed = forwardSpeed / drivenWheelRadius;
     drivetrainInput.speedLimited = reversing && speed >= 35;
-    const powerScale = tireTune.horsepower / Math.round(tune.enginePower / wattsPerHorsepower);
-    drivetrainInput.peakTorque = tune.engineTorque * powerScale;
-    drivetrainInput.peakPower = tune.enginePower * powerScale;
+    const powerScale = tireTune.horsepower / Math.round(tireTune.enginePower / wattsPerHorsepower);
+    drivetrainInput.peakTorque = tireTune.engineTorque * powerScale;
+    drivetrainInput.peakPower = tireTune.enginePower * powerScale;
     // Integrate the engine and both driven wheels together, so each wheel sees
     // the same differential snapshot and tire reaction reaches the crankshaft.
     const tireStep = fixedStep / 12;

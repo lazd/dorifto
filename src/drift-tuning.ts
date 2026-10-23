@@ -1,4 +1,4 @@
-import { driveModes, type DriveMode } from './drive-modes';
+import type { DriveMode } from './drive-modes';
 import { type DrivingTuning, type ConfigurationState } from './configuration-state';
 import type { Store } from './store';
 import { nextCustomPresetName, nextTuningPresetId, persistTuningPresets } from './tuning-presets';
@@ -155,7 +155,7 @@ export function createDrivingTuning(
       if (input.value !== String(value)) input.value = String(value);
       output.value =
         slider.key === 'steeringScale'
-          ? `${((driveModes[mode].steeringLow * value * 180) / Math.PI).toFixed(1)} / ${((driveModes[mode].steeringHigh * value * 180) / Math.PI).toFixed(1)} deg`
+          ? `${((tuning.steeringLow * value * 180) / Math.PI).toFixed(1)} / ${((tuning.steeringHigh * value * 180) / Math.PI).toFixed(1)} deg`
           : slider.key === 'horsepower'
             ? `${value.toFixed(0)} hp`
             : slider.key === 'steeringExpo'
