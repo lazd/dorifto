@@ -56,9 +56,9 @@ test('HUD cycle progressively hides each group and restores without changing nat
     if (descriptor) Object.defineProperty(globalThis, 'document', descriptor);
     else delete globalThis.document;
   });
-  const cycle = createHudVisibilityCycle();
+  const visibility = createHudVisibilityCycle();
   for (let press = 1; press <= 10; press++) {
-    cycle();
+    visibility.cycle();
     groups.forEach((selectors, index) => {
       for (const selector of selectors) {
         const node = nodes.get(selector);
@@ -71,6 +71,16 @@ test('HUD cycle progressively hides each group and restores without changing nat
       }
     });
   }
+  for (let level = 0; level <= 4; level++) {
+    visibility.set(level);
+    groups.forEach((selectors, index) => {
+      for (const selector of selectors) {
+        const node = nodes.get(selector);
+        assert.equal(node.classList.contains('hud-hidden'), level > index, selector);
+      }
+    });
+  }
+  for (const invalid of [-1, 5, 1.5]) assert.throws(() => visibility.set(invalid), RangeError);
 });
 
 function fixture(t, initiallyOpen = false) {

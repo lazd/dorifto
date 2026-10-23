@@ -1,10 +1,11 @@
 import * as THREE from 'three';
 import type { PhysicsCar } from './vehicle-physics';
 import { createBotPlate } from './bot-plate';
+import { headlightIntensity, underglowIntensity } from './car';
 
-// Share exterior geometry/textures; omit cabin instruments, lights and mirror renderers.
+// Share exterior geometry/textures; omit cabin instruments and mirror renderers.
 const exterior =
-  /^(Body2|Front|Hood|rbumper|Wing|Mirrors|Windows|BlackTrim|Mustache|HLblack|hlglass|glasstails|glassmiddle|Glasstop|Rubber_|Cornerglass|FogGlass_|Projectorglass_|Chin_|Badge_|blacklights|tailinside|LightsInside|LicensePlate|platelight|185_T_)|_(Badges|Engravings|Reverseref[12]|RefractionInd|Mufflers|Plastico(\.002)?)_0$/;
+  /^(Body2|Front|Hood|rbumper|Wing|Mirrors|Windows|BlackTrim|Mustache|HLblack|hlglass|glasstails|glassmiddle|Glasstop|Rubber_|Cornerglass|FogGlass_|Projectorglass_|Chin_|Badge_|blacklights|tailinside|LightsInside|LicensePlate|platelight|185_T_)|^Cube_Black_0$|_(Badges|Engravings|Reverseref[12]|RefractionInd|Mufflers|Plastico(\.002)?)_0$/;
 
 export const botLampSettings = [
   { pattern: /^tailbrake_/, color: 0xff1008, running: 0.6, braking: 6 },
@@ -52,9 +53,45 @@ export function createBotCar(source: PhysicsCar, index: number) {
     material: THREE.MeshStandardMaterial;
     settings: (typeof botLampSettings)[number];
   }[] = [];
+  const headlights: THREE.SpotLight[] = [];
+  const headlightGlows: THREE.Object3D[] = [];
+  const underglow: THREE.RectAreaLight[] = [];
   source.chassis.updateMatrixWorld(true);
   const inverse = source.chassis.matrixWorld.clone().invert();
+  function cloneAtChassis<T extends THREE.Object3D>(object: T): T {
+    const copy = object.clone();
+    copy.matrix.copy(inverse).multiply(object.matrixWorld);
+    copy.matrix.decompose(copy.position, copy.quaternion, copy.scale);
+    return copy;
+  }
   source.chassis.traverse((object) => {
+    if (object instanceof THREE.RectAreaLight && object.name === 'red-underglow') {
+      const light = cloneAtChassis(object);
+      light.name = 'bot-underglow';
+      light.color.setStyle(botColor(index));
+      light.intensity = 0;
+      underglow.push(light);
+      chassis.add(light);
+      return;
+    }
+    if (object instanceof THREE.SpotLight && object.name === 'headlight-beam') {
+      const light = cloneAtChassis(object);
+      light.target = cloneAtChassis(object.target);
+      // Bot beams do not consume the shadow samplers needed by the player's lights.
+      light.castShadow = false;
+      light.visible = true;
+      light.intensity = 0;
+      headlights.push(light);
+      chassis.add(light, light.target);
+      return;
+    }
+    if (object.name === 'headlight-beam-glow') {
+      const glow = cloneAtChassis(object);
+      glow.visible = false;
+      headlightGlows.push(glow);
+      chassis.add(glow);
+      return;
+    }
     if (!(object instanceof THREE.Mesh)) return;
     const lamp = botLampSettings.find(({ pattern }) => pattern.test(object.name));
     if (!exterior.test(object.name) && !lamp) return;
@@ -82,7 +119,8 @@ export function createBotCar(source: PhysicsCar, index: number) {
     chassis.add(mesh);
   });
   let braking = false;
-  let headlights = false;
+  let headlightsOn = false;
+  let underglowOn = false;
   let reversing = false;
   function updateLamps() {
     for (const { material, settings } of lamps) {
@@ -93,7 +131,7 @@ export function createBotCar(source: PhysicsCar, index: number) {
             ? 4
             : 0
           : 'headlight' in settings
-            ? headlights
+            ? headlightsOn
               ? 8
               : 0
             : braking
@@ -137,7 +175,14 @@ export function createBotCar(source: PhysicsCar, index: number) {
     setThinking: plate.setThinking,
     setColor(color: THREE.ColorRepresentation) {
       for (const material of paintMaterials) material.color.set(color);
+      for (const light of underglow) light.color.set(color);
       plate.setColor(color);
+    },
+    setUnderglow(enabled: boolean) {
+      if (underglowOn === enabled) return;
+      underglowOn = enabled;
+      const intensity = enabled ? underglowIntensity : 0;
+      for (const light of underglow) light.intensity = intensity;
     },
     setBraking(value: boolean) {
       if (braking === value) return;
@@ -145,8 +190,10 @@ export function createBotCar(source: PhysicsCar, index: number) {
       updateLamps();
     },
     setHeadlights(value: boolean) {
-      if (headlights === value) return;
-      headlights = value;
+      if (headlightsOn === value) return;
+      headlightsOn = value;
+      for (const light of headlights) light.intensity = value ? headlightIntensity : 0;
+      for (const glow of headlightGlows) glow.visible = value;
       updateLamps();
     },
     setReversing(value: boolean) {
@@ -159,6 +206,7 @@ export function createBotCar(source: PhysicsCar, index: number) {
       chassis.removeFromParent();
       for (const object of [...wheels, ...hubs]) object.removeFromParent();
       materials.forEach((material) => material.dispose());
+      headlights.forEach((light) => light.dispose());
     },
   };
 }

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { carPaintColor, type loadCar } from './car';
+import { carPaintColor, carUnderglowColor, type loadCar } from './car';
 import type { createCourse } from './course';
 import type { CourseDefinition, courseSpawn } from './courses';
 import type { DrivingControls } from './controls';
@@ -252,6 +252,7 @@ export function createPhysicsClient({
 
   if (botsOnly) {
     car.setPaintColor(botColors[observedBot]);
+    car.setUnderglowColor(botColors[observedBot]);
     observedPlate?.setColor(botColors[observedBot]);
     botCars.forEach((car, index) => car.setColor(botColors[botForModel(index + 1)]));
   }
@@ -354,6 +355,7 @@ export function createPhysicsClient({
         return false;
       observedBot = (observedBot + 1) % bots.length;
       car.setPaintColor(botColors[observedBot]);
+      car.setUnderglowColor(botColors[observedBot]);
       observedPlate?.setColor(botColors[observedBot]);
       botCars.forEach((car, index) => car.setColor(botColors[botForModel(index + 1)]));
       botEffects.forEach((effect) => effect.reset());
@@ -373,7 +375,19 @@ export function createPhysicsClient({
     get botSmokeActive() {
       return botEffects.some((effect) => effect.active);
     },
-    updateBotEffects(dt: number, camera: THREE.Camera, headlights: boolean, active = true) {
+    setBotLighting(headlights: boolean, time: ConfigurationState['timeOfDay']) {
+      botCars.forEach((bot) => {
+        bot.setHeadlights(headlights);
+        bot.setUnderglow(time === 'night');
+      });
+    },
+    updateBotEffects(
+      dt: number,
+      camera: THREE.Camera,
+      headlights: boolean,
+      time: ConfigurationState['timeOfDay'],
+      active = true,
+    ) {
       botSounds.length = 0;
       listenerRight.setFromMatrixColumn(camera.matrixWorld, 0).normalize();
       camera.getWorldPosition(listenerPosition);
@@ -383,10 +397,12 @@ export function createPhysicsClient({
         const effect = botEffects[index];
         if (!active || !state || !car.chassis.visible || resetting) {
           car.setHeadlights(false);
+          car.setUnderglow(false);
           effect.reset();
           return;
         }
         car.setHeadlights(headlights);
+        car.setUnderglow(time === 'night');
         const velocity = botVelocity[index].fromArray(state.velocity);
         const speed = velocity.length();
         const slip =
@@ -493,7 +509,10 @@ export function createPhysicsClient({
       botCars.forEach((bot) => bot.dispose());
       observedPlate?.dispose();
       botEffects.forEach((effect) => effect.dispose());
-      if (botsOnly && restoreCarPaint) car.setPaintColor(carPaintColor);
+      if (botsOnly && restoreCarPaint) {
+        car.setPaintColor(carPaintColor);
+        car.setUnderglowColor(carUnderglowColor);
+      }
     },
     get engine() {
       return observedTelemetry().engine;

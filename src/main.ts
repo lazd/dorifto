@@ -109,6 +109,17 @@ async function start() {
       },
       fallback,
     );
+  const requestedHudLevel = readParams(
+    ['hide-ui'],
+    (params) => {
+      const value = params.get('hide-ui');
+      if (value === null) return 0;
+      if (!/^[0-4]$/.test(value)) throw new Error(`Invalid hide-ui option: ${value}`);
+      return Number(value);
+    },
+    0,
+  );
+  ui.setHudVisibility(requestedHudLevel);
   const requestedCamera = readOption(
     'camera',
     configurationState.getState().cameraStyle,
@@ -674,6 +685,7 @@ async function start() {
       writeRaceBots(botsUrl.searchParams, botOptions, botsOnly);
       history.replaceState(null, '', botsUrl);
       cameraNeedsReset = true;
+      await warmShaders();
       gameState.update({ status: { visible: false, error: false, message: '' } });
     } catch (error) {
       configurationState.update({
@@ -1059,7 +1071,12 @@ async function start() {
     } else if (event.code === 'KeyS') {
       if (!event.repeat) pressStereo();
     } else if (event.code === 'KeyU') {
-      if (!event.repeat) ui.cycleHudVisibility();
+      if (!event.repeat) {
+        const level = ui.cycleHudVisibility();
+        const url = new URL(location.href);
+        url.searchParams.set('hide-ui', String(level));
+        history.replaceState(null, '', url);
+      }
     } else keys.add(event.code);
   });
   window.addEventListener('keyup', (event) => {
@@ -1242,7 +1259,7 @@ async function start() {
       tires: replaying ? playbackFrame.tires : physics.tireSounds,
       ...backfire,
     });
-    physics.updateBotEffects(dt, camera, frameHeadlights, !replaying);
+    physics.updateBotEffects(dt, camera, frameHeadlights, appliedTime, !replaying);
     audio.updateOpponents(physics.botSounds);
     const timing = replay
       ? replay.recording.timingAt(replay.time)
@@ -1306,129 +1323,134 @@ async function start() {
   reset();
   showLoading('Loading your record lap…', 0.4);
   await refreshRecordLap();
-  const warmupCamera = camera.clone();
-  warmupCamera.position.copy(car.chassis.position).add(new THREE.Vector3(5, 3, 6));
-  warmupCamera.lookAt(car.chassis.position);
-  const mirrorWarmupCamera = warmupCamera.clone();
-  mirrorWarmupCamera.layers.enable(carLightLayers.interior);
-  drivingCamera.getCabinEye(mirrorWarmupCamera.position);
-  mirrorWarmupCamera.lookAt(
-    mirrorWarmupCamera.position
-      .clone()
-      .add(new THREE.Vector3(0, 0, 1).applyQuaternion(car.chassis.quaternion)),
-  );
-  const previousTarget = renderer.getRenderTarget();
-  ghost.chassis.position.copy(car.chassis.position);
-  ghost.chassis.quaternion.copy(car.chassis.quaternion);
-  ghost.wheels.forEach((wheel, i) => {
-    wheel.position.copy(car.wheels[i].position);
-    wheel.quaternion.copy(car.wheels[i].quaternion);
-  });
-  function restoreLighting() {
-    const { cameraStyle, mirrorResolution } = configurationState.getState();
-    car.setMirrors(cameraStyle, mirrorResolution);
-    lighting.apply(appliedTime);
-    car.setHighBeams(controls.highBeams);
-    car.setFogLights(vehicleLights.fogLights);
-    car.setBraking(physics.spawnBrakeHeld);
-    car.setReversing(physics.reversing);
-    car.setLighting(shownHeadlights, appliedTime);
-    car.setStereo(stereo.isPowered);
-    car.setDashLight('abs', configurationState.getState().driveMode === 'drift');
-  }
-  try {
-    // Offscreen targets use different output and tone-mapping shaders than the game canvas.
-    renderer.setRenderTarget(null);
-    ghost.visible = true;
-    car.setDashLight('abs', true);
-    // Sky shaders only re-key when the sky changes, so other times of day compile on first switch.
-    // Headlights come first so their glow meshes are visible when each light layout first compiles.
-    const lightLayouts = [true, false].flatMap((headlights) =>
-      [false, true].flatMap((highBeams) =>
-        [false, true].flatMap((fogLights) =>
-          (['off', 'brake', 'reverse'] as const).flatMap((rearLights) =>
-            [false, true].map((interiorLights) => ({
-              headlights,
-              highBeams,
-              fogLights,
-              rearLights,
-              interiorLights,
-            })),
+  async function warmShaders() {
+    const warmupCamera = camera.clone();
+    warmupCamera.position.copy(car.chassis.position).add(new THREE.Vector3(5, 3, 6));
+    warmupCamera.lookAt(car.chassis.position);
+    const mirrorWarmupCamera = warmupCamera.clone();
+    mirrorWarmupCamera.layers.enable(carLightLayers.interior);
+    drivingCamera.getCabinEye(mirrorWarmupCamera.position);
+    mirrorWarmupCamera.lookAt(
+      mirrorWarmupCamera.position
+        .clone()
+        .add(new THREE.Vector3(0, 0, 1).applyQuaternion(car.chassis.quaternion)),
+    );
+    const previousTarget = renderer.getRenderTarget();
+    ghost.chassis.position.copy(car.chassis.position);
+    ghost.chassis.quaternion.copy(car.chassis.quaternion);
+    ghost.wheels.forEach((wheel, i) => {
+      wheel.position.copy(car.wheels[i].position);
+      wheel.quaternion.copy(car.wheels[i].quaternion);
+    });
+    function restoreLighting() {
+      const { cameraStyle, mirrorResolution } = configurationState.getState();
+      car.setMirrors(cameraStyle, mirrorResolution);
+      lighting.apply(appliedTime);
+      car.setHighBeams(controls.highBeams);
+      car.setFogLights(vehicleLights.fogLights);
+      car.setBraking(physics.spawnBrakeHeld);
+      car.setReversing(physics.reversing);
+      car.setLighting(shownHeadlights, appliedTime);
+      physics.setBotLighting(shownHeadlights, appliedTime);
+      car.setStereo(stereo.isPowered);
+      car.setDashLight('abs', configurationState.getState().driveMode === 'drift');
+    }
+    try {
+      // Offscreen targets use different output and tone-mapping shaders than the game canvas.
+      renderer.setRenderTarget(null);
+      ghost.visible = true;
+      car.setDashLight('abs', true);
+      // Sky shaders only re-key when the sky changes, so other times of day compile on first switch.
+      // Headlights come first so their glow meshes are visible when each light layout first compiles.
+      const lightLayouts = [true, false].flatMap((headlights) =>
+        [false, true].flatMap((highBeams) =>
+          [false, true].flatMap((fogLights) =>
+            (['off', 'brake', 'reverse'] as const).flatMap((rearLights) =>
+              [false, true].map((interiorLights) => ({
+                headlights,
+                highBeams,
+                fogLights,
+                rearLights,
+                interiorLights,
+              })),
+            ),
           ),
         ),
-      ),
-    );
-    const { mirrorResolution } = configurationState.getState();
-    const warmMirrorResolution = mirrorResolution === 'off' ? 'low' : mirrorResolution;
-    // Shader programs depend on the number of visible lights of each kind, not which switch made them visible.
-    const warmedLayouts = new Set<string>();
-    const signature = (view: THREE.Camera) => {
-      const counts = new Map<string, number>();
-      scene.traverseVisible((object) => {
-        if (!(object instanceof THREE.Light) || !object.layers.test(view.layers)) return;
-        // Lights whose shadow maps don't exist yet still need a render to allocate them.
-        const { shadow: lightShadow } = object as THREE.Light & { shadow?: THREE.LightShadow };
-        const shadow =
-          !object.castShadow || !lightShadow
-            ? ''
-            : lightShadow.map
-              ? '+shadow'
-              : `+new${object.id}`;
-        const key = `${object.type}${shadow}`;
-        counts.set(key, (counts.get(key) ?? 0) + 1);
-      });
-      return [view.layers.mask, ...[...counts].sort()].join();
-    };
-    // The sky shader only re-keys for the current lights when the background changes.
-    const sky = scene.background;
-    const placeholderSky = new THREE.DataTexture(new Uint8Array(4 * 4 * 2), 4, 2);
-    placeholderSky.mapping = THREE.EquirectangularReflectionMapping;
-    placeholderSky.colorSpace = THREE.SRGBColorSpace;
-    placeholderSky.needsUpdate = true;
-    for (const [index, layout] of lightLayouts.entries()) {
-      showLoading('Compiling shaders…', 0.45 + (0.4 * index) / lightLayouts.length);
-      car.setLighting(layout.headlights, appliedTime);
-      car.setHighBeams(layout.highBeams);
-      car.setFogLights(layout.fogLights);
-      car.setBraking(layout.rearLights === 'brake');
-      car.setReversing(layout.rearLights === 'reverse');
-      car.setMirrors(layout.interiorLights ? 'cabin' : 'corner', warmMirrorResolution);
-      const view = layout.interiorLights ? mirrorWarmupCamera : warmupCamera;
-      const layoutSignature = signature(view);
-      if (warmedLayouts.has(layoutSignature)) continue;
-      warmedLayouts.add(layoutSignature);
-      scene.background = warmedLayouts.size % 2 ? sky : placeholderSky;
-      await renderer.compileAsync(scene, view);
-      // Rendering allocates the shadow maps and render targets each light layout samples.
-      renderer.render(scene, view);
+      );
+      const { mirrorResolution } = configurationState.getState();
+      const warmMirrorResolution = mirrorResolution === 'off' ? 'low' : mirrorResolution;
+      // Shader programs depend on the number of visible lights of each kind, not which switch made them visible.
+      const warmedLayouts = new Set<string>();
+      const signature = (view: THREE.Camera) => {
+        const counts = new Map<string, number>();
+        scene.traverseVisible((object) => {
+          if (!(object instanceof THREE.Light) || !object.layers.test(view.layers)) return;
+          // Lights whose shadow maps don't exist yet still need a render to allocate them.
+          const { shadow: lightShadow } = object as THREE.Light & { shadow?: THREE.LightShadow };
+          const shadow =
+            !object.castShadow || !lightShadow
+              ? ''
+              : lightShadow.map
+                ? '+shadow'
+                : `+new${object.id}`;
+          const key = `${object.type}${shadow}`;
+          counts.set(key, (counts.get(key) ?? 0) + 1);
+        });
+        return [view.layers.mask, ...[...counts].sort()].join();
+      };
+      // The sky shader only re-keys for the current lights when the background changes.
+      const sky = scene.background;
+      const placeholderSky = new THREE.DataTexture(new Uint8Array(4 * 4 * 2), 4, 2);
+      placeholderSky.mapping = THREE.EquirectangularReflectionMapping;
+      placeholderSky.colorSpace = THREE.SRGBColorSpace;
+      placeholderSky.needsUpdate = true;
+      for (const [index, layout] of lightLayouts.entries()) {
+        showLoading('Compiling shaders…', 0.45 + (0.4 * index) / lightLayouts.length);
+        car.setLighting(layout.headlights, appliedTime);
+        physics.setBotLighting(layout.headlights, appliedTime);
+        car.setHighBeams(layout.highBeams);
+        car.setFogLights(layout.fogLights);
+        car.setBraking(layout.rearLights === 'brake');
+        car.setReversing(layout.rearLights === 'reverse');
+        car.setMirrors(layout.interiorLights ? 'cabin' : 'corner', warmMirrorResolution);
+        const view = layout.interiorLights ? mirrorWarmupCamera : warmupCamera;
+        const layoutSignature = signature(view);
+        if (warmedLayouts.has(layoutSignature)) continue;
+        warmedLayouts.add(layoutSignature);
+        scene.background = warmedLayouts.size % 2 ? sky : placeholderSky;
+        await renderer.compileAsync(scene, view);
+        // Rendering allocates the shadow maps and render targets each light layout samples.
+        renderer.render(scene, view);
+      }
+      scene.background = sky;
+      placeholderSky.dispose();
+      showLoading('Preparing rear-view mirrors…', 0.85);
+      car.setMirrors('cabin', warmMirrorResolution);
+      for (const rearLights of ['off', 'brake', 'reverse'] as const) {
+        car.setBraking(rearLights === 'brake');
+        car.setReversing(rearLights === 'reverse');
+        await renderer.compileAsync(scene, mirrorWarmupCamera);
+        await car.warmMirrors(renderer, scene, mirrorWarmupCamera);
+      }
+      showLoading('Preparing the ghost car…', 0.95);
+      restoreLighting();
+      car.setMirrors('corner', configurationState.getState().mirrorResolution);
+      ghost.visible = true;
+      await renderer.compileAsync(scene, warmupCamera);
+      const depth = tireEffects.captureDepth(renderer, scene, warmupCamera, true);
+      renderer.render(scene, warmupCamera);
+      ghost.renderGlow(renderer, warmupCamera, depth);
+      ghost.visible = false;
+      await renderer.compileAsync(scene, camera);
+      renderer.render(scene, warmupCamera);
+      renderer.getContext().finish();
+    } finally {
+      ghost.visible = false;
+      restoreLighting();
+      renderer.setRenderTarget(previousTarget);
     }
-    scene.background = sky;
-    placeholderSky.dispose();
-    showLoading('Preparing rear-view mirrors…', 0.85);
-    car.setMirrors('cabin', warmMirrorResolution);
-    for (const rearLights of ['off', 'brake', 'reverse'] as const) {
-      car.setBraking(rearLights === 'brake');
-      car.setReversing(rearLights === 'reverse');
-      await renderer.compileAsync(scene, mirrorWarmupCamera);
-      await car.warmMirrors(renderer, scene, mirrorWarmupCamera);
-    }
-    showLoading('Preparing the ghost car…', 0.95);
-    restoreLighting();
-    car.setMirrors('corner', configurationState.getState().mirrorResolution);
-    ghost.visible = true;
-    await renderer.compileAsync(scene, warmupCamera);
-    const depth = tireEffects.captureDepth(renderer, scene, warmupCamera, true);
-    renderer.render(scene, warmupCamera);
-    ghost.renderGlow(renderer, warmupCamera, depth);
-    ghost.visible = false;
-    await renderer.compileAsync(scene, camera);
-    renderer.render(scene, warmupCamera);
-    renderer.getContext().finish();
-  } finally {
-    ghost.visible = false;
-    restoreLighting();
-    renderer.setRenderTarget(previousTarget);
   }
+  await warmShaders();
   gameState.update({ status: { visible: false, error: false, message: '' } });
   document.querySelectorAll('.hide-when-loading').forEach((node) => {
     node.classList.remove('hide-when-loading');

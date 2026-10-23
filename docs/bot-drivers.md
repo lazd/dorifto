@@ -287,9 +287,15 @@ timed laps from 46.512 s to 44.711 s. Experience from version 1 is incompatible.
 Bots now publish engine, tire/contact, burnout, braking and velocity telemetry.
 The client uses it for stereo/distance-attenuated audio, actual-slip smoke and tire
 marks, brake lamps, and color-matched minimap arrows in both orientations.
-Running lights are always illuminated; headlight lenses follow the player's
-headlight setting. Projected beams remain deferred after an additional spotlight
-exposed a Metal shader compilation error. Bot smoke shares the player's scene
+Running lights are always illuminated; low-beam headlights and lens glow follow
+the player's headlight setting. Each bot gets its own pair of projected beams,
+sharing the player's beam geometry and settings but without shadows to preserve
+GPU shadow samplers. Bots do not get fog lights or high beams. Changing bot settings
+warms the shaders for the new light count before racing resumes.
+At night each bot also gets paint-matched underglow, including the full-detail
+observed car in bots-only mode. Bot exteriors retain the model's black underbody
+mesh to close the underside when a car rolls over.
+Bot smoke shares the player's scene
 depth pass instead of adding a depth render per opponent.
 
 An experimental 50-100 ms presentation buffer was removed: delaying player

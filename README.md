@@ -25,9 +25,13 @@ backing up for steering room. This is basic passing, not competitive defending.
 Color-matched minimap arrows show their positions and
 headings. Bots have distance-attenuated stereo engine/tire audio, real-slip smoke
 and tire marks, glowing running lamps and telemetry-driven brake lamps.
-Their headlight lenses follow the player's headlight setting; projected bot beams
-are not enabled yet because adding spotlights exposed a Metal shader compilation
-failure. Opponent audio shares the player's mute control and audio context.
+Their low-beam headlights and lens glow follow the player's headlight setting.
+Each bot has its own pair of projected beams without shadows, fog lights, or high
+beams. Changing bot settings warms the shaders for the new light count before
+resuming the race. At night, bots also have underglow matching their paint color,
+including the observed car in bots-only mode. Their exterior includes the model's
+black underbody so overturned bots do not expose an empty cabin.
+Opponent audio shares the player's mute control and audio context.
 Bots are hidden and removed from physics during replays;
 reset restores them. Their bounded course-specific speed learning survives resets
 within the session, but course changes/reloads start fresh. Player tuning does not
@@ -452,6 +456,8 @@ simulation continues. Settings remains in the main footer.
 Map view switches instantly in both directions, without an animated camera flight.
 Each U press advances one step; holding it does not repeat. Restoring the HUD preserves
 normal visibility rules (for example, the tach stays hidden in cabin view).
+Use `?hide-ui=0` through `?hide-ui=4` to start at a visibility level; U updates the
+parameter as you cycle.
 
 ### Gamepad
 

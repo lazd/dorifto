@@ -10,6 +10,9 @@ import { clockText, createSegmentedDisplay, mapDisplaySurface } from './segmente
 type StandardMesh = THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>;
 
 export const carLightLayers = { headlights: 2, interior: 3 } as const;
+export const headlightIntensity = 550;
+export const carUnderglowColor = 0xff1824;
+export const underglowIntensity = 18;
 
 export const carPaintColor = 0xe51b23;
 const WHEEL_COLOR = 0x111216;
@@ -465,7 +468,12 @@ export async function loadCar(onProgress?: (fraction: number) => void) {
     { x: 0, z: -UNDERGLOW_REAR_OFFSET, width: 1.25, length: 0.08 }, // Rear
   ];
   for (const strip of lightStrips) {
-    const light = new THREE.RectAreaLight(0xff1824, 18, strip.width, strip.length);
+    const light = new THREE.RectAreaLight(
+      carUnderglowColor,
+      underglowIntensity,
+      strip.width,
+      strip.length,
+    );
     light.name = 'red-underglow';
     light.position.set(strip.x, -0.38, strip.z);
     light.rotation.x = -Math.PI / 2;
@@ -544,7 +552,7 @@ export async function loadCar(onProgress?: (fraction: number) => void) {
   }
   const headlights = headlightPair(/^Projectorglass_/, {
     name: 'headlight-beam',
-    intensity: 550,
+    intensity: headlightIntensity,
     range: 65,
     angle: Math.PI / 7,
     drop: 1.1,
@@ -633,7 +641,7 @@ export async function loadCar(onProgress?: (fraction: number) => void) {
     cabinLight.color.set(cabin.color);
     cabinLight.intensity = cabin.intensity;
     gaugeLight.intensity = enabled ? GAUGE_LIGHT_INTENSITY : 0;
-    for (const light of underglow) light.intensity = night ? 18 : 0;
+    for (const light of underglow) light.intensity = night ? underglowIntensity : 0;
   }
 
   // Replace the flat mirror-glass mesh with live planar reflections.
@@ -987,6 +995,9 @@ export async function loadCar(onProgress?: (fraction: number) => void) {
     setBraking,
     setPaintColor(color: THREE.ColorRepresentation) {
       for (const { material } of named(/_Paint_0$/)) material.color.set(color);
+    },
+    setUnderglowColor(color: THREE.ColorRepresentation) {
+      for (const light of underglow) light.color.set(color);
     },
     setReversing,
     setHazards,

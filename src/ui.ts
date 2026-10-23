@@ -59,11 +59,20 @@ export function createHudVisibilityCycle() {
     [element('.course-hud'), element('.lap-recorder'), element('header'), element('footer')],
   ];
   let level = 0;
-  return () => {
-    level = (level + 1) % (groups.length + 1);
+  const set = (nextLevel: number) => {
+    if (!Number.isInteger(nextLevel) || nextLevel < 0 || nextLevel > groups.length)
+      throw new RangeError(`Invalid HUD visibility level: ${nextLevel}`);
+    level = nextLevel;
     groups.forEach((nodes, index) => {
       nodes.forEach((node) => node.classList.toggle('hud-hidden', level > index));
     });
+  };
+  return {
+    set,
+    cycle() {
+      set((level + 1) % (groups.length + 1));
+      return level;
+    },
   };
 }
 
@@ -851,7 +860,7 @@ export function bindGameUI(
     throw new Error('Bot settings are not ready yet');
   };
   const dismissError = bindStatusUI(game);
-  const cycleHudVisibility = createHudVisibilityCycle();
+  const hudVisibility = createHudVisibilityCycle();
   bindCourseDisclosure();
   const speed = bindText('#speed');
   const gear = bindText('#gear');
@@ -1109,6 +1118,7 @@ export function bindGameUI(
       applyBotSettings = handler;
     },
     dismissError,
-    cycleHudVisibility,
+    cycleHudVisibility: hudVisibility.cycle,
+    setHudVisibility: hudVisibility.set,
   };
 }

@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { createServer } from 'vite';
 import { loadTrainingCarModel } from '../scripts/bot-assets.mjs';
 
-test('bot exteriors isolate lamps and render thinking on independent segmented plates', async (t) => {
+test('bot exteriors share underbody and isolate lighting and segmented plates', async (t) => {
   const previousDocument = globalThis.document;
   const context = {
     fillRect() {},
@@ -28,7 +28,34 @@ test('bot exteriors isolate lamps and render thinking on independent segmented p
   });
   const { createBotCar, botLampSettings, botColor } = await server.ssrLoadModule('/src/bot-car.ts');
   const { createBotPlate, botPlateText } = await server.ssrLoadModule('/src/bot-plate.ts');
+  const { headlightIntensity, carLightLayers, underglowIntensity } =
+    await server.ssrLoadModule('/src/car.ts');
   const model = await loadTrainingCarModel(server);
+  const sourceHeadlights = [-1, 1].map((side) => {
+    const light = new THREE.SpotLight();
+    light.name = 'headlight-beam';
+    light.layers.set(carLightLayers.headlights);
+    light.position.set(side, 0.5, 2);
+    light.target.position.set(side, 0, 20);
+    light.castShadow = true;
+    light.intensity = 0;
+    const glow = new THREE.Mesh(new THREE.PlaneGeometry(), new THREE.MeshBasicMaterial());
+    glow.name = 'headlight-beam-glow';
+    glow.position.copy(light.position);
+    model.add(light, light.target, glow);
+    return { light, glow };
+  });
+  for (const name of ['fog-light', 'high-beam']) {
+    const light = new THREE.SpotLight();
+    light.name = name;
+    model.add(light);
+  }
+  const sourceUnderglow = new THREE.RectAreaLight();
+  sourceUnderglow.name = 'red-underglow';
+  sourceUnderglow.intensity = 0;
+  model.add(sourceUnderglow);
+  model.position.set(5, 2, -3);
+  model.rotation.y = Math.PI / 3;
   const bot = createBotCar(
     {
       chassis: model,
@@ -38,6 +65,32 @@ test('bot exteriors isolate lamps and render thinking on independent segmented p
     0,
   );
   try {
+    const botHeadlights = bot.chassis.children.filter((object) => object.isSpotLight);
+    const botGlows = bot.chassis.children.filter((object) => object.name === 'headlight-beam-glow');
+    assert.equal(botHeadlights.length, sourceHeadlights.length, 'only low beams are copied');
+    assert.equal(botGlows.length, sourceHeadlights.length);
+    const underbody = bot.chassis.getObjectByName('Cube_Black_0');
+    assert.ok(underbody, 'bots retain the existing underbody');
+    assert.equal(underbody.geometry, model.getObjectByName(underbody.name).geometry);
+    const underglow = bot.chassis.getObjectByName('bot-underglow');
+    assert.ok(underglow?.isRectAreaLight);
+    assert.notEqual(underglow, sourceUnderglow);
+    assert.equal(underglow.color.getHex(), new THREE.Color(botColor(0)).getHex());
+    for (const enabled of [true, false]) {
+      bot.setUnderglow(enabled);
+      assert.equal(underglow.intensity, enabled ? underglowIntensity : 0);
+      assert.equal(sourceUnderglow.intensity, 0);
+    }
+    botHeadlights.forEach((light, index) => {
+      const source = sourceHeadlights[index].light;
+      assert.notEqual(light, source);
+      assert.notEqual(light.target, source.target);
+      assert.ok(light.position.distanceTo(source.position) < 1e-10);
+      assert.ok(light.target.position.distanceTo(source.target.position) < 1e-10);
+      assert.equal(light.target.parent, bot.chassis);
+      assert.equal(light.layers.mask, source.layers.mask);
+      assert.equal(light.castShadow, false);
+    });
     let originalPlate;
     model.traverse((mesh) => {
       if (/^Frontplate_.*_ext_plate_rear_0$/.test(mesh.name)) originalPlate = mesh;
@@ -91,6 +144,7 @@ test('bot exteriors isolate lamps and render thinking on independent segmented p
     assert.equal(texture.version, version + 1, 'unchanged text does not upload a texture');
     bot.setColor(botColor(1));
     assert.equal(botPlate.material.color.getHex(), new THREE.Color(botColor(1)).getHex());
+    assert.equal(underglow.color.getHex(), new THREE.Color(botColor(1)).getHex());
     assert.equal(texture.version, version + 1, 'color changes do not redraw the texture');
     const geometry = originalPlate.geometry;
     const material = originalPlate.material;
@@ -132,6 +186,12 @@ test('bot exteriors isolate lamps and render thinking on independent segmented p
     });
     for (const headlights of [false, true]) {
       bot.setHeadlights(headlights);
+      for (const light of botHeadlights) {
+        assert.equal(light.visible, true, 'switching headlights preserves the light count');
+        assert.equal(light.intensity, headlights ? headlightIntensity : 0);
+      }
+      for (const glow of botGlows) assert.equal(glow.visible, headlights);
+      for (const { light } of sourceHeadlights) assert.equal(light.intensity, 0);
       for (const braking of [false, true]) {
         bot.setBraking(braking);
         for (const mesh of lamps) {
@@ -161,6 +221,7 @@ test('bot exteriors isolate lamps and render thinking on independent segmented p
     }
   } finally {
     bot.dispose();
+    for (const { light } of sourceHeadlights) light.dispose();
     model.traverse((mesh) => {
       if (!mesh.isMesh) return;
       mesh.geometry.dispose();
