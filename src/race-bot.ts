@@ -16,17 +16,17 @@ export const raceBotGridSpacing = 12;
 /** Driver model constants; `scripts/optimize-race-bot.mjs` searches these for lap time. */
 export const raceBotTuning = {
   /** Cornering limit on asphalt, m/s² per unit of tire grip. */
-  corneringGrip: 10.5,
+  corneringGrip: 16.34,
   /** Straight-line braking limit, m/s². */
-  brakingLimit: 7,
+  brakingLimit: 5.55,
   /** Deceleration from lifting off (engine braking, drag and tire scrub), m/s². */
-  liftDeceleration: 2,
+  liftDeceleration: 7.22,
   /** Speed drops (m/s) small enough to make by lifting rather than braking. */
-  smallSpeedDrop: 4,
+  smallSpeedDrop: 3.95,
   /** Steering lookahead, seconds of travel beyond a fixed 5 m. */
-  lookaheadTime: 0.25,
+  lookaheadTime: 0.17,
   /** Gap kept between the car body and the road edge on the racing line, m. */
-  edgeMargin: 0.8,
+  edgeMargin: 0.08,
 };
 export const trainingCourses = { race: 'hillside', drift: 'sweeper' } as const;
 export type VehicleState = ReturnType<ReturnType<typeof createVehiclePhysics>['readState']>;

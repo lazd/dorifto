@@ -3,7 +3,7 @@
 // several courses, using a (1+λ) evolution strategy evaluated in parallel child processes.
 import { fork } from 'node:child_process';
 import { availableParallelism } from 'node:os';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { fileURLToPath } from 'node:url';
@@ -38,6 +38,7 @@ async function main() {
       workers: { type: 'string', default: String(Math.max(1, availableParallelism() - 1)) },
       skill: { type: 'string', default: '1' },
       output: { type: 'string', default: '.bot-training/race-tuning.json' },
+      resume: { type: 'boolean', default: false },
     },
   });
   const generations = Number(values.generations);
@@ -66,27 +67,55 @@ async function main() {
 
   const { raceBotTuning } = await importTuning();
   let reference;
-  let best = { tuning: { ...raceBotTuning } };
+  const start = values.resume
+    ? JSON.parse(await readFile(path.resolve(values.output), 'utf8')).tuning
+    : raceBotTuning;
+  let best = { tuning: { ...start } };
   best = { ...best, ...(await score(best.tuning)) };
   reference = best.times;
   // Step sizes start at a sixth of each range and adapt with the 1/5th success rule.
   const steps = Object.fromEntries(
     Object.entries(bounds).map(([key, [low, high]]) => [key, (high - low) / 6]),
   );
-  report('start', best);
+  console.log(`start: cost ${best.cost.toFixed(3)} | ${formatLaps(best.results)}`);
+  console.log(`  ${formatTuning(best.tuning)}`);
   for (let generation = 1; generation <= generations; generation++) {
-    const candidates = Array.from({ length: workerCount }, () => mutate(best.tuning, steps));
+    console.log(`\ngeneration ${generation}/${generations}: next ${formatSteps(steps)}`);
+    const parent = best;
+    const candidates = Array.from({ length: workerCount }, () => mutate(parent.tuning, steps));
     const scored = await Promise.all(
-      candidates.map(async (tuning) => ({ tuning, ...(await score(tuning)) })),
+      candidates.map(async (tuning, i) => {
+        const result = { tuning, ...(await score(tuning)) };
+        const delta = result.cost - parent.cost;
+        console.log(
+          `  #${String(i + 1).padStart(2)} ${delta < 0 ? '+' : ' '} cost ${result.cost.toFixed(3)} ` +
+            `(${delta >= 0 ? '+' : ''}${delta.toFixed(3)}) | ${formatLaps(result.results)}\n` +
+            `       ${formatTuning(tuning, parent.tuning)}`,
+        );
+        return result;
+      }),
     );
     const winner = scored.reduce((a, b) => (b.cost < a.cost ? b : a));
-    const successes = scored.filter(({ cost }) => cost < best.cost).length;
+    const successes = scored.filter(({ cost }) => cost < parent.cost).length;
     const factor = successes / scored.length > 0.2 ? 1.3 : 0.8;
     for (const key of Object.keys(steps)) steps[key] *= factor;
-    if (winner.cost < best.cost) best = winner;
-    report(`generation ${generation}`, best);
+    if (winner.cost < parent.cost) {
+      best = winner;
+      console.log(
+        `improved: cost ${parent.cost.toFixed(3)} -> ${best.cost.toFixed(3)} | ${formatLaps(best.results, parent.results)}\n` +
+          `  ${formatTuning(best.tuning, parent.tuning)}`,
+      );
+    } else {
+      console.log(`no improvement: best remains ${parent.cost.toFixed(3)}`);
+    }
+    console.log(
+      `  ${successes}/${scored.length} candidates beat the parent; ` +
+        `${factor > 1 ? 'widening' : 'narrowing'} the search (steps x${factor})`,
+    );
     await save(best);
   }
+  console.log(`\nbest: cost ${best.cost.toFixed(3)} | ${formatLaps(best.results)}`);
+  console.log(`  ${formatTuning(best.tuning)}`);
   for (const child of pool) child.kill();
 
   async function score(tuning) {
@@ -121,19 +150,35 @@ function mutate(tuning, steps) {
   return next;
 }
 
-function report(label, { cost, tuning, results }) {
-  const laps = results
+function formatLaps(results, previous) {
+  return results
+    .map(({ failure, lapTime, invalidLaps }, i) => {
+      const name = `${tracks[i].course}${tracks[i].reverse ? '-rev' : ''}`;
+      if (failure) return `${name} ${failure}`;
+      const before = previous?.[i];
+      const change = before && !before.failure ? ` (${signed(lapTime - before.lapTime)})` : '';
+      return `${name} ${lapTime.toFixed(2)}s${change}${invalidLaps ? ` [${invalidLaps} invalid]` : ''}`;
+    })
+    .join(', ');
+}
+
+function formatTuning(tuning, parent) {
+  return Object.entries(tuning)
     .map(
-      ({ failure, lapTime, invalidLaps }, i) =>
-        `${tracks[i].course}${tracks[i].reverse ? '-rev' : ''} ${
-          failure ?? `${lapTime.toFixed(2)}s${invalidLaps ? ` (${invalidLaps} invalid)` : ''}`
-        }`,
+      ([key, value]) =>
+        `${key} ${value.toFixed(2)}${parent ? ` (${signed(value - parent[key])})` : ''}`,
     )
     .join(', ');
-  const values = Object.entries(tuning)
-    .map(([key, value]) => `${key} ${value.toFixed(2)}`)
-    .join(', ');
-  console.log(`${label}: cost ${cost.toFixed(3)} | ${laps}\n  ${values}`);
+}
+
+function formatSteps(steps) {
+  return `mutating around best with σ ${Object.entries(steps)
+    .map(([key, step]) => `${key} ±${step.toFixed(2)}`)
+    .join(', ')}`;
+}
+
+function signed(value) {
+  return `${value >= 0 ? '+' : ''}${value.toFixed(2)}`;
 }
 
 async function importTuning() {
