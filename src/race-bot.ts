@@ -11,7 +11,7 @@ import type {
   createVehiclePhysics,
 } from './vehicle-physics';
 
-export const raceBotVersion = 5;
+export const raceBotVersion = 6;
 export const raceBotGridSpacing = 12;
 export const maxRaceBots = 8;
 const raceGridLaneOffset = 2.5;
@@ -324,10 +324,7 @@ export function createRaceBot(
   const { frontTorqueNm, rearTorqueNm } = vehicleSettings.brakes;
   const fullBrakeDeceleration =
     (2 * (frontTorqueNm + rearTorqueNm)) / dimensions.wheelRadius / vehicleSettings.massKg;
-  const trafficPlanner = createTrafficPlanner(map, dimensions, options, {
-    lateralAcceleration,
-    braking: brakingDeceleration,
-  });
+  const trafficPlanner = createTrafficPlanner(map, dimensions);
   const sectorAt = (i: number) =>
     Math.min(sectorCount - 1, Math.floor((wrap(i, count) * sectorCount) / count));
   let index = -1;
@@ -468,7 +465,8 @@ export function createRaceBot(
 
     const lookahead = 5 + state.speed * driver.lookaheadTime;
     const targetIndex = wrap(index + Math.max(1, Math.round(lookahead / spacing)), count);
-    const target = trafficPlanner.update(state, index, lateralError, targetIndex, dt, traffic);
+    const target = trafficPlanner.update(state, index, targetIndex, traffic);
+    const slipLimit = driver.countersteerSlip;
     const dx = target.x - state.x;
     const dz = target.z - state.z;
     const bearing = angle(Math.atan2(dx, dz) - state.heading);
@@ -485,7 +483,7 @@ export function createRaceBot(
     const yawError = state.yawRate - state.speed * target.curvature;
     // Beyond normal cornering slip, point the front wheels along the car's velocity.
     const excessSlip =
-      Math.sign(state.slipAngle) * Math.max(0, Math.abs(state.slipAngle) - driver.countersteerSlip);
+      Math.sign(state.slipAngle) * Math.max(0, Math.abs(state.slipAngle) - slipLimit);
     const stabilization =
       state.speed > 5 ? state.slipAngle * 0.3 + excessSlip - yawError * 0.08 : 0;
     controls.steer = clamp((wheelAngle + stabilization) / steeringLimit, -1, 1);
@@ -500,21 +498,8 @@ export function createRaceBot(
     );
     const adjacent = wrap(index + (fraction < 0 ? -1 : 1), count);
     const plannedSpeed = THREE.MathUtils.lerp(speeds[index], speeds[adjacent], Math.abs(fraction));
-    const steeringSpeed = target.avoiding
-      ? Math.sqrt(
-          lateralAcceleration /
-            Math.max(Math.abs(Math.tan(wheelAngle) / dimensions.wheelbase), 0.0005),
-        )
-      : Infinity;
-    targetSpeed = Math.min(plannedSpeed, target.speedLimit, steeringSpeed);
+    targetSpeed = plannedSpeed;
     controls.reverse = 0;
-    if (target.reverse) {
-      controls.steer = 0;
-      controls.throttle = 0;
-      controls.brake = 1;
-      controls.reverse = state.speed < 2 ? 0.35 : 0;
-      return controls;
-    }
     if (state.vx * Math.sin(state.heading) + state.vz * Math.cos(state.heading) < -0.3) {
       controls.throttle = 0;
       controls.brake = 1;
@@ -569,12 +554,7 @@ export function createRaceBot(
     let throttle = braking ? 0 : clamp((desired + coast) / driveAcceleration, 0, 1) ** 2;
     if (state.speed > 5)
       throttle *=
-        1 -
-        THREE.MathUtils.smoothstep(
-          Math.abs(state.slipAngle),
-          driver.countersteerSlip,
-          driver.countersteerSlip * 2,
-        );
+        1 - THREE.MathUtils.smoothstep(Math.abs(state.slipAngle), slipLimit, slipLimit * 2);
     const { brake: previousBrake, throttle: previousThrottle } = controls;
     // Feed the throttle out before touching the brake; snapping off it unsettles the car.
     controls.throttle = approach(

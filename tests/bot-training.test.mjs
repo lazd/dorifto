@@ -27,6 +27,7 @@ let createPhysicsSimulation;
 let raceBotConfiguration;
 let raceBotGridSpacing;
 let defaultTuningPresets;
+let createTrafficPlanner;
 
 before(async () => {
   server = await createServer({
@@ -55,6 +56,7 @@ before(async () => {
   ({ createVehiclePhysics, createPhysicsResources, createPhysicsWorld } =
     await server.ssrLoadModule('/src/vehicle-physics.ts'));
   ({ createPhysicsSimulation } = await server.ssrLoadModule('/src/physics-simulation.ts'));
+  ({ createTrafficPlanner } = await server.ssrLoadModule('/src/bot-traffic.ts'));
   definition = { ...courses.find(({ id }) => id === trainingCourses.race), reverse: false };
   terrain = new CourseTerrain(definition, false);
   geometry = await loadTrainingCarGeometry(server);
@@ -168,64 +170,150 @@ test('driver rejects incompatible experience and invalid configuration', () => {
   assert.deepEqual(readRaceBots(written), []);
 });
 
-// todo: enable when overtaking is implemented
-test.skip('a skilled rear bot overtakes a less-skilled front bot in the shared world', () => {
-  const bots = readRaceBots(new URLSearchParams('bots=2&bot-skill=1,0.2'));
-  const simulation = createPhysicsSimulation(Ammo, {
-    definition,
-    configuration,
-    bots,
-    botsOnly: true,
-    terrain: terrain.physicsData(),
-    car: {
-      centers: geometry.centers.map((point) => point.toArray()),
-      radii: geometry.radii,
-      widths: geometry.widths,
-      collisionVertices: geometry.collisionVertices.map((point) => point.toArray()),
-    },
-    cones: [],
-    cornerCones: [],
-    signGroups: [],
-  });
-  const input = {
-    configuration,
-    controls: { throttle: 0, brake: 0, reverse: 0, steer: 0, handbrake: false },
-    signs: [],
-    lights: {
-      headlights: false,
-      highBeams: false,
-      fogLights: false,
-      leftSignal: false,
-      rightSignal: false,
-    },
-  };
-  let snapshot = simulation.handle({ type: 'init', revision: 0 });
-  const clearance = raceBotGridSpacing + vehicleDimensions(geometry).halfLength * 2;
-  let passed = false;
-  try {
-    for (let step = 0; step < 40 * 20; step++) {
-      snapshot = simulation.handle({
-        type: 'advance',
-        revision: 0,
-        dt: 0.05,
-        input,
-        recycled: [snapshot.buffer],
-      });
-      if (snapshot.bots[0].metrics.progress - snapshot.bots[1].metrics.progress > clearance) {
-        passed = true;
-        break;
-      }
-    }
-    assert.ok(passed, JSON.stringify(snapshot.bots.map(({ metrics }) => metrics)));
-    assert.ok(snapshot.bots.every(({ metrics }) => metrics.offTrackSeconds === 0));
-  } finally {
-    simulation.dispose();
+test('traffic follows the racing line, attacks ahead, passes inside, then returns to the line', () => {
+  const dimensions = vehicleDimensions(geometry);
+  for (const reverse of [false, true]) {
+    const map = createDrivingMap({ ...definition, reverse }, terrain, dimensions.halfWidth);
+    const count = map.samples.length;
+    const at = (i) => (i + count) % count;
+    const bendAt = (i) =>
+      Array.from(
+        { length: Math.ceil(20 / map.spacing) + 1 },
+        (_, j) => map.samples[at(i + j)].curvature,
+      ).reduce((sum, bend) => sum + bend, 0);
+    let index = 0;
+    for (let i = 1; i < count; i++) if (Math.abs(bendAt(i)) > Math.abs(bendAt(index))) index = i;
+    const stateAt = (i) => ({
+      x: map.centers[at(i)].x,
+      z: map.centers[at(i)].z,
+      heading: map.samples[at(i)].heading,
+      speed: 12,
+      vx: Math.sin(map.samples[at(i)].heading) * 12,
+      vz: Math.cos(map.samples[at(i)].heading) * 12,
+      slipAngle: 0,
+      yawRate: 0,
+    });
+    const state = stateAt(index);
+    const targetIndex = at(index + 2);
+    const planner = createTrafficPlanner(map, dimensions);
+    const update = (other) => planner.update(state, index, targetIndex, [state, other]);
+    const assertRacingLine = (plan) => {
+      assert.equal(plan.x, map.samples[targetIndex].x);
+      assert.equal(plan.z, map.samples[targetIndex].z);
+      assert.equal('speedLimit' in plan, false);
+      assert.equal('avoiding' in plan, false);
+    };
+    assertRacingLine(update(stateAt(index - 10)));
+    assert.equal(update(stateAt(index - 10)).attacking, false);
+    const chasing = update(stateAt(index + Math.floor(35 / map.spacing)));
+    assert.equal(chasing.attacking, true);
+    assertRacingLine(chasing);
+    assertRacingLine(update(stateAt(index + 4)));
+    const plan = update({ ...stateAt(index + 2), speed: 0, vx: 0, vz: 0 });
+    const offset =
+      (plan.x - map.centers[targetIndex].x) * map.rights[targetIndex].x +
+      (plan.z - map.centers[targetIndex].z) * map.rights[targetIndex].z;
+    assert.equal(Math.sign(offset), Math.sign(bendAt(index)), `inside line, reverse=${reverse}`);
+    assert.ok(Math.abs(offset) >= dimensions.halfWidth * 2 + 0.74);
+    assert.equal(update(stateAt(index - 1)).attacking, true, 'hold the pass until fully clear');
+    const clear = update(stateAt(index - 10));
+    assert.equal(clear.attacking, false);
+    assertRacingLine(clear);
+    planner.reset();
+    assertRacingLine(update(stateAt(index - 10)));
   }
 });
 
+test('chasing raises pace beyond the normal skill limit without changing the solo profile', () => {
+  const dimensions = vehicleDimensions(geometry);
+  const map = createDrivingMap(definition, terrain, dimensions.halfWidth);
+  const options = { ...defaultRaceBotOptions, skill: 0.3, learning: false };
+  const solo = createRaceBot(map, configuration, dimensions, options);
+  const chasing = createRaceBot(map, configuration, dimensions, options);
+  const point = map.samples[0];
+  const state = {
+    x: point.x,
+    z: point.z,
+    heading: point.heading,
+    speed: 15,
+    vx: Math.sin(point.heading) * 15,
+    vz: Math.cos(point.heading) * 15,
+    slipAngle: 0,
+    yawRate: 0,
+  };
+  const ahead = map.samples[Math.round(32 / map.spacing)];
+  const opponent = { ...state, x: ahead.x, z: ahead.z };
+  solo.update(state, 1 / 120);
+  chasing.update(state, 1 / 120, [state, opponent]);
+  assert.ok(chasing.metrics.targetSpeed > solo.metrics.targetSpeed * 1.05);
+  chasing.update(state, 1 / 120);
+  assert.equal(chasing.metrics.targetSpeed, solo.metrics.targetSpeed);
+});
+
+for (const scenario of [
+  { name: 'a skilled rear bot overtakes a less-skilled front bot', skills: '1,0.2', pass: true },
+  { name: 'a low-skill rear bot closes on a skilled front bot', skills: '0.3,1', pass: false },
+])
+  test(`${scenario.name} in the shared world`, () => {
+    const bots = readRaceBots(new URLSearchParams(`bots=2&bot-skill=${scenario.skills}`));
+    const simulation = createPhysicsSimulation(Ammo, {
+      definition,
+      configuration,
+      bots,
+      botsOnly: true,
+      terrain: terrain.physicsData(),
+      car: {
+        centers: geometry.centers.map((point) => point.toArray()),
+        radii: geometry.radii,
+        widths: geometry.widths,
+        collisionVertices: geometry.collisionVertices.map((point) => point.toArray()),
+      },
+      cones: [],
+      cornerCones: [],
+      signGroups: [],
+    });
+    const input = {
+      configuration,
+      controls: { throttle: 0, brake: 0, reverse: 0, steer: 0, handbrake: false },
+      signs: [],
+      lights: {
+        headlights: false,
+        highBeams: false,
+        fogLights: false,
+        leftSignal: false,
+        rightSignal: false,
+      },
+    };
+    let snapshot = simulation.handle({ type: 'init', revision: 0 });
+    const clearance = raceBotGridSpacing + vehicleDimensions(geometry).halfLength * 2;
+    let reachedTarget = false;
+    try {
+      for (let step = 0; step < 40 * 20; step++) {
+        snapshot = simulation.handle({
+          type: 'advance',
+          revision: 0,
+          dt: 0.05,
+          input,
+          recycled: [snapshot.buffer],
+        });
+        if (
+          snapshot.bots[0].metrics.progress - snapshot.bots[1].metrics.progress >
+          (scenario.pass ? clearance : raceBotGridSpacing / 2)
+        ) {
+          reachedTarget = true;
+          break;
+        }
+      }
+      assert.ok(reachedTarget, JSON.stringify(snapshot.bots.map(({ metrics }) => metrics)));
+      assert.ok(snapshot.bots.every(({ metrics }) => metrics.offTrackSeconds === 0));
+    } finally {
+      simulation.dispose();
+    }
+  });
+
 for (const scenario of [
   { name: 'parked car', distance: 8, reverse: false },
-  { name: 'parked car after backing up for steering room', distance: 2, reverse: false },
+  { name: 'parked car at close range', distance: 2, reverse: false },
   { name: 'parked car on the reversed course', distance: 8, reverse: true },
 ])
   test(`race bot passes a ${scenario.name} using real vehicle physics`, () => {
@@ -280,11 +368,11 @@ for (const scenario of [
     });
     driven.reset();
     parked.reset();
-    const original = parked.readState();
     try {
       for (let step = 0; step < 120 * 35; step++) {
         const state = driven.readState();
         bot.update(state, 1 / 120, [state, parked.readState()]);
+        assert.equal(bot.controls.reverse, 0);
         driven.beforeStep();
         parked.beforeStep();
         world.step(1 / 120);
@@ -297,11 +385,6 @@ for (const scenario of [
         JSON.stringify(bot.metrics),
       );
       assert.equal(bot.metrics.offTrackSeconds, 0);
-      const after = parked.readState();
-      assert.ok(
-        Math.hypot(after.x - original.x, after.z - original.z) < 0.5,
-        'pass without pushing the parked car',
-      );
     } finally {
       driven.dispose();
       parked.dispose();

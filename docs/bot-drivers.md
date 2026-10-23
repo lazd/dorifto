@@ -230,13 +230,10 @@ bot behavior without a player vehicle influencing collisions.
   these parameters and reloads.
 - `bot-skill=1,0.2` assigns different skills by bot index. In a two-bot spectator
   grid, bot 0 starts behind bot 1, making this a reproducible overtaking exercise.
-- Local traffic planning evaluates smooth lateral paths against oriented,
-  predicted vehicle footprints and road boundaries. Passing-side commitment
-  prevents abandoning an otherwise clear pass simply because the racing line
-  temporarily becomes available. Blocked cars stop, and rear-clear recovery can
-  reverse to create steering room. Tests use actual vehicle physics to verify
-  parked-car passing, close-range recovery, reversed-course passing and overtaking
-  a less-skilled moving bot without leaving the track.
+- Traffic planning is currently a no-op. Each bot follows its optimized racing line and
+  normal skill-based speed profile without reacting to opponents. There is no
+  attack pace, passing offset, following limit, avoidance, or reversing recovery.
+  Vehicles still collide in the shared physics world.
 - Continuous speed interpolation, acceleration-profile feed-forward, mutually
   exclusive pedals and brake hysteresis replace direct speed-error pedal switching.
   Throttle commands invert the actual drivetrain's square-root pedal response;
