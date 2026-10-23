@@ -7,6 +7,7 @@ export interface SavedRunOption {
 }
 
 export interface GameState {
+  gameLoaded: boolean;
   /** off: nothing to show; ready: saved laps can be replayed; recording: run in progress; replay: watching. */
   lapRecorder: Readonly<{
     mode: 'off' | 'ready' | 'recording' | 'replay';
@@ -56,6 +57,7 @@ export interface GameState {
 
 export function createGameState() {
   return createStore<GameState>({
+    gameLoaded: false,
     lapRecorder: { mode: 'off', runs: [], selectedRun: null, replayLap: null },
     focused: true,
     controllerStatus: '',

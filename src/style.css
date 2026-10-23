@@ -920,10 +920,8 @@ dialog h2 {
   align-items: center;
   gap: 8px;
 }
-.lap-recorder[hidden],
-.lap-recorder [hidden],
-.editable-picker[hidden] {
-  display: none;
+*[hidden] {
+  display: none !important;
 }
 #lap-replay-controls:not([hidden]) {
   display: inline-flex;

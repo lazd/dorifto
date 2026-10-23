@@ -5,6 +5,7 @@ import { createServer } from 'vite';
 let server;
 let bindGameActions;
 let bindStatusUI;
+let bindLapRecorder;
 let createGameState;
 let createConfigurationState;
 
@@ -13,7 +14,7 @@ before(async () => {
     server: { middlewareMode: true, hmr: false, ws: false, watch: null },
     appType: 'custom',
   });
-  ({ bindGameActions, bindStatusUI } = await server.ssrLoadModule('/src/ui.ts'));
+  ({ bindGameActions, bindStatusUI, bindLapRecorder } = await server.ssrLoadModule('/src/ui.ts'));
   ({ createGameState } = await server.ssrLoadModule('/src/game-state.ts'));
   ({ createConfigurationState } = await server.ssrLoadModule('/src/configuration-state.ts'));
 });
@@ -111,6 +112,55 @@ test('recognizes already-open UI and preserves tuning focus input clearing', (t)
   assert.deepEqual(ui.states, [true]);
   ui.tuning.dispatchEvent(new Event('focusin'));
   assert.equal(ui.cleared(), 1);
+});
+
+test('lap recorder stays hidden until the game has loaded', (t) => {
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'document');
+  const document = new EventTarget();
+  const node = () => {
+    const target = new EventTarget();
+    target.hidden = true;
+    target.disabled = false;
+    target.dataset = {};
+    target.value = '';
+    target.setAttribute = () => {};
+    target.replaceChildren = () => {};
+    target.blur = () => {};
+    return target;
+  };
+  const elements = new Map([
+    ['.lap-recorder', node()],
+    ['#lap-recorder-button', node()],
+    ['#lap-recorder-label', node()],
+    ['.editable-picker', node()],
+    ['#lap-replay-run', node()],
+    ['#lap-replay-delete', node()],
+    ['#lap-replay-controls', node()],
+    ['#lap-replay-time', node()],
+    ['#lap-replay-previous', node()],
+    ['#lap-replay-next', node()],
+  ]);
+  document.querySelector = (selector) => elements.get(selector) ?? null;
+  Object.defineProperty(globalThis, 'document', { configurable: true, value: document });
+  t.after(() => {
+    if (descriptor) Object.defineProperty(globalThis, 'document', descriptor);
+    else delete globalThis.document;
+  });
+  const store = createGameState();
+  bindLapRecorder(store, {
+    press() {},
+    select() {},
+    remove() {},
+    seek() {},
+  });
+  const container = elements.get('.lap-recorder');
+  assert.equal(container.hidden, true);
+  store.update({ lapRecorder: { ...store.getState().lapRecorder, mode: 'ready' } });
+  assert.equal(container.hidden, true, 'recorder remains hidden during loading');
+  store.update({ gameLoaded: true });
+  assert.equal(container.hidden, false, 'current recorder mode is applied after loading');
+  store.update({ lapRecorder: { ...store.getState().lapRecorder, mode: 'off' } });
+  assert.equal(container.hidden, true, 'visibility continues to follow recorder mode');
 });
 
 function statusFixture(t) {

@@ -290,7 +290,7 @@ export function bindLapRecorder(
   } as const;
   let shownRuns: GameState['lapRecorder']['runs'] | null = null;
   store.subscribe(
-    ({ lapRecorder }) => {
+    ({ gameLoaded, lapRecorder }) => {
       const { mode } = lapRecorder;
       const lap = lapRecorder.replayLap;
       replayControls.hidden = mode !== 'replay';
@@ -303,7 +303,7 @@ export function bindLapRecorder(
             : 'Launch'
           : '',
       );
-      if (container.hidden !== (mode === 'off')) container.hidden = mode === 'off';
+      if (gameLoaded && container.hidden !== (mode === 'off')) container.hidden = mode === 'off';
       if (button.dataset.mode !== mode) button.dataset.mode = mode;
       label(text[mode][0]);
       if (button.title !== text[mode][1]) {
@@ -319,7 +319,7 @@ export function bindLapRecorder(
       const selected = lapRecorder.selectedRun ?? '';
       if (runs.value !== selected) runs.value = selected;
     },
-    ['lapRecorder'],
+    ['gameLoaded', 'lapRecorder'],
   );
 }
 

@@ -336,7 +336,10 @@ async function start() {
       car.setStereo(powered);
       const { status } = gameState.getState();
       if (powered && status.error && status.message.startsWith('Stereo unavailable:')) {
-        gameState.update({ status: { visible: false, error: false, message: '' } });
+        gameState.update({
+          gameLoaded: true,
+          status: { visible: false, error: false, message: '' },
+        });
       }
     },
     (error) => {
