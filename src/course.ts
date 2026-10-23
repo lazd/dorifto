@@ -12,6 +12,7 @@ import { surfaceMaterial } from './surfaces';
 import { CourseTerrain } from './terrain';
 import { courseTurnSignPlacements, createTurnSignFactory, type TurnSignMode } from './turn-sign';
 import { createTrainingGates } from './racing-line';
+import type { LapGateMode } from './configuration-state';
 import { createTrainingGateGeometry, createTrainingGateMaterial } from './training-gates';
 
 export const coneDimensions = {
@@ -334,8 +335,9 @@ function buildCourse(scene: THREE.Group, definition: CourseDefinition, carWidth:
     cornerCones,
     turnSignGroups,
     terrain,
-    setLapGates(visible: boolean) {
-      lapGateMesh.visible = visible;
+    setLapGates(mode: LapGateMode) {
+      lapGateMesh.visible = mode !== 'off';
+      lapGateMaterial.uniforms.rainbow.value = mode === 'rainbow' ? 1 : 0;
     },
     setDirection,
     setTurnSignMode,

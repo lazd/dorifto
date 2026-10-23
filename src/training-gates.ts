@@ -8,6 +8,7 @@ export function createTrainingGateGeometry(
   const positions: number[] = [];
   const colors: number[] = [];
   const uvs: number[] = [];
+  const laps: number[] = [];
   const indices: number[] = [];
   const color = new THREE.Color();
   const segments = 48;
@@ -31,6 +32,7 @@ export function createTrainingGateGeometry(
         );
         colors.push(color.r, color.g, color.b);
         uvs.push(side / sides, segment / segments);
+        laps.push(index / gates.length);
       }
       if (segment < segments) {
         for (let side = 0; side < sides; side++) {
@@ -44,6 +46,7 @@ export function createTrainingGateGeometry(
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
   geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  geometry.setAttribute('lapFraction', new THREE.Float32BufferAttribute(laps, 1));
   geometry.setIndex(indices);
   geometry.computeVertexNormals();
   geometry.computeBoundingSphere();
@@ -58,12 +61,17 @@ export function createTrainingGateMaterial() {
     blending: THREE.AdditiveBlending,
     depthWrite: false,
     toneMapped: false,
+    uniforms: { rainbow: { value: 0 } },
     vertexShader: `
+      uniform float rainbow;
+      attribute float lapFraction;
       varying vec3 gateColor;
       varying vec3 gateNormal;
       varying vec3 viewDirection;
       void main() {
-        gateColor = color;
+        // Rainbow mode sweeps hue red to violet around the lap from the start gate.
+        vec3 hue = clamp(abs(mod(lapFraction * 5.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0);
+        gateColor = mix(color, hue, rainbow);
         gateNormal = normalize(normalMatrix * normal);
         viewDirection = -(modelViewMatrix * vec4(position, 1.0)).xyz;
         gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);

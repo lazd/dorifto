@@ -110,6 +110,11 @@ export function defaultTuningPresets(): TuningPreset[] {
   ];
 }
 
+export const lapGateModes = ['off', 'on', 'rainbow'] as const;
+export type LapGateMode = (typeof lapGateModes)[number];
+export const isLapGateMode = (value: string): value is LapGateMode =>
+  (lapGateModes as readonly string[]).includes(value);
+
 export interface ConfigurationState {
   driveMode: DriveMode;
   profiles: Readonly<Record<DriveMode, DrivingTuning>>;
@@ -123,7 +128,7 @@ export interface ConfigurationState {
   courseReverse: boolean;
   coneMode: 'all' | 'corners' | 'off';
   showGrass: boolean;
-  showLapGates: boolean;
+  lapGateMode: LapGateMode;
   turnSignMode: TurnSignMode;
   ghostMode: 'fastest' | 'previous' | 'record' | 'off';
   muted: boolean;
@@ -147,7 +152,7 @@ export function createConfigurationState(storage?: Storage) {
     courseReverse: false,
     coneMode: 'corners',
     showGrass: true,
-    showLapGates: false,
+    lapGateMode: 'off',
     turnSignMode: 'several',
     ghostMode: 'fastest',
     muted: false,

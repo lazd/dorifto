@@ -26,6 +26,7 @@ import {
   defaultTuningPresets,
   isCameraStyle,
   isGhostMode,
+  isLapGateMode,
   isMinimapOrientation,
   isTimeOfDay,
   readMirrorResolution,
@@ -157,12 +158,7 @@ async function start() {
     ),
     coneMode: requestedConeMode,
     showGrass: readToggle('grass'),
-    showLapGates:
-      readOption(
-        'lap-gates',
-        'off',
-        (value): value is 'on' | 'off' => value === 'on' || value === 'off',
-      ) === 'on',
+    lapGateMode: readOption('lap-gates', 'off', isLapGateMode),
     ghostMode: requestedGhost,
     turnSignMode: readParams(
       ['signs'],
@@ -378,9 +374,9 @@ async function start() {
     let physics: ReturnType<typeof createPhysicsClient> | undefined;
     try {
       const spawn = courseSpawn(nextDefinition);
-      const { coneMode, showGrass, showLapGates, turnSignMode } = configurationState.getState();
+      const { coneMode, showGrass, lapGateMode, turnSignMode } = configurationState.getState();
       course.setTurnSignMode(turnSignMode);
-      course.setLapGates(showLapGates);
+      course.setLapGates(lapGateMode);
       course.terrain.grass.visible = showGrass;
       physics = createPhysicsClient({
         bots: readRaceBots(courseUrl.searchParams),
@@ -409,7 +405,7 @@ async function start() {
       const latest = configurationState.getState();
       physics.setCones(latest.coneMode !== 'off', latest.coneMode === 'corners');
       course.setTurnSignMode(latest.turnSignMode);
-      course.setLapGates(latest.showLapGates);
+      course.setLapGates(latest.lapGateMode);
       course.terrain.grass.visible = latest.showGrass;
       const laps = physics.laps;
       const drivingCamera = createDrivingCamera(
@@ -455,10 +451,10 @@ async function start() {
     ['showGrass'],
   );
   configurationState.subscribe(
-    ({ showLapGates }) => {
-      course.setLapGates(showLapGates);
+    ({ lapGateMode }) => {
+      course.setLapGates(lapGateMode);
     },
-    ['showLapGates'],
+    ['lapGateMode'],
   );
   const tireEffects = createTireEffects(scene, car, terrain, course.isAsphalt);
   lighting.setupMaterials();

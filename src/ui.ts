@@ -7,10 +7,12 @@ import { Tabs } from './tabs';
 import {
   isCameraStyle,
   isGhostMode,
+  isLapGateMode,
   isMinimapOrientation,
   isMirrorResolution,
   isTimeOfDay,
   type ConfigurationState,
+  type LapGateMode,
 } from './configuration-state';
 import type { GameState } from './game-state';
 import {
@@ -991,13 +993,13 @@ export function bindGameUI(
     (value) => ({ showGrass: value === 'on' }),
     isToggle,
   );
-  select<'on' | 'off'>(
+  select<LapGateMode>(
     '#show-lap-gates',
     'lap-gates',
-    'showLapGates',
-    (state) => (state.showLapGates ? 'on' : 'off'),
-    (value) => ({ showLapGates: value === 'on' }),
-    isToggle,
+    'lapGateMode',
+    (state) => state.lapGateMode,
+    (lapGateMode) => ({ lapGateMode }),
+    isLapGateMode,
   );
   const focus = () => game.update({ focused: document.hasFocus() && !document.hidden });
   window.addEventListener('focus', focus);

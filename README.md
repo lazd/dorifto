@@ -198,7 +198,8 @@ attempt and starts fresh without changing completed times or the best lap. Airbo
 use their projected wheel positions rather than stale ground-contact points. The check includes
 the loaded model's tire widths and front-wheel steering, so a tread edge touching the line
 keeps the lap valid even when the tire's center is outside.
-**Settings > Map > Racing line training gates** (`?lap-gates=on`) shows visual targets
+**Settings > Map > Racing line training gates** (`?lap-gates=on`, or `rainbow` to color
+gates by lap position) shows visual targets
 3 times the loaded car's width, spaced roughly 22.5 m along a geometry-based,
 minimum-curvature racing-line approximation. This is not a vehicle-specific optimal line.
 Bounded geometric relaxation minimizes squared second differences around the closed route,
