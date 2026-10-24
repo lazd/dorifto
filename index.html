@@ -6,8 +6,8 @@
     <meta name="theme-color" content="#10191f" />
     <meta name="referrer" content="no-referrer" />
     <title>Dorifto — Z32 Playground</title>
-    <script type="module" crossorigin src="./assets/index-iRm_4do-.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-8AP8gZuh.css">
+    <script type="module" crossorigin src="./assets/index-CYeMa8KU.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-BXvgw3oU.css">
   </head>
   <body hidden>
     <div id="app"></div>
@@ -37,9 +37,10 @@
         id="minimap"
         class="minimap"
         type="button"
-        aria-label="Toggle course options"
-        aria-controls="course-menu"
-        aria-expanded="false"
+        aria-label="Choose course"
+        aria-controls="course-picker-dialog"
+        aria-haspopup="dialog"
+        disabled
       >
         <span id="course-name"></span>
         <span class="minimap-stats">
@@ -56,67 +57,24 @@
           </span>
         </span>
       </button>
-      <ol id="leaderboard" class="leaderboard" aria-label="Live race standings" hidden></ol>
-      <div id="course-menu" hidden>
-        <div id="course-options" class="course-options">
-          <label class="checkbox">
-            <input id="reverse-course" type="checkbox" disabled /> Reverse course
-          </label>
+      <section id="race-panel" class="hud-panel" aria-labelledby="race-panel-title">
+        <ol id="leaderboard" class="leaderboard" aria-label="Live race standings" hidden></ol>
+        <div class="hud-panel-footer">
           <button
-            id="course"
-            class="keycap"
+            id="bots"
+            class="button button-quiet button-compact panel-action"
             type="button"
             aria-haspopup="dialog"
-            aria-controls="course-picker-dialog"
-            disabled
+            aria-controls="bots-dialog"
+            aria-label="Configure bots"
           >
-            Choose course
+            Configure bots <span aria-hidden="true">›</span>
           </button>
-          <div class="course-generation-actions">
-            <button
-              id="custom-course"
-              class="keycap"
-              type="button"
-              aria-label="Custom course"
-              title="Custom course"
-              aria-haspopup="dialog"
-              aria-controls="custom-course-dialog"
-              disabled
-            >
-              🛠️
-            </button>
-            <button
-              id="random-course"
-              class="keycap"
-              type="button"
-              aria-label="Random course"
-              title="Generate a new course"
-              disabled
-            >
-              ♻️
-            </button>
-            <button
-              id="delete-course"
-              class="keycap"
-              type="button"
-              aria-label="Delete course"
-              title="Delete course"
-              disabled
-            >
-              🗑️
-            </button>
-          </div>
-          <form id="save-course-form" hidden>
-            <label for="save-course-name">Course name</label>
-            <input id="save-course-name" type="text" required placeholder="Name this course" />
-            <button id="save-course" class="keycap" type="submit">Save course</button>
-            <span id="save-course-status" role="status"></span>
-          </form>
         </div>
-      </div>
+      </section>
     </aside>
     <div class="lap-recorder hide-when-loading">
-      <button id="lap-recorder-button" type="button" data-mode="off">
+      <button id="lap-recorder-button" class="button button-pill" type="button" data-mode="off">
         <span class="lap-recorder-icon" aria-hidden="true"></span>
         <span id="lap-recorder-label">REC</span>
       </button>
@@ -139,18 +97,6 @@
           title="Next lap"
         >
           →
-        </button>
-      </span>
-      <span class="editable-picker">
-        <select id="lap-replay-run" aria-label="Saved laps to replay"></select>
-        <button
-          id="lap-replay-delete"
-          class="keycap"
-          type="button"
-          aria-label="Delete saved laps"
-          title="Delete saved laps"
-        >
-          🗑️
         </button>
       </span>
     </div>
@@ -178,158 +124,269 @@
         </div>
       </div>
     </aside>
-    <dialog id="drift-tuning" class="slider-dialog" aria-labelledby="drift-tuning-title">
-      <form method="dialog" class="dialog-close">
-        <button type="submit" aria-label="Close" title="Close">×</button>
+    <dialog
+      id="drift-tuning"
+      class="slider-dialog tuning-dialog"
+      aria-labelledby="drift-tuning-title"
+    >
+      <form id="tuning-dialog-close" method="dialog" class="dialog-close">
+        <button class="button button-quiet" type="submit" aria-label="Close" title="Close">
+          ×
+        </button>
       </form>
-      <h2 id="drift-tuning-title" tabindex="-1" autofocus>Tuning</h2>
-      <p id="drift-tuning-mode" role="status"></p>
-      <div class="settings-controls">
-        <div class="settings-control-row">
-          <label for="drive-mode">Drive mode</label>
+      <header class="tuning-dialog-heading">
+        <div>
+          <h2 id="drift-tuning-title" tabindex="-1" autofocus>Tuning</h2>
+          <p>Dial in your car. Changes apply live.</p>
+        </div>
+      </header>
+      <div class="tuning-configuration">
+        <label class="field" for="drive-mode">
+          <span>Drive mode</span>
           <select id="drive-mode">
             <option value="grip">Grip</option>
             <option value="drift">Drift</option>
           </select>
-        </div>
-      </div>
-      <section class="settings-group" aria-labelledby="tuning-preset-title">
-        <h3 id="tuning-preset-title">Drift tuning presets</h3>
-        <div class="editable-picker tuning-preset-picker">
-          <select id="tuning-preset" aria-label="Drift tuning preset"></select>
+        </label>
+        <label class="field tuning-profile-picker">
+          <span id="tuning-preset-title">Tuning profile</span>
+          <select id="tuning-preset" aria-label="Tuning profile"></select>
           <input
             id="tuning-preset-edit-name"
             type="text"
             maxlength="32"
-            aria-label="Rename tuning preset"
+            aria-label="Rename tuning profile"
             hidden
           />
-          <button
-            id="tuning-preset-edit"
-            class="keycap"
-            type="button"
-            aria-label="Rename tuning preset"
-            title="Rename tuning preset"
-          >
-            ✏️
-          </button>
-          <button
-            id="tuning-preset-delete"
-            class="keycap"
-            type="button"
-            aria-label="Delete tuning preset"
-            title="Delete tuning preset"
-          >
-            🗑️
+        </label>
+        <details class="action-disclosure tuning-profile-actions">
+          <summary class="button button-quiet" aria-label="Profile actions" title="Profile actions">
+            ···
+          </summary>
+          <div class="action-menu">
+            <button
+              id="tuning-preset-edit"
+              class="button button-quiet"
+              type="button"
+              aria-label="Rename tuning profile"
+            >
+              Rename profile
+            </button>
+            <button
+              id="tuning-preset-delete"
+              class="button button-quiet"
+              type="button"
+              aria-label="Delete tuning profile"
+            >
+              Delete profile
+            </button>
+          </div>
+        </details>
+      </div>
+      <p id="tuning-profile-error" role="alert" aria-live="polite"></p>
+      <fieldset
+        id="drift-tuning-sliders"
+        class="tuning-sections"
+        aria-label="Driving tuning controls"
+      ></fieldset>
+      <div class="dialog-footer">
+        <p class="dialog-help">Changes apply live · Auto-saved locally</p>
+        <div class="dialog-actions">
+          <button class="button button-primary" type="submit" form="tuning-dialog-close">
+            Done
           </button>
         </div>
-      </section>
-      <fieldset id="drift-tuning-sliders"></fieldset>
+      </div>
     </dialog>
-    <dialog id="course-picker-dialog" aria-labelledby="course-picker-title">
+    <dialog id="course-picker-dialog" class="course-picker" aria-labelledby="course-picker-title">
       <form method="dialog" class="dialog-close">
-        <button type="submit" aria-label="Close">×</button>
+        <button class="button button-quiet" type="submit" aria-label="Close" title="Close">
+          ×
+        </button>
       </form>
       <h2 id="course-picker-title" tabindex="-1" autofocus>Choose course</h2>
-      <div id="course-picker-tabs" class="tabs">
-        <div role="tablist" aria-label="Course groups">
-          <button
-            id="courses-built-in-tab"
-            type="button"
-            role="tab"
-            aria-controls="courses-built-in"
+      <p class="help-text">Explore the layouts, then load your next drive.</p>
+      <div class="master-detail">
+        <div class="selection-library">
+          <div
+            id="course-list"
+            class="selection-list"
+            role="listbox"
+            aria-label="Courses"
+            aria-orientation="vertical"
+          ></div>
+          <div class="selection-library-actions">
+            <button id="course-create" class="button button-secondary" type="button">
+              + Create course
+            </button>
+          </div>
+        </div>
+        <div class="detail-panel course-detail">
+          <section id="course-overview" aria-labelledby="course-preview-name">
+            <div id="course-preview-3d" class="course-preview-3d">
+              <p id="course-preview-status" class="help-text" role="status"></p>
+            </div>
+            <p id="course-preview-error" role="alert"></p>
+            <div class="course-preview-heading">
+              <h3 id="course-preview-name"></h3>
+              <span id="course-preview-group" class="badge"></span>
+              <button id="course-save-preview" class="button button-quiet" type="button" hidden>
+                Save layout…
+              </button>
+              <button id="course-edit-draft" class="button button-quiet" type="button" hidden>
+                Edit
+              </button>
+              <details id="course-actions" class="action-disclosure" hidden>
+                <summary class="button button-quiet" aria-label="Saved course actions">⋯</summary>
+                <div class="action-menu">
+                  <button id="course-rename" class="button button-quiet" type="button">
+                    Rename course
+                  </button>
+                  <button id="course-delete" class="button button-quiet danger" type="button">
+                    Delete course
+                  </button>
+                </div>
+              </details>
+            </div>
+            <p id="course-preview-distance" class="help-text"></p>
+            <div class="course-direction">
+              <div>
+                <strong>Direction</strong>
+                <p class="help-text">Applied when you load the course.</p>
+              </div>
+              <fieldset class="segmented-control" aria-label="Course direction">
+                <label
+                  ><input type="radio" name="course-direction" value="forward" checked /><span
+                    >Forward</span
+                  ></label
+                >
+                <label
+                  ><input type="radio" name="course-direction" value="reverse" /><span
+                    >Reverse</span
+                  ></label
+                >
+              </fieldset>
+            </div>
+            <ul id="course-records" class="record-list"></ul>
+          </section>
+          <section
+            id="course-generator"
+            class="creation-panel"
+            aria-labelledby="course-generator-title"
+            hidden
           >
-            Built-in courses
-          </button>
-          <button
-            id="courses-racetracks-tab"
-            type="button"
-            role="tab"
-            aria-controls="courses-racetracks"
-          >
-            Racetracks
-          </button>
-          <button id="courses-saved-tab" type="button" role="tab" aria-controls="courses-saved">
-            Saved courses
-          </button>
-        </div>
-        <div
-          id="courses-built-in"
-          role="tabpanel"
-          aria-labelledby="courses-built-in-tab"
-          tabindex="0"
-        >
-          <div class="course-grid"></div>
-        </div>
-        <div
-          id="courses-racetracks"
-          role="tabpanel"
-          aria-labelledby="courses-racetracks-tab"
-          tabindex="0"
-        >
-          <div class="course-grid"></div>
-        </div>
-        <div id="courses-saved" role="tabpanel" aria-labelledby="courses-saved-tab" tabindex="0">
-          <p id="courses-saved-empty">
-            No saved courses yet. Generate a random or custom course, then save it from the course
-            menu.
-          </p>
-          <div class="course-grid"></div>
+            <h3 id="course-generator-title">Create course</h3>
+            <p class="help-text">Preview a new layout before changing your race.</p>
+            <form id="course-generator-form" class="creation-form">
+              <div class="field">
+                <label for="course-draft-name">Course name</label>
+                <input
+                  id="course-draft-name"
+                  name="name"
+                  type="text"
+                  maxlength="80"
+                  required
+                  placeholder="Name your course"
+                />
+              </div>
+              <fieldset class="segmented-control" aria-label="Generation type">
+                <label
+                  ><input type="radio" name="generation" value="random" checked /><span
+                    >Random</span
+                  ></label
+                >
+                <label
+                  ><input type="radio" name="generation" value="custom" /><span>Custom</span></label
+                >
+              </fieldset>
+              <div class="creation-settings">
+                <p id="course-random-help" class="help-text">
+                  Generate a balanced layout with a mix of corners and elevation.
+                </p>
+                <fieldset id="custom-course-sliders" class="parameter-grid" hidden>
+                  <legend class="visually-hidden">Generation preferences</legend>
+                </fieldset>
+              </div>
+              <div class="creation-actions">
+                <button id="custom-course-reset" class="button button-quiet" type="button" hidden>
+                  Reset defaults
+                </button>
+                <button id="custom-course-generate" class="button button-secondary" type="submit">
+                  Generate preview
+                </button>
+              </div>
+            </form>
+          </section>
+          <section id="course-replays" aria-labelledby="course-replays-title" hidden>
+            <button id="course-replays-back" class="button button-quiet" type="button">
+              ← Course preview
+            </button>
+            <h3 id="course-replays-title" tabindex="-1"></h3>
+            <p id="course-replays-direction" class="help-text"></p>
+            <ul id="course-replay-runs" class="record-list"></ul>
+          </section>
         </div>
       </div>
       <p id="course-picker-error" role="alert"></p>
-    </dialog>
-    <dialog id="custom-course-dialog" class="slider-dialog" aria-labelledby="custom-course-title">
-      <form method="dialog" class="dialog-close">
-        <button type="submit" aria-label="Close" title="Close">×</button>
-      </form>
-      <h2 id="custom-course-title" tabindex="-1" autofocus>Custom course</h2>
-      <p>
-        Choose a course length and independent preferences from 0 (avoid) to 1 (strongly favor).
-      </p>
-      <fieldset id="custom-course-sliders">
-        <legend>Generation preferences</legend>
-      </fieldset>
-      <p id="custom-course-status" role="status"></p>
-      <p id="custom-course-error" role="alert"></p>
-      <div class="dialog-actions">
-        <button id="custom-course-reset" class="keycap" type="button">Restore defaults</button>
-        <button id="custom-course-generate" class="keycap" type="button" disabled>
-          Generate course
-        </button>
+      <div class="dialog-footer">
+        <p id="course-picker-status" class="dialog-help" role="status">
+          Loading a course resets the race.
+        </p>
+        <div class="dialog-actions">
+          <button id="course-picker-cancel" class="button button-secondary" type="button">
+            Cancel
+          </button>
+          <button id="course-load" class="button button-primary" type="button">Load course</button>
+        </div>
       </div>
+    </dialog>
+    <dialog
+      id="saved-course-dialog"
+      class="confirm-dialog"
+      aria-labelledby="saved-course-title"
+      aria-describedby="saved-course-description"
+    >
+      <form id="saved-course-form" method="dialog">
+        <h2 id="saved-course-title"></h2>
+        <p id="saved-course-description"></p>
+        <div id="saved-course-name-field" class="field">
+          <label for="saved-course-name">Course name</label>
+          <input id="saved-course-name" type="text" maxlength="80" required />
+        </div>
+        <p id="saved-course-error" role="alert"></p>
+        <div class="dialog-footer">
+          <p id="saved-course-help" class="dialog-help"></p>
+          <div class="dialog-actions">
+            <button id="saved-course-cancel" class="button button-secondary" type="button">
+              Cancel
+            </button>
+            <button id="saved-course-confirm" class="button button-primary" type="submit"></button>
+          </div>
+        </div>
+      </form>
     </dialog>
     <header class="hide-when-loading">
       <div class="controls">
         <button
           id="settings"
-          class="keycap"
+          class="button button-secondary button-translucent toolbar-button"
           type="button"
           aria-haspopup="dialog"
           aria-controls="settings-dialog"
+          aria-label="Settings"
         >
-          ⚙️
+          Settings
         </button>
         <button
           id="tuning"
-          class="keycap"
+          class="button button-secondary button-translucent toolbar-button"
           type="button"
           aria-haspopup="dialog"
           aria-controls="drift-tuning"
+          aria-label="Tuning"
         >
-          🛠️
+          <span id="tuning-label">Grip · Default</span>
         </button>
-        <button
-          id="bots"
-          class="keycap"
-          type="button"
-          aria-haspopup="dialog"
-          aria-controls="bots-dialog"
-          title="Bots"
-        >
-          🤖
-        </button>
-        <button id="help" class="keycap" type="button" aria-haspopup="dialog">❓</button>
       </div>
     </header>
     <footer>
@@ -355,231 +412,707 @@
     </footer>
     <dialog id="settings-dialog" aria-labelledby="settings-title">
       <form method="dialog" class="dialog-close">
-        <button type="submit" aria-label="Close" title="Close">×</button>
+        <button class="button button-quiet" type="submit" aria-label="Close" title="Close">
+          ×
+        </button>
       </form>
       <h2 id="settings-title" tabindex="-1" autofocus>Settings</h2>
-      <section class="settings-group" aria-labelledby="settings-game-title">
-        <h3 id="settings-game-title">Game</h3>
-        <div class="settings-controls">
-          <div class="settings-control-row">
-            <label for="sound">Sound</label>
-            <select id="sound">
-              <option value="on">On</option>
-              <option value="off">Off</option>
-            </select>
-          </div>
-          <p id="sound-status" role="status"></p>
-          <div class="settings-control-row">
-            <label for="stereo-station">Stereo station</label>
-            <select id="stereo-station"></select>
-          </div>
-          <div class="settings-control-row">
-            <label for="time-of-day">Time of day</label>
-            <select id="time-of-day">
-              <option value="noon">Noon</option>
-              <option value="sunset">Sunset</option>
-              <option value="night">Night</option>
-            </select>
-          </div>
-          <div class="settings-control-row">
-            <label for="minimap-orientation">Map orientation</label>
-            <select id="minimap-orientation">
-              <option value="heading-up">Follow heading</option>
-              <option value="north-up">North up</option>
-            </select>
-          </div>
-          <div class="settings-control-row">
-            <label for="ghost-mode">Ghost car</label>
-            <select id="ghost-mode">
-              <option value="off">Off</option>
-              <option value="record">Record lap</option>
-              <option value="fastest">Fastest lap</option>
-              <option value="previous">Previous lap</option>
-            </select>
-          </div>
+      <div class="tabs category-layout" id="settings-tabs">
+        <div role="tablist" aria-label="Settings categories" aria-orientation="vertical">
+          <button
+            id="settings-controls-tab"
+            type="button"
+            role="tab"
+            aria-controls="settings-controls-panel"
+          >
+            Controls
+          </button>
+          <button
+            id="settings-audio-tab"
+            type="button"
+            role="tab"
+            aria-controls="settings-audio-panel"
+          >
+            Audio
+          </button>
+          <button
+            id="settings-video-tab"
+            type="button"
+            role="tab"
+            aria-controls="settings-video-panel"
+          >
+            Video
+          </button>
+          <button
+            id="settings-camera-tab"
+            type="button"
+            role="tab"
+            aria-controls="settings-camera-panel"
+          >
+            Camera
+          </button>
+          <button id="settings-hud-tab" type="button" role="tab" aria-controls="settings-hud-panel">
+            HUD &amp; aids
+          </button>
+          <button
+            id="settings-track-tab"
+            type="button"
+            role="tab"
+            aria-controls="settings-track-panel"
+          >
+            Track
+          </button>
         </div>
-      </section>
-      <section class="settings-group" aria-labelledby="settings-camera-title">
-        <h3 id="settings-camera-title">Camera</h3>
-        <div class="settings-controls">
-          <div class="settings-control-row">
-            <label for="camera-style">Camera style</label>
-            <select id="camera-style">
-              <option value="corner">Corner-aware chase</option>
-              <option value="classic">Classic chase</option>
-              <option value="cabin">In-cabin</option>
-            </select>
-          </div>
-          <div class="settings-control-row">
-            <label for="mirror-resolution">Mirror resolution</label>
-            <select id="mirror-resolution">
-              <option value="off">Off</option>
-              <option value="low">Low (512 × 256)</option>
-              <option value="medium">Medium (1024 × 512)</option>
-              <option value="high">High (full resolution)</option>
-            </select>
-          </div>
-          <div class="settings-control-row">
-            <label for="cabin-head-motion">Cabin head motion</label>
-            <select id="cabin-head-motion">
-              <option value="on">On</option>
-              <option value="off">Off</option>
-            </select>
-          </div>
+        <div class="category-panels">
+          <section
+            id="settings-controls-panel"
+            role="tabpanel"
+            aria-labelledby="settings-controls-tab"
+          >
+            <h3>Controls</h3>
+            <div class="controls-settings" id="controls-settings">
+              <div class="controls-settings__toolbar">
+                <div class="tabs tabs-underlined" role="tablist" aria-label="Input device">
+                  <button
+                    type="button"
+                    role="tab"
+                    id="controls-keyboard-tab"
+                    aria-controls="controls-keyboard-panel"
+                  >
+                    Keyboard
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    id="controls-controller-tab"
+                    aria-controls="controls-controller-panel"
+                  >
+                    Xbox controller
+                  </button>
+                </div>
+              </div>
+              <section
+                id="controls-keyboard-panel"
+                role="tabpanel"
+                aria-labelledby="controls-keyboard-tab"
+              >
+                <div class="input-diagram">
+                  <div
+                    class="keyboard-diagram"
+                    role="img"
+                    aria-label="ANSI QWERTY keyboard diagram"
+                  ></div>
+                  <div class="controls-settings__legend">
+                    <span><i class="controls-settings__legend-primary"></i>Driving controls</span
+                    ><span><i class="controls-settings__legend-secondary"></i>Other shortcuts</span>
+                  </div>
+                </div>
+                <div
+                  class="tabs tabs-underlined controls-settings__group-tabs"
+                  role="tablist"
+                  aria-label="Keyboard binding groups"
+                >
+                  <button
+                    type="button"
+                    role="tab"
+                    id="controls-driving-tab"
+                    aria-controls="controls-driving-panel"
+                  >
+                    Driving
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    id="controls-shortcuts-tab"
+                    aria-controls="controls-shortcuts-panel"
+                  >
+                    Camera, lights &amp; shortcuts
+                  </button>
+                </div>
+                <section
+                  id="controls-driving-panel"
+                  role="tabpanel"
+                  aria-labelledby="controls-driving-tab"
+                >
+                  <div class="controls-settings__binding-heading">
+                    <span>Click a binding to change it · Esc to cancel</span>
+                  </div>
+                  <div class="binding-list" data-keyboard-group="driving"></div>
+                  <p class="help-text">
+                    Accelerate + brake: brakestand below 2.5 mph; all-wheel braking at higher
+                    speeds.
+                  </p>
+                </section>
+                <section
+                  id="controls-shortcuts-panel"
+                  role="tabpanel"
+                  aria-labelledby="controls-shortcuts-tab"
+                >
+                  <div class="controls-settings__binding-heading">
+                    <span>Click a binding to change it · Esc to cancel</span>
+                  </div>
+                  <div class="binding-list" data-keyboard-group="shortcuts"></div>
+                  <div class="controls-settings__shortcuts-help">
+                    <p class="help-text">Hold headlights for 1 second to toggle fog lights.</p>
+                    <p class="help-text">Hold high beams for 1 second to toggle them on or off.</p>
+                  </div>
+                </section>
+              </section>
+              <section
+                id="controls-controller-panel"
+                role="tabpanel"
+                aria-labelledby="controls-controller-tab"
+                hidden
+              >
+                <div class="input-diagram controller-preview">
+                  <p
+                    id="controller-status"
+                    class="controls-settings__device-status"
+                    role="status"
+                  ></p>
+                  <svg
+                    class="gamepad-diagram"
+                    viewBox="0 -40 760 240"
+                    role="img"
+                    aria-label="Xbox controller diagram with current control bindings"
+                  >
+                    <g class="gamepad-diagram__shell">
+                      <path
+                        d="M248 52 Q258 25 284 28 Q380 12 476 28 Q502 25 512 52 Q530 102 538 151 Q542 181 523 186 Q507 190 491 165 L464 132 Q442 120 417 128 Q380 138 343 128 Q318 120 296 132 L269 165 Q253 190 237 186 Q218 181 222 151 Q230 102 248 52Z"
+                      />
+                      <path
+                        d="M276 31 L279 12 Q294 4 311 12 L315 30 M445 30 L449 12 Q466 4 481 12 L484 31"
+                      />
+                    </g>
+                    <g class="gamepad-diagram__stick">
+                      <circle cx="294" cy="72" r="22" data-pad="10" />
+                      <circle cx="407" cy="102" r="22" data-pad="11" />
+                    </g>
+                    <g class="gamepad-diagram__dpad">
+                      <path d="M326 78 H342 V90 H354 V106 H342 V118 H326 V106 H314 V90 H326Z" />
+                      <rect x="326" y="78" width="16" height="12" data-pad="12" />
+                      <rect x="326" y="106" width="16" height="12" data-pad="13" />
+                      <rect x="314" y="90" width="12" height="16" data-pad="14" />
+                      <rect x="342" y="90" width="12" height="16" data-pad="15" />
+                    </g>
+                    <g class="gamepad-diagram__buttons">
+                      <circle cx="468" cy="55" r="12" data-pad="3" />
+                      <circle cx="489" cy="76" r="12" data-pad="1" />
+                      <circle cx="447" cy="76" r="12" data-pad="2" />
+                      <circle cx="468" cy="97" r="12" data-pad="0" />
+                      <text x="468" y="59" data-pad="3">Y</text>
+                      <text x="489" y="80" data-pad="1">B</text>
+                      <text x="447" y="80" data-pad="2">X</text>
+                      <text x="468" y="101" data-pad="0">A</text>
+                    </g>
+                    <g class="gamepad-diagram__callouts" data-driving-callouts>
+                      <text class="is-left" x="154" y="21" data-action-callout="brake">Brake</text>
+                      <text x="606" y="21" data-action-callout="accelerate">Accelerate</text>
+                      <text class="is-left" x="154" y="58" data-action-callout="highBeams">
+                        High beams
+                      </text>
+                      <text x="606" y="58" data-action-callout="handbrake">Handbrake</text>
+                      <text class="is-left" x="154" y="103">Steer</text>
+                      <text x="606" y="86" data-action-callout="driveMode">Grip / Drift</text>
+                      <text x="606" y="114" data-action-callout="map">Map</text>
+                      <text
+                        class="is-center is-bottom"
+                        x="550"
+                        y="194"
+                        data-action-callout="headlights"
+                      >
+                        Headlights
+                      </text>
+                      <text class="is-center is-top" x="450" y="-20" data-action-callout="reset">
+                        Reset
+                      </text>
+                      <text class="is-center is-top" x="300" y="-20" data-action-callout="camera">
+                        Camera
+                      </text>
+                      <text class="is-center" x="380" y="194" data-action-callout="lookBehind">
+                        Look behind
+                      </text>
+                      <path
+                        class="gamepad-diagram__connector"
+                        d="M598 165 H568 L468 110"
+                        aria-hidden="true"
+                      />
+                      <text x="606" y="169" data-button-callout="0">A: Unbound</text>
+                    </g>
+                    <g class="gamepad-diagram__callouts" data-map-callouts hidden>
+                      <g data-map-axis="0" hidden>
+                        <path
+                          class="gamepad-diagram__connector"
+                          d="M162 66 H202 L294 72"
+                          aria-hidden="true"
+                        />
+                        <text class="is-left" x="154" y="70"></text>
+                      </g>
+                      <g data-map-axis="1" hidden>
+                        <path
+                          class="gamepad-diagram__connector"
+                          d="M162 108 H202 L294 72"
+                          aria-hidden="true"
+                        />
+                        <text class="is-left" x="154" y="112"></text>
+                      </g>
+                      <g data-map-axis="2" hidden>
+                        <path
+                          class="gamepad-diagram__connector"
+                          d="M598 99 H568 L407 102"
+                          aria-hidden="true"
+                        />
+                        <text x="606" y="103"></text>
+                      </g>
+                      <g data-map-axis="3" hidden>
+                        <path
+                          class="gamepad-diagram__connector"
+                          d="M598 141 H568 L407 102"
+                          aria-hidden="true"
+                        />
+                        <text x="606" y="145"></text>
+                      </g>
+                      <text x="606" y="58" data-action-callout="map">Return to driving</text>
+                    </g>
+                    <g class="gamepad-diagram__labels">
+                      <circle cx="358" cy="58" r="5" data-pad="8" />
+                      <circle cx="398" cy="58" r="5" data-pad="9" />
+                      <text x="298" y="18" data-pad="6">LT</text>
+                      <text x="463" y="18" data-pad="7">RT</text>
+                      <text x="296" y="32" data-pad="4">LB</text>
+                      <text x="464" y="32" data-pad="5">RB</text>
+                    </g>
+                    <g class="gamepad-diagram__connectors" aria-hidden="true"></g>
+                  </svg>
+                </div>
+                <div
+                  class="tabs tabs-underlined controls-settings__group-tabs"
+                  role="tablist"
+                  aria-label="Controller binding context"
+                >
+                  <button
+                    type="button"
+                    role="tab"
+                    id="controls-controller-driving-tab"
+                    aria-controls="controls-controller-driving-panel"
+                  >
+                    Driving
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    id="controls-controller-map-tab"
+                    aria-controls="controls-controller-map-panel"
+                  >
+                    Map view
+                  </button>
+                </div>
+                <section
+                  id="controls-controller-driving-panel"
+                  role="tabpanel"
+                  aria-labelledby="controls-controller-driving-tab"
+                >
+                  <div class="controls-settings__binding-heading">
+                    <span>Click a binding, then press a controller button</span>
+                  </div>
+                  <div class="binding-list" data-controller-bindings></div>
+                  <p class="help-text">
+                    Right stick adjusts the camera; hold left or right for turn signals. Click the
+                    right stick to look behind.
+                  </p>
+                </section>
+                <section
+                  id="controls-controller-map-panel"
+                  role="tabpanel"
+                  aria-labelledby="controls-controller-map-tab"
+                  hidden
+                >
+                  <div class="controls-settings__binding-heading">
+                    <span>
+                      Assign map controls independently. Driving controls remain active; turn-signal
+                      holds and look-behind are inactive in map view.
+                    </span>
+                  </div>
+                  <div class="controls-settings__axes" data-map-axes></div>
+                  <div class="binding-list" data-map-return></div>
+                </section>
+              </section>
+              <div class="controls-settings__footer">
+                <p class="controls-settings__status" role="status" aria-live="polite"></p>
+                <button class="button button-secondary" type="button" data-reset>
+                  Restore defaults
+                </button>
+              </div>
+            </div>
+          </section>
+          <section
+            id="settings-audio-panel"
+            role="tabpanel"
+            aria-labelledby="settings-audio-tab"
+            hidden
+          >
+            <h3>Audio</h3>
+            <p>Sound and music for your drive.</p>
+            <div class="field-stack">
+              <div class="field">
+                <label for="sound">Sound</label>
+                <input
+                  class="switch"
+                  role="switch"
+                  id="sound"
+                  type="checkbox"
+                  aria-describedby="sound-status"
+                />
+                <p id="sound-status" role="status"></p>
+              </div>
+              <div class="field">
+                <label for="stereo-station">Stereo station</label>
+                <p id="station-description">
+                  Groove to some tunes courtesy of
+                  <a href="https://somafm.com/" target="_blank" rel="noopener noreferrer">SomaFM</a>
+                  while you drift.
+                </p>
+                <select id="stereo-station" aria-describedby="station-description"></select>
+              </div>
+            </div>
+          </section>
+          <section
+            id="settings-video-panel"
+            role="tabpanel"
+            aria-labelledby="settings-video-tab"
+            hidden
+          >
+            <h3>Video</h3>
+            <p>Lighting, detail and performance.</p>
+            <div class="field-stack">
+              <div class="field">
+                <label for="time-of-day">Time of day</label>
+                <select id="time-of-day">
+                  <option value="noon">Noon</option>
+                  <option value="sunset">Sunset</option>
+                  <option value="night">Night</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="mirror-resolution">Mirror resolution</label>
+                <p id="mirror-description">Lower resolution improves performance.</p>
+                <select id="mirror-resolution" aria-describedby="mirror-description">
+                  <option value="off">Off</option>
+                  <option value="low">Low (512 × 256)</option>
+                  <option value="medium">Medium (1024 × 512)</option>
+                  <option value="high">High (full resolution)</option>
+                </select>
+              </div>
+            </div>
+          </section>
+          <section
+            id="settings-camera-panel"
+            role="tabpanel"
+            aria-labelledby="settings-camera-tab"
+            hidden
+          >
+            <h3>Camera</h3>
+            <p>View and cabin.</p>
+            <div class="field-stack">
+              <div class="field">
+                <label for="camera-style">Camera style</label>
+                <select id="camera-style">
+                  <option value="corner">Corner-aware chase</option>
+                  <option value="classic">Classic chase</option>
+                  <option value="cabin">In-cabin</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="cabin-head-motion">Cabin head motion</label>
+                <p id="head-motion-description">Move the driver's view with the car.</p>
+                <input
+                  class="switch"
+                  role="switch"
+                  id="cabin-head-motion"
+                  type="checkbox"
+                  aria-describedby="head-motion-description"
+                />
+              </div>
+            </div>
+          </section>
+          <section
+            id="settings-hud-panel"
+            role="tabpanel"
+            aria-labelledby="settings-hud-tab"
+            hidden
+          >
+            <h3>HUD &amp; aids</h3>
+            <p>Find your way and improve your line.</p>
+            <div class="illustrated-settings">
+              <section class="illustrated-setting">
+                <div class="field">
+                  <label for="minimap-orientation">Minimap orientation</label>
+                  <p id="minimap-description">
+                    Rotate the map with your heading or keep north at the top.
+                  </p>
+                  <select id="minimap-orientation" aria-describedby="minimap-description">
+                    <option value="heading-up">Follow heading</option>
+                    <option value="north-up">North up</option>
+                  </select>
+                </div>
+                <div
+                  class="setting-illustration"
+                  role="img"
+                  aria-label="Illustration of the minimap showing your position on the course"
+                >
+                  <svg viewBox="0 0 224 126" aria-hidden="true">
+                    <path
+                      class="illustration-map"
+                      d="M65 40 Q30 40 35 75 T80 108 L152 82 Q180 70 163 43 T125 44 Q105 65 88 48Z"
+                    />
+                    <path class="illustration-position" d="M96 83 L107 104 L96 99 L85 104Z" />
+                  </svg>
+                  <span aria-hidden="true">Illustration</span>
+                </div>
+              </section>
+              <section class="illustrated-setting">
+                <div class="field">
+                  <label for="ghost-mode">Ghost car reference lap</label>
+                  <p id="ghost-description">
+                    Compare your driving against your run's fastest or previous lap, or the course
+                    record.
+                  </p>
+                  <select id="ghost-mode" aria-describedby="ghost-description">
+                    <option value="off">Off</option>
+                    <option value="record">Record lap</option>
+                    <option value="fastest">Fastest lap</option>
+                    <option value="previous">Previous lap</option>
+                  </select>
+                </div>
+                <div
+                  class="setting-illustration"
+                  role="img"
+                  aria-label="Illustration of a translucent reference car ahead on the track"
+                >
+                  <svg viewBox="0 0 224 126" aria-hidden="true">
+                    <path class="illustration-road" d="M40 126 Q68 85 112 78 T190 26" />
+                    <path class="illustration-line" d="M40 126 Q68 85 112 78 T190 26" />
+                    <g class="illustration-ghost" transform="translate(117 75) rotate(55)">
+                      <rect x="-9" y="-17" width="18" height="34" rx="5" />
+                      <path class="illustration-window" d="M-6-8 H6 V4 H-6Z" />
+                    </g>
+                  </svg>
+                  <span aria-hidden="true">Illustration</span>
+                </div>
+              </section>
+              <section class="illustrated-setting">
+                <div class="field">
+                  <label for="show-lap-gates">Racing line training gate display</label>
+                  <p id="gates-description">
+                    See markers along the racing line to guide your path through corners.
+                  </p>
+                  <select id="show-lap-gates" aria-describedby="gates-description">
+                    <option value="off">Off</option>
+                    <option value="on">On</option>
+                    <option value="rainbow">Rainbow</option>
+                  </select>
+                </div>
+                <div
+                  class="setting-illustration"
+                  role="img"
+                  aria-label="Illustration of training gates along a corner's racing line"
+                >
+                  <svg viewBox="0 0 224 126" aria-hidden="true">
+                    <path class="illustration-road" d="M40 126 Q68 85 112 78 T190 26" />
+                    <path class="illustration-line" d="M40 126 Q68 85 112 78 T190 26" />
+                    <g class="illustration-gate">
+                      <path d="M60 98 V67 H104 V80" />
+                      <path d="M111 73 V44 H151 V58" />
+                      <path d="M154 48 V22 H187 V33" />
+                    </g>
+                  </svg>
+                  <span aria-hidden="true">Illustration</span>
+                </div>
+              </section>
+            </div>
+          </section>
+          <section
+            id="settings-track-panel"
+            role="tabpanel"
+            aria-labelledby="settings-track-tab"
+            hidden
+          >
+            <h3>Track</h3>
+            <p>Trackside scenery and markers.</p>
+            <div class="illustrated-settings">
+              <section class="illustrated-setting">
+                <div class="field">
+                  <label for="show-cones">Cone placement</label>
+                  <p id="cones-description">
+                    Mark the course with cones, or show them only at corners.
+                  </p>
+                  <select id="show-cones" aria-describedby="cones-description">
+                    <option value="all">On</option>
+                    <option value="corners">Corners only</option>
+                    <option value="off">Off</option>
+                  </select>
+                </div>
+                <div
+                  class="setting-illustration"
+                  role="img"
+                  aria-label="Illustration of cones marking a corner"
+                >
+                  <svg viewBox="0 0 224 126" aria-hidden="true">
+                    <path class="illustration-road" d="M40 126 Q68 85 112 78 T190 26" />
+                    <path class="illustration-line" d="M40 126 Q68 85 112 78 T190 26" />
+                    <g transform="translate(55 83)">
+                      <path class="illustration-cone" d="M-5 0 L0-16 L5 0Z" />
+                      <path class="illustration-mark" d="M-3-6 H3" />
+                    </g>
+                    <g transform="translate(92 61)">
+                      <path class="illustration-cone" d="M-5 0 L0-16 L5 0Z" />
+                      <path class="illustration-mark" d="M-3-6 H3" />
+                    </g>
+                    <g transform="translate(134 45)">
+                      <path class="illustration-cone" d="M-5 0 L0-16 L5 0Z" />
+                      <path class="illustration-mark" d="M-3-6 H3" />
+                    </g>
+                    <g transform="translate(106 111)">
+                      <path class="illustration-cone" d="M-5 0 L0-16 L5 0Z" />
+                      <path class="illustration-mark" d="M-3-6 H3" />
+                    </g>
+                    <g transform="translate(153 91)">
+                      <path class="illustration-cone" d="M-5 0 L0-16 L5 0Z" />
+                      <path class="illustration-mark" d="M-3-6 H3" />
+                    </g>
+                  </svg>
+                  <span aria-hidden="true">Illustration</span>
+                </div>
+              </section>
+              <section class="illustrated-setting">
+                <div class="field">
+                  <label for="show-turn-signs">Turn sign density</label>
+                  <p id="signs-description">Choose how many signs mark upcoming turns.</p>
+                  <select id="show-turn-signs" aria-describedby="signs-description">
+                    <option value="off">Off</option>
+                    <option value="few">Few</option>
+                    <option value="several">Several</option>
+                    <option value="many">Many</option>
+                  </select>
+                </div>
+                <div
+                  class="setting-illustration"
+                  role="img"
+                  aria-label="Illustration of turn signs approaching a bend"
+                >
+                  <svg viewBox="0 0 224 126" aria-hidden="true">
+                    <path class="illustration-road" d="M40 126 Q68 85 112 78 T190 26" />
+                    <path class="illustration-line" d="M40 126 Q68 85 112 78 T190 26" />
+                    <g transform="translate(56 84)">
+                      <path class="illustration-post" d="M0 0 V-20" />
+                      <path class="illustration-sign" d="M-8-20 V-34 H8 V-20Z" />
+                      <path class="illustration-mark" d="M-3-31 L2-27 L-3-23" />
+                    </g>
+                    <g transform="translate(116 57)">
+                      <path class="illustration-post" d="M0 0 V-20" />
+                      <path class="illustration-sign" d="M-8-20 V-34 H8 V-20Z" />
+                      <path class="illustration-mark" d="M-3-31 L2-27 L-3-23" />
+                    </g>
+                    <g transform="translate(167 32)">
+                      <path class="illustration-post" d="M0 0 V-20" />
+                      <path class="illustration-sign" d="M-8-20 V-34 H8 V-20Z" />
+                      <path class="illustration-mark" d="M-3-31 L2-27 L-3-23" />
+                    </g>
+                  </svg>
+                  <span aria-hidden="true">Illustration</span>
+                </div>
+              </section>
+              <section class="illustrated-setting">
+                <div class="field">
+                  <label for="show-grass">Grass tufts</label>
+                  <p id="grass-description">Add small clumps of grass beside the track.</p>
+                  <input
+                    class="switch"
+                    role="switch"
+                    id="show-grass"
+                    type="checkbox"
+                    aria-describedby="grass-description"
+                  />
+                </div>
+                <div
+                  class="setting-illustration"
+                  role="img"
+                  aria-label="Illustration of small grass clumps beside the road"
+                >
+                  <svg viewBox="0 0 224 126" aria-hidden="true">
+                    <path class="illustration-road" d="M40 126 Q68 85 112 78 T190 26" />
+                    <path class="illustration-line" d="M40 126 Q68 85 112 78 T190 26" />
+                    <g class="illustration-grass">
+                      <path
+                        d="M34 80 L30 64 M34 80 L40 62 M34 80 L45 72 M70 56 L65 40 M70 56 L73 36 M70 56 L81 45 M147 116 L141 100 M147 116 L150 94 M147 116 L160 101 M178 91 L173 74 M178 91 L182 69 M178 91 L191 79"
+                      />
+                    </g>
+                  </svg>
+                  <span aria-hidden="true">Illustration</span>
+                </div>
+              </section>
+            </div>
+          </section>
         </div>
-      </section>
-      <section class="settings-group" aria-labelledby="settings-map-title">
-        <h3 id="settings-map-title">Map</h3>
-        <div class="settings-controls">
-          <div class="settings-control-row">
-            <label for="show-cones">Cones</label>
-            <select id="show-cones">
-              <option value="all">On</option>
-              <option value="corners">Corners only</option>
-              <option value="off">Off</option>
-            </select>
-          </div>
-          <div class="settings-control-row">
-            <label for="show-turn-signs">Turn Signs</label>
-            <select id="show-turn-signs">
-              <option value="off">Off</option>
-              <option value="few">Few</option>
-              <option value="several">Several</option>
-              <option value="many">Many</option>
-            </select>
-          </div>
-          <div class="settings-control-row">
-            <label for="show-grass">Grass Tufts</label>
-            <select id="show-grass">
-              <option value="on">On</option>
-              <option value="off">Off</option>
-            </select>
-          </div>
-          <div class="settings-control-row">
-            <label for="show-lap-gates">Racing line training gates</label>
-            <select id="show-lap-gates">
-              <option value="off">Off</option>
-              <option value="on">On</option>
-              <option value="rainbow">Rainbow</option>
-            </select>
-          </div>
-        </div>
-      </section>
-    </dialog>
-    <dialog id="bots-dialog" class="slider-dialog" aria-labelledby="bots-title">
-      <form method="dialog" class="dialog-close">
-        <button type="submit" aria-label="Close" title="Close">×</button>
-      </form>
-      <h2 id="bots-title" tabindex="-1" autofocus>Bots</h2>
-      <p>Race bots join the current course. Applying resets the race.</p>
-      <fieldset>
-        <label class="slider-control checkbox-control">
-          <input class="bots-only" type="checkbox" />
-          <span>Bots only (spectate the first bot)</span>
-        </label>
-      </fieldset>
-      <div class="bot-list"></div>
-      <p role="alert"></p>
-      <div class="dialog-actions">
-        <button class="bot-add keycap" type="button">Add bot</button>
-        <button class="bots-apply keycap" type="button">Apply</button>
+      </div>
+      <div class="dialog-footer">
+        <p class="dialog-help">Changes apply immediately.</p>
+        <form method="dialog" class="dialog-actions">
+          <button class="button button-primary" type="submit">Done</button>
+        </form>
       </div>
     </dialog>
-    <dialog id="help-dialog" aria-labelledby="help-title">
-      <form method="dialog" class="dialog-close">
-        <button type="submit" aria-label="Close" title="Close">×</button>
+    <dialog id="bots-dialog" class="slider-dialog bots-dialog" aria-labelledby="bots-title">
+      <form id="bots-dialog-close" method="dialog" class="dialog-close">
+        <button class="button button-quiet" type="submit" aria-label="Close" title="Close">
+          ×
+        </button>
       </form>
-      <h2 id="help-title" tabindex="-1" autofocus>Driving controls</h2>
-      <h3>Keyboard</h3>
-      <dl>
-        <dt><kbd>←</kbd><kbd>→</kbd></dt>
-        <dd>Steer; up/down zooms in/out in map view</dd>
-        <dt><kbd>Z</kbd></dt>
-        <dd>Accelerate</dd>
-        <dt><kbd>X</kbd></dt>
-        <dd>Brake; hold to reverse near a stop</dd>
-        <dt><kbd>X</kbd> + <kbd>Z</kbd></dt>
-        <dd>Brakestand below 2.5 mph; all-wheel braking at higher speeds</dd>
-        <dt><kbd>Space</kbd></dt>
-        <dd>Handbrake</dd>
-        <dt><kbd>F</kbd> (hold)</dt>
-        <dd>Flash high beams; hold 1 second to toggle high beams on/off</dd>
-        <dt><kbd>H</kbd></dt>
-        <dd>
-          Headlights on immediately; tap to toggle (off also turns fog lights off); hold 1 second to
-          toggle fog lights with headlights on
-        </dd>
-        <dt><kbd>R</kbd></dt>
-        <dd>Reset car, cones, effects, and lap timing</dd>
-        <dt><kbd>V</kbd></dt>
-        <dd>Cycle camera: corner-aware chase, classic chase, in-cabin</dd>
-        <dt><kbd>D</kbd></dt>
-        <dd>Toggle Grip / Drift mode</dd>
-        <dt><kbd>M</kbd></dt>
-        <dd>Toggle bird's-eye map view</dd>
-        <dt><kbd>U</kbd></dt>
-        <dd>
-          Hide tach, then map, then leaderboard, then all HUD; press again to restore (?hide-ui=0–4)
-        </dd>
-        <dt><kbd>W</kbd></dt>
-        <dd>Cycle time of day: noon, sunset, night (once per press)</dd>
-        <dt><kbd>S</kbd></dt>
-        <dd>Turn on the stereo / next station / off after the last station</dd>
-      </dl>
-      <h3>
-        Controller
-        <div id="controller-status" role="status"></div>
-      </h3>
-      <dl>
-        <dt>R2 / RT</dt>
-        <dd>Accelerate</dd>
-        <dt>L2 / LT</dt>
-        <dd>Brake; hold to reverse near a stop</dd>
-        <dt>RT + LT</dt>
-        <dd>Brakestand below 2.5 mph; all-wheel braking at higher speeds</dd>
-        <dt>Left stick</dt>
-        <dd>Steer</dd>
-        <dt>Right stick</dt>
-        <dd>Adjust camera; hold left/right 1 second for 4 turn-signal flashes; pan in map view</dd>
-        <dt>R1 / RB</dt>
-        <dd>Handbrake</dd>
-        <dt>X / Square (west face button)</dt>
-        <dd>
-          Headlights on immediately; tap to toggle (off also turns fog lights off); hold 1 second to
-          toggle fog lights with headlights on
-        </dd>
-        <dt>L1 / LB (hold)</dt>
-        <dd>Flash high beams; hold 1 second to toggle high beams on/off</dd>
-        <dt>R3 (hold)</dt>
-        <dd>Look behind</dd>
-        <dt>B / Circle</dt>
-        <dd>Toggle bird's-eye map view (once per press)</dd>
-        <dt>View / Select / Back</dt>
-        <dd>Cycle camera: corner-aware chase, classic chase, in-cabin (once per press)</dd>
-        <dt>Y / Triangle</dt>
-        <dd>Toggle Grip / Drift mode (once per press)</dd>
-        <dt>D-pad Down</dt>
-        <dd>Cycle time of day: noon, sunset, night (once per press)</dd>
-        <dt>Start / Menu / Options</dt>
-        <dd>Reset</dd>
-        <dt>D-pad Left</dt>
-        <dd>Turn on stereo / previous station / off; previous lap during replay</dd>
-        <dt>D-pad Right</dt>
-        <dd>Turn on stereo / next station / off; next lap during replay</dd>
-        <dt>D-pad Up</dt>
-        <dd>Stop recording and replay, or play saved laps before the start line</dd>
-      </dl>
-      <h3>Lap recording</h3>
-      <p>
-        Recording captures your launch and shows once you cross the start/finish line. From the
-        second lap, a ghost car drives your fastest (or previous) lap of the run. Press the record
-        button to stop: the course resets, the laps are saved, and the replay plays. Before crossing
-        the line, press play to watch saved laps. Replays show each lap's total time, with a 🏆 for
-        the fastest lap of the run; use the arrows to skip to the previous or next lap. Resetting
-        the car discards an unsaved run, but completed record laps are saved automatically for each
-        map and direction. Choose Record lap in the ghost setting to race the all-time record from
-        your first lap. Beating it replaces the ghost with your new record.
-      </p>
+      <header class="bot-dialog-heading">
+        <div>
+          <h2 id="bots-title" tabindex="-1" autofocus>Bots</h2>
+          <p>Build the grid. Tune each driver. Applying resets the race.</p>
+        </div>
+      </header>
+      <div class="master-detail">
+        <aside class="bot-roster" aria-label="Bot roster">
+          <div class="selection-group-heading">
+            <span>Starting grid</span>
+            <span class="bot-count" aria-live="polite"></span>
+          </div>
+          <div class="selection-list" role="list" aria-label="Bots"></div>
+          <button class="button button-secondary bot-add" type="button">+ Add bot</button>
+        </aside>
+        <div id="bot-editor" class="detail-panel"></div>
+      </div>
+      <section class="race-mode" aria-labelledby="race-mode-title">
+        <div class="race-mode-copy">
+          <strong id="race-mode-title">Race mode</strong>
+          <p class="help-text">Bots only: sit out and spectate the first bot.</p>
+        </div>
+        <fieldset class="segmented-control" aria-label="Race mode">
+          <label>
+            <input class="race-with-bots" type="radio" name="race-mode" value="race" checked />
+            <span>Race with bots</span>
+          </label>
+          <label>
+            <input class="bots-only" type="radio" name="race-mode" value="bots-only" />
+            <span>Bots only</span>
+          </label>
+        </fieldset>
+      </section>
+      <div class="dialog-footer">
+        <p class="dialog-help">Choose the grid and race mode before restarting.</p>
+        <div class="dialog-actions">
+          <p role="alert" aria-live="polite"></p>
+          <button class="button button-secondary" type="submit" form="bots-dialog-close">
+            Cancel
+          </button>
+          <button class="button button-primary bots-apply" type="button">
+            Save &amp; restart race
+          </button>
+        </div>
+      </div>
     </dialog>
   </body>
 </html>
