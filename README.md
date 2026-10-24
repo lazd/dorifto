@@ -579,16 +579,16 @@ Raster-backed terrain protects a one-grid-diagonal support collar (about 2.1 m)
 outside the paved shoulder so hillside vertices cannot lift triangles crossing
 the pavement edge. This does not widen the asphalt. Terrain blends after that collar and
 returns fully to raster heights within `--terrain-transition <m>` (default 3 m;
-must be positive). Sixteen local smoothing passes, including diagonal neighbors,
-soften grid-aligned roadside
-facets without modifying pavement vertices or distant raster heights. Smoothing
-fades out over a 3 m collar beyond the transition. The preview includes
-this setting in its copied import command.
+must be positive); the preview includes this setting in its copied import command.
+Roadside raster heights are not grid-smoothed; each vertex samples
+the anti-aliased raster blend at its own position.
 Within 20 m of the pavement, raster terrain splits each 1.5 m grid cell along the
 diagonal that best follows the hillside's contours instead of one fixed diagonal,
-which otherwise turns roadside walls into sawtooth facets. Grid vertices within half a
-cell of the collar's outer edge are snapped onto it, so the crest where the wall
-leaves the road follows the road instead of stair-stepping along grid rows.
+which otherwise turns roadside walls into sawtooth facets. From the collar's outer edge
+through the transition, grid vertices are snapped onto lines parallel to the road one
+grid step apart, so the wall's crest, face, and foot follow the road instead of
+stair-stepping along grid rows; cells between snapped vertices split along those lines.
+Where snap lines converge inside tight bends, cells that would fold are left unsnapped.
 Pavement and paint are clipped against the same triangles. Bullet's heightfield
 only supports a fixed diagonal at grid positions, so flipped and snapped cells are
 sunk below the heightfield and covered by a triangle-mesh collider with the rendered
@@ -1168,9 +1168,10 @@ cannot be dismissed; reload the page to restart.
 The driving corridor is textured asphalt with an 80 cm paved shoulder; everything
 outside it is textured dirt/gravel. Both receive shadows and headlights.
 Surface textures use subdued fine grain and seamless weathering patches; asphalt
-also has baked roughness variation and larger-scale weathering. Rock faces use
-world-space triplanar color and normal mapping to avoid stretching top-down textures
-on steep slopes. Offset texture samples blend together to reduce obvious tiling;
+also has baked roughness variation and larger-scale weathering. Rock faces, and soil
+on slopes steeper than about 30°, use world-space triplanar color and normal mapping
+to avoid stretching top-down textures into vertical streaks on steep slopes.
+Offset texture samples blend together to reduce obvious tiling;
 irregular multi-scale patches add subdued green/dry-grass variation without regular
 vertex-color stripes or artificial rock strata.
 Terrain uses ambientCG Rock030, Ground037, and Grass004 CC0 scanned materials,

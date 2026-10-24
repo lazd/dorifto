@@ -105,11 +105,10 @@ export class CourseTerrain {
     this.rows = Math.ceil((bounds.max.z + 200 - this.minZ) / this.spacing) + 1;
     this.surface = new TerrainSurface(this.segments, this.halfWidth, this.padRadius);
     this.heights = new Float32Array(this.columns * this.rows);
-    const positions: number[] = [];
+    const positions = new Float32Array(this.heights.length * 3);
     const elevationScale = definition.elevationScale ?? 1;
     const bankingScale = definition.bankingScale ?? elevationScale;
-    const uvs: number[] = [];
-    const colors: number[] = [];
+    const uvs = new Float32Array(this.heights.length * 2);
     const vegetation: number[] = [];
     const roadDistances = new Float32Array(this.heights.length);
     const smoothingWeights = new Float32Array(this.heights.length);
@@ -121,68 +120,91 @@ export class CourseTerrain {
     const blendEnd = rasterHeight
       ? blendStart + (definition.terrainTransition ?? 3)
       : Math.min(this.halfWidth + 48, 50);
-    // Snap vertices nearest the support edge onto it, so the wall's crest follows the road
-    // instead of stair-stepping along grid rows.
+    const vertex = (i: number, px: number, pz: number, near = this.nearest(px, pz)) => {
+      const base = terrainBaseHeight(px, pz);
+      const hills =
+        12 + 9 * Math.sin(px / 48 + 0.6) * Math.cos(pz / 61) + 5 * Math.sin((px - pz) / 83);
+      const blend = THREE.MathUtils.smoothstep(near.distance, blendStart, blendEnd);
+      // Elevation follows the centerline, not the hillside's cross-slope:
+      // positive turns lower the inside (+across) and raise the outside.
+      const road =
+        (profile
+          ? courseProfileHeight(profile, near.fraction, definition.closed !== false)
+          : terrainBaseHeight(near.x, near.z)) *
+          elevationScale +
+        near.bank * near.across * bankingScale;
+      // Imported tracks settle into ground interpolated from nearby course heights.
+      const ground = rasterHeight
+        ? rasterHeight(px, pz, near.distance)
+        : surroundings
+          ? surroundings(px, pz) + 0.35 * (hills - 12)
+          : base + hills;
+      roadDistances[i] =
+        this.padRadius !== undefined
+          ? Math.hypot(px, pz) - this.padRadius
+          : near.distance - this.halfWidth;
+      this.heights[i] = definition.flat
+        ? 0
+        : THREE.MathUtils.lerp(road, ground * elevationScale, blend);
+      smoothingWeights[i] = THREE.MathUtils.smoothstep(
+        near.distance,
+        this.halfWidth + 3,
+        this.halfWidth + 18,
+      );
+      positions.set([px, this.heights[i], pz], i * 3);
+      uvs.set([px / 6, pz / 6], i * 2);
+    };
+    const gridVertex = (i: number) =>
+      vertex(
+        i,
+        this.minX + (i % this.columns) * this.spacing,
+        this.minZ + Math.floor(i / this.columns) * this.spacing,
+      );
+    // Snap vertices across the roadside wall onto lines parallel to the road, one grid step
+    // apart, so the wall's crest, face and foot follow the road instead of stair-stepping
+    // along grid rows. Raster heights are sampled exactly there, so they aren't smoothed.
     const warp =
       rasterHeight && !definition.flat && this.padRadius === undefined
         ? new Map<number, Point>()
         : undefined;
-    let min = Infinity;
-    let max = -Infinity;
-    for (let z = 0; z < this.rows; z++) {
-      for (let x = 0; x < this.columns; x++) {
-        let px = this.minX + x * this.spacing;
-        let pz = this.minZ + z * this.spacing;
-        let near = this.nearest(px, pz);
-        if (warp && Math.abs(near.distance - blendStart) <= this.spacing / 2) {
-          const scale = blendStart / near.distance;
-          px = near.x + (px - near.x) * scale;
-          pz = near.z + (pz - near.z) * scale;
-          near = this.nearest(px, pz);
-          warp.set(z * this.columns + x, { x: px, z: pz });
-        }
-        const base = terrainBaseHeight(px, pz);
-        const hills =
-          12 + 9 * Math.sin(px / 48 + 0.6) * Math.cos(pz / 61) + 5 * Math.sin((px - pz) / 83);
-        const blend = THREE.MathUtils.smoothstep(near.distance, blendStart, blendEnd);
-        // Elevation follows the centerline, not the hillside's cross-slope:
-        // positive turns lower the inside (+across) and raise the outside.
-        const road =
-          (profile
-            ? courseProfileHeight(profile, near.fraction, definition.closed !== false)
-            : terrainBaseHeight(near.x, near.z)) *
-            elevationScale +
-          near.bank * near.across * bankingScale;
-        // Imported tracks settle into ground interpolated from nearby course heights.
-        const ground = rasterHeight
-          ? rasterHeight(px, pz, near.distance)
-          : surroundings
-            ? surroundings(px, pz) + 0.35 * (hills - 12)
-            : base + hills;
-        const height = definition.flat
-          ? 0
-          : THREE.MathUtils.lerp(road, ground * elevationScale, blend);
-        const i = z * this.columns + x;
-        roadDistances[i] =
-          this.padRadius !== undefined
-            ? Math.hypot(px, pz) - this.padRadius
-            : near.distance - this.halfWidth;
-        this.heights[i] = height;
-        smoothingWeights[i] = rasterHeight
-          ? THREE.MathUtils.smoothstep(near.distance, blendStart, blendStart + this.spacing / 2) *
-            (1 - THREE.MathUtils.smoothstep(near.distance, blendEnd, blendEnd + this.spacing * 2))
-          : THREE.MathUtils.smoothstep(near.distance, this.halfWidth + 3, this.halfWidth + 18);
-        min = Math.min(min, height);
-        max = Math.max(max, height);
-        positions.push(px, this.heights[i], pz);
-        uvs.push(px / 6, pz / 6);
-        colors.push(1, 1, 1);
+    const snapLines = Math.ceil((blendEnd - blendStart) / this.spacing);
+    for (let i = 0; i < this.heights.length; i++) {
+      const px = this.minX + (i % this.columns) * this.spacing;
+      const pz = this.minZ + Math.floor(i / this.columns) * this.spacing;
+      const near = this.nearest(px, pz);
+      const line = Math.round((near.distance - blendStart) / this.spacing);
+      if (!warp || line < 0 || line > snapLines) {
+        vertex(i, px, pz, near);
+        continue;
+      }
+      const scale = (blendStart + line * this.spacing) / near.distance;
+      const snapped = { x: near.x + (px - near.x) * scale, z: near.z + (pz - near.z) * scale };
+      warp.set(i, snapped);
+      vertex(i, snapped.x, snapped.z);
+    }
+    // Snap lines converge inside tight bends; release the corners of any cell that can no
+    // longer be split into two upright triangles.
+    for (let released = true; warp && released;) {
+      released = false;
+      for (const i of warp.keys()) {
+        const x = i % this.columns;
+        const z = Math.floor(i / this.columns);
+        for (let cz = Math.max(z - 1, 0); cz <= Math.min(z, this.rows - 2); cz++)
+          for (let cx = Math.max(x - 1, 0); cx <= Math.min(x, this.columns - 2); cx++) {
+            const a = cz * this.columns + cx;
+            const corners = [a, a + 1, a + this.columns, a + this.columns + 1] as const;
+            if (cellSplits(positions, ...corners).some(Boolean)) continue;
+            for (const corner of corners)
+              if (warp.delete(corner)) {
+                gridVertex(corner);
+                released = true;
+              }
+          }
       }
     }
-    // Raster smoothing is confined to the roadside blend; preserve pavement and distant survey heights.
+    // Generated terrain is smoothed beyond the road; raster terrain is already filtered.
     const smoothed = new Float32Array(this.heights.length);
-    const smoothingPasses = rasterHeight ? 16 : 12;
-    for (let pass = 0; pass < smoothingPasses && !definition.flat; pass++) {
+    for (let pass = 0; pass < 12 && !rasterHeight && !definition.flat; pass++) {
       smoothed.set(this.heights);
       for (let z = 1; z < this.rows - 1; z++) {
         for (let x = 1; x < this.columns - 1; x++) {
@@ -192,16 +214,11 @@ export class CourseTerrain {
             this.heights[i + 1] +
             this.heights[i - this.columns] +
             this.heights[i + this.columns];
-          const average = rasterHeight
-            ? (this.heights[i] * 4 +
-                neighbors * 2 +
-                this.heights[i - this.columns - 1] +
-                this.heights[i - this.columns + 1] +
-                this.heights[i + this.columns - 1] +
-                this.heights[i + this.columns + 1]) /
-              16
-            : (this.heights[i] * 4 + neighbors) / 8;
-          smoothed[i] = THREE.MathUtils.lerp(this.heights[i], average, smoothingWeights[i]);
+          smoothed[i] = THREE.MathUtils.lerp(
+            this.heights[i],
+            (this.heights[i] * 4 + neighbors) / 8,
+            smoothingWeights[i],
+          );
         }
       }
       this.heights.set(smoothed);
@@ -224,8 +241,8 @@ export class CourseTerrain {
       }
       return steepest;
     };
-    min = Infinity;
-    max = -Infinity;
+    let min = Infinity;
+    let max = -Infinity;
     for (let i = 0; i < this.heights.length; i++) {
       positions[i * 3 + 1] = this.heights[i];
       min = Math.min(min, this.heights[i]);
@@ -258,7 +275,7 @@ export class CourseTerrain {
         this.columns,
         this.rows,
         supportWidth,
-        warp,
+        positions,
       );
     // Bullet needs a nonzero vertical range even for an entirely flat heightfield.
     this.minHeight = min === max ? min - 0.01 : min;
@@ -278,9 +295,12 @@ export class CourseTerrain {
         indices.set(cellTriangles(this, x, z), (z * (this.columns - 1) + x) * 6);
     }
     const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-    geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
-    geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geometry.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+    geometry.setAttribute(
+      'color',
+      new THREE.BufferAttribute(new Float32Array(positions.length).fill(1), 3),
+    );
     geometry.setAttribute('vegetation', new THREE.Float32BufferAttribute(vegetation, 2));
     geometry.setIndex(new THREE.BufferAttribute(indices, 1));
     geometry.computeVertexNormals();
@@ -340,7 +360,29 @@ export class CourseTerrain {
         vec4 groundSample(sampler2D tex, vec2 uv) {
           vec2 macro = mat2(0.8, -0.6, 0.6, 0.8) * uv * 0.29 + vec2(0.13, 0.71);
           return mix(terrainSample(tex, uv), terrainSample(tex, macro), terrainFar() * 0.6);
+        }
+        vec4 triplanarSample(sampler2D tex, vec3 position, vec3 weights) {
+          return terrainSample(tex, position.zy) * weights.x +
+            terrainSample(tex, position.xz) * weights.y +
+            terrainSample(tex, position.xy) * weights.z;
         }`,
+        )
+        .replace(
+          '#include <normalmap_pars_fragment>',
+          `#include <normalmap_pars_fragment>
+          #ifdef USE_NORMALMAP_TANGENTSPACE
+            vec3 triplanarNormal(sampler2D tex, vec3 position, vec3 weights, vec3 surface) {
+              vec3 nx = terrainSample(tex, position.zy).xyz * 2.0 - 1.0;
+              vec3 ny = terrainSample(tex, position.xz).xyz * 2.0 - 1.0;
+              vec3 nz = terrainSample(tex, position.xy).xyz * 2.0 - 1.0;
+              nx.xy *= normalScale;
+              ny.xy *= normalScale;
+              nz.xy *= normalScale;
+              return (getTangentFrame(-vViewPosition, surface, position.zy) * nx) * weights.x +
+                (getTangentFrame(-vViewPosition, surface, position.xz) * ny) * weights.y +
+                (getTangentFrame(-vViewPosition, surface, position.xy) * nz) * weights.z;
+            }
+          #endif`,
         )
         .replace(
           '#include <map_fragment>',
@@ -349,12 +391,13 @@ export class CourseTerrain {
             vec3 rockWeights = pow(abs(normalize(vTerrainNormal)), vec3(4.0));
             rockWeights /= max(dot(rockWeights, vec3(1.0)), 0.0001);
             vec3 rockPosition = vTerrainPosition / 3.0;
-            vec4 gravelColor =
-              terrainSample(map, rockPosition.zy) * rockWeights.x +
-              terrainSample(map, rockPosition.xz) * rockWeights.y +
-              terrainSample(map, rockPosition.xy) * rockWeights.z;
+            // Top-down UVs stretch into vertical streaks on cut walls; project soil there too.
+            float wall = 1.0 - smoothstep(0.9, 0.99, rockWeights.y);
+            vec4 gravelColor = triplanarSample(map, rockPosition, rockWeights);
             vec4 grassColor = groundSample(grassMap, vMapUv * 2.0);
             vec4 soilColor = groundSample(soilMap, vMapUv * 2.0);
+            if (wall > 0.0)
+              soilColor = mix(soilColor, triplanarSample(soilMap, rockPosition, rockWeights), wall);
             float patches = terrainNoise(vMapUv * 0.45);
             // Recolor the gray scan as weathered tan cut-bank material, keeping its detail.
             float rockLuma = dot(gravelColor.rgb, vec3(0.2126, 0.7152, 0.0722));
@@ -387,10 +430,7 @@ export class CourseTerrain {
           '#include <roughnessmap_fragment>',
           `float roughnessFactor = roughness;
           #ifdef USE_ROUGHNESSMAP
-            float rockRoughness =
-              terrainSample(roughnessMap, rockPosition.zy).g * rockWeights.x +
-              terrainSample(roughnessMap, rockPosition.xz).g * rockWeights.y +
-              terrainSample(roughnessMap, rockPosition.xy).g * rockWeights.z;
+            float rockRoughness = triplanarSample(roughnessMap, rockPosition, rockWeights).g;
             float groundRoughness = mix(terrainSample(soilRoughnessMap, vMapUv * 2.0).g,
               rockRoughness, rockCoverage);
             roughnessFactor *= mix(groundRoughness,
@@ -400,22 +440,17 @@ export class CourseTerrain {
         .replace(
           '#include <normal_fragment_maps>',
           `#ifdef USE_NORMALMAP_TANGENTSPACE
-            vec3 rockNX = terrainSample(normalMap, rockPosition.zy).xyz * 2.0 - 1.0;
-            vec3 rockNY = terrainSample(normalMap, rockPosition.xz).xyz * 2.0 - 1.0;
-            vec3 rockNZ = terrainSample(normalMap, rockPosition.xy).xyz * 2.0 - 1.0;
-            rockNX.xy *= normalScale;
-            rockNY.xy *= normalScale;
-            rockNZ.xy *= normalScale;
-            vec3 rockNormal =
-              (getTangentFrame(-vViewPosition, normal, rockPosition.zy) * rockNX) * rockWeights.x +
-              (getTangentFrame(-vViewPosition, normal, rockPosition.xz) * rockNY) * rockWeights.y +
-              (getTangentFrame(-vViewPosition, normal, rockPosition.xy) * rockNZ) * rockWeights.z;
+            vec3 rockNormal = triplanarNormal(normalMap, rockPosition, rockWeights, normal);
             vec3 grassN = terrainSample(grassNormalMap, vNormalMapUv * 2.0).xyz * 2.0 - 1.0;
             vec3 soilN = terrainSample(soilNormalMap, vNormalMapUv * 2.0).xyz * 2.0 - 1.0;
             float detailFade = 1.0 - terrainFar() * 0.85;
             grassN.xy *= normalScale * detailFade;
             soilN.xy *= normalScale * detailFade;
-            vec3 groundNormal = mix(tbn * soilN, rockNormal, rockCoverage);
+            vec3 soilNormal = tbn * soilN;
+            if (wall > 0.0)
+              soilNormal = mix(soilNormal,
+                triplanarNormal(soilNormalMap, rockPosition, rockWeights, normal), wall);
+            vec3 groundNormal = mix(soilNormal, rockNormal, rockCoverage);
             normal = normalize(mix(groundNormal, tbn * grassN, coverage));
           #endif`,
         );
@@ -710,12 +745,22 @@ function profileSurroundings(samples: { x: number; z: number; height: number }[]
 
 const contourCorridor = 20;
 
+/** Whether each of a cell's diagonals (unflipped, flipped) yields two upright triangles. */
+function cellSplits(positions: Float32Array, a: number, b: number, c: number, d: number) {
+  const upright = (p: number, q: number, r: number) =>
+    (positions[q * 3] - positions[p * 3]) * (positions[r * 3 + 2] - positions[p * 3 + 2]) -
+      (positions[r * 3] - positions[p * 3]) * (positions[q * 3 + 2] - positions[p * 3 + 2]) <
+    -0.01;
+  return [upright(a, c, b) && upright(b, c, d), upright(a, c, d) && upright(a, d, b)];
+}
+
 /**
  * A fixed diagonal turns roadside walls crossing it into sawtooth facets. Near the road,
  * split each cell along the diagonal whose corners differ least, following the wall's
  * contours. Cells within `support` of the pavement lie on the road profile; the support is
- * a cell diagonal wide, so no other cell reaches the pavement. A triangle with three corners
- * snapped onto the support edge would collapse, so such cells take the other diagonal.
+ * a cell diagonal wide, so no other cell reaches the pavement. Snapped cells whose other
+ * diagonal would fold or collapse a triangle keep the upright one, and otherwise prefer a
+ * diagonal along a snap line so the wall's profile stays consistent along the road.
  */
 function flipCellsAlongContours(
   heights: Float32Array,
@@ -723,10 +768,9 @@ function flipCellsAlongContours(
   columns: number,
   rows: number,
   support: number,
-  warped?: Map<number, unknown>,
+  positions: Float32Array,
 ) {
   const flipped = new Uint8Array((columns - 1) * (rows - 1));
-  const collapsed = (...corners: number[]) => corners.every((i) => warped?.has(i));
   for (let z = 0; z < rows - 1; z++) {
     for (let x = 0; x < columns - 1; x++) {
       const a = z * columns + x;
@@ -735,12 +779,15 @@ function flipCellsAlongContours(
       const d = c + 1;
       const near = Math.min(roadDistances[a], roadDistances[b], roadDistances[c], roadDistances[d]);
       const far = Math.max(roadDistances[a], roadDistances[b], roadDistances[c], roadDistances[d]);
-      const keep = collapsed(a, c, d) || collapsed(a, d, b);
-      const flip = collapsed(a, c, b) || collapsed(b, c, d);
+      const [keep, flip] = cellSplits(positions, a, b, c, d);
+      const alongKeep = Math.abs(roadDistances[b] - roadDistances[c]) < 1e-3;
+      const alongFlip = Math.abs(roadDistances[a] - roadDistances[d]) < 1e-3;
       if (flip !== keep) flipped[z * (columns - 1) + x] = Number(flip);
       else if (far > support + 1e-3 && near <= contourCorridor)
         flipped[z * (columns - 1) + x] = Number(
-          Math.abs(heights[b] - heights[c]) > Math.abs(heights[a] - heights[d]),
+          alongKeep !== alongFlip
+            ? alongFlip
+            : Math.abs(heights[b] - heights[c]) > Math.abs(heights[a] - heights[d]),
         );
     }
   }

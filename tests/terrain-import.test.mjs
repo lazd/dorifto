@@ -208,71 +208,30 @@ test('terrain sampling preserves geographic orientation, height datum, and rever
         }
       }
       assert.ok(flipped > 0, 'roadside cells follow wall contours');
-      assert.ok(warped > 0, 'grid vertices snap onto the support edge');
+      assert.ok(warped > 0, 'grid vertices snap onto road-parallel lines');
       Ammo.destroy(from);
       Ammo.destroy(to);
       physics.dispose();
-      const raw = new Float32Array(narrow.heights.length);
-      const support = narrow.spacing * Math.SQRT2;
-      let samples = 0;
-      for (let z = 0; z < narrow.rows; z++) {
-        for (let x = 0; x < narrow.columns; x++) {
-          const px = narrow.minX + x * narrow.spacing;
-          const pz = narrow.minZ + z * narrow.spacing;
-          const near = narrow.nearest(px, pz);
-          const t = Math.max(0, Math.min(1, (near.distance - course.width / 2 - support) / 3));
-          const blend = t * t * (3 - 2 * t);
-          const road =
-            courseProfileHeight(course.elevation, near.fraction, false) + near.bank * near.across;
-          const i = z * narrow.columns + x;
-          raw[i] = road + (sample(px, pz) - road) * blend;
-          if (near.distance <= course.width / 2)
-            assert.equal(narrow.heights[i], raw[i], 'smoothing must not modify pavement vertices');
-          if (
-            near.distance < course.width / 2 + support + 6 ||
-            near.distance > course.width / 2 + support + 8
-          )
-            continue;
-          assert.ok(Math.abs(narrow.heights[z * narrow.columns + x] - sample(px, pz)) < 1e-4);
-          samples++;
-        }
+      const blendStart = course.width / 2 + narrow.spacing * Math.SQRT2;
+      let snapped = 0;
+      for (let i = 0; i < narrow.heights.length; i++) {
+        const { x: px, z: pz } = vertexPosition(data, i);
+        const near = narrow.nearest(px, pz);
+        if (near.distance > blendStart + 8) continue;
+        const t = Math.max(0, Math.min(1, (near.distance - blendStart) / 3));
+        const road =
+          courseProfileHeight(course.elevation, near.fraction, false) + near.bank * near.across;
+        const expected = road + (sample(px, pz) - road) * t * t * (3 - 2 * t);
+        assert.ok(
+          Math.abs(narrow.heights[i] - expected) < 1e-3,
+          'roadside vertices follow the blend at their own position without grid smoothing',
+        );
+        if (!data.warpedVertices.has(i)) continue;
+        const line = (near.distance - blendStart) / narrow.spacing;
+        assert.ok(Math.abs(line - Math.round(line)) < 1e-3, 'snapped vertices lie on snap lines');
+        snapped++;
       }
-      assert.ok(samples > 0, 'raster heights beyond the blend smoothing collar remain unchanged');
-      let before = 0;
-      let after = 0;
-      let wallBefore = 0;
-      let wallAfter = 0;
-      for (let z = 1; z < narrow.rows - 1; z++) {
-        for (let x = 1; x < narrow.columns - 1; x++) {
-          const i = z * narrow.columns + x;
-          const distance = narrow.nearest(
-            narrow.minX + x * narrow.spacing,
-            narrow.minZ + z * narrow.spacing,
-          ).distance;
-          const lowerWall =
-            distance > course.width / 2 + support &&
-            distance < course.width / 2 + support + narrow.spacing * 2;
-          for (const step of [1, narrow.columns, narrow.columns - 1, narrow.columns + 1]) {
-            const rawCurvature = (raw[i - step] - 2 * raw[i] + raw[i + step]) ** 2;
-            const curvature =
-              (narrow.heights[i - step] - 2 * narrow.heights[i] + narrow.heights[i + step]) ** 2;
-            before += rawCurvature;
-            after += curvature;
-            if (lowerWall) {
-              wallBefore += rawCurvature;
-              wallAfter += curvature;
-            }
-          }
-        }
-      }
-      assert.ok(
-        after < before * 0.75,
-        `roadside curvature energy must decrease by at least 25%: ${before} -> ${after}`,
-      );
-      assert.ok(
-        wallAfter < wallBefore * 0.75,
-        `lower wall roughness must decrease by at least 25%: ${wallBefore} -> ${wallAfter}`,
-      );
+      assert.ok(snapped > 0);
       assert.ok(
         narrow.heights.some((height, i) => Math.abs(height - wide.heights[i]) > 0.1),
         'shoulder width changes the protected pavement area',
