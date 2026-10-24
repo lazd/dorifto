@@ -6,6 +6,15 @@ export const startDistance = 5;
 export const courseShoulderWidth = 1.6;
 export const courseLineWidth = 0.16;
 const spawnDistance = 30;
+/** Open-road grid rows sit behind the start line, pole first. */
+export const openRoadGridLead = 4;
+export const openRoadGridSpacing = 8;
+/**
+ * Open-road start and finish lines sit this far from each end: room for a full grid behind
+ * the start and braking run-off past the finish. Being symmetric, the same two lines serve
+ * either driving direction.
+ */
+export const openRoadLineDistance = 45;
 
 export interface CourseDefinition {
   id: string;
@@ -297,8 +306,14 @@ export function courseKerbSegments(route: THREE.Curve<THREE.Vector3>) {
 }
 
 export function courseStartDistance(definition: CourseDefinition, length: number) {
-  if (definition.closed === false) return 0;
+  if (definition.closed === false) return openRoadLineDistance;
   return definition.reverse ? length - startDistance : startDistance;
+}
+
+/** Distances of the start line and, on open roads, the separate finish line. */
+export function courseGateDistances(definition: CourseDefinition, length: number) {
+  const start = courseStartDistance(definition, length);
+  return definition.closed === false ? [start, length - start] : [start];
 }
 
 export function readCourseReverse(parameters: URLSearchParams) {
@@ -310,19 +325,17 @@ export function readCourseReverse(parameters: URLSearchParams) {
 
 export function courseSpawn(
   definition: CourseDefinition,
-  approachDistance = spawnDistance,
+  approachDistance = definition.closed === false ? openRoadGridLead : spawnDistance,
   lateralOffset = 0,
 ) {
   const route = courseRoute(definition);
   // Spawn on the approach side of the same physical start line in either direction.
   const length = route.getLength();
+  const distance = courseStartDistance(definition, length) - approachDistance;
   const t =
     definition.closed === false
-      ? THREE.MathUtils.clamp((spawnDistance - approachDistance) / length, 0, 1)
-      : THREE.MathUtils.euclideanModulo(
-          courseStartDistance(definition, length) - approachDistance,
-          length,
-        ) / length;
+      ? THREE.MathUtils.clamp(distance / length, 0, 1)
+      : THREE.MathUtils.euclideanModulo(distance, length) / length;
   const position = route.getPointAt(t);
   const tangent = route.getTangentAt(t);
   const heading = Math.atan2(tangent.x, tangent.z);

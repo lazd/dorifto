@@ -91,6 +91,21 @@ export async function loadCar(onProgress?: (fraction: number) => void) {
     roughness: 0.16,
     envMapIntensity: 0.3,
   });
+  const coatedPaint = new Map<THREE.MeshStandardMaterial, THREE.MeshPhysicalMaterial>();
+  for (const mesh of named(/_Paint_0$/)) {
+    const original = mesh.material;
+    let material = coatedPaint.get(original);
+    if (!material) {
+      material = new THREE.MeshPhysicalMaterial();
+      THREE.MeshStandardMaterial.prototype.copy.call(material, original);
+      material.defines = { STANDARD: '', PHYSICAL: '' };
+      material.clearcoat = 1;
+      material.clearcoatRoughness = 0.06;
+      coatedPaint.set(original, material);
+    }
+    mesh.material = material;
+  }
+  for (const original of coatedPaint.keys()) original.dispose();
   tune(/^llantaoem.*_(llantaoem|wheelalu)_0$/, {
     color: WHEEL_COLOR,
     metalness: 0.35,

@@ -5,11 +5,12 @@ import { convertTrack, selectTrackSegment } from '../scripts/import-track.mjs';
 
 let server;
 let courseRoute;
-let courseSpawn;
+let openRoadLineDistance;
+let raceGridSpawn;
+let maxRaceBots;
 let courseProfileHeight;
 let LapTimer;
 let coursePreviewSvg;
-let Vector3;
 const definition = {
   id: 'open-road',
   name: 'Open road',
@@ -27,11 +28,11 @@ before(async () => {
     server: { middlewareMode: true, hmr: false, ws: false, watch: null },
     appType: 'custom',
   });
-  ({ courseRoute, courseSpawn, courseProfileHeight } =
+  ({ courseRoute, courseProfileHeight, openRoadLineDistance } =
     await server.ssrLoadModule('/src/courses.ts'));
+  ({ raceGridSpawn, maxRaceBots } = await server.ssrLoadModule('/src/race-bot.ts'));
   ({ LapTimer } = await server.ssrLoadModule('/src/laps.ts'));
   ({ coursePreviewSvg } = await server.ssrLoadModule('/src/course-preview.ts'));
-  ({ Vector3 } = await import('three'));
 });
 
 after(async () => {
@@ -57,12 +58,28 @@ test('open routes retain endpoints, reverse direction, and do not close previews
   assert.ok(route.getLength() > Math.hypot(100, 100) && route.getLength() < 200);
   assert.deepEqual(route.getPointAt(0).toArray(), [0, 0, 0]);
   assert.deepEqual(route.getPointAt(1).toArray(), [100, 0, 100]);
-  assert.deepEqual(courseSpawn(definition).position, [0, 0]);
-  assert.deepEqual(courseSpawn({ ...definition, reverse: true }).position, [100, 100]);
   assert.equal(courseProfileHeight([0, 50, 100], 1, false), 100);
   const svg = coursePreviewSvg(definition);
   assert.ok(!svg.match(/<path d="([^"]+)"/)[1].includes('Z'));
   assert.equal((svg.match(/stroke-dasharray=/g) ?? []).length, 2);
+});
+
+test('open roads grid every car on pavement behind a start line inset from the road end', () => {
+  for (const reverse of [false, true]) {
+    const directed = { ...definition, reverse };
+    const route = courseRoute(directed);
+    const length = route.getLength();
+    const line = route.getPointAt(openRoadLineDistance / length);
+    const forward = route.getTangentAt(openRoadLineDistance / length);
+    const roadStart = route.getPointAt(0);
+    // The player takes the slot after every bot.
+    for (let slot = 0; slot <= maxRaceBots; slot++) {
+      const [x, z] = raceGridSpawn(directed, slot).position;
+      const behindLine = (line.x - x) * forward.x + (line.z - z) * forward.z;
+      assert.ok(behindLine > 0, 'grid starts behind the start line');
+      assert.ok(Math.hypot(x - roadStart.x, z - roadStart.z) > 5, 'grid stays on pavement');
+    }
+  }
 });
 
 test('open-road centerlines and elevation have continuous slopes without overshooting heights', () => {
@@ -87,38 +104,31 @@ test('open-road centerlines and elevation have continuous slopes without oversho
 });
 
 test('open timing completes only at the finish, once, and resets for another run', () => {
-  const timer = new LapTimer(definition);
-  const start = new Vector3(0, 0, 0);
-  timer.reset(start);
-  assert.equal(timer.lap, 1);
-  timer.update(start, 30, [start], true);
-  assert.equal(timer.elapsedTime, 0);
-  const before = new Vector3(90, 0, 100);
-  timer.update(before, 9, [before]);
-  const finish = new Vector3(110, 0, 100);
-  timer.update(finish, 2, [new Vector3(100, 0, 100)]);
-  assert.equal(timer.finished, true);
-  assert.equal(timer.lap, 1);
-  assert.equal(timer.last, 10);
-  timer.update(start, 20, [start]);
-  assert.equal(timer.current, 10);
-  assert.equal(timer.last, 10);
-  timer.reset(start);
-  assert.equal(timer.finished, false);
-  assert.equal(timer.last, null);
-  const reversed = { ...definition, reverse: true };
-  const reverseRoute = courseRoute(reversed);
-  const reverseTimer = new LapTimer(reversed);
-  reverseTimer.reset(reverseRoute.getPointAt(0));
-  const finishPoint = reverseRoute.getPointAt(1);
-  const beforeFinish = finishPoint.clone().addScaledVector(reverseRoute.getTangentAt(1), -10);
-  reverseTimer.update(beforeFinish, 9, [beforeFinish]);
-  reverseTimer.update(finishPoint.clone().addScaledVector(reverseRoute.getTangentAt(1), 10), 2, [
-    finishPoint,
-  ]);
-  assert.equal(reverseTimer.finished, true);
-  assert.equal(reverseTimer.lap, 1);
-  assert.ok(Math.abs(reverseTimer.last - 10) < 1e-6);
+  for (const reverse of [false, true]) {
+    const directed = { ...definition, reverse };
+    const route = courseRoute(directed);
+    const t = 1 - openRoadLineDistance / route.getLength();
+    const finish = route.getPointAt(t);
+    const forward = route.getTangentAt(t);
+    const start = route.getPointAt(0);
+    const timer = new LapTimer(directed);
+    timer.reset(start);
+    assert.equal(timer.lap, 1);
+    timer.update(start, 30, [start], true);
+    assert.equal(timer.elapsedTime, 0);
+    const before = finish.clone().addScaledVector(forward, -10);
+    timer.update(before, 9, [before]);
+    assert.equal(timer.finished, false, 'the road end is beyond the finish line');
+    timer.update(finish.clone().addScaledVector(forward, 10), 2, [finish]);
+    assert.equal(timer.finished, true);
+    assert.equal(timer.lap, 1);
+    assert.ok(Math.abs(timer.last - 10) < 1e-6);
+    timer.update(start, 20, [start]);
+    assert.ok(Math.abs(timer.current - 10) < 1e-6);
+    timer.reset(start);
+    assert.equal(timer.finished, false);
+    assert.equal(timer.last, null);
+  }
 });
 
 test('import conversion preserves open endpoints and elevation rather than bridging the seam', () => {

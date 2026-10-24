@@ -640,8 +640,7 @@ export function bindCoursePicker(
   const pickerStatus = bindText('#course-picker-status');
   const list = element('#course-list');
   const overview = element('#course-overview');
-  const previewContainer = element('#course-preview-3d');
-  const previewStatus = bindText('#course-preview-status');
+  const previewContainer = element('#course-preview-visual');
   const previewError = bindText('#course-preview-error');
   const previewName = bindText('#course-preview-name');
   const previewGroup = bindText('#course-preview-group');
@@ -678,6 +677,7 @@ export function bindCoursePicker(
   const generationTypes = [...picker.querySelectorAll<HTMLInputElement>('[name="generation"]')];
   const generationFields = element<HTMLFieldSetElement>('#custom-course-sliders');
   const resetGeneration = element<HTMLButtonElement>('#custom-course-reset');
+  const enable3dPreview = false;
   const preview3d = new CoursePreviewRenderer(previewContainer);
   const items = new Map<string, HTMLButtonElement>();
   let preview = selected;
@@ -949,9 +949,16 @@ export function bindCoursePicker(
   }
 
   function render3d(course: CourseDefinition) {
+    if (!enable3dPreview) {
+      previewContainer.innerHTML = coursePreviewSvg(course, {
+        size: 400,
+        padding: 24,
+        title: course.name,
+      });
+      return;
+    }
     const token = ++previewToken;
     previewContainer.setAttribute('aria-busy', 'true');
-    previewStatus('Building 3-D preview…');
     // Let the status paint first: building a racetrack heightfield takes a moment.
     requestAnimationFrame(() =>
       setTimeout(() => {
@@ -963,7 +970,6 @@ export function bindCoursePicker(
           preview3d.dispose();
           previewError(`Unable to show 3-D preview: ${errorText(error)}`);
         } finally {
-          previewStatus('');
           previewContainer.removeAttribute('aria-busy');
         }
       }, 0),

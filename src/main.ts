@@ -44,6 +44,7 @@ import {
 import { bindGameUI, bindGameActions, bindCoursePicker, bindLapRecorder, element } from './ui';
 import { createDrivingCamera } from './camera';
 import { createLighting } from './lighting';
+import { loadTerrainSurfaces } from './surfaces';
 import { createTireEffects } from './tire-effects';
 import { createMinimap } from './minimap';
 import { createLeaderboard } from './leaderboard';
@@ -292,7 +293,7 @@ async function start() {
   configurationState.update({ timeOfDay: requestedTime });
   lighting.apply(requestedTime);
   const initialDefinition = { ...definition, reverse: requestedReverse };
-  const car = await carLoad;
+  const [car] = await Promise.all([carLoad, loadTerrainSurfaces()]);
   const initialCourse = createCourse(scene, initialDefinition, car.width);
   showLoading('Starting physics…', 0.2);
   // The picker may change while the model is loading.

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { CSM } from 'three/addons/csm/CSM.js';
+import { Sky } from 'three/addons/objects/Sky.js';
 import type { ConfigurationState } from './configuration-state';
 import { createCloudLayer } from './clouds';
 
@@ -8,16 +9,15 @@ export const daylight = {
     sky: '#367ccc',
     horizon: '#c1d7e5',
     haze: '#a9bdc9',
-    ground: '#716855',
+    ground: '#9b8b72',
     cloudLight: '#fffdf6',
     cloudShade: '#9aaec4',
-    fairWeather: true,
-    ambient: '#c9dfff',
-    ambientIntensity: 0.32,
-    environmentIntensity: 0.65,
-    sun: '#fff2dc',
+    ambient: '#fff3df',
+    ambientIntensity: 0.55,
+    environmentIntensity: 0.35,
+    sun: '#fff7e8',
     sunIntensity: 3,
-    sunOffset: [-35, 30, -20],
+    sunOffset: [-35, 60, -20],
     exposure: 0.95,
   },
   sunset: {
@@ -62,7 +62,6 @@ export const daylight = {
     cloudLight: string;
     cloudShade: string;
     cloudSun?: string;
-    fairWeather?: boolean;
     ambientIntensity: number;
     environmentIntensity: number;
     sun: string;
@@ -100,7 +99,12 @@ export function createLighting(
   });
   csm.fade = true;
   csm.updateFrustums();
-  for (const light of csm.lights) light.shadow.normalBias = 0.035;
+  // Normal bias must grow with each cascade's texel size or distant hills self-shadow in stripes.
+  const normalBiases = [0.08, 0.35, 1.6];
+  csm.lights.forEach((light, i) => {
+    light.shadow.normalBias = normalBiases[i];
+    light.shadow.bias = -0.0001;
+  });
   const shadowView = { value: new THREE.Matrix4() };
   const projection = new THREE.Matrix4();
   const materials = new WeakSet<THREE.Material>();
@@ -180,6 +184,46 @@ export function createLighting(
   };
 
   const paintClouds = createCloudLayer(1024, 512);
+  const createDaySky = () => {
+    const skyScene = new THREE.Scene();
+    const sky = new Sky();
+    sky.scale.setScalar(1000);
+    const uniforms = sky.material.uniforms;
+    uniforms.sunPosition.value.fromArray(daylight.noon.sunOffset);
+    uniforms.turbidity.value = 2;
+    uniforms.rayleigh.value = 1.5;
+    uniforms.mieCoefficient.value = 0.003;
+    uniforms.mieDirectionalG.value = 0.8;
+    uniforms.cloudCoverage.value = 0.35;
+    uniforms.cloudDensity.value = 0.45;
+    uniforms.cloudScale.value = 0.001;
+    uniforms.cloudSpeed.value = 0;
+    sky.material.uniforms.groundColor = { value: new THREE.Color(daylight.noon.ground) };
+    sky.material.fragmentShader = sky.material.fragmentShader
+      .replace('uniform float time;', 'uniform float time;\nuniform vec3 groundColor;')
+      .replace(
+        'gl_FragColor = vec4( texColor, 1.0 );',
+        `texColor *= 0.18;
+        texColor = mix(groundColor * 0.5, texColor, smoothstep(-0.08, 0.02, direction.y));
+        gl_FragColor = vec4( texColor, 1.0 );`,
+      );
+    skyScene.add(sky);
+    const target = new THREE.WebGLCubeRenderTarget(512, { type: THREE.HalfFloatType });
+    const cubeCamera = new THREE.CubeCamera(0.1, 2000, target);
+    const previousTarget = renderer.getRenderTarget();
+    try {
+      // The directional light supplies the sun; omit its tiny disc from filtered reflections.
+      uniforms.showSunDisc.value = 0;
+      const environment = pmrem.fromScene(skyScene).texture;
+      uniforms.showSunDisc.value = 1;
+      cubeCamera.update(renderer, skyScene);
+      return { sky: target.texture, environment };
+    } finally {
+      renderer.setRenderTarget(previousTarget);
+      sky.geometry.dispose();
+      sky.material.dispose();
+    }
+  };
   const createSky = (time: ConfigurationState['timeOfDay']) => {
     const skyCanvas = document.createElement('canvas');
     skyCanvas.width = 2048;
@@ -246,7 +290,7 @@ export function createLighting(
     };
   };
   const skies = {
-    noon: createSky('noon'),
+    noon: createDaySky(),
     sunset: createSky('sunset'),
     night: createSky('night'),
   };

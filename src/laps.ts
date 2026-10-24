@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { courseLineWidth, courseRoute, courseStartDistance } from './courses';
+import { courseGateDistances, courseLineWidth, courseRoute } from './courses';
 import type { CourseDefinition } from './courses';
 import { TerrainSurface } from './terrain-query';
 
@@ -26,10 +26,13 @@ export class LapTimer {
     this.halfWidth = (definition.width + courseLineWidth) / 2;
     const route = courseRoute(definition);
     const length = route.getLength();
-    const t = courseStartDistance(definition, length) / length;
-    this.start = { center: route.getPointAt(t), forward: route.getTangentAt(t) };
+    const [start, finish = start] = courseGateDistances(definition, length).map((distance) => {
+      const t = distance / length;
+      return { center: route.getPointAt(t), forward: route.getTangentAt(t) };
+    });
+    this.start = start;
+    this.finish = finish;
     this.open = definition.closed === false;
-    this.finish = { center: route.getPointAt(1), forward: route.getTangentAt(1) };
     const count = Math.ceil(length);
     this.surface = new TerrainSurface(
       Array.from({ length: count }, (_, i) => ({

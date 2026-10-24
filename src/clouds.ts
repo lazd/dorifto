@@ -4,7 +4,6 @@ interface CloudPalette {
   cloudLight: string;
   cloudShade: string;
   cloudSun?: string;
-  fairWeather?: boolean;
   sunOffset: readonly [number, number, number];
 }
 
@@ -43,7 +42,6 @@ export function createCloudLayer(width: number, height: number) {
   const coverage = new Float32Array(width * height);
   const detail = new Float32Array(width * height);
   const sunsetCoverage = new Float32Array(width * height);
-  const fairCoverage = new Float32Array(width * height);
   const longitude = Array.from({ length: width }, (_, x) => (x / (width - 1) - 0.5) * Math.PI * 2);
   const latitude = Array.from({ length: height }, (_, y) => (0.5 - y / (height - 1)) * Math.PI);
   const pixels = new Uint8ClampedArray(width * height * 4);
@@ -60,7 +58,6 @@ export function createCloudLayer(width: number, height: number) {
       const wisps =
         MathUtils.smoothstep(fractalNoise(px * 0.9 + 23, pz * 7 - 11), 0.58, 0.72) * 0.3;
       coverage[y * width + x] = Math.max(billows, wisps) * horizonFade;
-      fairCoverage[y * width + x] = MathUtils.smoothstep(billowNoise, 0.54, 0.67) * horizonFade;
       detail[y * width + x] = billowNoise;
       const banks = fractalNoise(px * 1.1 + 11, pz * 1.3 - 7) * 0.7 + billowNoise * 0.3;
       sunsetCoverage[y * width + x] = MathUtils.smoothstep(banks, 0.34, 0.58) * horizonFade;
@@ -71,7 +68,6 @@ export function createCloudLayer(width: number, height: number) {
     // Cloud masks differ by time of day, so skipped pixels must not retain the previous sky.
     pixels.fill(0);
     const sunset = palette.cloudSun !== undefined;
-    const fair = palette.fairWeather === true;
     const light = new Color(palette.cloudLight).convertLinearToSRGB();
     const shade = new Color(palette.cloudShade).convertLinearToSRGB();
     const sunColor = palette.cloudSun ? new Color(palette.cloudSun).convertLinearToSRGB() : light;
@@ -80,7 +76,7 @@ export function createCloudLayer(width: number, height: number) {
       const up = Math.sin(latitude[y]);
       const radius = Math.cos(latitude[y]);
       for (let x = 0; x < width; x++) {
-        const density = (sunset ? sunsetCoverage : fair ? fairCoverage : coverage)[y * width + x];
+        const density = (sunset ? sunsetCoverage : coverage)[y * width + x];
         if (density === 0) continue;
         const sunFacing = Math.max(
           0,
@@ -98,9 +94,7 @@ export function createCloudLayer(width: number, height: number) {
               0,
               1,
             )
-          : fair
-            ? MathUtils.clamp(0.65 + sunward * 0.18 + up * 0.15 - density * 0.12, 0, 1)
-            : MathUtils.clamp(0.25 + sunward * 0.5 + edgeLight * 0.2 + up * 0.08, 0, 1);
+          : MathUtils.clamp(0.25 + sunward * 0.5 + edgeLight * 0.2 + up * 0.08, 0, 1);
         // Low sunlight warms the undersides, not a narrow band around every silhouette.
         const glow = sunset
           ? MathUtils.smoothstep(sunFacing, 0.4, 0.99) *

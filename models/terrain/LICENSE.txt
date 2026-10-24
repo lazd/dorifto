@@ -1,0 +1,11 @@
+Terrain textures from ambientCG, dedicated to the public domain under
+Creative Commons CC0 1.0 Universal:
+https://creativecommons.org/publicdomain/zero/1.0/
+https://docs.ambientcg.com/license/
+
+Rock030: https://ambientcg.com/a/Rock030
+Ground037: https://ambientcg.com/a/Ground037
+Grass004: https://ambientcg.com/a/Grass004
+
+Color, OpenGL normal, and roughness maps from the 1K-JPG downloads.
+Re-encoded as JPEG at quality 85, maximum dimension 1024 pixels.

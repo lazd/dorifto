@@ -1,6 +1,74 @@
 import * as THREE from 'three';
 
-export function surfaceMaterial(surface: 'asphalt' | 'gravel' | 'grass', repeats = 1) {
+const terrainAssets = { rock: 'Rock030', gravel: 'Ground037', grass: 'Grass004' } as const;
+type TerrainSurface = keyof typeof terrainAssets;
+const terrainMaps = new Map<TerrainSurface, THREE.Texture[]>();
+
+/** Value noise and the roadside dirt tint shared by the terrain and asphalt shaders. */
+export const terrainNoiseGlsl = `
+  float terrainNoise(vec2 p) {
+    vec2 cell = floor(p);
+    vec2 f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    vec4 h = fract(sin(vec4(
+      dot(cell, vec2(127.1, 311.7)),
+      dot(cell + vec2(1.0, 0.0), vec2(127.1, 311.7)),
+      dot(cell + vec2(0.0, 1.0), vec2(127.1, 311.7)),
+      dot(cell + vec2(1.0), vec2(127.1, 311.7))
+    )) * 43758.5453);
+    return mix(mix(h.x, h.y, f.x), mix(h.z, h.w, f.x), f.y);
+  }
+  vec3 roadDirt(vec3 soil) {
+    return dot(soil, vec3(0.2126, 0.7152, 0.0722)) * vec3(0.78, 0.53, 0.34);
+  }
+`;
+
+export async function loadTerrainSurfaces() {
+  const loader = new THREE.TextureLoader();
+  const loaded = await Promise.all(
+    Object.entries(terrainAssets).map(async ([surface, asset]) => {
+      const maps = await Promise.all(
+        ['Color', 'NormalGL', 'Roughness'].map(async (map) => {
+          const texture = await loader.loadAsync(
+            `${import.meta.env.BASE_URL}terrain/${asset}_${map}.jpg`,
+          );
+          texture.colorSpace = map === 'Color' ? THREE.SRGBColorSpace : THREE.NoColorSpace;
+          texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+          texture.anisotropy = 8;
+          return texture;
+        }),
+      );
+      return { surface: surface as TerrainSurface, maps };
+    }),
+  );
+  for (const { surface, maps } of loaded) terrainMaps.set(surface, maps);
+}
+
+/**
+ * `roadHalfWidth` lets roadside dirt spill irregularly over the outer pavement edge of a
+ * ribbon whose geometry carries a signed `lateral` distance from its centerline.
+ */
+export function surfaceMaterial(
+  surface: 'asphalt' | TerrainSurface,
+  repeats = 1,
+  roadHalfWidth?: number,
+) {
+  const scanned = surface === 'asphalt' ? undefined : terrainMaps.get(surface);
+  if (scanned) {
+    const [map, normalMap, roughnessMap] = scanned.map((texture) => {
+      const copy = texture.clone();
+      copy.repeat.setScalar(repeats);
+      return copy;
+    });
+    return new THREE.MeshStandardMaterial({
+      map,
+      normalMap,
+      roughnessMap,
+      roughness: 1,
+      normalScale: new THREE.Vector2(0.75, 0.75),
+    });
+  }
+  // Headless training builds terrain without loading browser-only image assets.
   const canvas = document.createElement('canvas');
   canvas.width = canvas.height = 256;
   const context = canvas.getContext('2d');
@@ -90,13 +158,77 @@ export function surfaceMaterial(surface: 'asphalt' | 'gravel' | 'grass', repeats
     roughnessMap.generateMipmaps = true;
     roughnessMap.anisotropy = 8;
     roughnessMap.needsUpdate = true;
-    return new THREE.MeshStandardMaterial({
+    const material = new THREE.MeshStandardMaterial({
       map,
       bumpMap: map,
       bumpScale: 0.012,
       roughnessMap,
       roughness: 1,
     });
+    const soilMap = terrainMaps.get('gravel')?.[0];
+    if (soilMap && roadHalfWidth !== undefined)
+      material.defines = { ROAD_DIRT: '', ROAD_HALF_WIDTH: roadHalfWidth.toFixed(3) };
+    material.onBeforeCompile = (shader) => {
+      shader.uniforms.soilMap = { value: soilMap };
+      shader.vertexShader = shader.vertexShader
+        .replace(
+          '#include <common>',
+          `#include <common>
+          #ifdef ROAD_DIRT
+            attribute float lateral;
+            varying float vLateral;
+          #endif`,
+        )
+        .replace(
+          '#include <begin_vertex>',
+          `#include <begin_vertex>
+          #ifdef ROAD_DIRT
+            vLateral = lateral;
+          #endif`,
+        );
+      shader.fragmentShader = shader.fragmentShader
+        .replace(
+          '#include <common>',
+          `#include <common>
+          #ifdef ROAD_DIRT
+            uniform sampler2D soilMap;
+            varying float vLateral;
+            ${terrainNoiseGlsl}
+          #endif`,
+        )
+        .replace(
+          '#include <map_fragment>',
+          `#include <map_fragment>
+          #ifdef USE_MAP
+            vec3 weathering = texture2D(map, vMapUv * 0.073).rgb;
+            float wear = smoothstep(0.035, 0.065, dot(weathering, vec3(0.333333)));
+            diffuseColor.rgb *= mix(0.92, 1.08, wear);
+          #endif
+          #ifdef ROAD_DIRT
+            // Dirt washes 0.1-0.9 m onto the pavement in drifts, with loose grains beyond.
+            vec2 roadWorld = vMapUv * 5.0;
+            float edgeDistance = ROAD_HALF_WIDTH - abs(vLateral);
+            float drift = terrainNoise(roadWorld * 0.7) * 0.65 +
+              terrainNoise(roadWorld * 3.1 + vec2(4.7, 1.3)) * 0.35;
+            float reach = 0.1 + drift * 0.8;
+            float grains = step(0.82, terrainNoise(roadWorld * 23.0)) *
+              (1.0 - smoothstep(reach, reach + 0.5, edgeDistance));
+            float roadDirtCover = max(1.0 - smoothstep(reach - 0.12, reach + 0.04, edgeDistance),
+              grains * 0.8);
+            diffuseColor.rgb = mix(diffuseColor.rgb,
+              roadDirt(texture2D(soilMap, roadWorld / 3.0).rgb), roadDirtCover);
+          #endif`,
+        )
+        .replace(
+          '#include <roughnessmap_fragment>',
+          `#include <roughnessmap_fragment>
+          #ifdef ROAD_DIRT
+            roughnessFactor = mix(roughnessFactor, 1.0, roadDirtCover);
+          #endif`,
+        );
+    };
+    material.customProgramCacheKey = () => 'asphalt-weathering';
+    return material;
   }
   const pixels = context.getImageData(0, 0, 256, 256).data;
   const normals = new Uint8Array(256 * 256 * 4);

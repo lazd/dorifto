@@ -6,7 +6,7 @@ let server;
 let courses;
 let courseRoute;
 let courseSpawn;
-let startDistance;
+let courseStartDistance;
 let generateCourse;
 let generateCustomCourse;
 let defaultCourseWeights;
@@ -24,7 +24,7 @@ before(async () => {
     server: { middlewareMode: true, hmr: false, ws: false, watch: null },
     appType: 'custom',
   });
-  ({ courses, courseRoute, courseSpawn, startDistance, generateCourse } =
+  ({ courses, courseRoute, courseSpawn, courseStartDistance, generateCourse } =
     await server.ssrLoadModule('/src/courses.ts'));
   ({ generateCustomCourse, defaultCourseWeights } = await server.ssrLoadModule(
     '/src/course-generation.ts',
@@ -179,7 +179,10 @@ test('reverse courses retain the same outline, projection, and physical start li
     assert.equal(forward.path, backward.path);
     assert.equal(forward.startLine, backward.startLine);
     const route = courseRoute(definition);
-    const start = forward.project(route.getPointAt(startDistance / route.getLength()));
+    const length = route.getLength();
+    const start = forward.project(
+      route.getPointAt(courseStartDistance(definition, length) / length),
+    );
     const numbers = forward.startLine.match(/-?\d+(?:\.\d+)?(?:e[+-]?\d+)?/g).map(Number);
     assert.ok(Math.abs((numbers[0] + numbers[2]) / 2 - start.x) < 1e-8);
     assert.ok(Math.abs((numbers[1] + numbers[3]) / 2 - start.y) < 1e-8);

@@ -1,4 +1,4 @@
-import { courseRoute, startDistance, type CourseDefinition } from './courses';
+import { courseGateDistances, courseRoute, type CourseDefinition } from './courses';
 import type { ConfigurationState } from './configuration-state';
 import { createCourseMapGeometry, startLineStyle } from './course-map-geometry';
 
@@ -29,18 +29,16 @@ export function createMinimapLayout(definition: CourseDefinition) {
     definition.width,
     { padRadius: definition.padRadius, minimumRoadWidth: 3, closed: definition.closed },
   );
-  const startT = definition.closed === false ? 0 : startDistance / route.getLength();
-  const start = route.getPointAt(startT);
-  const tangent = route.getTangentAt(startT);
+  const length = route.getLength();
   return {
     path,
     project,
     roadWidth,
-    startLine:
-      startLine(start, tangent) +
-      (definition.closed === false
-        ? ` ${startLine(route.getPointAt(1), route.getTangentAt(1))}`
-        : ''),
+    startLine: courseGateDistances({ ...definition, reverse: false }, length)
+      .map((distance) =>
+        startLine(route.getPointAt(distance / length), route.getTangentAt(distance / length)),
+      )
+      .join(' '),
     pad,
   };
 }

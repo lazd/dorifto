@@ -2,11 +2,11 @@ import * as THREE from 'three';
 import type { CourseDefinition } from './courses';
 import {
   courseCornerAt,
+  courseGateDistances,
   courseKerbSegments,
   courseLineWidth,
   courseRoute,
   courseShoulderWidth,
-  startDistance,
 } from './courses';
 import { surfaceMaterial } from './surfaces';
 import { CourseTerrain } from './terrain';
@@ -172,6 +172,7 @@ function buildCourse(scene: THREE.Group, definition: CourseDefinition, carWidth:
   ) {
     const positions: number[] = [];
     const uvs: number[] = [];
+    const lateral: number[] = [];
     const steps = Math.max(1, Math.ceil((to - from) * segments));
     for (let i = 0; i <= steps; i++) {
       const t = THREE.MathUtils.lerp(from, to, i / steps);
@@ -182,6 +183,7 @@ function buildCourse(scene: THREE.Group, definition: CourseDefinition, carWidth:
         const point = center.clone().addScaledVector(across, offset + edge);
         positions.push(point.x, height, point.z);
         uvs.push(point.x / 5, point.z / 5);
+        lateral.push(edge);
       }
     }
     const indices: number[] = [];
@@ -192,6 +194,7 @@ function buildCourse(scene: THREE.Group, definition: CourseDefinition, carWidth:
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
     geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+    geometry.setAttribute('lateral', new THREE.Float32BufferAttribute(lateral, 1));
     geometry.setIndex(indices);
     const projected = terrain.projectGeometry(geometry, height);
     geometry.dispose();
@@ -200,7 +203,13 @@ function buildCourse(scene: THREE.Group, definition: CourseDefinition, carWidth:
     scene.add(mesh);
     return mesh;
   }
-  const asphalt = surfaceMaterial('asphalt');
+  const asphalt = surfaceMaterial(
+    'asphalt',
+    1,
+    definition.padRadius === undefined
+      ? definition.width / 2 + (definition.shoulderWidth ?? courseShoulderWidth)
+      : undefined,
+  );
   asphalt.polygonOffset = true;
   asphalt.polygonOffsetFactor = 1;
   asphalt.polygonOffsetUnits = 1;
@@ -237,7 +246,9 @@ function buildCourse(scene: THREE.Group, definition: CourseDefinition, carWidth:
   }
   const columns = Math.ceil(definition.width / 0.5);
   const tileWidth = definition.width / columns;
-  for (const gateT of definition.closed === false ? [0, 1] : [startDistance / length]) {
+  for (const gateT of courseGateDistances({ ...definition, reverse: false }, length).map(
+    (d) => d / length,
+  )) {
     const start = route.getPointAt(gateT);
     const startTangent = route.getTangentAt(gateT);
     across.set(startTangent.z, 0, -startTangent.x).normalize();

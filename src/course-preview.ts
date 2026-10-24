@@ -1,4 +1,4 @@
-import { courseRoute, courseSpawn, courseStartDistance, type CourseDefinition } from './courses';
+import { courseGateDistances, courseRoute, courseSpawn, type CourseDefinition } from './courses';
 import { createCourseMapGeometry, startLineStyle } from './course-map-geometry';
 
 export interface CoursePreviewOptions {
@@ -45,7 +45,8 @@ export function coursePreviewGeometry(
     return [px, py] as const;
   };
   const spawn = courseSpawn(definition);
-  const startT = courseStartDistance(definition, route.getLength()) / route.getLength();
+  const length = route.getLength();
+  const [startT, finishT] = courseGateDistances(definition, length).map((d) => d / length);
   return {
     path,
     scale,
@@ -54,9 +55,9 @@ export function coursePreviewGeometry(
     roadWidth,
     startLine: startLine(route.getPointAt(startT), route.getTangentAt(startT)),
     finishLine:
-      definition.closed === false
-        ? startLine(route.getPointAt(1), route.getTangentAt(1))
-        : undefined,
+      finishT === undefined
+        ? undefined
+        : startLine(route.getPointAt(finishT), route.getTangentAt(finishT)),
   };
 }
 

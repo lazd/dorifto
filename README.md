@@ -437,7 +437,10 @@ manually. The oxc VS Code extension reads the same config for format-on-save.
 `npm run import-track -- src/trackImports/*.json` converts recorded-lap track JSON
 into course files in `src/tracks/`, which appear automatically in the course picker.
 Imported point-to-point routes (`closed: false`) appear under **Roads** with a
-**Road** badge; closed circuits remain under **Racetracks**.
+**Road** badge; closed circuits remain under **Racetracks**. On roads, the start and
+finish lines sit 45 m in from each end, so the full starting grid lines up on
+pavement behind the start line and cars have room to brake past the finish. The
+same two lines serve both driving directions.
 `npm run import-road -- <slug> "<road name>" "<location query>"` first
 looks up the freeform location with OpenStreetMap's geocoding API, then queries Overpass for
 the named road within the returned bounding box. It writes a compatible source
@@ -1027,7 +1030,9 @@ changes don't jerk the view.
 
 The Time of day picker switches lighting live without resetting the car or lap.
 The Noon preset has a blue sky and early-afternoon (roughly 2 PM) lighting,
-with a lower sun, cool ambient fill, and warm-neutral sunlight for pronounced shadows.
+with a high sun (about 56 degrees elevation), brighter warm-neutral ambient fill,
+and near-white sunlight. Warm ground bounce keeps shaded rock faces earthy rather
+than blue-gray, while headlights add a modest warmer tint.
 Its existing `?time=noon` identifier is unchanged. Sunset uses a warm horizon, golden
 directional light, and a low sun angle for long shadows. Night uses a dark blue
 sky with soft cool ambient moonlight to reveal the car and nearby hills;
@@ -1036,7 +1041,10 @@ Procedural clouds are baked into the sky texture. Sunset alone uses
 dense slate-blue cloud banks and fiery coral/orange undersides.
 A low sun and localized golden glow brighten the horizon beneath a cooler
 overhead sky, with warm direct light contrasted against cooler ambient light.
-Noon uses scattered bright billows against a deeper blue upper sky and a pale horizon;
+Noon uses a physically based atmospheric sky with sun-direction-dependent scattering,
+a visible solar disc, and scattered clouds. Its HDR sky and filtered reflections
+are baked once during loading; the solar disc is omitted from reflections because
+the directional light already supplies direct sunlight.
 night retains the original muted blue clouds. Neither uses the dramatic sunset treatment.
 Cloud patterns are deterministic, wrap seamlessly around the horizon, and
 add no per-frame cloud rendering passes.
@@ -1160,7 +1168,21 @@ cannot be dismissed; reload the page to restart.
 The driving corridor is textured asphalt with an 80 cm paved shoulder; everything
 outside it is textured dirt/gravel. Both receive shadows and headlights.
 Surface textures use subdued fine grain and seamless weathering patches; asphalt
-also has baked roughness variation. Broad world-space patches mix olive and dry
+also has baked roughness variation and larger-scale weathering. Rock faces use
+world-space triplanar color and normal mapping to avoid stretching top-down textures
+on steep slopes. Offset texture samples blend together to reduce obvious tiling;
+irregular multi-scale patches add subdued green/dry-grass variation without regular
+vertex-color stripes or artificial rock strata.
+Terrain uses ambientCG Rock030, Ground037, and Grass004 CC0 scanned materials,
+with separate 1024px color, OpenGL normal, and roughness maps. Soil blends into
+rock on steep slopes and grass on gentler ground. A ragged brown dirt verge runs
+2.5–5 m out from the pavement and washes 0.1–0.9 m onto the asphalt's outer edge in
+drifts and loose grains, so the paving edge isn't a clean line. Rock is tinted tan so cut banks read as earth rather
+than gray stone. Maps load before the first course;
+download failures stop loading with the normal startup error rather than silently
+substituting textures. Headless training retains procedural surfaces without image loading.
+Source and license details are in [models/terrain/LICENSE.txt](models/terrain/LICENSE.txt).
+Broad world-space patches mix olive and dry
 grass with exposed soil across the hills, without changing terrain geometry or grip.
 The terrain also casts shadows; decorative grass tufts only receive them.
 The sun uses three cascaded 2048×2048 shadow maps following the camera, with
@@ -1233,7 +1255,8 @@ local to this browser; their `?course=saved-…` links require the same local da
 The picker groups **Built-in courses**, **Racetracks**, **Roads**, and **Saved courses** in a
 scrollable list of outline thumbnails, names and lap lengths (meters for courses
 under 1 km, otherwise kilometers). The current course is marked independently
-of the preview selection. Selecting a course updates the larger 3-D preview;
+of the preview selection. Selecting a course updates its details and 2-D preview;
+building the larger 3-D preview is temporarily disabled.
 **Load course** changes the course and closes the dialog on success. Loading
 errors remain visible in the dialog. While an unsaved random or custom course is
 active, a **Current layout** group lists it (marked Unsaved) so its records and
@@ -1475,4 +1498,5 @@ license.** See [the original model license](models/nissan_300zx/license.txt).
 The demo rescales/recenters the model, separates its wheels, brake hubs, steering
 wheel, gauge needles and interior mirror housing for animation, removes the sun
 visors and front plate, and repaints it with red paint, black rims and a
-near-black interior.
+near-black interior. Painted body panels use a physical clearcoat layer for glossy,
+colorless highlights over the existing paint textures; bot paint inherits the same finish.

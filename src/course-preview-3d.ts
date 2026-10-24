@@ -1,5 +1,10 @@
 import * as THREE from 'three';
-import { courseRoute, courseShoulderWidth, startDistance, type CourseDefinition } from './courses';
+import {
+  courseGateDistances,
+  courseRoute,
+  courseShoulderWidth,
+  type CourseDefinition,
+} from './courses';
 import { CourseTerrain } from './terrain';
 
 export interface CoursePreviewColors {
@@ -88,7 +93,9 @@ export function createCoursePreviewModel(
       }
       group.add(meshFrom(positions, indices, roadMaterial));
     }
-    for (const startT of definition.closed === false ? [0, 1] : [startDistance / length]) {
+    for (const startT of courseGateDistances({ ...definition, reverse: false }, length).map(
+      (d) => d / length,
+    )) {
       const start = route.getPointAt(startT);
       const startTangent = route.getTangentAt(startT);
       const startPositions: number[] = [];

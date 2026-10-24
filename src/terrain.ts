@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { courseProfileHeight, courseRoute, courseShoulderWidth } from './courses';
 import type { CourseDefinition } from './courses';
-import { surfaceMaterial } from './surfaces';
+import { surfaceMaterial, terrainNoiseGlsl } from './surfaces';
 import { terrainBaseHeight, terrainRasterSampler } from './terrain-profile';
 import {
   TerrainSurface,
@@ -176,8 +176,7 @@ export class CourseTerrain {
         max = Math.max(max, height);
         positions.push(px, this.heights[i], pz);
         uvs.push(px / 6, pz / 6);
-        const shade = 0.92 + 0.08 * Math.sin(px / 17) * Math.cos(pz / 23);
-        colors.push(shade, shade * 0.98, shade * 0.91);
+        colors.push(1, 1, 1);
       }
     }
     // Raster smoothing is confined to the roadside blend; preserve pavement and distant survey heights.
@@ -285,73 +284,150 @@ export class CourseTerrain {
     geometry.setAttribute('vegetation', new THREE.Float32BufferAttribute(vegetation, 2));
     geometry.setIndex(new THREE.BufferAttribute(indices, 1));
     geometry.computeVertexNormals();
-    const material = surfaceMaterial('gravel');
+    const material = surfaceMaterial('rock');
+    const soilMaterial = surfaceMaterial('gravel');
+    const soilMap = soilMaterial.map;
+    const soilNormalMap = soilMaterial.normalMap;
+    const soilRoughnessMap = soilMaterial.roughnessMap;
+    soilMaterial.dispose();
     const grassMaterial = surfaceMaterial('grass');
     const grassMap = grassMaterial.map;
     const grassNormalMap = grassMaterial.normalMap;
+    const grassRoughnessMap = grassMaterial.roughnessMap;
     grassMaterial.dispose();
     material.onBeforeCompile = (shader) => {
       shader.uniforms.grassMap = { value: grassMap };
       shader.uniforms.grassNormalMap = { value: grassNormalMap };
+      shader.uniforms.grassRoughnessMap = { value: grassRoughnessMap ?? grassMap };
+      shader.uniforms.soilMap = { value: soilMap };
+      shader.uniforms.soilNormalMap = { value: soilNormalMap };
+      shader.uniforms.soilRoughnessMap = { value: soilRoughnessMap ?? soilMap };
       shader.vertexShader = shader.vertexShader
         .replace(
           '#include <common>',
-          '#include <common>\nattribute vec2 vegetation;\nvarying vec2 vVegetation;',
+          '#include <common>\nattribute vec2 vegetation;\nvarying vec2 vVegetation;\nvarying vec3 vTerrainPosition;\nvarying vec3 vTerrainNormal;',
         )
-        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvVegetation = vegetation;');
+        .replace(
+          '#include <begin_vertex>',
+          `#include <begin_vertex>
+          vVegetation = vegetation;
+          vTerrainPosition = (modelMatrix * vec4(position, 1.0)).xyz;
+          vTerrainNormal = normalize(mat3(modelMatrix) * objectNormal);`,
+        );
       shader.fragmentShader = shader.fragmentShader
         .replace(
           '#include <common>',
           `#include <common>
         uniform sampler2D grassMap;
         uniform sampler2D grassNormalMap;
+        uniform sampler2D grassRoughnessMap;
+        uniform sampler2D soilMap;
+        uniform sampler2D soilNormalMap;
+        uniform sampler2D soilRoughnessMap;
         varying vec2 vVegetation;
-        float terrainNoise(vec2 p) {
-          vec2 cell = floor(p);
-          vec2 f = fract(p);
-          f = f * f * (3.0 - 2.0 * f);
-          vec4 h = fract(sin(vec4(
-            dot(cell, vec2(127.1, 311.7)),
-            dot(cell + vec2(1.0, 0.0), vec2(127.1, 311.7)),
-            dot(cell + vec2(0.0, 1.0), vec2(127.1, 311.7)),
-            dot(cell + vec2(1.0), vec2(127.1, 311.7))
-          )) * 43758.5453);
-          return mix(mix(h.x, h.y, f.x), mix(h.z, h.w, f.x), f.y);
+        varying vec3 vTerrainPosition;
+        varying vec3 vTerrainNormal;
+        ${terrainNoiseGlsl}
+        vec4 terrainSample(sampler2D tex, vec2 uv) {
+          float blend = smoothstep(0.2, 0.8, terrainNoise(uv * 0.23));
+          return mix(texture2D(tex, uv), texture2D(tex, uv + vec2(0.37, 0.61)), blend);
+        }
+        // Distant ground mixes in a rotated, non-integer-scale copy so 3 m tiles don't line up
+        // into stripes across hillsides.
+        float terrainFar() {
+          return smoothstep(12.0, 70.0, length(vViewPosition));
+        }
+        vec4 groundSample(sampler2D tex, vec2 uv) {
+          vec2 macro = mat2(0.8, -0.6, 0.6, 0.8) * uv * 0.29 + vec2(0.13, 0.71);
+          return mix(terrainSample(tex, uv), terrainSample(tex, macro), terrainFar() * 0.6);
         }`,
         )
         .replace(
           '#include <map_fragment>',
           `
           #ifdef USE_MAP
-            vec4 gravelColor = texture2D(map, vMapUv);
-            vec4 grassColor = texture2D(grassMap, vMapUv * 2.0);
+            vec3 rockWeights = pow(abs(normalize(vTerrainNormal)), vec3(4.0));
+            rockWeights /= max(dot(rockWeights, vec3(1.0)), 0.0001);
+            vec3 rockPosition = vTerrainPosition / 3.0;
+            vec4 gravelColor =
+              terrainSample(map, rockPosition.zy) * rockWeights.x +
+              terrainSample(map, rockPosition.xz) * rockWeights.y +
+              terrainSample(map, rockPosition.xy) * rockWeights.z;
+            vec4 grassColor = groundSample(grassMap, vMapUv * 2.0);
+            vec4 soilColor = groundSample(soilMap, vMapUv * 2.0);
             float patches = terrainNoise(vMapUv * 0.45);
+            // Recolor the gray scan as weathered tan cut-bank material, keeping its detail.
+            float rockLuma = dot(gravelColor.rgb, vec3(0.2126, 0.7152, 0.0722));
+            gravelColor.rgb = vec3(0.62, 0.5, 0.37) * rockLuma * 2.4;
+            float rockCoverage = smoothstep(0.55, 0.95, vVegetation.y + (patches - 0.5) * 0.35) * 0.75;
+            gravelColor = mix(soilColor, gravelColor, rockCoverage);
             float detail = terrainNoise(vMapUv * 6.0);
-            float landscape = terrainNoise(vMapUv * 0.035);
-            float dryness = smoothstep(0.2, 0.65, landscape + (patches - 0.5) * 0.3);
+            vec2 landscapeUV = vTerrainPosition.xz * 0.012;
+            float landscape = terrainNoise(landscapeUV) * 0.65 +
+              terrainNoise(landscapeUV * 2.7 + vec2(17.3, 9.1)) * 0.35;
+            float dryness = smoothstep(0.45, 0.8, landscape + (patches - 0.5) * 0.15);
             float edge = (detail - 0.5) * 0.65 + (patches - 0.5) * 0.8;
-            float shoulder = smoothstep(1.5, 3.2, vVegetation.x + edge);
-            float slopeGrass = 1.0 - smoothstep(0.52, 0.87, vVegetation.y);
+            // Packed brown dirt verge along the road, with a ragged edge into grass/rock.
+            float verge = 1.0 - smoothstep(2.5, 5.0, vVegetation.x + edge * 1.5);
+            gravelColor.rgb = mix(gravelColor.rgb, roadDirt(soilColor.rgb), verge);
+            float bankNoise = terrainNoise(vTerrainPosition.xz * 0.09) * 0.6 +
+              terrainNoise(vTerrainPosition.xz * 0.31 + vec2(5.2, 1.7)) * 0.4;
+            float slopeGrass = 1.0 - smoothstep(0.62, 1.05, vVegetation.y + (bankNoise - 0.5) * 0.45);
             float exposed = smoothstep(0.55, 0.72, landscape + (patches - 0.5) * 0.4);
-            float coverage = shoulder * slopeGrass * (1.0 - exposed * 0.65);
-            grassColor.rgb *= mix(vec3(0.85, 0.92, 0.65), vec3(2.0, 1.55, 1.05), dryness);
-            gravelColor.rgb *= mix(vec3(0.82, 0.84, 0.86), vec3(1.08, 1.02, 0.92), landscape);
+            float coverage = (1.0 - verge) * slopeGrass * (1.0 - exposed * 0.25);
+            float grassLuma = dot(grassColor.rgb, vec3(0.2126, 0.7152, 0.0722));
+            grassColor.rgb = mix(vec3(grassLuma), grassColor.rgb, 0.65);
+            grassColor.rgb *= mix(vec3(0.78, 0.9, 0.88), vec3(1.0, 0.92, 0.8), dryness);
+            gravelColor.rgb *= mix(0.84, 1.04, landscape);
             diffuseColor *= mix(gravelColor, grassColor, coverage);
           #endif
         `,
         )
         .replace(
+          '#include <roughnessmap_fragment>',
+          `float roughnessFactor = roughness;
+          #ifdef USE_ROUGHNESSMAP
+            float rockRoughness =
+              terrainSample(roughnessMap, rockPosition.zy).g * rockWeights.x +
+              terrainSample(roughnessMap, rockPosition.xz).g * rockWeights.y +
+              terrainSample(roughnessMap, rockPosition.xy).g * rockWeights.z;
+            float groundRoughness = mix(terrainSample(soilRoughnessMap, vMapUv * 2.0).g,
+              rockRoughness, rockCoverage);
+            roughnessFactor *= mix(groundRoughness,
+              terrainSample(grassRoughnessMap, vMapUv * 2.0).g, coverage);
+          #endif`,
+        )
+        .replace(
           '#include <normal_fragment_maps>',
-          THREE.ShaderChunk.normal_fragment_maps.replaceAll(
-            'texture2D( normalMap, vNormalMapUv )',
-            'mix(texture2D(normalMap, vNormalMapUv), texture2D(grassNormalMap, vNormalMapUv * 2.0), coverage)',
-          ),
+          `#ifdef USE_NORMALMAP_TANGENTSPACE
+            vec3 rockNX = terrainSample(normalMap, rockPosition.zy).xyz * 2.0 - 1.0;
+            vec3 rockNY = terrainSample(normalMap, rockPosition.xz).xyz * 2.0 - 1.0;
+            vec3 rockNZ = terrainSample(normalMap, rockPosition.xy).xyz * 2.0 - 1.0;
+            rockNX.xy *= normalScale;
+            rockNY.xy *= normalScale;
+            rockNZ.xy *= normalScale;
+            vec3 rockNormal =
+              (getTangentFrame(-vViewPosition, normal, rockPosition.zy) * rockNX) * rockWeights.x +
+              (getTangentFrame(-vViewPosition, normal, rockPosition.xz) * rockNY) * rockWeights.y +
+              (getTangentFrame(-vViewPosition, normal, rockPosition.xy) * rockNZ) * rockWeights.z;
+            vec3 grassN = terrainSample(grassNormalMap, vNormalMapUv * 2.0).xyz * 2.0 - 1.0;
+            vec3 soilN = terrainSample(soilNormalMap, vNormalMapUv * 2.0).xyz * 2.0 - 1.0;
+            float detailFade = 1.0 - terrainFar() * 0.85;
+            grassN.xy *= normalScale * detailFade;
+            soilN.xy *= normalScale * detailFade;
+            vec3 groundNormal = mix(tbn * soilN, rockNormal, rockCoverage);
+            normal = normalize(mix(groundNormal, tbn * grassN, coverage));
+          #endif`,
         );
     };
-    material.customProgramCacheKey = () => 'slope-vegetation-patches';
+    material.customProgramCacheKey = () => 'scanned-terrain-triplanar';
     material.addEventListener('dispose', () => {
       grassMap?.dispose();
       grassNormalMap?.dispose();
+      grassRoughnessMap?.dispose();
+      soilMap?.dispose();
+      soilNormalMap?.dispose();
+      soilRoughnessMap?.dispose();
     });
     material.vertexColors = true;
     material.polygonOffset = true;
@@ -523,6 +599,9 @@ export class CourseTerrain {
     const uv: number[] = [];
     const attribute = source.getAttribute('position');
     const index = source.getIndex();
+    // Optional per-vertex scalar (e.g. distance across a road ribbon), interpolated onto clipped pieces.
+    const sourceLateral = source.getAttribute('lateral');
+    const lateral: number[] = [];
     function clip(polygon: Point[], a: Point, b: Point) {
       const side = (p: Point) => (b.x - a.x) * (p.z - a.z) - (b.z - a.z) * (p.x - a.x);
       const result: Point[] = [];
@@ -540,10 +619,17 @@ export class CourseTerrain {
       return result;
     }
     for (let i = 0; i < (index?.count ?? attribute.count); i += 3) {
-      const triangle = [0, 1, 2].map((j) => {
-        const v = index ? index.getX(i + j) : i + j;
-        return { x: attribute.getX(v), z: attribute.getZ(v) };
-      });
+      const vertices = [0, 1, 2].map((j) => (index ? index.getX(i + j) : i + j));
+      const triangle = vertices.map((v) => ({ x: attribute.getX(v), z: attribute.getZ(v) }));
+      const [a, b, c] = triangle;
+      const area = (b.x - a.x) * (c.z - a.z) - (c.x - a.x) * (b.z - a.z);
+      const lateralAt = (p: Point) => {
+        if (!sourceLateral || !area) return 0;
+        const wb = ((p.x - a.x) * (c.z - a.z) - (c.x - a.x) * (p.z - a.z)) / area;
+        const wc = ((b.x - a.x) * (p.z - a.z) - (p.x - a.x) * (b.z - a.z)) / area;
+        const [la, lb, lc] = vertices.map((v) => sourceLateral.getX(v));
+        return la + (lb - la) * wb + (lc - la) * wc;
+      };
       const minX = Math.floor((Math.min(...triangle.map((p) => p.x)) - this.minX) / this.spacing);
       const maxX = Math.floor((Math.max(...triangle.map((p) => p.x)) - this.minX) / this.spacing);
       const minZ = Math.floor((Math.min(...triangle.map((p) => p.z)) - this.minZ) / this.spacing);
@@ -565,6 +651,7 @@ export class CourseTerrain {
               for (const p of [polygon[0], polygon[j], polygon[j + 1]]) {
                 positions.push(p.x, triangleHeight(this, cell, p.x, p.z)! + lift, p.z);
                 uv.push(p.x / 5, p.z / 5);
+                if (sourceLateral) lateral.push(lateralAt(p));
               }
             }
           }
@@ -574,6 +661,8 @@ export class CourseTerrain {
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
     geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    if (sourceLateral)
+      geometry.setAttribute('lateral', new THREE.Float32BufferAttribute(lateral, 1));
     geometry.computeVertexNormals();
     return geometry;
   }
