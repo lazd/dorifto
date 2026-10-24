@@ -1027,7 +1027,7 @@ changes don't jerk the view.
 
 The Time of day picker switches lighting live without resetting the car or lap.
 The Noon preset has a blue sky and early-afternoon (roughly 2 PM) lighting,
-with a lower sun and reduced ambient fill for longer, more pronounced shadows.
+with a lower sun, cool ambient fill, and warm-neutral sunlight for pronounced shadows.
 Its existing `?time=noon` identifier is unchanged. Sunset uses a warm horizon, golden
 directional light, and a low sun angle for long shadows. Night uses a dark blue
 sky with soft cool ambient moonlight to reveal the car and nearby hills;
@@ -1036,16 +1036,15 @@ Procedural clouds are baked into the sky texture. Sunset alone uses
 dense slate-blue cloud banks and fiery coral/orange undersides.
 A low sun and localized golden glow brighten the horizon beneath a cooler
 overhead sky, with warm direct light contrasted against cooler ambient light.
-Noon retains the original soft white billows and thin wisps; night retains
-the original muted blue clouds. Neither uses the dramatic sunset treatment.
+Noon uses scattered bright billows against a deeper blue upper sky and a pale horizon;
+night retains the original muted blue clouds. Neither uses the dramatic sunset treatment.
 Cloud patterns are deterministic, wrap seamlessly around the horizon, and
 add no per-frame cloud rendering passes.
 Sky, fog, ambient illumination, reflections, and exposure change together.
 Distance haze fades in from 800 m to 3 km, using muted time-of-day colors
 separate from the sky horizon so distant slopes retain their shading.
-At sunset and night, reflective materials use the visible sky, so the car
-reflects the actual clouds and sky colors. Noon retains the original neutral
-studio reflections and paint settings. All three skies and their reflection maps
+At every time of day, reflective materials use the visible sky, so the car
+reflects the actual clouds and sky colors. All three skies and their reflection maps
 are generated during loading, then reused when switching time of day; only the
 selected time of day is shader-warmed at startup.
 Time-of-day car lights stay registered at zero intensity when off, avoiding
@@ -1160,6 +1159,9 @@ cannot be dismissed; reload the page to restart.
 
 The driving corridor is textured asphalt with an 80 cm paved shoulder; everything
 outside it is textured dirt/gravel. Both receive shadows and headlights.
+Surface textures use subdued fine grain and seamless weathering patches; asphalt
+also has baked roughness variation. Broad world-space patches mix olive and dry
+grass with exposed soil across the hills, without changing terrain geometry or grip.
 The terrain also casts shadows; decorative grass tufts only receive them.
 The sun uses three cascaded 2048×2048 shadow maps following the camera, with
 splits at 30 m, 180 m, and 1500 m and blended transitions. This keeps nearby car

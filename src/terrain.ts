@@ -327,11 +327,15 @@ export class CourseTerrain {
             vec4 grassColor = texture2D(grassMap, vMapUv * 2.0);
             float patches = terrainNoise(vMapUv * 0.45);
             float detail = terrainNoise(vMapUv * 6.0);
+            float landscape = terrainNoise(vMapUv * 0.035);
+            float dryness = smoothstep(0.2, 0.65, landscape + (patches - 0.5) * 0.3);
             float edge = (detail - 0.5) * 0.65 + (patches - 0.5) * 0.8;
             float shoulder = smoothstep(1.5, 3.2, vVegetation.x + edge);
             float slopeGrass = 1.0 - smoothstep(0.52, 0.87, vVegetation.y);
-            float coverage = shoulder * slopeGrass;
-            grassColor.rgb *= mix(vec3(0.88, 0.92, 0.82), vec3(1.08, 1.04, 0.94), patches);
+            float exposed = smoothstep(0.55, 0.72, landscape + (patches - 0.5) * 0.4);
+            float coverage = shoulder * slopeGrass * (1.0 - exposed * 0.65);
+            grassColor.rgb *= mix(vec3(0.85, 0.92, 0.65), vec3(2.0, 1.55, 1.05), dryness);
+            gravelColor.rgb *= mix(vec3(0.82, 0.84, 0.86), vec3(1.08, 1.02, 0.92), landscape);
             diffuseColor *= mix(gravelColor, grassColor, coverage);
           #endif
         `,

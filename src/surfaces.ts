@@ -11,18 +11,41 @@ export function surfaceMaterial(surface: 'asphalt' | 'gravel' | 'grass', repeats
     seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
     return seed / 4294967296;
   };
+  const patches = Array.from({ length: 64 }, random);
+  const patchAt = (x: number, y: number) => {
+    const ix = Math.floor(x);
+    const iy = Math.floor(y);
+    const u = THREE.MathUtils.smoothstep(x - ix, 0, 1);
+    const v = THREE.MathUtils.smoothstep(y - iy, 0, 1);
+    const at = (dx: number, dy: number) => patches[((iy + dy) % 8) * 8 + ((ix + dx) % 8)];
+    return THREE.MathUtils.lerp(
+      THREE.MathUtils.lerp(at(0, 0), at(1, 0), u),
+      THREE.MathUtils.lerp(at(0, 1), at(1, 1), u),
+      v,
+    );
+  };
+  const roughness = surface === 'asphalt' ? new Uint8Array(256 * 256 * 4) : undefined;
   for (let i = 0; i < image.data.length; i += 4) {
+    const x = (i / 4) % 256;
+    const y = Math.floor(i / 4 / 256);
+    const patch = patchAt(x / 32, y / 32);
     const grain = random();
-    const shade = surface === 'asphalt' ? 48 + grain * 24 : 105 + grain * 50;
-    image.data[i] = shade * (surface === 'grass' ? 0.53 : 1);
-    image.data[i + 1] = shade * (surface === 'grass' ? 0.65 : surface === 'asphalt' ? 1.03 : 0.87);
-    image.data[i + 2] = shade * (surface === 'grass' ? 0.36 : surface === 'asphalt' ? 1.06 : 0.67);
+    const shade =
+      surface === 'asphalt' ? 56 + patch * 5 + grain * 8 : 115 + patch * 22 + grain * 18;
+    image.data[i] = shade * (surface === 'grass' ? 0.68 : 1);
+    image.data[i + 1] = shade * (surface === 'grass' ? 0.7 : surface === 'asphalt' ? 1.02 : 0.87);
+    image.data[i + 2] = shade * (surface === 'grass' ? 0.45 : surface === 'asphalt' ? 1.04 : 0.68);
     image.data[i + 3] = 255;
+    if (roughness) {
+      const value = Math.round((0.88 + patch * 0.08) * 255);
+      roughness[i] = roughness[i + 1] = roughness[i + 2] = value;
+      roughness[i + 3] = 255;
+    }
   }
   context.putImageData(image, 0, 0);
   if (surface === 'gravel') {
     for (let i = 0; i < 2400; i++) {
-      const shade = Math.floor(85 + random() * 95);
+      const shade = Math.floor(113 + random() * 30);
       context.fillStyle = `rgb(${shade}, ${Math.floor(shade * 0.9)}, ${Math.floor(shade * 0.74)})`;
       context.beginPath();
       context.ellipse(
@@ -41,8 +64,8 @@ export function surfaceMaterial(surface: 'asphalt' | 'gravel' | 'grass', repeats
     for (let i = 0; i < 9000; i++) {
       const x = random() * 256;
       const y = random() * 256;
-      const shade = 65 + random() * 65;
-      const dry = random() < 0.2;
+      const shade = 80 + random() * 25;
+      const dry = random() < 0.45;
       context.strokeStyle = dry
         ? `rgb(${Math.floor(shade)}, ${Math.floor(shade * 0.88)}, ${Math.floor(shade * 0.58)})`
         : `rgb(${Math.floor(shade * 0.7)}, ${Math.floor(shade * 0.85)}, ${Math.floor(shade * 0.48)})`;
@@ -57,8 +80,23 @@ export function surfaceMaterial(surface: 'asphalt' | 'gravel' | 'grass', repeats
   map.wrapS = map.wrapT = THREE.RepeatWrapping;
   map.repeat.setScalar(repeats);
   map.anisotropy = 8;
-  if (surface === 'asphalt') {
-    return new THREE.MeshStandardMaterial({ map, bumpMap: map, bumpScale: 0.018, roughness: 0.96 });
+  if (roughness) {
+    const roughnessMap = new THREE.DataTexture(roughness, 256, 256);
+    roughnessMap.flipY = true;
+    roughnessMap.wrapS = roughnessMap.wrapT = THREE.RepeatWrapping;
+    roughnessMap.repeat.setScalar(repeats);
+    roughnessMap.magFilter = THREE.LinearFilter;
+    roughnessMap.minFilter = THREE.LinearMipmapLinearFilter;
+    roughnessMap.generateMipmaps = true;
+    roughnessMap.anisotropy = 8;
+    roughnessMap.needsUpdate = true;
+    return new THREE.MeshStandardMaterial({
+      map,
+      bumpMap: map,
+      bumpScale: 0.012,
+      roughnessMap,
+      roughness: 1,
+    });
   }
   const pixels = context.getImageData(0, 0, 256, 256).data;
   const normals = new Uint8Array(256 * 256 * 4);

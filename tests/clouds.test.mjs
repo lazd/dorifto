@@ -4,6 +4,7 @@ import { createServer } from 'vite';
 
 let server;
 let createCloudLayer;
+let daylight;
 const width = 256;
 const height = 128;
 const sunset = { cloudLight: '#ffd0a3', cloudShade: '#776f91', sunOffset: [-42, 12, -20] };
@@ -16,6 +17,7 @@ before(async () => {
     appType: 'custom',
   });
   ({ createCloudLayer } = await server.ssrLoadModule('/src/clouds.ts'));
+  ({ daylight } = await server.ssrLoadModule('/src/lighting.ts'));
 });
 
 after(async () => {
@@ -69,4 +71,32 @@ test('time-of-day colors change without moving clouds, and night clouds stay sub
   }
   assert.ok(sunsetRed > sunsetBlue);
   assert.ok(nightBrightness < noonBrightness * 0.3);
+});
+
+test('daytime presets produce scattered bright clouds without changing night or sunset masks', () => {
+  const paint = createCloudLayer(width, height);
+  const clearDay = paint(daylight.noon).slice();
+  const overcast = paint({ ...daylight.noon, fairWeather: false }).slice();
+  let clearDayAlpha = 0;
+  let overcastAlpha = 0;
+  let brightness = 0;
+  for (let y = 0; y < height; y++) {
+    const left = y * width * 4;
+    const right = (y * width + width - 1) * 4;
+    assert.deepEqual(clearDay.slice(left, left + 4), clearDay.slice(right, right + 4));
+    for (let x = 0; x < width; x++) {
+      const i = (y * width + x) * 4;
+      const alpha = clearDay[i + 3] / 255;
+      clearDayAlpha += alpha;
+      overcastAlpha += overcast[i + 3] / 255;
+      brightness += ((clearDay[i] + clearDay[i + 1] + clearDay[i + 2]) / 3) * alpha;
+      if (y >= height / 2) assert.equal(alpha, 0);
+    }
+  }
+  assert.ok(clearDayAlpha > width * height * 0.005, 'retain visible clouds');
+  assert.ok(clearDayAlpha < overcastAlpha * 0.65, 'leave substantially more clear sky');
+  assert.ok(brightness / clearDayAlpha > 210, 'clouds read as bright rather than overcast gray');
+  for (const preset of [daylight.sunset, daylight.night, daylight.noon]) {
+    assert.deepEqual(paint(preset), createCloudLayer(width, height)(preset));
+  }
 });

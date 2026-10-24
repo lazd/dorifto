@@ -1,22 +1,22 @@
 import * as THREE from 'three';
-import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { CSM } from 'three/addons/csm/CSM.js';
 import type { ConfigurationState } from './configuration-state';
 import { createCloudLayer } from './clouds';
 
-const daylight = {
+export const daylight = {
   noon: {
-    sky: '#78b5ec',
-    horizon: '#b6d7ee',
+    sky: '#367ccc',
+    horizon: '#c1d7e5',
     haze: '#a9bdc9',
-    ground: '#656052',
-    cloudLight: '#fffaf0',
-    cloudShade: '#849bb8',
-    ambient: '#d9edff',
-    ambientIntensity: 0.42,
-    environmentIntensity: 0.4,
-    sun: '#ffefd4',
-    sunIntensity: 2.8,
+    ground: '#716855',
+    cloudLight: '#fffdf6',
+    cloudShade: '#9aaec4',
+    fairWeather: true,
+    ambient: '#c9dfff',
+    ambientIntensity: 0.32,
+    environmentIntensity: 0.65,
+    sun: '#fff2dc',
+    sunIntensity: 3,
     sunOffset: [-35, 30, -20],
     exposure: 0.95,
   },
@@ -62,6 +62,7 @@ const daylight = {
     cloudLight: string;
     cloudShade: string;
     cloudSun?: string;
+    fairWeather?: boolean;
     ambientIntensity: number;
     environmentIntensity: number;
     sun: string;
@@ -81,9 +82,6 @@ export function createLighting(
   const fog = new THREE.Fog(daylight.noon.haze, fogNear, fogFar);
   scene.fog = fog;
   const pmrem = new THREE.PMREMGenerator(renderer);
-  const environment = new RoomEnvironment();
-  const noonEnvironment = pmrem.fromScene(environment, 0.04).texture;
-  environment.dispose();
   const ambient = new THREE.HemisphereLight();
   scene.add(ambient);
   const csm = new CSM({
@@ -196,6 +194,10 @@ export function createLighting(
     const preset = daylight[time];
     const gradient = skyContext.createLinearGradient(0, 0, 0, skyCanvas.height);
     gradient.addColorStop(0, preset.sky);
+    if (time === 'noon') {
+      gradient.addColorStop(0.3, '#5799d8');
+      gradient.addColorStop(0.44, '#9ec2df');
+    }
     if (time === 'sunset') {
       gradient.addColorStop(0.26, '#31435f');
       gradient.addColorStop(0.37, '#76516b');
@@ -240,7 +242,7 @@ export function createLighting(
     sky.mapping = THREE.EquirectangularReflectionMapping;
     return {
       sky,
-      environment: time === 'noon' ? noonEnvironment : pmrem.fromEquirectangular(sky).texture,
+      environment: pmrem.fromEquirectangular(sky).texture,
     };
   };
   const skies = {
