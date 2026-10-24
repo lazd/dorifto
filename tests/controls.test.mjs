@@ -107,6 +107,34 @@ test('runtime reads remapped keyboard, controller buttons, and map axes from the
   assert.equal(r.controls.steer, 1, 'keyboard steering uses the remapped code');
 });
 
+test('steering expo respects live changes and remapped axes without affecting keyboard or camera', (t) => {
+  const r = rig(t);
+  inputBindings.get().controller.axes.steering = { index: 1, inverted: false };
+  r.pad.axes[2] = 0.5;
+  for (const [expo, halfStick] of [
+    [0, 0.5],
+    [0.6, 0.275],
+    [1, 0.125],
+  ]) {
+    for (const direction of [-1, 1]) {
+      for (const [input, expected] of [
+        [0, 0],
+        [0.5, halfStick],
+        [1, 1],
+      ]) {
+        r.pad.axes[1] = input * direction;
+        r.controls.poll(true, expo);
+        assert.ok(Math.abs(r.controls.steer - expected * direction) < 1e-12);
+        assert.equal(r.controls.cameraX, 0.5);
+      }
+    }
+    r.controls.keys.add(inputBindings.get().keyboard.steerLeft);
+    r.controls.poll(true, expo);
+    assert.equal(r.controls.steer, 1);
+    r.controls.keys.clear();
+  }
+});
+
 test('pedals preserve analog values across the pressed threshold in both directions', (t) => {
   const r = rig(t);
   const { buttons } = inputBindings.get().controller;
