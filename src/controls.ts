@@ -1,3 +1,5 @@
+import { inputBindings, type AxisAction, type ControllerAction } from './input-bindings';
+
 const STICK_DEADZONE = 0.0;
 const TRIGGER_DEADZONE = 0.0;
 
@@ -121,54 +123,72 @@ export class DrivingControls {
           ? '⏳ Waiting for controller'
           : '🛑 Gamepad API unavailable';
     this.controllerStatus = message;
-    const resetPressed = Boolean(pad?.buttons[9]?.pressed);
-    this.resetRequested = resetPressed && !this.resetHeld;
-    this.resetHeld = resetPressed;
-    const cameraPressed = Boolean(pad?.buttons[8]?.pressed);
-    this.cameraRequested = cameraPressed && !this.cameraHeld;
-    this.cameraHeld = cameraPressed;
-    const driveModePressed = Boolean(pad?.buttons[3]?.pressed);
-    this.driveModeRequested = driveModePressed && !this.driveModeHeld;
-    this.driveModeHeld = driveModePressed;
-    const timeOfDayPressed = Boolean(pad?.buttons[13]?.pressed);
-    this.timeOfDayRequested = timeOfDayPressed && !this.timeOfDayHeld;
-    this.timeOfDayHeld = timeOfDayPressed;
-    const recordPressed = Boolean(pad?.buttons[12]?.pressed);
-    this.recordRequested = recordPressed && !this.recordHeld;
-    this.recordHeld = recordPressed;
-    const previousLapPressed = Boolean(pad?.buttons[14]?.pressed);
-    this.previousLapRequested = previousLapPressed && !this.previousLapHeld;
-    this.previousLapHeld = previousLapPressed;
-    const nextLapPressed = Boolean(pad?.buttons[15]?.pressed);
-    this.nextLapRequested = nextLapPressed && !this.nextLapHeld;
-    this.nextLapHeld = nextLapPressed;
-    const mapViewPressed = Boolean(pad?.buttons[1]?.pressed);
-    if (mapViewPressed && !this.mapViewHeld && this.focused && !document.hidden) {
-      if (!dismissError?.()) this.mapView = !this.mapView;
+    const bindings = inputBindings.get();
+    const captureActive = inputBindings.isCaptureActive();
+    const mapViewPressed = Boolean(pad?.buttons[bindings.controller.buttons.map]?.pressed);
+    if (mapViewPressed && !this.mapViewHeld && this.focused && !document.hidden && !captureActive) {
+      const dismissed = dismissError?.() ?? false;
+      if (enabled && !dismissed) this.mapView = !this.mapView;
     }
     this.mapViewHeld = mapViewPressed;
-    if (!enabled || !this.focused || document.hidden) {
+    if (!enabled || !this.focused || document.hidden || captureActive) {
       this.clear();
       return;
     }
-    const axis = (index: number) => {
-      const value = Math.max(-1, Math.min(1, pad?.axes[index] ?? 0));
+    const button = (action: ControllerAction) => pad?.buttons[bindings.controller.buttons[action]];
+    const pressed = (action: ControllerAction) => Boolean(button(action)?.pressed);
+    const value = (action: ControllerAction) => {
+      const triggerValue = Math.max(
+        0,
+        Math.min(1, Math.max(button(action)?.value ?? 0, Number(pressed(action)))),
+      );
+      return Math.max(0, (triggerValue - TRIGGER_DEADZONE) / (1 - TRIGGER_DEADZONE));
+    };
+    const axis = (action: AxisAction) => {
+      const binding = bindings.controller.axes[action];
+      const raw = Math.max(-1, Math.min(1, pad?.axes[binding.index] ?? 0));
+      const adjusted = binding.inverted ? -raw : raw;
       return (
-        Math.sign(value) * Math.max(0, (Math.abs(value) - STICK_DEADZONE) / (1 - STICK_DEADZONE))
+        Math.sign(adjusted) *
+        Math.max(0, (Math.abs(adjusted) - STICK_DEADZONE) / (1 - STICK_DEADZONE))
       );
     };
-    const trigger = (index: number) => {
-      const value = Math.max(0, Math.min(1, pad?.buttons[index]?.value ?? 0));
-      return Math.max(0, (value - TRIGGER_DEADZONE) / (1 - TRIGGER_DEADZONE));
+    const edge = (
+      action: ControllerAction,
+      held: boolean,
+      updateHeld: (value: boolean) => void,
+    ) => {
+      const down = pressed(action);
+      updateHeld(down);
+      return down && !held;
     };
-    const keyboardSteer = Number(this.keys.has('ArrowLeft')) - Number(this.keys.has('ArrowRight'));
-    const stick = -axis(0);
+    this.resetRequested = edge('reset', this.resetHeld, (value) => (this.resetHeld = value));
+    this.cameraRequested = edge('camera', this.cameraHeld, (value) => (this.cameraHeld = value));
+    this.driveModeRequested = edge('driveMode', this.driveModeHeld, (value) => {
+      this.driveModeHeld = value;
+    });
+    this.timeOfDayRequested = edge('timeOfDay', this.timeOfDayHeld, (value) => {
+      this.timeOfDayHeld = value;
+    });
+    this.recordRequested = edge('record', this.recordHeld, (value) => (this.recordHeld = value));
+    this.previousLapRequested = edge('previousLap', this.previousLapHeld, (value) => {
+      this.previousLapHeld = value;
+    });
+    this.nextLapRequested = edge(
+      'nextLap',
+      this.nextLapHeld,
+      (value) => (this.nextLapHeld = value),
+    );
+    const keyboard = bindings.keyboard;
+    const keyDown = (action: keyof typeof keyboard) => this.keys.has(keyboard[action]);
+    const keyboardSteer = Number(keyDown('steerLeft')) - Number(keyDown('steerRight'));
+    const stick = axis('steering');
     this.steer = keyboardSteer || stick * (1 - steeringExpo) + stick ** 3 * steeringExpo;
-    this.throttle = Math.max(Number(this.keys.has('KeyZ')), trigger(7));
-    this.brake = Math.max(Number(this.keys.has('KeyX')), trigger(6));
+    this.throttle = Math.max(Number(keyDown('accelerate')), value('accelerate'));
+    this.brake = Math.max(Number(keyDown('brake')), value('brake'));
     this.reverse = this.brake;
-    this.handbrake = this.keys.has('Space') || Boolean(pad?.buttons[5]?.pressed);
-    const highBeamPressed = this.keys.has('KeyF') || Boolean(pad?.buttons[4]?.pressed);
+    this.handbrake = keyDown('handbrake') || pressed('handbrake');
+    const highBeamPressed = keyDown('highBeams') || pressed('highBeams');
     const now = performance.now();
     if (highBeamPressed) {
       this.highBeamPressedAt ??= now;
@@ -181,7 +201,7 @@ export class DrivingControls {
       this.highBeamToggled = false;
     }
     this.highBeams = this.highBeamsLatched || (highBeamPressed && !this.highBeamToggled);
-    const headlightsPressed = this.keys.has('KeyH') || Boolean(pad?.buttons[2]?.pressed);
+    const headlightsPressed = keyDown('headlights') || pressed('headlights');
     this.lightingRequested = null;
     if (headlightsPressed) {
       if (this.headlightsPressedAt === null) this.lightingRequested = 'press';
@@ -201,11 +221,19 @@ export class DrivingControls {
       this.headlightsPressedAt = null;
       this.lightingHoldTriggered = false;
     }
-    this.headlightsGamepadHeld = Boolean(pad?.buttons[2]?.pressed);
-    this.cameraX = axis(2);
-    this.cameraY = axis(3);
-    this.mapZoom = this.mapView ? axis(1) : 0;
-    this.lookBehind = Boolean(pad?.buttons[11]?.pressed);
+    this.headlightsGamepadHeld = pressed('headlights');
+    this.cameraX = axis(this.mapView ? 'mapPanX' : 'cameraX');
+    this.cameraY = axis(this.mapView ? 'mapPanY' : 'cameraY');
+    this.mapZoom = this.mapView
+      ? Math.max(
+          -1,
+          Math.min(
+            1,
+            axis('mapZoom') + Number(keyDown('mapZoomIn')) - Number(keyDown('mapZoomOut')),
+          ),
+        )
+      : 0;
+    this.lookBehind = !this.mapView && pressed('lookBehind');
     const signalDirection =
       !this.mapView && Math.abs(this.cameraX) >= 0.5 ? Math.sign(this.cameraX) : 0;
     if (signalDirection !== this.signalHoldDirection) {

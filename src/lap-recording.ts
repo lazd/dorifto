@@ -179,6 +179,19 @@ export interface RunSummary {
   botTuning?: Record<string, number>;
 }
 
+/** Compact, locale-formatted date and lap count shared by replay pickers. */
+export function describeRun({ createdAt, laps }: Pick<RunSummary, 'createdAt' | 'laps'>) {
+  return {
+    date: new Date(createdAt).toLocaleString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+    }),
+    laps: `${laps.length} lap${laps.length === 1 ? '' : 's'}`,
+  };
+}
+
 /** A continuous run from launch. Times are seconds from the first recorded sample. */
 export class RunRecording {
   data: Float32Array;
@@ -483,6 +496,29 @@ export function replayStorageKey(definition: CourseDefinition) {
     JSON.stringify([definition.points, definition.elevation ?? null, definition.width]),
   );
   return `${definition.id}:${shape}:${definition.reverse ? 'reverse' : 'forward'}`;
+}
+
+export interface CourseDirectionRecords {
+  reverse: boolean;
+  /** Fastest lap from the stored record lap or any saved run, or null. */
+  record: number | null;
+  runs: RunSummary[];
+}
+
+/** Record time and saved runs for each driving direction of a course. */
+export function courseDirectionRecords(
+  definition: CourseDefinition,
+  storage: Storage = localStorage,
+): CourseDirectionRecords[] {
+  return [false, true].map((reverse) => {
+    const key = replayStorageKey({ ...definition, reverse });
+    const runs = listSavedRuns(key, storage);
+    const record = Math.min(
+      readRecord(key, storage)?.time ?? Infinity,
+      ...runs.flatMap(({ laps }) => laps),
+    );
+    return { reverse, record: Number.isFinite(record) ? record : null, runs };
+  });
 }
 
 export function encodeFrames(recording: RunRecording) {

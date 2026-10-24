@@ -6,6 +6,8 @@ let server;
 let loadSavedCourses;
 let saveCourse;
 let deleteSavedCourse;
+let renameSavedCourse;
+let replayStorageKey;
 let savedCoursesStorageKey;
 let generateCourse;
 let generateCustomCourse;
@@ -16,8 +18,9 @@ before(async () => {
     server: { middlewareMode: true, hmr: false, ws: false, watch: null },
     appType: 'custom',
   });
-  ({ loadSavedCourses, saveCourse, deleteSavedCourse, savedCoursesStorageKey } =
+  ({ loadSavedCourses, saveCourse, deleteSavedCourse, renameSavedCourse, savedCoursesStorageKey } =
     await server.ssrLoadModule('/src/saved-courses.ts'));
+  ({ replayStorageKey } = await server.ssrLoadModule('/src/lap-recording.ts'));
   ({ generateCourse } = await server.ssrLoadModule('/src/courses.ts'));
   ({ generateCustomCourse, defaultCourseWeights } = await server.ssrLoadModule(
     '/src/course-generation.ts',
@@ -212,4 +215,23 @@ test('deletes only the requested saved course and rejects built-in or missing co
   };
   assert.throws(() => deleteSavedCourse(storage, second.id), /Storage blocked/);
   assert.deepEqual(loadSavedCourses(storage), [second]);
+});
+
+test('renames a saved course in place without changing its record keys', () => {
+  const storage = memoryStorage();
+  const first = saveCourse(storage, generateCourse(7), 'First');
+  const second = saveCourse(storage, generateCourse(8), 'Second');
+  assert.throws(() => renameSavedCourse(storage, first.id, '  '), /Enter a course name/);
+  assert.throws(
+    () => renameSavedCourse(storage, 'saved-missing', 'Name'),
+    /Saved course not found/,
+  );
+  const renamed = renameSavedCourse(storage, first.id, '  Evening loop ');
+  assert.equal(renamed.name, 'Evening loop');
+  assert.deepEqual(loadSavedCourses(storage), [renamed, second]);
+  for (const reverse of [false, true])
+    assert.equal(
+      replayStorageKey({ ...renamed, reverse }),
+      replayStorageKey({ ...first, reverse }),
+    );
 });

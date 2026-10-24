@@ -1,0 +1,379 @@
+.controls-settings {
+  --input-pressed: var(--color-text);
+  --input-pressed-text: var(--color-sunken);
+  --gamepad-face-a: #6cc24a;
+  --gamepad-face-b: #e5534b;
+  --gamepad-face-x: #4f8fe6;
+  --gamepad-face-y: #e8c547;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-4);
+}
+
+.controls-settings [role='tablist'] {
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.controls-settings__toolbar,
+.controls-settings__binding-heading,
+.controls-settings__legend {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.controls-settings__toolbar {
+  flex-wrap: wrap;
+  margin-block: var(--space-3);
+}
+
+.controls-settings__group-tabs {
+  margin-block: var(--space-4) var(--space-2);
+}
+
+.controls-settings__binding-heading {
+  margin-block: var(--space-4) var(--space-2);
+}
+
+.controls-settings__binding-heading h4 {
+  margin: 0;
+  font-size: var(--text-base);
+}
+
+.controls-settings__binding-heading span,
+.controls-settings__device-status,
+.controls-settings__status,
+.controls-settings__legend {
+  color: var(--color-muted);
+  font-size: var(--text-xs);
+}
+
+.controls-settings__status {
+  min-height: 1.25rem;
+  margin: 0;
+}
+
+.controls-settings__device-status {
+  margin: var(--space-2) 0 0;
+}
+
+.input-diagram {
+  display: grid;
+  height: 14rem;
+  grid-template-rows: minmax(0, 1fr);
+  align-items: center;
+  align-content: center;
+  overflow-x: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-sunken);
+  padding: var(--space-4);
+}
+
+.keyboard-diagram {
+  --key-size: clamp(1.35rem, 2.5vw, 1.9rem);
+  --key-gap: 0.2rem;
+  display: flex;
+  min-width: max-content;
+  align-items: end;
+  justify-content: center;
+  gap: var(--space-4);
+}
+
+.keyboard-diagram__alpha {
+  display: grid;
+  gap: var(--key-gap);
+}
+
+.keyboard-diagram__extras {
+  display: flex;
+  gap: var(--key-gap);
+}
+
+.keyboard-diagram__row {
+  display: flex;
+  gap: var(--key-gap);
+}
+
+.keyboard-diagram__key {
+  display: grid;
+  width: calc(var(--key-size) * var(--key-width, 1) + var(--key-gap) * (var(--key-width, 1) - 1));
+  height: var(--key-size);
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid var(--color-border);
+  border-bottom-width: 3px;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-muted);
+  font-size: var(--text-xs);
+}
+
+.keyboard-diagram__key.is-primary {
+  border-color: var(--color-accent);
+  background: var(--color-accent);
+  color: var(--color-sunken);
+}
+
+.keyboard-diagram__key.is-mapped {
+  border-color: var(--color-selected);
+  background: var(--color-selected);
+  color: var(--color-text);
+}
+
+.keyboard-diagram__key.is-pressed {
+  border-color: var(--input-pressed);
+  border-bottom-width: 1px;
+  background: var(--input-pressed);
+  color: var(--input-pressed-text);
+}
+
+.keyboard-diagram__arrows {
+  display: grid;
+  grid-template-columns: repeat(3, var(--key-size));
+  grid-template-rows: repeat(2, var(--key-size));
+  gap: var(--key-gap);
+}
+
+.keyboard-diagram__arrows .up {
+  grid-column: 2;
+}
+
+.keyboard-diagram__arrows .left {
+  grid-row: 2;
+  grid-column: 1;
+}
+
+.keyboard-diagram__arrows .down {
+  grid-row: 2;
+  grid-column: 2;
+}
+
+.keyboard-diagram__arrows .right {
+  grid-row: 2;
+  grid-column: 3;
+}
+
+.controls-settings__legend {
+  justify-content: center;
+  gap: var(--space-4);
+  margin-top: var(--space-3);
+}
+
+.controls-settings__legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.controls-settings__legend i {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: var(--radius-sm);
+  background: var(--color-accent);
+}
+
+.controls-settings__legend i.controls-settings__legend-secondary {
+  background: var(--color-selected);
+}
+
+.binding-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 var(--space-5);
+}
+
+.binding-item {
+  display: flex;
+  min-height: 3rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+  font-size: var(--text-base);
+}
+
+.binding-label {
+  min-width: 0;
+}
+
+.button.button-secondary.binding-button {
+  min-height: 2rem;
+  min-width: 3.5rem;
+  padding: var(--space-1) var(--space-3);
+  flex: 0 0 auto;
+  border: 1px solid var(--color-border);
+  border-bottom-width: 2px;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-accent);
+  cursor: pointer;
+  font-size: var(--text-xs);
+}
+
+.button.button-secondary.binding-button.listening {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.button.button-secondary.binding-button:hover {
+  border-color: var(--color-accent);
+}
+
+.controls-settings__shortcuts-help {
+  display: grid;
+  gap: var(--space-1);
+  margin-top: var(--space-3);
+}
+
+.controls-settings__axes {
+  display: grid;
+  gap: var(--space-3);
+  margin-block: var(--space-4);
+}
+
+.controls-settings__axis-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: var(--space-3);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.controls-settings__axis-field {
+  display: grid;
+  gap: var(--space-2);
+  font-size: var(--text-base);
+}
+
+.controls-settings__invert {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--color-muted);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+
+.controls-settings__invert input {
+  accent-color: var(--color-accent);
+}
+
+.gamepad-diagram {
+  display: block;
+  width: min(100%, 50rem);
+  min-width: 30rem;
+  height: auto;
+  max-height: 100%;
+  margin-inline: auto;
+}
+
+.gamepad-diagram__shell path {
+  fill: var(--color-surface);
+  stroke: var(--color-border);
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+
+.gamepad-diagram__connectors {
+  fill: none;
+  stroke: color-mix(in srgb, var(--color-accent), transparent 35%);
+  stroke-width: 1;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+
+.gamepad-diagram__stick circle,
+.gamepad-diagram__buttons circle {
+  fill: var(--color-sunken);
+  stroke: var(--color-muted);
+}
+
+.gamepad-diagram__dpad path {
+  fill: var(--color-surface);
+  stroke: var(--color-muted);
+}
+
+.gamepad-diagram__dpad rect {
+  fill: transparent;
+}
+
+.gamepad-diagram__buttons text,
+.gamepad-diagram__labels,
+.gamepad-diagram__callouts {
+  fill: var(--color-text);
+  font-family: inherit;
+  font-size: 11px;
+  text-anchor: middle;
+}
+
+.gamepad-diagram__callouts {
+  fill: var(--color-accent);
+  text-anchor: start;
+}
+
+.gamepad-diagram__callouts .is-left {
+  text-anchor: end;
+}
+
+.gamepad-diagram__callouts .is-center {
+  text-anchor: middle;
+}
+
+.gamepad-diagram__labels {
+  fill: var(--color-muted);
+  font-size: 8px;
+}
+
+.gamepad-diagram__buttons [data-pad='0'] {
+  --face-color: var(--gamepad-face-a);
+}
+
+.gamepad-diagram__buttons [data-pad='1'] {
+  --face-color: var(--gamepad-face-b);
+}
+
+.gamepad-diagram__buttons [data-pad='2'] {
+  --face-color: var(--gamepad-face-x);
+}
+
+.gamepad-diagram__buttons [data-pad='3'] {
+  --face-color: var(--gamepad-face-y);
+}
+
+.gamepad-diagram__buttons circle {
+  stroke: var(--face-color);
+}
+
+.gamepad-diagram__buttons text {
+  fill: var(--face-color);
+  font-weight: 700;
+}
+
+.gamepad-diagram .is-pressed {
+  fill: var(--face-color, var(--input-pressed));
+}
+
+.gamepad-diagram__buttons text.is-pressed {
+  fill: var(--input-pressed-text);
+}
+
+.gamepad-diagram__labels .is-pressed {
+  font-weight: 700;
+}
+
+@media (max-width: 42rem) {
+  .binding-list {
+    grid-template-columns: 1fr;
+  }
+
+  .controls-settings__binding-heading {
+    align-items: start;
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+}

@@ -7,6 +7,7 @@ let bindGameActions;
 let bindStatusUI;
 let bindLapRecorder;
 let createHudVisibilityCycle;
+let setHudElementHidden;
 let createGameState;
 let createConfigurationState;
 
@@ -15,8 +16,13 @@ before(async () => {
     server: { middlewareMode: true, hmr: false, ws: false, watch: null },
     appType: 'custom',
   });
-  ({ bindGameActions, bindStatusUI, bindLapRecorder, createHudVisibilityCycle } =
-    await server.ssrLoadModule('/src/ui.ts'));
+  ({
+    bindGameActions,
+    bindStatusUI,
+    bindLapRecorder,
+    createHudVisibilityCycle,
+    setHudElementHidden,
+  } = await server.ssrLoadModule('/src/ui.ts'));
   ({ createGameState } = await server.ssrLoadModule('/src/game-state.ts'));
   ({ createConfigurationState } = await server.ssrLoadModule('/src/configuration-state.ts'));
 });
@@ -25,25 +31,20 @@ after(async () => {
   await server?.close();
 });
 
-test('HUD cycle progressively hides each group and restores without changing native visibility', (t) => {
+test('HUD cycle uses hidden and preserves independent camera and recorder visibility', (t) => {
   const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'document');
   const groups = [
     ['.telemetry'],
     ['#minimap'],
-    ['#leaderboard'],
+    ['#race-panel'],
     ['.course-hud', '.lap-recorder', 'header', 'footer'],
   ];
   const nodes = new Map(
     groups.flat().map((selector) => {
-      const classes = new Set();
       return [
         selector,
         {
-          hidden: selector === '.telemetry' || selector === '#leaderboard',
-          classList: {
-            toggle: (name, enabled) => (enabled ? classes.add(name) : classes.delete(name)),
-            contains: (name) => classes.has(name),
-          },
+          hidden: selector === '.telemetry',
         },
       ];
     }),
@@ -62,10 +63,9 @@ test('HUD cycle progressively hides each group and restores without changing nat
     groups.forEach((selectors, index) => {
       for (const selector of selectors) {
         const node = nodes.get(selector);
-        assert.equal(node.classList.contains('hud-hidden'), press % 5 > index, selector);
         assert.equal(
           node.hidden,
-          selector === '.telemetry' || selector === '#leaderboard',
+          selector === '.telemetry' || press % 5 > index,
           'camera and race visibility remain independent of the HUD cycle',
         );
       }
@@ -76,25 +76,39 @@ test('HUD cycle progressively hides each group and restores without changing nat
     groups.forEach((selectors, index) => {
       for (const selector of selectors) {
         const node = nodes.get(selector);
-        assert.equal(node.classList.contains('hud-hidden'), level > index, selector);
+        assert.equal(node.hidden, selector === '.telemetry' || level > index, selector);
       }
     });
   }
+  const telemetry = nodes.get('.telemetry');
+  const recorder = nodes.get('.lap-recorder');
+  visibility.set(4);
+  setHudElementHidden(telemetry, false);
+  setHudElementHidden(recorder, false);
+  assert.equal(telemetry.hidden, true, 'changing camera cannot reveal a hidden HUD');
+  assert.equal(recorder.hidden, true, 'recording cannot reveal a hidden HUD');
+  visibility.set(0);
+  assert.equal(telemetry.hidden, false);
+  assert.equal(recorder.hidden, false);
+  visibility.set(4);
+  setHudElementHidden(telemetry, true);
+  setHudElementHidden(recorder, true);
+  visibility.set(0);
+  assert.equal(telemetry.hidden, true, 'cabin telemetry remains hidden after restoring the HUD');
+  assert.equal(recorder.hidden, true, 'inactive recorder remains hidden after restoring the HUD');
   for (const invalid of [-1, 5, 1.5]) assert.throws(() => visibility.set(invalid), RangeError);
 });
 
 function fixture(t, initiallyOpen = false) {
   const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'document');
   const document = new EventTarget();
-  const menu = { hidden: true };
   const tuning = new EventTarget();
   const sound = new EventTarget();
-  const dialogs = ['settings', 'tuning', 'help', 'course-picker', 'custom-course'].map((id) => ({
+  const dialogs = ['settings', 'tuning', 'bots', 'course-picker', 'saved-course'].map((id) => ({
     id,
-    open: initiallyOpen && id === 'help',
+    open: initiallyOpen && id === 'settings',
   }));
   const elements = new Map([
-    ['#course-menu', menu],
     ['#drift-tuning', tuning],
     ['#sound', sound],
   ]);
@@ -108,9 +122,12 @@ function fixture(t, initiallyOpen = false) {
     else delete globalThis.document;
   });
   const states = [];
+  const mutedStates = [];
   let cleared = 0;
   bindGameActions({
-    sound() {},
+    sound(muted) {
+      mutedStates.push(muted);
+    },
     clearInput() {
       cleared++;
     },
@@ -119,14 +136,45 @@ function fixture(t, initiallyOpen = false) {
     },
   });
   return {
-    menu,
     dialogs,
     tuning,
     states,
+    sound,
+    mutedStates,
     cleared: () => cleared,
     notify: () => document.dispatchEvent(new Event('driving-ui-change')),
   };
 }
+
+test('sound switch applies its checked state and preserves unrelated URL options', (t) => {
+  const ui = fixture(t);
+  const descriptors = new Map(
+    ['location', 'history'].map((name) => [
+      name,
+      Object.getOwnPropertyDescriptor(globalThis, name),
+    ]),
+  );
+  const location = { href: 'https://example.test/?course=hillside' };
+  Object.defineProperty(globalThis, 'location', { configurable: true, value: location });
+  Object.defineProperty(globalThis, 'history', {
+    configurable: true,
+    value: { replaceState: (_state, _title, url) => (location.href = String(url)) },
+  });
+  t.after(() => {
+    for (const [name, descriptor] of descriptors) {
+      if (descriptor) Object.defineProperty(globalThis, name, descriptor);
+      else delete globalThis[name];
+    }
+  });
+  for (const checked of [false, true]) {
+    ui.sound.checked = checked;
+    ui.sound.dispatchEvent(new Event('change'));
+    const query = new URL(location.href).searchParams;
+    assert.equal(ui.mutedStates.at(-1), !checked);
+    assert.equal(query.get('sound'), checked ? null : 'off');
+    assert.equal(query.get('course'), 'hillside');
+  }
+});
 
 test('every dialog blocks driving through UI events without game-store updates', (t) => {
   const ui = fixture(t);
@@ -153,13 +201,13 @@ test('every dialog blocks driving through UI events without game-store updates',
   assert.equal(ui.states.length, notifications, 'telemetry does not recheck UI visibility');
 });
 
-test('course disclosure and dialogs keep input blocked until all UI closes', (t) => {
+test('nested dialogs keep input blocked until all UI closes', (t) => {
   const ui = fixture(t);
-  ui.menu.hidden = false;
+  ui.dialogs[1].open = true;
   ui.notify();
   assert.equal(ui.states.at(-1), true);
   ui.dialogs[0].open = true;
-  ui.menu.hidden = true;
+  ui.dialogs[1].open = false;
   ui.notify();
   assert.equal(ui.states.at(-1), true);
   ui.dialogs[0].open = false;
@@ -192,9 +240,6 @@ test('lap recorder visibility follows its mode', (t) => {
     ['.lap-recorder', node()],
     ['#lap-recorder-button', node()],
     ['#lap-recorder-label', node()],
-    ['.editable-picker', node()],
-    ['#lap-replay-run', node()],
-    ['#lap-replay-delete', node()],
     ['#lap-replay-controls', node()],
     ['#lap-replay-time', node()],
     ['#lap-replay-previous', node()],
@@ -209,14 +254,19 @@ test('lap recorder visibility follows its mode', (t) => {
   const store = createGameState();
   bindLapRecorder(store, {
     press() {},
-    select() {},
-    remove() {},
     seek() {},
   });
   const container = elements.get('.lap-recorder');
   assert.equal(container.hidden, true);
   store.update({ lapRecorder: { ...store.getState().lapRecorder, mode: 'ready' } });
+  assert.equal(container.hidden, true);
+  store.update({ lapRecorder: { ...store.getState().lapRecorder, mode: 'recording' } });
   assert.equal(container.hidden, false);
+  assert.equal(elements.get('#lap-recorder-button').hidden, false);
+  store.update({ lapRecorder: { ...store.getState().lapRecorder, mode: 'replay' } });
+  assert.equal(container.hidden, false);
+  assert.equal(elements.get('#lap-recorder-button').hidden, true);
+  assert.equal(elements.get('#lap-replay-controls').hidden, false);
   store.update({ lapRecorder: { ...store.getState().lapRecorder, mode: 'off' } });
   assert.equal(container.hidden, true);
 });

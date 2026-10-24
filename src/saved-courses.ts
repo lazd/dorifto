@@ -130,3 +130,21 @@ export function deleteSavedCourse(storage: Pick<Storage, 'getItem' | 'setItem'>,
     JSON.stringify(courses.filter((course) => course.id !== id)),
   );
 }
+
+export function renameSavedCourse(
+  storage: Pick<Storage, 'getItem' | 'setItem'>,
+  id: string,
+  name: string,
+) {
+  const trimmed = name.trim();
+  if (!trimmed) throw new Error('Enter a course name');
+  const courses = loadSavedCourses(storage);
+  const course = courses.find((saved) => saved.id === id);
+  if (!course) throw new Error('Saved course not found');
+  const renamed = { ...course, name: trimmed };
+  storage.setItem(
+    savedCoursesStorageKey,
+    JSON.stringify(courses.map((saved) => (saved.id === id ? renamed : saved))),
+  );
+  return renamed;
+}

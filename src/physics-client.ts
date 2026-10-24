@@ -350,19 +350,27 @@ export function createPhysicsClient({
     );
   }
 
+  function observeBot(index: number) {
+    if (!botsOnly || bots.length < 2 || replayTime !== null || resetting || !initialized)
+      return false;
+    if (!Number.isInteger(index) || index < 0 || index >= bots.length)
+      throw new Error(`Invalid observed bot index: ${index}`);
+    if (index === observedBot) return false;
+    observedBot = index;
+    car.setPaintColor(botColors[observedBot]);
+    car.setUnderglowColor(botColors[observedBot]);
+    observedPlate?.setColor(botColors[observedBot]);
+    botCars.forEach((car, index) => car.setColor(botColors[botForModel(index + 1)]));
+    botEffects.forEach((effect) => effect.reset());
+    syncObservedState();
+    interpolate(1);
+    return true;
+  }
+
   return {
+    observeBot,
     cycleObservedBot() {
-      if (!botsOnly || bots.length < 2 || replayTime !== null || resetting || !initialized)
-        return false;
-      observedBot = (observedBot + 1) % bots.length;
-      car.setPaintColor(botColors[observedBot]);
-      car.setUnderglowColor(botColors[observedBot]);
-      observedPlate?.setColor(botColors[observedBot]);
-      botCars.forEach((car, index) => car.setColor(botColors[botForModel(index + 1)]));
-      botEffects.forEach((effect) => effect.reset());
-      syncObservedState();
-      interpolate(1);
-      return true;
+      return observeBot((observedBot + 1) % bots.length);
     },
     get observedBot() {
       return observedBot;

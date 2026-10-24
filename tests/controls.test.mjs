@@ -5,6 +5,8 @@ import { createServer } from 'vite';
 let server;
 let DrivingControls;
 let updateVehicleLights;
+let inputBindings;
+let defaultInputBindings;
 
 before(async () => {
   server = await createServer({
@@ -12,6 +14,7 @@ before(async () => {
     appType: 'custom',
   });
   ({ DrivingControls, updateVehicleLights } = await server.ssrLoadModule('/src/controls.ts'));
+  ({ inputBindings, defaultInputBindings } = await server.ssrLoadModule('/src/input-bindings.ts'));
 });
 
 after(async () => {
@@ -19,6 +22,7 @@ after(async () => {
 });
 
 function rig(t) {
+  inputBindings.load({ getItem: () => null, setItem() {} });
   const descriptors = new Map(
     ['document', 'window', 'navigator', 'performance'].map((key) => [
       key,
@@ -78,6 +82,29 @@ function rig(t) {
     },
   };
 }
+
+test('runtime reads remapped keyboard, controller buttons, and map axes from the shared model', (t) => {
+  const r = rig(t);
+  const remapped = defaultInputBindings();
+  remapped.keyboard.steerLeft = 'KeyA';
+  remapped.controller.buttons.map = 0;
+  remapped.controller.axes.steering = { index: 1, inverted: false };
+  remapped.controller.axes.mapZoom = { index: 1, inverted: true };
+  inputBindings.load({ getItem: () => JSON.stringify(remapped), setItem() {} });
+
+  r.pad.axes[1] = 0.5;
+  r.poll();
+  assert.equal(r.controls.steer, 0.5);
+  r.pad.buttons[0] = { pressed: true, value: 1 };
+  r.poll();
+  assert.equal(r.controls.mapView, true, 'the remapped controller button opens the map');
+  assert.equal(r.controls.mapZoom, -0.5, 'the configured map axis and inversion are applied');
+
+  r.pad.buttons[0].pressed = false;
+  r.controls.keys.add('KeyA');
+  r.poll();
+  assert.equal(r.controls.steer, 1, 'keyboard steering uses the remapped code');
+});
 
 for (const keyboard of [true, false]) {
   const input = keyboard ? 'F' : 'left bumper';

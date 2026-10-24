@@ -9,7 +9,7 @@ the Grip / Default (`grip-default`) preset, and the cabin camera.
 
 ## Bot drivers
 
-Race bots are configured with the 🤖 button or through URL parameters:
+Race bots are configured with **Bots** in the race standings panel or through URL parameters:
 
 ```text
 ?course=hillside&bots=2&bot-skill=0.8&bot-aggression=0.4
@@ -56,7 +56,8 @@ For a **bots-only spectator session**, add `bots-only=1`:
 No player-controlled vehicle is created. The first bot uses the primary car model,
 telemetry, sound, tire effects and lap HUD, and the corner-aware chase camera
 follows it initially unless `camera` is specified. **V** cycles cameras normally;
-**Tab** cycles the observed bot, including in cabin view, and saves its zero-based
+Click a bot in the leaderboard to spectate it; the observed bot is highlighted.
+**Tab** cycles the observed bot when the driving view has focus, including in cabin view, and saves its zero-based
 index in `observed-bot` (for example, `observed-bot=1` follows the second bot).
 The selection survives refreshes and course changes; an invalid or out-of-range
 index falls back to the first bot. The observed bot receives
@@ -104,15 +105,48 @@ See [the implementation plan](docs/bot-drivers.md) for architecture and mileston
 
 ## UI and game state
 
-The toolbar's **Settings** button opens sound, drive mode, time of day, camera
-style, mirror resolution, cabin head motion, map orientation, cones, and grass tufts controls in a modal dialog. Changes apply immediately. Close with **Close**,
+The toolbar's **Settings** button opens a modal with **Controls**, **Audio**, **Video**,
+**Camera**, **HUD & aids**, and **Track** categories. Drive mode and tuning profiles live in
+**Tuning**, opened by the toolbar button showing the current mode and profile.
+The **Bots** action lives in the race standings panel, including when driving alone.
+Settings and tuning
+changes apply immediately; bot roster edits apply with **Save & restart race**.
+Close with **Done**, **Close**,
 Escape, or a backdrop click; driving inputs are disabled while it is open.
+Keyboard and standard Xbox-compatible controller bindings can be changed in **Controls**,
+including map-view axes and inversion. Select a binding, press the desired key or controller
+button, or press Escape to cancel. Conflicting bindings are rejected; **Restore defaults**
+resets the bindings. Bindings are saved locally in this browser.
+The keyboard and controller diagrams illuminate physical inputs while the Controls
+panel is open. Settings keeps the same viewport-constrained size across categories;
+long panels scroll internally rather than resizing the dialog.
+
+The course library groups **Built-in courses**, **Racetracks**, and **Saved courses** in
+one list. Selecting an entry previews it without changing the race; **Load course** applies
+the selection and resets the race. The selected course's details include local records
+by direction and access to saved-run replays. An unsaved random or custom course appears
+in a **Current layout** group, marked Unsaved, while it is active. Saved courses have a
+**⋯** menu for renaming and confirmed deletion.
+
+Dialog presentation uses shared design tokens and native HTML primitives in
+[`src/dialogs.css`](src/dialogs.css): button variants (`button-quiet`, `button-secondary`,
+`button-primary`), accessible tabs, radio-based segmented controls, checkbox switches,
+master/detail selection lists, action disclosures, and dot-prefixed `dialog-help` footer
+text. Reuse these classes rather than introducing dialog-specific versions of the same
+component. The shared `button button-pill` style is used by the lap recorder,
+with the same `--control-height` as other buttons. Settings and Tuning share the
+regular `toolbar-button` style.
+Use `button-compact` for content-height buttons with tighter horizontal padding,
+and `button-translucent` for a semi-transparent surface on any button.
+HUD and track examples are labeled illustrations, ready to be replaced with
+cropped in-game screenshots.
+
 **Cones** can be shown everywhere (`?cones=all`), limited to corners
 (`?cones=corners`, the default), or turned off (`?cones=off`). Hidden cones are also removed
 from physics;
 **Grass tufts** off (`?grass=off`) hides the decorative blades. Both help
 performance on long imported tracks, which carry hundreds of cones.
-**Settings > Camera > Mirror resolution** defaults to **Low** (512×256,
+**Settings > Video > Mirror resolution** defaults to **Low** (512×256,
 `?mirror-resolution=low`). **Medium** (1024×512, `?mirror-resolution=medium`)
 gives nearby cabin mirrors more detail without using full-screen render targets.
 **High** (`?mirror-resolution=high`) uses drawing-buffer-resolution reflections
@@ -134,19 +168,15 @@ using the scene's environment lighting, with no live reflection render passes.
 Changes apply immediately and are retained in the URL. Older `?low-res-mirrors=on`
 and `?low-res-mirrors=off` links still select Low and High respectively;
 `mirror-resolution` takes precedence when both parameters are present.
-Chase views place the Settings/Tuning/Help buttons at the bottom center and the
-tachometer and minimap in the bottom corners, with course selection above the map
-and the lap number and times below the map drawing. Expanding the course disclosure
-grows the panel upward while the minimap stays anchored at the bottom. Cabin view
-keeps the panel at the top, expands course selection below the minimap, and places
+Chase views place the Settings/Tuning buttons at the bottom center and the
+tachometer and minimap in the bottom corners, with the lap number and times below
+the map drawing. Cabin view keeps the panel at the top and places
 the lap number and times above the map drawing.
 The course name is inside the minimap: at the bottom in cabin view and at the top
 in chase views, without a separate picker caption. Click or tap the minimap (including its name)
-to expand course selection, **Reverse course**, **Custom course**, and **Random course**.
-The disclosure also works with Enter/Space; close it with another tap, Escape, or an
-outside click. Driving inputs are disabled while it is open.
-Choosing a course, reversing it, or starting random/custom course generation closes
-the disclosure immediately. Opening the custom-course dialog also closes it.
+to open the course library directly. It also opens with Enter/Space.
+Choose **Forward / Reverse** alongside the course preview, or **Create course**
+to generate a named random/custom layout. Nothing changes the race until loading.
 The footer fades out five seconds after loading completes. Hovering over it or
 focusing one of its links reveals it again; it stays visible during loading or errors.
 On first load, the page stays hidden until styles apply. A progress bar then explains
@@ -156,11 +186,11 @@ The car downloads while the sky and course are built. The header, course HUD,
 and tachometer stay hidden until the first gameplay frame.
 Reset uses keyboard **R** or the controller's
 Start/Menu/Options button rather than a toolbar button.
-Settings, Tuning, Help, Choose course, and Custom course share one dialog lifecycle in `src/ui.ts`: open at the
+Settings, Tuning, and Choose course share one dialog lifecycle in `src/ui.ts`: open at the
 top, close with the upper-right ×, Escape, or an outside click, and restore focus
-to the opening button (the minimap for Custom course). Clicking or dragging controls
+to the opening button (the minimap for Choose course). Clicking or dragging controls
 inside does not dismiss them.
-Dialog visibility and the course disclosure are managed by DOM events, not the
+Dialog visibility is managed by DOM events, not the
 per-frame game store. These events also clear and disable driving inputs while UI
 is open. Custom-course slider preferences are local to the UI, initialized from
 the URL when applicable, and passed to course generation on demand.
@@ -200,7 +230,7 @@ Setting a new run record flashes the label and time gold for two seconds; reduce
 mode uses a steady gold highlight instead. Replay does not trigger record celebrations. There is
 no separate lap timing panel. It shows the complete course, a white start/finish line, and an amber arrow
 for the car's live position and heading. It follows course changes automatically;
-**Settings > Map orientation** selects **North up** (`?minimap=north-up`)
+**Settings > HUD & aids > Minimap orientation** selects **North up** (`?minimap=north-up`)
 or **Follow heading** (default, `?minimap=heading-up`). Follow heading rotates the course
 so the car always points up, fitting the entire course at any angle. The lap
 times stay upright. The choice is retained in the URL across reloads and course changes.
@@ -212,7 +242,7 @@ attempt and starts fresh without changing completed times or the best lap. Airbo
 use their projected wheel positions rather than stale ground-contact points. The check includes
 the loaded model's tire widths and front-wheel steering, so a tread edge touching the line
 keeps the lap valid even when the tire's center is outside.
-**Settings > Map > Racing line training gates** (`?lap-gates=on`, or `rainbow` to color
+**Settings > HUD & aids > Racing line training gate display** (`?lap-gates=on`, or `rainbow` to color
 gates by lap position) shows visual targets
 3 times the loaded car's width, spaced roughly 22.5 m along a geometry-based,
 minimum-curvature racing-line approximation. This is not a vehicle-specific optimal line.
@@ -344,7 +374,7 @@ Reset restores their placed poses.
 Hidden signs and the inactive direction's signs leave physics entirely; showing
 them again restores their starting positions. Shared visual/collision dimensions
 live in `src/turn-sign.ts`.
-**Settings > Turn signs** selects one of four densities, persisted in `?signs=`:
+**Settings > Track > Turn sign density** selects one of four densities, persisted in `?signs=`:
 
 - `off`: no visible signs or sign collisions.
 - `few`: three signs around each turn entry, at 6 m spacing.
@@ -436,9 +466,10 @@ GPS stitching S-bends from creating abrupt cross-slope bumps at start/finish.
 
 ## Controls
 
-Click **Help** to open the keyboard/controller controls dialog; close it with
-Close or Escape. Driving inputs are disabled while the dialog is open, but the
-simulation continues. Settings remains in the main footer.
+Choose **Settings > Controls** to open the keyboard/controller
+bindings; close Settings with Done, Close or Escape. Driving inputs are disabled
+while the dialog is open, but the simulation continues. The following tables show
+the default bindings; remapped bindings are reflected in the in-app diagrams.
 
 | Key                 | Action                                                             |
 | ------------------- | ------------------------------------------------------------------ |
@@ -450,7 +481,7 @@ simulation continues. Settings remains in the main footer.
 | F                   | Flash high beams; hold 1 second to toggle high beams on/off        |
 | H                   | Tap to toggle headlights; hold 1 second to toggle fog lights       |
 | R                   | Reset the car, cones, smoke, and tire marks                        |
-| C                   | Cycle corner-aware chase, classic chase, in-cabin (once per press) |
+| V                   | Cycle corner-aware chase, classic chase, in-cabin (once per press) |
 | D                   | Toggle Grip / Drift mode (once per press)                          |
 | M                   | Toggle the bird's-eye map view of the whole course                 |
 | U                   | Hide tach, map, leaderboard, then all HUD; press again to restore  |
@@ -467,8 +498,8 @@ parameter as you cycle.
 
 Connect an Xbox-style controller and press a button while the game has focus.
 The native Gamepad API requires localhost or HTTPS; browser/OS support determines
-which controllers expose the `standard` mapping. Connection status appears below
-the keyboard controls. The first connected standard-mapped controller is used.
+which controllers expose the `standard` mapping. Connection status appears in
+Settings > Controls. The first connected standard-mapped controller is used.
 
 | Controller input                    | Action                                                                              |
 | ----------------------------------- | ----------------------------------------------------------------------------------- |
@@ -730,7 +761,7 @@ interpolates the crossing within a step; hidden-tab pauses do not add lap time.
 Reset clears session lap times. Reloading or changing courses also starts a new session.
 
 Runs are recorded automatically from launch. Stop recording to save and replay a
-run, or use the play button before the start line to watch a saved run. During
+run, or use **View replays → Watch** in the course picker to watch a saved run. During
 replay, the lap controls show the current lap's completed time (or "Partial lap"
 for an unfinished lap), with a trophy for the fastest lap in that run. The arrows
 jump directly to the previous or next lap, including the first lap from the launch,
@@ -839,7 +870,7 @@ sets lateral, longitudinal, and vertical displacement in meters per g, the force
 limit, spring response, and tilt per meter. Resets clear the motion history;
 constant velocity settles back to the base seating position. Mirrors remain aimed
 at that base position and do not re-aim with head movement.
-**Settings > Cabin head motion** turns this effect off or on (on by default).
+**Settings > Camera > Cabin head motion** turns this effect off or on (on by default).
 The choice persists in the URL as `?head-motion=off` or `?head-motion=on`.
 Turning it off clears the offset immediately; re-enabling it starts with fresh
 motion history, avoiding a jump from stale velocity. Right-stick look and R3
@@ -897,8 +928,8 @@ preserved when switching courses or generating a random layout. Sunset is the de
 
 ## Courses
 
-The minimap disclosure's **Reverse course** checkbox drives any named, random, or custom
-layout in the opposite direction. Use `?reverse=1` in a course URL to open it
+The course library's **Forward / Reverse** control selects the direction applied
+when loading any named, random, or custom layout. Use `?reverse=1` in a course URL to open it
 reversed; omit the parameter (or use `reverse=0`) for the normal direction.
 `reverse=true`, `reverse=false`, and a bare `reverse` flag are also supported.
 Changing direction switches route guidance and resets the car to the start facing
@@ -970,7 +1001,7 @@ After releasing the hold, ordinary braking/reverse and lift-off behavior resume.
 
 ### Layouts
 
-Use **Choose course** in the minimap's course menu to load Sweeper Circuit, Hillside Circuit, Hilly Drift,
+Click the minimap to open **Choose course** and load Sweeper Circuit, Hillside Circuit, Hilly Drift,
 Flat Skidpad, or an imported track. Switching courses replaces the track in place without
 reloading the page or car assets. It resets the car, physics world, lap timing,
 cones, smoke, and tire marks while retaining tuning, sound, camera, drive mode,
@@ -1020,8 +1051,8 @@ Cone bases sit 22 cm outside the outer edge of each white boundary line.
 Bent left/right warning arrows appear about 12 m before hard-turn entry,
 not periodically along the course; nearby warnings are merged.
 
-**Random course** generates and loads a new closed circuit in place, retaining
-your settings and tuning without reloading the game.
+**Create course → Random** previews a new closed circuit, retaining
+your settings and tuning. Loading it replaces the race without reloading the game.
 Its seed is saved in `?course=random&seed=12345` so the same link
 recreates the same layout with the current generator. The generator smoothly warps,
 stretches, rotates, and mirrors Hillside Circuit's lobed outline, targeting
@@ -1040,36 +1071,53 @@ Banking varies deterministically with the seed, favoring moderate banking around
 
 ### Custom generation
 
-After generating a random or custom course, open the course menu to enter a name
-and choose **Save course**. The exact course layout is stored in localStorage,
+Choose **Create course** in the library. An editable temporary name is filled in
+automatically (New course, New course 2, etc., avoiding existing saved names).
+You can keep it or enter your own name; empty names cannot be generated or saved.
+A temporary **New course** entry at the bottom of **Saved courses** becomes selected
+instead of the current layout.
+Choose Random or Custom, adjust the settings, then **Generate preview**.
+The draft can be edited and regenerated without changing the current race.
+**Save layout…** saves without loading; **Save & load course** saves and starts the new layout.
+Closing the library discards an unsaved draft. An unsaved active course from a URL can
+also be named and saved with **Save layout…**.
+The exact course layout is stored in localStorage,
 added to and selected in the **Choose course** picker, including after reloading.
 Saved layouts also retain their generator type and seed; custom courses include
 the exact generation parameters used, independent of later slider changes.
-The save controls disappear once the saved course is selected. Saved courses are
+Saved courses are
 local to this browser; their `?course=saved-…` links require the same local data.
-The picker opens a dialog with **Built-in courses**, **Racetracks** (Sonoma Raceway
-and Thunderhill East), and **Saved courses** tabs. Each tab shows a responsive grid
-of SVG course previews with names and lap lengths underneath (meters for courses
-under 1 km, otherwise kilometers); the current course is highlighted.
-Selecting a card loads the course and closes the dialog on success; loading errors
-remain visible in the dialog. The Saved courses tab explains how to save a course
-when empty. The reusable `Tabs` class in `src/tabs.ts` provides tab/panel ARIA
-relationships, roving focus, Left/Right arrow navigation with wraparound, and
-Home/End navigation. Opening the picker selects the current course's tab.
+The picker groups **Built-in courses**, **Racetracks**, and **Saved courses** in a
+scrollable list of outline thumbnails, names and lap lengths (meters for courses
+under 1 km, otherwise kilometers). The current course is marked independently
+of the preview selection. Selecting a course updates the larger 3-D preview;
+**Load course** changes the course and closes the dialog on success. Loading
+errors remain visible in the dialog. While an unsaved random or custom course is
+active, a **Current layout** group lists it (marked Unsaved) so its records and
+replays stay reachable; loading it rebuilds the same seed. The group disappears once
+the layout is saved or another course loads. The Saved courses group explains how to save
+a course when empty. A saved course's action disclosure offers rename and confirmed
+deletion.
+Replay rows offer **Watch** and confirmed **Delete** actions. Deleting a replay
+does not load its course or remove the local record. Saved-run playback and deletion
+live in the course picker; the main HUD only shows the stop-recording button while
+recording, and lap navigation during replay.
+
+The reusable `Tabs` class in `src/tabs.ts` handles Settings and Controls tab/panel
+ARIA relationships, roving focus, orientation-aware arrow navigation with wraparound,
+and Home/End navigation.
 Escape, the close button, or a backdrop click dismisses the dialog and restores
 focus to the minimap. Driving inputs are disabled while it is open.
-Use the generation buttons in the course menu to create random or custom courses.
-The course menu's delete button removes the selected saved course and switches to
-the default course. Deletion is disabled for built-in and unsaved generated courses.
+Deleting the active saved course loads the default course. Built-in and unsaved
+generated layouts cannot be deleted.
 
-**Custom course** opens a dialog with a **1–5 km course length** slider (100 m
+**Create course → Custom** shows a **1–5 km course length** slider (100 m
 steps), six independent preference sliders from **0 to 1** (0.01 steps),
-numeric readouts, and **Restore defaults**. Adjusting sliders does
-not change the current course. **Generate course** builds a new seeded layout in
-place, resets the driving session, and closes the dialog on success. Generation
-controls are disabled while building; a failure stays visible in the dialog so
-you can adjust the mix or retry. Escape, the upper-right close button, or a
-backdrop click closes the dialog without generating. Driving inputs are disabled
+percentage readouts, and **Reset defaults**. Adjusting sliders does
+not change the current course. **Generate preview** builds a new seeded layout without
+resetting the driving session. Generation controls are disabled while building;
+a failure stays visible so you can adjust the mix or retry. Settings scroll inside
+the fixed-size dialog. Driving inputs are disabled
 while it is open, as with the other dialogs.
 
 The weights do not need to sum to one: 0 avoids a feature, while 1 strongly

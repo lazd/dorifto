@@ -2,9 +2,13 @@ import { isDriveMode, type DriveMode } from './drive-modes';
 import { bindBotDialog } from './bot-dialog';
 import { createDrivingTuning } from './drift-tuning';
 import { redlineRpm } from './drivetrain';
-import { courseRoute, racetracks, type CourseDefinition } from './courses';
+import { courseRoute, generateCourse, racetracks, type CourseDefinition } from './courses';
 import { coursePreviewSvg } from './course-preview';
-import { Tabs } from './tabs';
+import { CoursePreviewRenderer } from './course-preview-3d';
+import { courseDirectionRecords, describeRun, type RunSummary } from './lap-recording';
+import './course-picker.css';
+import { bindSettingsLayout } from './settings';
+import { bindControlsSettings } from './controls-settings';
 import {
   isCameraStyle,
   isGhostMode,
@@ -30,6 +34,7 @@ import type { RaceBotOptions } from './race-bot';
 import {
   courseGenerationFields,
   defaultCourseWeights,
+  generateCustomCourse,
   validateCourseWeights,
   type CourseGenerationWeights,
 } from './course-generation';
@@ -51,11 +56,28 @@ function notifyUIVisibility() {
   document.dispatchEvent(new Event('driving-ui-change'));
 }
 
+const hudVisibilityStates = new WeakMap<HTMLElement, { content: boolean; hud: boolean }>();
+
+export function setHudElementHidden(
+  node: HTMLElement,
+  hidden: boolean,
+  reason: 'content' | 'hud' = 'content',
+) {
+  let state = hudVisibilityStates.get(node);
+  if (!state) {
+    state = { content: node.hidden, hud: false };
+    hudVisibilityStates.set(node, state);
+  }
+  state[reason] = hidden;
+  const next = state.content || state.hud;
+  if (node.hidden !== next) node.hidden = next;
+}
+
 export function createHudVisibilityCycle() {
   const groups = [
     [element('.telemetry')],
     [element('#minimap')],
-    [element('#leaderboard')],
+    [element('#race-panel')],
     [element('.course-hud'), element('.lap-recorder'), element('header'), element('footer')],
   ];
   let level = 0;
@@ -64,7 +86,7 @@ export function createHudVisibilityCycle() {
       throw new RangeError(`Invalid HUD visibility level: ${nextLevel}`);
     level = nextLevel;
     groups.forEach((nodes, index) => {
-      nodes.forEach((node) => node.classList.toggle('hud-hidden', level > index));
+      nodes.forEach((node) => setHudElementHidden(node, level > index, 'hud'));
     });
   };
   return {
@@ -76,58 +98,40 @@ export function createHudVisibilityCycle() {
   };
 }
 
-function setCourseMenuOpen(open: boolean) {
-  const menu = element('#course-menu');
-  if (menu.hidden === !open) return;
-  const map = element<HTMLButtonElement>('#minimap');
-  if (!open && menu.contains(document.activeElement)) map.focus();
-  menu.hidden = !open;
-  map.setAttribute('aria-expanded', String(open));
-  notifyUIVisibility();
-}
-
-function bindCourseDisclosure() {
+function bindCourseHud() {
   const hud = element('.course-hud');
-  const map = element<HTMLButtonElement>('#minimap');
-  const menu = element('#course-menu');
-  map.addEventListener('click', () => setCourseMenuOpen(menu.hidden));
-  document.addEventListener(
-    'keydown',
-    (event) => {
-      if (event.key === 'Escape' && !menu.hidden && !document.querySelector('dialog[open]')) {
-        event.preventDefault();
-        setCourseMenuOpen(false);
-        map.focus();
-      }
-    },
-    true,
-  );
   hud.addEventListener('keydown', (event) => event.stopPropagation());
   hud.addEventListener('keyup', (event) => event.stopPropagation());
-  document.addEventListener('pointerdown', (event) => {
-    if (event.target instanceof Node && !hud.contains(event.target)) setCourseMenuOpen(false);
-  });
 }
 
 function bindDialog(trigger: string, selector: string, onOpen?: () => void) {
   const dialog = element<HTMLDialogElement>(selector);
   const opener = element(trigger);
+  let returnFocus = opener;
   const close = () => {
+    if (dialog.getAttribute('aria-busy') === 'true') return;
     dialog.close();
     notifyUIVisibility();
   };
-  opener.addEventListener('click', () => {
+  const open = (source: HTMLElement = opener) => {
     if (dialog.open) return;
+    returnFocus = source;
     onOpen?.();
     dialog.dispatchEvent(new Event('dialog-open'));
-    setCourseMenuOpen(false);
     dialog.showModal();
     dialog.scrollTop = 0;
     notifyUIVisibility();
-  });
+  };
+  opener.addEventListener('click', () => open());
   dialog.addEventListener('keydown', (event) => {
-    if (event.key !== 'Escape') return;
+    if (event.key !== 'Escape' || event.defaultPrevented) return;
     event.preventDefault();
+    const disclosure = dialog.querySelector<HTMLDetailsElement>('details.action-disclosure[open]');
+    if (disclosure) {
+      disclosure.open = false;
+      disclosure.querySelector<HTMLElement>('summary')?.focus();
+      return;
+    }
     close();
   });
   dialog.addEventListener('cancel', (event) => {
@@ -137,7 +141,7 @@ function bindDialog(trigger: string, selector: string, onOpen?: () => void) {
   dialog.addEventListener('close', () => {
     if (dialog.open) return;
     notifyUIVisibility();
-    (opener.closest('[hidden]') ? element('#minimap') : opener).focus();
+    (returnFocus.closest('[hidden]') ? element('#minimap') : returnFocus).focus();
   });
   const outside = (event: MouseEvent) => {
     const bounds = dialog.getBoundingClientRect();
@@ -154,9 +158,17 @@ function bindDialog(trigger: string, selector: string, onOpen?: () => void) {
     pressedOutside = outside(event);
   });
   dialog.addEventListener('click', (event) => {
+    for (const disclosure of dialog.querySelectorAll<HTMLDetailsElement>(
+      'details.action-disclosure[open]',
+    )) {
+      if (event.target instanceof Node && !disclosure.contains(event.target)) {
+        disclosure.open = false;
+      }
+    }
     if (pressedOutside && outside(event)) close();
     pressedOutside = false;
   });
+  return open;
 }
 
 function bindTachometer() {
@@ -248,15 +260,12 @@ export function bindGameActions(actions: {
   clearInput: () => void;
   setUIOpen: (open: boolean) => void;
 }) {
-  const syncUIOpen = () =>
-    actions.setUIOpen(
-      document.querySelector('dialog[open]') !== null || !element('#course-menu').hidden,
-    );
+  const syncUIOpen = () => actions.setUIOpen(document.querySelector('dialog[open]') !== null);
   document.addEventListener('driving-ui-change', syncUIOpen);
   syncUIOpen();
-  const sound = element<HTMLSelectElement>('#sound');
+  const sound = element<HTMLInputElement>('#sound');
   sound.addEventListener('change', () => {
-    const muted = sound.value === 'off';
+    const muted = !sound.checked;
     actions.sound(muted);
     const url = new URL(location.href);
     if (muted) url.searchParams.set('sound', 'off');
@@ -270,17 +279,12 @@ export function bindLapRecorder(
   store: Store<GameState>,
   actions: {
     press: () => void;
-    select: (id: string) => void;
-    remove: (id: string) => void;
     seek: (time: number) => void;
   },
 ) {
   const container = element('.lap-recorder');
   const button = element<HTMLButtonElement>('#lap-recorder-button');
   const label = bindText('#lap-recorder-label');
-  const picker = element('.editable-picker');
-  const runs = element<HTMLSelectElement>('#lap-replay-run');
-  const remove = element<HTMLButtonElement>('#lap-replay-delete');
   const replayControls = element('#lap-replay-controls');
   const replayTime = bindText('#lap-replay-time');
   const previous = element<HTMLButtonElement>('#lap-replay-previous');
@@ -299,25 +303,14 @@ export function bindLapRecorder(
     actions.press();
     button.blur();
   });
-  runs.addEventListener('change', () => {
-    actions.select(runs.value);
-    runs.blur();
-  });
-  remove.addEventListener('click', () => {
-    if (runs.value) actions.remove(runs.value);
-    remove.blur();
-  });
-  const text = {
-    off: ['', ''],
-    ready: ['REPLAY', 'Play saved laps'],
-    recording: ['REC', 'Stop recording, save laps and replay them'],
-    replay: ['REPLAY', 'Stop replay'],
-  } as const;
-  let shownRuns: GameState['lapRecorder']['runs'] | null = null;
+  label('REC');
+  button.title = 'Stop recording, save laps and replay them';
+  button.setAttribute('aria-label', button.title);
   store.subscribe(
     ({ lapRecorder }) => {
       const { mode } = lapRecorder;
       const lap = lapRecorder.replayLap;
+      button.hidden = mode !== 'recording';
       replayControls.hidden = mode !== 'replay';
       previous.disabled = lap?.previous == null;
       next.disabled = lap?.next == null;
@@ -328,21 +321,8 @@ export function bindLapRecorder(
             : 'Launch'
           : '',
       );
-      if (container.hidden !== (mode === 'off')) container.hidden = mode === 'off';
+      setHudElementHidden(container, mode === 'off' || mode === 'ready');
       if (button.dataset.mode !== mode) button.dataset.mode = mode;
-      label(text[mode][0]);
-      if (button.title !== text[mode][1]) {
-        button.title = text[mode][1];
-        button.setAttribute('aria-label', text[mode][1]);
-      }
-      const picking = mode === 'ready';
-      if (picker.hidden !== !picking) picker.hidden = !picking;
-      if (shownRuns !== lapRecorder.runs) {
-        shownRuns = lapRecorder.runs;
-        runs.replaceChildren(...lapRecorder.runs.map((run) => new Option(run.label, run.id)));
-      }
-      const selected = lapRecorder.selectedRun ?? '';
-      if (runs.value !== selected) runs.value = selected;
     },
     ['lapRecorder'],
   );
@@ -360,6 +340,8 @@ function bindTuningPresets(
   reportError: (error: unknown) => void,
 ) {
   const title = bindText('#tuning-preset-title');
+  const tuningLabel = bindText('#tuning-label');
+  const presetError = element<HTMLElement>('#tuning-profile-error');
   const presetsSelect = element<HTMLSelectElement>('#tuning-preset');
   const editInput = element<HTMLInputElement>('#tuning-preset-edit-name');
   const edit = element<HTMLButtonElement>('#tuning-preset-edit');
@@ -368,9 +350,21 @@ function bindTuningPresets(
   let renderedPresets: ConfigurationState['tuningPresets'] | null = null;
   let editingPresetId: string | null = null;
 
+  const clearPresetError = () => {
+    presetError.textContent = '';
+    editInput.removeAttribute('aria-invalid');
+  };
+  const showPresetError = (message: string, problem?: unknown, invalidName = false) => {
+    presetError.textContent = message;
+    if (invalidName) editInput.setAttribute('aria-invalid', 'true');
+    else editInput.removeAttribute('aria-invalid');
+    if (problem !== undefined) reportError(problem);
+  };
   const showNameEditor = (preset: TuningPreset) => {
     editingPresetId = preset.id;
     editInput.value = preset.name;
+    clearPresetError();
+    edit.closest('details')?.removeAttribute('open');
     presetsSelect.hidden = true;
     edit.hidden = true;
     editInput.hidden = false;
@@ -398,7 +392,7 @@ function bindTuningPresets(
         writeTuningPresetQuery(state.driveMode, preset.id);
         showNameEditor(preset);
       } catch (error) {
-        reportError(error);
+        showPresetError('Unable to create tuning profile.', error);
       }
       return;
     }
@@ -406,6 +400,8 @@ function bindTuningPresets(
       ({ id, mode }) => id === presetId && mode === state.driveMode,
     );
     if (!preset) return;
+    clearPresetError();
+    edit.closest('details')?.removeAttribute('open');
     store.update({
       profiles: {
         ...state.profiles,
@@ -422,22 +418,37 @@ function bindTuningPresets(
     const preset = state.tuningPresets.find(({ id }) => id === editingPresetId);
     if (!preset) return;
     const name = editInput.value.trim();
+    if (!name) {
+      showPresetError('Enter a profile name.', undefined, true);
+      return;
+    }
     const duplicate = state.tuningPresets.some(
       (entry) =>
         entry.mode === preset.mode &&
         entry.id !== preset.id &&
         entry.name.toLocaleLowerCase() === name.toLocaleLowerCase(),
     );
-    if (!name || duplicate) return;
-    if (name === preset.name) return;
+    if (duplicate) {
+      showPresetError(
+        'A profile with that name already exists for this drive mode.',
+        undefined,
+        true,
+      );
+      return;
+    }
+    if (name === preset.name) {
+      clearPresetError();
+      return;
+    }
     const tuningPresets = state.tuningPresets.map((entry) =>
       entry.id === preset.id ? { ...entry, name } : entry,
     );
     try {
       persistTuningPresets(localStorage, tuningPresets);
       store.update({ tuningPresets });
+      clearPresetError();
     } catch (error) {
-      reportError(error);
+      showPresetError('Unable to save tuning profile name.', error);
     }
   });
 
@@ -455,6 +466,7 @@ function bindTuningPresets(
       event.preventDefault();
       editInput.blur();
     } else if (event.key === 'Escape') {
+      event.preventDefault();
       editInput.blur();
     }
   });
@@ -470,6 +482,7 @@ function bindTuningPresets(
     const preset = state.tuningPresets.find(({ id }) => id === presetId);
     if (!preset) return;
     editInput.value = preset.name;
+    clearPresetError();
   });
 
   remove.addEventListener('click', () => {
@@ -482,7 +495,10 @@ function bindTuningPresets(
       ({ id, mode }) => id === `${state.driveMode}-default` && mode === state.driveMode,
     );
     if (!defaultPreset) {
-      reportError(new Error(`Missing Default tuning preset for ${state.driveMode} mode`));
+      showPresetError(
+        `Missing Default tuning profile for ${state.driveMode} mode.`,
+        new Error(`Missing Default tuning preset for ${state.driveMode} mode`),
+      );
       return;
     }
     const tuningPresets = state.tuningPresets.filter(({ id }) => id !== preset.id);
@@ -500,10 +516,12 @@ function bindTuningPresets(
         },
       });
       writeTuningPresetQuery(state.driveMode, defaultPreset.id);
+      clearPresetError();
     } catch (error) {
-      reportError(error);
+      showPresetError('Unable to delete tuning profile.', error);
     }
-    remove.blur();
+    remove.closest('details')?.removeAttribute('open');
+    presetsSelect.focus();
   });
 
   store.subscribe(
@@ -516,7 +534,7 @@ function bindTuningPresets(
         editInput.hidden = true;
         edit.hidden = false;
       }
-      title(`${modeName} tuning presets`);
+      title(`${modeName} tuning profile`);
       presetsSelect.setAttribute('aria-label', `${modeName} tuning preset`);
       const modePresets = state.tuningPresets.filter(({ mode }) => mode === state.driveMode);
       if (renderedMode !== state.driveMode || renderedPresets !== state.tuningPresets) {
@@ -534,6 +552,11 @@ function bindTuningPresets(
       const selectedPresetId = state.selectedTuningPresets[state.driveMode] ?? '';
       presetsSelect.value = selectedPresetId;
       const selectedPreset = modePresets.find(({ id }) => id === selectedPresetId);
+      tuningLabel(`${modeName} · ${selectedPreset?.name ?? 'Custom'}`);
+      element('#tuning').setAttribute(
+        'aria-label',
+        `Tuning: ${modeName} · ${selectedPreset?.name ?? 'Custom'}`,
+      );
       remove.disabled = !selectedPreset || selectedPreset.readonly === true;
       edit.disabled = !selectedPreset || selectedPreset.readonly === true;
     },
@@ -541,210 +564,772 @@ function bindTuningPresets(
   );
 }
 
-export function bindCoursePicker(
-  options: readonly CourseDefinition[],
-  selected: { id: string; name: string },
+export interface CoursePickerActions {
   changeCourse: (
     id: string,
     seed?: number,
     weights?: CourseGenerationWeights,
-  ) => Promise<{ id: string; name: string }>,
-  changeDirection: (reverse: boolean) => Promise<void>,
-  reportError: (error: unknown) => void,
-  store: Store<ConfigurationState>,
-  saveCourse: (name: string) => CourseDefinition,
-  deleteCourse: (id: string) => Promise<{ id: string; name: string }>,
-  getCourseWeights: () => CourseGenerationWeights,
-) {
-  const pickerButton = element<HTMLButtonElement>('#course');
-  const picker = element<HTMLDialogElement>('#course-picker-dialog');
-  const customDialog = element<HTMLDialogElement>('#custom-course-dialog');
-  const tabs = new Tabs(element('#course-picker-tabs'));
-  const pickerError = bindText('#course-picker-error');
-  const savedEmpty = element('#courses-saved-empty');
-  const cards = new Map<string, HTMLButtonElement>();
-  const coursePanel = (id: string) =>
-    id.startsWith('saved-')
-      ? 'courses-saved'
-      : racetracks.some((course) => course.id === id)
-        ? 'courses-racetracks'
-        : 'courses-built-in';
-  function addCourse(course: CourseDefinition) {
-    const card = document.createElement('button');
-    card.type = 'button';
-    card.className = 'course-card';
-    card.title = course.name;
-    card.dataset.courseId = course.id;
+    reverse?: boolean,
+  ) => Promise<CourseDefinition>;
+  changeDirection: (reverse: boolean) => Promise<void>;
+  saveCourse: (name: string, definition?: CourseDefinition) => CourseDefinition;
+  renameCourse: (id: string, name: string) => CourseDefinition;
+  /** Deleting the active course loads a fallback; returns the active course afterwards. */
+  deleteCourse: (id: string) => Promise<CourseDefinition>;
+  /** Plays a saved run of the active course and direction, resetting the race. */
+  playRun: (runId: string) => Promise<void>;
+  deleteReplay: (course: CourseDefinition, reverse: boolean, runId: string) => void;
+  reportError: (error: unknown) => void;
+  getCourseWeights: () => CourseGenerationWeights;
+}
+
+const courseGroups = [
+  { id: 'current', label: 'Current layout', badge: 'Unsaved' },
+  { id: 'built-in', label: 'Built-in courses', badge: 'Built-in' },
+  { id: 'racetracks', label: 'Racetracks', badge: 'Racetrack' },
+  { id: 'saved', label: 'Saved courses', badge: 'Saved' },
+] as const;
+
+const isUnsavedCourse = ({ id }: { id: string }) => id === 'random' || id === 'custom';
+
+function courseGroup(course: CourseDefinition) {
+  if (isUnsavedCourse(course)) return courseGroups[0];
+  if (course.id.startsWith('saved-')) return courseGroups[3];
+  return racetracks.some(({ id }) => id === course.id) ? courseGroups[2] : courseGroups[1];
+}
+
+const courseDistances = new WeakMap<CourseDefinition, string>();
+function courseDistance(course: CourseDefinition) {
+  let distance = courseDistances.get(course);
+  if (!distance) {
     const length = courseRoute(course).getLength();
-    const distance = length < 1000 ? `${Math.round(length)} m` : `${(length / 1000).toFixed(2)} km`;
-    card.setAttribute('aria-label', `${course.name}, ${distance}`);
-    card.innerHTML = coursePreviewSvg(course);
-    const label = document.createElement('span');
-    label.textContent = course.name;
-    const lengthLabel = document.createElement('small');
-    lengthLabel.className = 'course-card-length';
-    lengthLabel.textContent = distance;
-    card.append(label, lengthLabel);
-    card.addEventListener('click', () => void selectCourse(course.id));
-    element(`#${coursePanel(course.id)} .course-grid`).append(card);
-    cards.set(course.id, card);
+    distance = length < 1000 ? `${Math.round(length)} m` : `${(length / 1000).toFixed(2)} km`;
+    courseDistances.set(course, distance);
   }
-  const button = element<HTMLButtonElement>('#random-course');
-  const reverse = element<HTMLInputElement>('#reverse-course');
-  const customButton = element<HTMLButtonElement>('#custom-course');
-  const generateButton = element<HTMLButtonElement>('#custom-course-generate');
-  const resetButton = element<HTMLButtonElement>('#custom-course-reset');
-  const fieldset = element<HTMLFieldSetElement>('#custom-course-sliders');
-  const customStatus = bindText('#custom-course-status');
-  const customError = bindText('#custom-course-error');
+  return distance;
+}
+
+const directionLabel = (reverse: boolean) => (reverse ? 'Reverse' : 'Forward');
+const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
+
+function textElement(tag: string, className: string, text: string) {
+  const node = document.createElement(tag);
+  node.className = className;
+  node.textContent = text;
+  return node;
+}
+
+export function bindCoursePicker(
+  options: readonly CourseDefinition[],
+  selected: CourseDefinition,
+  store: Store<ConfigurationState>,
+  actions: CoursePickerActions,
+) {
+  const courses = [...options];
+  const pickerButton = element<HTMLButtonElement>('#minimap');
+  const picker = element<HTMLDialogElement>('#course-picker-dialog');
+  const pickerError = bindText('#course-picker-error');
+  const pickerStatus = bindText('#course-picker-status');
+  const list = element('#course-list');
+  const overview = element('#course-overview');
+  const previewContainer = element('#course-preview-3d');
+  const previewStatus = bindText('#course-preview-status');
+  const previewError = bindText('#course-preview-error');
+  const previewName = bindText('#course-preview-name');
+  const previewGroup = bindText('#course-preview-group');
+  const previewDistance = bindText('#course-preview-distance');
+  const courseActions = element<HTMLDetailsElement>('#course-actions');
+  const courseActionsSummary = courseActions.querySelector('summary')!;
+  const renameAction = element<HTMLButtonElement>('#course-rename');
+  const deleteAction = element<HTMLButtonElement>('#course-delete');
+  const records = element('#course-records');
+  const replays = element('#course-replays');
+  const replaysBack = element<HTMLButtonElement>('#course-replays-back');
+  const replaysTitle = element('#course-replays-title');
+  const replaysDirection = bindText('#course-replays-direction');
+  const replayRuns = element('#course-replay-runs');
+  const loadButton = element<HTMLButtonElement>('#course-load');
+  const savedDialog = element<HTMLDialogElement>('#saved-course-dialog');
+  const savedForm = element<HTMLFormElement>('#saved-course-form');
+  const savedTitle = bindText('#saved-course-title');
+  const savedDescription = bindText('#saved-course-description');
+  const savedHelp = bindText('#saved-course-help');
+  const savedNameField = element('#saved-course-name-field');
+  const savedNameInput = element<HTMLInputElement>('#saved-course-name');
+  const savedError = bindText('#saved-course-error');
+  const savedCancel = element<HTMLButtonElement>('#saved-course-cancel');
+  const savedConfirm = element<HTMLButtonElement>('#saved-course-confirm');
   const courseName = bindText('#course-name');
-  const saveForm = element<HTMLFormElement>('#save-course-form');
-  const saveName = element<HTMLInputElement>('#save-course-name');
-  const saveButton = element<HTMLButtonElement>('#save-course');
-  const saveStatus = bindText('#save-course-status');
-  const deleteButton = element<HTMLButtonElement>('#delete-course');
-  function syncCourseSelection() {
-    for (const [id, card] of cards) {
-      if (id === selected.id) card.setAttribute('aria-current', 'true');
-      else card.removeAttribute('aria-current');
-    }
-    savedEmpty.hidden = [...cards.keys()].some((id) => id.startsWith('saved-'));
-  }
-  picker.addEventListener('dialog-open', () => {
-    tabs.select(coursePanel(selected.id));
-    pickerError('');
-  });
-  function syncSaveCourse() {
-    saveForm.hidden = selected.id !== 'random' && selected.id !== 'custom';
-    saveName.value = selected.name;
-    saveStatus('');
-    deleteButton.disabled = !selected.id.startsWith('saved-');
-  }
-  syncSaveCourse();
-  saveForm.addEventListener('submit', (event) => {
-    event.preventDefault();
-    if (changing) return;
-    try {
-      const saved = saveCourse(saveName.value);
-      addCourse(saved);
-      selected = saved;
-      syncCourseSelection();
-      courseName(saved.name);
-      syncSaveCourse();
-      saveButton.blur();
-    } catch (error) {
-      saveStatus(error instanceof Error ? error.message : String(error));
-      reportError(error);
-    }
-  });
-  courseName(selected.name);
-  for (const course of options) addCourse(course);
-  syncCourseSelection();
-  const setBusy = (busy: boolean) => {
-    deleteButton.disabled = busy || !selected.id.startsWith('saved-');
-    picker.setAttribute('aria-busy', String(busy));
-    for (const card of cards.values()) card.disabled = busy;
-    pickerButton.disabled =
-      button.disabled =
-      reverse.disabled =
-      customButton.disabled =
-      generateButton.disabled =
-      resetButton.disabled =
-      fieldset.disabled =
-      saveButton.disabled =
-      saveName.disabled =
-        busy;
-  };
-  setBusy(false);
-  reverse.checked = store.getState().courseReverse;
+  const generator = element('#course-generator');
+  const generatorForm = element<HTMLFormElement>('#course-generator-form');
+  const draftName = element<HTMLInputElement>('#course-draft-name');
+  const createButton = element<HTMLButtonElement>('#course-create');
+  const savePreview = element<HTMLButtonElement>('#course-save-preview');
+  const editDraft = element<HTMLButtonElement>('#course-edit-draft');
+  const directions = [...picker.querySelectorAll<HTMLInputElement>('[name="course-direction"]')];
+  const generationTypes = [...picker.querySelectorAll<HTMLInputElement>('[name="generation"]')];
+  const generationFields = element<HTMLFieldSetElement>('#custom-course-sliders');
+  const resetGeneration = element<HTMLButtonElement>('#custom-course-reset');
+  const preview3d = new CoursePreviewRenderer(previewContainer);
+  const items = new Map<string, HTMLButtonElement>();
+  let preview = selected;
+  let previewToken = 0;
   let changing = false;
-  deleteButton.addEventListener('click', async () => {
-    if (changing || !selected.id.startsWith('saved-')) return;
-    changing = true;
-    setBusy(true);
-    const id = selected.id;
-    try {
-      selected = await deleteCourse(id);
-      cards.get(id)?.remove();
-      cards.delete(id);
-      syncCourseSelection();
-      courseName(selected.name);
-      syncSaveCourse();
-    } catch (error) {
-      reportError(error);
-    } finally {
-      setBusy(false);
-      changing = false;
-      deleteButton.blur();
-    }
-  });
-  async function selectCourse(id: string) {
-    if (changing) return;
-    if (id === selected.id && cards.has(id)) {
-      picker.close();
-      return;
-    }
-    changing = true;
-    setCourseMenuOpen(false);
-    setBusy(true);
-    customError('');
-    pickerError('');
-    let closeCustom = false;
-    try {
-      const generated = id === 'random' || id === 'custom';
-      const weights = id === 'custom' ? getCourseWeights() : undefined;
-      if (weights) validateCourseWeights(weights);
-      if (id === 'custom') customStatus('Generating course…');
-      selected = await changeCourse(
-        id,
-        generated ? crypto.getRandomValues(new Uint32Array(1))[0] : undefined,
-        weights,
+  let draft: { course?: CourseDefinition; name: string } | undefined;
+  let creating = false;
+  let draftSelected = false;
+  let direction = store.getState().courseReverse;
+
+  function renderList() {
+    items.clear();
+    // An unsaved generated layout is listed only while it is the active course.
+    const listed = isUnsavedCourse(selected) ? [selected, ...courses] : courses;
+    let savedSection: HTMLElement | undefined;
+    list.replaceChildren(
+      ...courseGroups.flatMap((group) => {
+        const members = listed.filter((course) => courseGroup(course) === group);
+        if (!members.length && group.id === 'current') return [];
+        const section = document.createElement('section');
+        section.className = 'selection-group';
+        section.setAttribute('role', 'group');
+        section.setAttribute('aria-labelledby', `courses-${group.id}-heading`);
+        const heading = document.createElement('h3');
+        heading.className = 'selection-group-heading';
+        heading.id = `courses-${group.id}-heading`;
+        heading.append(
+          textElement('span', '', group.label),
+          textElement('span', '', `${members.length}`),
+        );
+        section.append(heading);
+        if (group.id === 'saved') savedSection = section;
+        if (!members.length && group.id === 'saved' && !draft)
+          section.append(textElement('p', 'help-text', 'Create a course to save your own layout.'));
+        for (const course of members) {
+          const item = document.createElement('button');
+          item.type = 'button';
+          item.className = 'selection-item';
+          item.setAttribute('role', 'option');
+          const main = textElement('span', 'selection-item-main', '');
+          const avatar = textElement('span', 'selection-avatar course-thumbnail', '');
+          avatar.setAttribute('aria-hidden', 'true');
+          avatar.innerHTML = coursePreviewSvg(course, { size: 64, padding: 4 });
+          const text = document.createElement('span');
+          text.append(
+            textElement('span', 'selection-item-title', course.name),
+            textElement('span', 'selection-item-meta', courseDistance(course)),
+          );
+          main.append(avatar, text);
+          item.append(main);
+          if (course.id === selected.id) {
+            item.setAttribute('aria-current', 'true');
+            item.append(textElement('span', 'selection-item-status', 'Current'));
+          }
+          item.addEventListener('click', () => previewCourse(course));
+          section.append(item);
+          items.set(course.id, item);
+        }
+        return section;
+      }),
+    );
+    if (draft) {
+      const item = textElement('button', 'selection-item', '') as HTMLButtonElement;
+      item.type = 'button';
+      item.setAttribute('role', 'option');
+      const main = textElement('span', 'selection-item-main', '');
+      const text = document.createElement('span');
+      text.append(
+        textElement('span', 'selection-item-title', draft.name || 'New course'),
+        textElement('span', 'selection-item-meta', draft.course ? 'Unsaved preview' : 'Unsaved'),
       );
-      courseName(selected.name);
-      syncSaveCourse();
-      picker.close();
-      closeCustom = id === 'custom';
-    } catch (error) {
-      reportError(error);
-      pickerError(error instanceof Error ? error.message : String(error));
-      if (customDialog.open) {
-        customError(error instanceof Error ? error.message : String(error));
-      }
-    } finally {
-      syncCourseSelection();
-      setBusy(false);
-      customStatus('');
-      changing = false;
-      if (closeCustom) customDialog.close();
+      const avatar = textElement('span', 'selection-avatar', '+');
+      avatar.setAttribute('aria-hidden', 'true');
+      main.append(avatar, text);
+      item.append(main);
+      item.addEventListener('click', () => {
+        if (draft?.course) previewCourse(draft.course, true);
+        else showGenerator();
+      });
+      if (!savedSection) throw new Error('Missing saved courses group');
+      savedSection.append(item);
+      items.set('new-course', item);
+    }
+    syncListSelection();
+    syncBusy();
+  }
+
+  function syncListSelection() {
+    for (const [id, item] of items) {
+      const selected = draftSelected ? id === 'new-course' : id === preview.id;
+      item.setAttribute('aria-selected', String(selected));
+      item.tabIndex = selected ? 0 : -1;
     }
   }
-  button.addEventListener('click', () => {
-    void selectCourse('random');
+
+  list.addEventListener('keydown', (event) => {
+    if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+    const options = [...items.entries()].filter(([, item]) => !item.disabled);
+    const index = options.findIndex(([, item]) => item === event.target);
+    if (index < 0) return;
+    let next: number;
+    switch (event.key) {
+      case 'ArrowUp':
+        next = Math.max(0, index - 1);
+        break;
+      case 'ArrowDown':
+        next = Math.min(options.length - 1, index + 1);
+        break;
+      case 'Home':
+        next = 0;
+        break;
+      case 'End':
+        next = options.length - 1;
+        break;
+      default:
+        return;
+    }
+    event.preventDefault();
+    if (next !== index) options[next][1].click();
+    const item = items.get(options[next][0]);
+    item?.focus({ preventScroll: true });
+    item?.scrollIntoView({ block: 'nearest' });
   });
-  generateButton.addEventListener('click', () => {
-    void selectCourse('custom');
-  });
-  async function reverseCourse() {
-    if (changing) {
-      reverse.checked = store.getState().courseReverse;
+
+  function renderRecords(course: CourseDefinition) {
+    let summaries;
+    try {
+      summaries = (draftSelected ? [] : courseDirectionRecords(course)).filter(
+        (summary) =>
+          summary.reverse === direction && (summary.record !== null || summary.runs.length),
+      );
+    } catch (error) {
+      records.replaceChildren();
+      previewError(`Unable to read records: ${errorText(error)}`);
       return;
     }
-    changing = true;
-    setCourseMenuOpen(false);
-    setBusy(true);
-    try {
-      await changeDirection(reverse.checked);
-    } catch (error) {
-      reportError(error);
-    } finally {
-      reverse.checked = store.getState().courseReverse;
-      setBusy(false);
-      changing = false;
+    if (!summaries.length) {
+      const row = textElement('li', 'record-row', '');
+      const text = document.createElement('div');
+      text.append(
+        textElement('div', 'help-text', 'Local record'),
+        textElement('div', 'record-time', 'No recorded lap yet'),
+      );
+      row.append(text);
+      records.replaceChildren(row);
+      return;
     }
+    records.replaceChildren(
+      ...summaries.map(({ reverse, record, runs }) => {
+        const row = textElement('li', 'record-row', '');
+        const text = document.createElement('div');
+        text.append(
+          textElement('div', 'help-text', `Local record · ${directionLabel(reverse)}`),
+          textElement(
+            'div',
+            'record-time',
+            record === null ? 'No full lap yet' : formatLapTime(record),
+          ),
+        );
+        row.append(text);
+        if (runs.length) {
+          const view = textElement(
+            'button',
+            'button button-quiet',
+            `View replays (${runs.length}) →`,
+          ) as HTMLButtonElement;
+          view.type = 'button';
+          view.addEventListener('click', () => showReplays(course, reverse, record, runs));
+          row.append(view);
+        }
+        return row;
+      }),
+    );
   }
-  reverse.addEventListener('change', () => {
-    void reverseCourse();
+
+  function showReplays(
+    course: CourseDefinition,
+    direction: boolean,
+    record: number | null,
+    runs: readonly RunSummary[],
+  ) {
+    overview.hidden = true;
+    replays.hidden = false;
+    replaysTitle.textContent = `${course.name} replays`;
+    replaysDirection(`Saved runs · ${directionLabel(direction)}`);
+    replayRuns.replaceChildren(
+      ...[...runs].reverse().map((run) => {
+        const best = run.laps.length ? Math.min(...run.laps) : null;
+        const { date, laps } = describeRun(run);
+        const driver = run.driver?.startsWith('bot') ? ' · Bot' : '';
+        const row = textElement('li', 'record-row', '');
+        const time = textElement(
+          'div',
+          'record-time',
+          best === null ? '--:--.---' : formatLapTime(best),
+        );
+        time.append(
+          textElement(
+            'span',
+            'help-text',
+            best === null ? 'Partial lap' : best === record ? 'Best lap · Record' : 'Best lap',
+          ),
+        );
+        const text = document.createElement('div');
+        text.append(time, textElement('div', 'help-text', `${date} · ${laps}${driver}`));
+        const watch = textElement(
+          'button',
+          'button button-secondary',
+          'Watch',
+        ) as HTMLButtonElement;
+        watch.type = 'button';
+        watch.setAttribute('aria-label', `Watch ${date} run, ${laps}`);
+        watch.addEventListener('click', () => void watchRun(course, direction, run.id));
+        const remove = textElement(
+          'button',
+          'button button-quiet danger',
+          'Delete',
+        ) as HTMLButtonElement;
+        remove.type = 'button';
+        remove.setAttribute('aria-label', `Delete ${date} run, ${laps}`);
+        remove.addEventListener('click', () => {
+          editSavedCourse('delete-replay', course, remove, { id: run.id, direction, date, laps });
+        });
+        const actions = textElement('div', 'record-actions', '');
+        actions.append(remove, watch);
+        row.append(text, actions);
+        return row;
+      }),
+    );
+    syncBusy();
+    replaysTitle.focus();
+  }
+
+  function showOverview() {
+    replays.hidden = true;
+    generator.hidden = true;
+    overview.hidden = false;
+    creating = false;
+  }
+
+  function previewColors() {
+    const style = getComputedStyle(previewContainer);
+    const color = (name: string) => {
+      const value = style.getPropertyValue(`--course-preview-${name}`).trim();
+      if (!value) throw new Error(`Missing --course-preview-${name} color`);
+      return value;
+    };
+    return {
+      ground: color('ground'),
+      road: color('road'),
+      start: color('start'),
+      light: color('light'),
+      shade: color('shade'),
+    };
+  }
+
+  function render3d(course: CourseDefinition) {
+    const token = ++previewToken;
+    previewContainer.setAttribute('aria-busy', 'true');
+    previewStatus('Building 3-D preview…');
+    // Let the status paint first: building a racetrack heightfield takes a moment.
+    requestAnimationFrame(() =>
+      setTimeout(() => {
+        if (token !== previewToken || !picker.open) return;
+        try {
+          preview3d.render(course, previewColors(), `3-D terrain preview of ${course.name}`);
+        } catch (error) {
+          console.error('Unable to show 3-D course preview:', error);
+          preview3d.dispose();
+          previewError(`Unable to show 3-D preview: ${errorText(error)}`);
+        } finally {
+          previewStatus('');
+          previewContainer.removeAttribute('aria-busy');
+        }
+      }, 0),
+    );
+  }
+
+  function previewCourse(course: CourseDefinition, isDraft = false) {
+    draftSelected = isDraft;
+    preview = course;
+    syncListSelection();
+    showOverview();
+    previewError('');
+    previewName(course.name);
+    previewGroup(courseGroup(course).badge);
+    previewDistance(`${courseDistance(course)} per lap`);
+    courseActions.open = false;
+    courseActions.hidden = courseGroup(course).id !== 'saved';
+    savePreview.hidden = !isUnsavedCourse(course);
+    editDraft.hidden = !isDraft;
+    renderRecords(course);
+    render3d(course);
+    syncBusy();
+  }
+
+  function syncCourseName() {
+    courseName(selected.name);
+  }
+
+  function syncBusy() {
+    picker.setAttribute('aria-busy', String(changing));
+    for (const control of picker.querySelectorAll<HTMLButtonElement | HTMLInputElement>(
+      'button, .master-detail input',
+    ))
+      control.disabled = changing;
+    courseActionsSummary.toggleAttribute('aria-disabled', changing);
+    savedConfirm.disabled = savedCancel.disabled = savedNameInput.disabled = changing;
+    pickerButton.disabled = generationFields.disabled = changing;
+    loadButton.disabled = changing || creating;
+    loadButton.textContent = draftSelected && !creating ? 'Save & load course' : 'Load course';
+  }
+
+  /** Runs one course operation at a time; returns false if another is already running. */
+  async function exclusive(status: string, operation: () => Promise<void>) {
+    if (changing) return false;
+    changing = true;
+    pickerStatus(status);
+    syncBusy();
+    try {
+      await operation();
+    } finally {
+      changing = false;
+      pickerStatus('Loading a course resets the race.');
+      syncBusy();
+    }
+    return true;
+  }
+
+  /** Loads a course; `generation` rebuilds a previewed unsaved layout instead of a new one. */
+  async function selectCourse(id: string, generation?: CourseDefinition['generation']) {
+    pickerError('');
+    await exclusive('Loading course…', async () => {
+      try {
+        const weights =
+          generation?.type === 'custom'
+            ? generation.weights
+            : id === 'custom'
+              ? actions.getCourseWeights()
+              : undefined;
+        if (weights) validateCourseWeights(weights);
+        selected = await actions.changeCourse(
+          id,
+          generation?.seed ??
+            (isUnsavedCourse({ id }) ? crypto.getRandomValues(new Uint32Array(1))[0] : undefined),
+          weights,
+          direction,
+        );
+        syncCourseName();
+        picker.close();
+      } catch (error) {
+        actions.reportError(error);
+        pickerError(errorText(error));
+      }
+    });
+  }
+
+  function showGenerator() {
+    if (changing) return;
+    if (!draft) {
+      const names = new Set(courses.map(({ name }) => name));
+      let name = 'New course';
+      for (let number = 2; names.has(name); number++) name = `New course ${number}`;
+      draft = { name };
+    }
+    draftSelected = creating = true;
+    ++previewToken;
+    preview3d.dispose();
+    overview.hidden = replays.hidden = true;
+    generator.hidden = false;
+    draftName.value = draft.name;
+    pickerError('');
+    renderList();
+    items.get('new-course')?.scrollIntoView({ block: 'nearest' });
+    draftName.select();
+  }
+
+  function savePreviewCourse(name: string) {
+    const saved = actions.saveCourse(name, preview);
+    courses.push(saved);
+    if (selected === preview) {
+      selected = saved;
+      syncCourseName();
+    }
+    if (draftSelected) draft = undefined;
+    draftSelected = false;
+    renderList();
+    previewCourse(saved);
+    return saved;
+  }
+
+  createButton.addEventListener('click', showGenerator);
+  editDraft.addEventListener('click', showGenerator);
+  draftName.addEventListener('input', () => {
+    draftName.setCustomValidity('');
+    if (!draft) return;
+    draft.name = draftName.value;
+    const title = items.get('new-course')?.querySelector('.selection-item-title');
+    if (title) title.textContent = draft.name.trim() || 'New course';
   });
+  function invalidateDraftPreview() {
+    if (!draft) return;
+    draft.course = undefined;
+    const meta = items.get('new-course')?.querySelector('.selection-item-meta');
+    if (meta) meta.textContent = 'Unsaved';
+  }
+  generatorForm.addEventListener('input', invalidateDraftPreview);
+  resetGeneration.addEventListener('click', invalidateDraftPreview);
+  generationTypes.forEach((input) =>
+    input.addEventListener('change', () => {
+      const custom = input.value === 'custom';
+      generationFields.hidden = resetGeneration.hidden = !custom;
+      element('#course-random-help').hidden = custom;
+    }),
+  );
+  generatorForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    draftName.setCustomValidity(draftName.value.trim() ? '' : 'Enter a course name');
+    if (!generatorForm.reportValidity() || !draft) return;
+    draft.name = draftName.value.trim();
+    void exclusive('Generating preview…', async () => {
+      try {
+        await new Promise<void>((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
+        const seed = crypto.getRandomValues(new Uint32Array(1))[0];
+        const custom = generationTypes.find((input) => input.checked)?.value === 'custom';
+        const course = custom
+          ? generateCustomCourse(seed, actions.getCourseWeights())
+          : generateCourse(seed);
+        const named = { ...course, name: draftName.value.trim() };
+        draft = { name: named.name, course: named };
+        renderList();
+        previewCourse(named, true);
+      } catch (error) {
+        console.error('Unable to generate course preview:', error);
+        pickerError(`Unable to generate preview: ${errorText(error)}`);
+      }
+    }).then(() => {
+      if (!creating && picker.open) editDraft.focus();
+    });
+  });
+  directions.forEach((input) =>
+    input.addEventListener('change', () => {
+      direction = input.value === 'reverse';
+      renderRecords(preview);
+    }),
+  );
+
+  async function watchRun(course: CourseDefinition, direction: boolean, runId: string) {
+    pickerError('');
+    await exclusive('Loading replay…', async () => {
+      try {
+        if (course.id !== selected.id) {
+          selected = await actions.changeCourse(course.id, undefined, undefined, direction);
+          syncCourseName();
+        } else if (store.getState().courseReverse !== direction)
+          await actions.changeDirection(direction);
+        await actions.playRun(runId);
+        picker.close();
+      } catch (error) {
+        actions.reportError(error);
+        pickerError(`Unable to play replay: ${errorText(error)}`);
+      }
+    });
+  }
+
+  let editing: {
+    kind: 'rename' | 'delete' | 'save' | 'delete-replay';
+    course: CourseDefinition;
+    returnFocus: HTMLElement;
+    replay?: { id: string; direction: boolean; date: string; laps: string };
+  } | null = null;
+  function editSavedCourse(
+    kind: 'rename' | 'delete' | 'save' | 'delete-replay',
+    course: CourseDefinition,
+    returnFocus: HTMLElement,
+    replay?: { id: string; direction: boolean; date: string; laps: string },
+  ) {
+    if (changing || savedDialog.open) return;
+    editing = { kind, course, returnFocus, replay };
+    courseActions.open = false;
+    const deletingReplay = kind === 'delete-replay';
+    const deleting = kind === 'delete' || deletingReplay;
+    savedTitle(
+      deletingReplay
+        ? 'Delete replay?'
+        : deleting
+          ? 'Delete saved course?'
+          : kind === 'save'
+            ? 'Save course'
+            : 'Rename course',
+    );
+    savedDescription(
+      deletingReplay && replay
+        ? `Remove the ${replay.date} replay (${replay.laps}) from “${course.name}” · ${directionLabel(replay.direction)}? This cannot be undone.`
+        : deleting
+          ? `Remove “${course.name}” from your saved courses? This cannot be undone.${course.id === selected.id ? ' It is the current course, so the first built-in course will load.' : ''}`
+          : kind === 'save'
+            ? 'Name this layout to add it to your saved courses.'
+            : 'Choose a name for this saved course.',
+    );
+    savedHelp(
+      deletingReplay
+        ? 'The course and local record are kept.'
+        : deleting
+          ? 'Recorded laps are not deleted.'
+          : 'Records and replays stay with the course.',
+    );
+    savedNameField.hidden = deleting;
+    savedNameInput.value = course.name;
+    savedError('');
+    savedConfirm.textContent = deletingReplay
+      ? 'Delete replay'
+      : deleting
+        ? 'Delete course'
+        : kind === 'save'
+          ? 'Save course'
+          : 'Save name';
+    savedConfirm.classList.toggle('danger', deleting);
+    savedDialog.showModal();
+    notifyUIVisibility();
+    if (deleting) savedCancel.focus();
+    else savedNameInput.select();
+  }
+
+  async function confirmSavedCourse() {
+    if (!editing) return;
+    const { kind, course } = editing;
+    savedError('');
+    if (kind === 'delete-replay') {
+      const replay = editing.replay;
+      if (!replay) throw new Error('Missing replay to delete');
+      try {
+        actions.deleteReplay(course, replay.direction, replay.id);
+        const summary = courseDirectionRecords(course).find(
+          ({ reverse }) => reverse === replay.direction,
+        );
+        renderRecords(course);
+        if (summary?.runs.length)
+          showReplays(course, replay.direction, summary.record, summary.runs);
+        else showOverview();
+        savedDialog.close();
+      } catch (error) {
+        console.error('Unable to delete replay:', error);
+        savedError(`Unable to delete replay: ${errorText(error)}`);
+      }
+      return;
+    }
+    if (kind === 'save') {
+      try {
+        savePreviewCourse(savedNameInput.value);
+        savedDialog.close();
+      } catch (error) {
+        savedError(errorText(error));
+      }
+      return;
+    }
+    if (kind === 'rename') {
+      try {
+        const renamed = actions.renameCourse(course.id, savedNameInput.value);
+        courses[courses.indexOf(course)] = renamed;
+        if (selected.id === renamed.id) {
+          selected = renamed;
+          syncCourseName();
+        }
+        renderList();
+        if (preview === course) previewCourse(renamed);
+        savedDialog.close();
+      } catch (error) {
+        savedError(errorText(error));
+      }
+      return;
+    }
+    const busy = await exclusive('Deleting course…', async () => {
+      try {
+        selected = await actions.deleteCourse(course.id);
+        courses.splice(courses.indexOf(course), 1);
+        syncCourseName();
+        renderList();
+        if (picker.open) previewCourse(selected);
+        savedDialog.close();
+      } catch (error) {
+        actions.reportError(error);
+        savedError(errorText(error));
+      }
+    });
+    if (!busy) savedError('Wait for the current course change to finish.');
+  }
+
+  savedForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    void confirmSavedCourse();
+  });
+  savedCancel.addEventListener('click', () => savedDialog.close());
+  savedDialog.addEventListener('cancel', (event) => {
+    if (changing) event.preventDefault();
+  });
+  savedDialog.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape' || event.defaultPrevented) return;
+    event.preventDefault();
+    if (!changing) savedDialog.close();
+  });
+  savedDialog.addEventListener('close', () => {
+    notifyUIVisibility();
+    const target = editing?.returnFocus;
+    editing = null;
+    const fallback = picker.open
+      ? !replays.hidden
+        ? replaysTitle
+        : (items.get(preview.id) ?? element('#course-picker-title'))
+      : element('#minimap');
+    (target?.isConnected && !target.closest('[hidden]') && !(target as HTMLButtonElement).disabled
+      ? target
+      : fallback
+    ).focus();
+  });
+  renameAction.addEventListener('click', () =>
+    editSavedCourse('rename', preview, courseActionsSummary),
+  );
+  deleteAction.addEventListener('click', () =>
+    editSavedCourse('delete', preview, courseActionsSummary),
+  );
+  courseActions.addEventListener('toggle', () => {
+    if (changing) courseActions.open = false;
+  });
+  savePreview.addEventListener('click', () => editSavedCourse('save', preview, savePreview));
+  replaysBack.addEventListener('click', () => {
+    showOverview();
+    records.querySelector<HTMLButtonElement>('button')?.focus();
+  });
+  loadButton.addEventListener('click', () => {
+    if (changing || creating) return;
+    try {
+      if (draftSelected) savePreviewCourse(draft?.name ?? '');
+      void selectCourse(preview.id, isUnsavedCourse(preview) ? preview.generation : undefined);
+    } catch (error) {
+      pickerError(`Unable to save course: ${errorText(error)}`);
+    }
+  });
+  element('#course-picker-cancel').addEventListener('click', () => picker.close());
+  picker.addEventListener('dialog-open', () => {
+    pickerError('');
+    direction = store.getState().courseReverse;
+    directions.forEach((input) => {
+      input.checked = (input.value === 'reverse') === direction;
+    });
+    draft = undefined;
+    draftSelected = false;
+    creating = false;
+    draftName.value = '';
+    draftName.setCustomValidity('');
+    renderList();
+    previewCourse(selected);
+  });
+  picker.addEventListener('close', () => {
+    ++previewToken;
+    preview3d.dispose();
+  });
+
+  syncCourseName();
+  syncBusy();
 }
 
 function bindCourseWeights(
@@ -760,7 +1345,7 @@ function bindCourseWeights(
   };
   for (const { key, label: text, description, min, max, step } of courseGenerationFields) {
     const label = document.createElement('label');
-    label.className = 'slider-control';
+    label.className = 'parameter-field';
     const title = document.createElement('span');
     const output = document.createElement('output');
     const input = document.createElement('input');
@@ -775,12 +1360,15 @@ function bindCourseWeights(
     title.textContent = text;
     hint.id = `${input.id}-hint`;
     hint.textContent = description;
+    hint.className = 'help-text';
     input.setAttribute('aria-labelledby', title.id);
     input.setAttribute('aria-describedby', hint.id);
     const sync = () => {
       input.value = String(weights[key]);
       output.value =
-        key === 'length' ? `${(weights[key] / 1000).toFixed(1)} km` : weights[key].toFixed(2);
+        key === 'length'
+          ? `${(weights[key] / 1000).toFixed(1)} km`
+          : `${Math.round(weights[key] * 100)}%`;
       input.setAttribute('aria-valuetext', output.value);
     };
     input.addEventListener('input', () => {
@@ -861,7 +1449,7 @@ export function bindGameUI(
   };
   const dismissError = bindStatusUI(game);
   const hudVisibility = createHudVisibilityCycle();
-  bindCourseDisclosure();
+  bindCourseHud();
   const speed = bindText('#speed');
   const gear = bindText('#gear');
   const tachometer = bindTachometer();
@@ -881,24 +1469,21 @@ export function bindGameUI(
   );
   bindDialog('#tuning', '#drift-tuning');
   bindDialog('#settings', '#settings-dialog');
+  bindSettingsLayout();
+  bindControlsSettings(reportError);
   bindDialog(
     '#bots',
     '#bots-dialog',
     bindBotDialog(element('#bots-dialog'), (bots, botsOnly) => applyBotSettings(bots, botsOnly)),
   );
-  bindDialog('#help', '#help-dialog');
   let courseWeights = { ...defaultCourseWeights };
   const getCourseWeights = () => courseWeights;
   const setCourseWeights = (weights: CourseGenerationWeights) => {
     validateCourseWeights(weights);
     courseWeights = { ...weights };
   };
-  let refreshCourseWeights: (() => void) | undefined;
-  bindDialog('#custom-course', '#custom-course-dialog', () => {
-    refreshCourseWeights ??= bindCourseWeights(getCourseWeights, setCourseWeights);
-    refreshCourseWeights();
-  });
-  bindDialog('#course', '#course-picker-dialog');
+  const refreshCourseWeights = bindCourseWeights(getCourseWeights, setCourseWeights);
+  bindDialog('#minimap', '#course-picker-dialog', refreshCourseWeights);
 
   function select<Value extends string>(
     selector: string,
@@ -908,16 +1493,22 @@ export function bindGameUI(
     write: (value: Value) => Partial<ConfigurationState>,
     valid: (value: string) => value is Value,
   ) {
-    const input = element<HTMLSelectElement>(selector);
+    const input = element<HTMLSelectElement | HTMLInputElement>(selector);
+    const readValue = () =>
+      input instanceof HTMLInputElement && input.type === 'checkbox'
+        ? input.checked
+          ? 'on'
+          : 'off'
+        : input.value;
     input.addEventListener('change', () => {
-      const value = input.value;
+      const value = readValue();
       if (!valid(value)) {
         reportError(new Error(`Unknown ${parameter}: ${value}`));
         return;
       }
       configuration.update(write(value));
       const url = new URL(location.href);
-      url.searchParams.set(parameter, input.value);
+      url.searchParams.set(parameter, value);
       if (parameter === 'mirror-resolution') url.searchParams.delete('low-res-mirrors');
       if (parameter === 'mode' && isDriveMode(value)) {
         url.searchParams.set(
@@ -926,12 +1517,13 @@ export function bindGameUI(
         );
       }
       history.replaceState(null, '', url);
-      input.blur();
     });
     configuration.subscribe(
       (state) => {
         const value = read(state);
-        if (input.value !== value) input.value = value;
+        if (input instanceof HTMLInputElement && input.type === 'checkbox') {
+          input.checked = value === 'on';
+        } else if (input.value !== value) input.value = value;
       },
       [key],
     );
@@ -1045,13 +1637,13 @@ export function bindGameUI(
   window.addEventListener('blur', focus);
   document.addEventListener('visibilitychange', focus);
   focus();
-  const sound = element<HTMLSelectElement>('#sound');
+  const sound = element<HTMLInputElement>('#sound');
   const soundStatus = bindText('#sound-status');
   const telemetryPanel = element('.telemetry');
   configuration.subscribe(
     (state) => {
       // The cabin camera shows the car's own working gauges instead.
-      telemetryPanel.hidden = state.cameraStyle === 'cabin';
+      setHudElementHidden(telemetryPanel, state.cameraStyle === 'cabin');
       const chaseView = state.cameraStyle !== 'cabin';
       if (document.body.classList.contains('chase-view') !== chaseView)
         document.body.classList.toggle('chase-view', chaseView);
@@ -1060,8 +1652,7 @@ export function bindGameUI(
   );
   configuration.subscribe(
     ({ muted }) => {
-      const soundValue = muted ? 'off' : 'on';
-      if (sound.value !== soundValue) sound.value = soundValue;
+      sound.checked = !muted;
     },
     ['muted'],
   );

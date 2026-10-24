@@ -11,6 +11,7 @@ let createRaceStandings;
 let standingsInterval;
 let standingsGapInterval;
 let formatStanding;
+let createLeaderboard;
 
 before(async () => {
   server = await createServer({
@@ -21,10 +22,65 @@ before(async () => {
   ({ LapTimer } = await server.ssrLoadModule('/src/laps.ts'));
   ({ createRaceStandings, standingsInterval, standingsGapInterval } =
     await server.ssrLoadModule('/src/race-standings.ts'));
-  ({ formatStanding } = await server.ssrLoadModule('/src/leaderboard.ts'));
+  ({ formatStanding, createLeaderboard } = await server.ssrLoadModule('/src/leaderboard.ts'));
 });
 
 after(async () => server?.close());
+
+test('leaderboard shows the roster before positions arrive and restores it on reset', (t) => {
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'document');
+  const node = () => ({
+    children: [],
+    dataset: {},
+    style: { setProperty() {} },
+    setAttribute() {},
+    append(...children) {
+      this.children.push(...children);
+    },
+    replaceChildren(...children) {
+      this.children = children;
+    },
+    insertBefore(child, before) {
+      this.children = this.children.filter((entry) => entry !== child);
+      const index = before ? this.children.indexOf(before) : this.children.length;
+      this.children.splice(index, 0, child);
+    },
+  });
+  Object.defineProperty(globalThis, 'document', {
+    configurable: true,
+    value: { createElement: node },
+  });
+  t.after(() => {
+    if (descriptor) Object.defineProperty(globalThis, 'document', descriptor);
+    else delete globalThis.document;
+  });
+  const container = node();
+  const board = createLeaderboard(container);
+  const entrants = [
+    { name: 'You', color: 'red' },
+    { name: 'Bot', color: 'cyan' },
+  ];
+  board.update([], entrants);
+  assert.equal(container.hidden, false);
+  assert.equal(container.dataset.ranked, 'false');
+  assert.deepEqual(
+    container.children.map((row) => row.children[1].textContent),
+    ['You', 'Bot'],
+  );
+  board.update(
+    [
+      { entrant: 1, lastLap: null, gap: 0, lapsBehind: 0 },
+      { entrant: 0, lastLap: null, gap: 1, lapsBehind: 0 },
+    ],
+    entrants,
+  );
+  assert.equal(container.dataset.ranked, 'true');
+  assert.equal(container.children[0].children[1].textContent, 'Bot');
+  board.update([], entrants);
+  assert.equal(container.dataset.ranked, 'false');
+  assert.equal(container.children[0].children[1].textContent, 'You');
+  assert.ok(container.children.every((row) => row.children[2].textContent === '--'));
+});
 
 function fixture(reverse = false, starts = [-10, -20]) {
   const definition = { ...courses.find(({ id }) => id === 'hillside'), reverse };

@@ -315,3 +315,31 @@ test('poses a car from a frame, including hub and spinning wheel', () => {
     );
   });
 });
+
+test('summarizes the record and saved runs separately for each course direction', async () => {
+  const storage = new MemoryStorage();
+  const course = {
+    id: 'x',
+    name: 'X',
+    width: 10,
+    points: [
+      [0, 0],
+      [10, 0],
+      [5, 5],
+    ],
+  };
+  const run = sampleRun();
+  const forward = recording.replayStorageKey(course);
+  const reverse = recording.replayStorageKey({ ...course, reverse: true });
+  const saved = await recording.saveRun(forward, run, { driver: 'human' }, storage);
+  await recording.saveRecordLap(reverse, run.extractLap(0), storage);
+  assert.deepEqual(
+    recording
+      .courseDirectionRecords(course, storage)
+      .map(({ reverse, record, runs }) => ({ reverse, record, runs: runs.map(({ id }) => id) })),
+    [
+      { reverse: false, record: 0.8, runs: [saved.id] },
+      { reverse: true, record: 1, runs: [] },
+    ],
+  );
+});

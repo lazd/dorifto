@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { carLightLayers, loadCar } from './car';
 import { DrivingControls, updateVehicleLights } from './controls';
+import { inputBindings, keyboardActionForCode } from './input-bindings';
 import { createCourse } from './course';
 import {
   courses,
@@ -34,7 +35,12 @@ import {
 } from './configuration-state';
 import { createGameState, type SavedRunOption } from './game-state';
 import { loadTuningPresets } from './tuning-presets';
-import { deleteSavedCourse, loadSavedCourses, saveCourse } from './saved-courses';
+import {
+  deleteSavedCourse,
+  loadSavedCourses,
+  renameSavedCourse,
+  saveCourse,
+} from './saved-courses';
 import { bindGameUI, bindGameActions, bindCoursePicker, bindLapRecorder, element } from './ui';
 import { createDrivingCamera } from './camera';
 import { createLighting } from './lighting';
@@ -58,6 +64,7 @@ import {
   applyCarPose,
   createReplayFrame,
   deleteRun,
+  describeRun,
   listSavedRuns,
   loadRun,
   loadRecordLap,
@@ -67,6 +74,7 @@ import {
   type RunSummary,
 } from './lap-recording';
 import './style.css';
+import './dialogs.css';
 
 // Imported styles have been applied, so the page can be revealed without unstyled content.
 document.body.hidden = false;
@@ -383,23 +391,6 @@ async function start() {
   );
   let dialogOpen = false;
   const keys = controls.keys;
-  const controlKeys = new Set([
-    'ArrowLeft',
-    'ArrowRight',
-    'KeyX',
-    'KeyZ',
-    'Space',
-    'KeyR',
-    'KeyV',
-    'KeyD',
-    'KeyM',
-    'KeyW',
-    'KeyS',
-    'KeyF',
-    'KeyH',
-    'KeyU',
-  ]);
-  if (botsOnly) controlKeys.add('Tab');
   let lastTime = 0;
   let changingCourse = false;
 
@@ -485,7 +476,9 @@ async function start() {
   );
   const groundHeight = (x: number, z: number) => terrain.heightAt(x, z);
   const minimap = createMinimap(element('#minimap'), definition);
-  const leaderboard = createLeaderboard(element<HTMLOListElement>('#leaderboard'));
+  const leaderboard = createLeaderboard(element<HTMLOListElement>('#leaderboard'), (index) => {
+    if (physics.observeBot(index)) syncObservedBot();
+  });
   const { fixedStep } = physics;
   configurationState.subscribe(
     ({ coneMode }) => {
@@ -564,14 +557,9 @@ async function start() {
     gameState.update({ lapRecorder: { mode, runs: runOptions, selectedRun, replayLap } });
   }
 
-  function runLabel({ createdAt, laps: times, driver }: RunSummary) {
-    const date = new Date(createdAt).toLocaleString(undefined, {
-      month: 'short',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-    });
-    const count = `${times.length} lap${times.length === 1 ? '' : 's'}`;
+  function runLabel(run: RunSummary) {
+    const { laps: times, driver } = run;
+    const { date, laps: count } = describeRun(run);
     const label = times.length
       ? `${date} · ${count} · best ${formatLapTime(Math.min(...times))}`
       : `${date} · partial lap`;
@@ -680,8 +668,6 @@ async function start() {
       botOptions = nextBots;
       recordedBot = botsOnly ? botOptions[0] : null;
       recordedDriver = recordedDriverFor(botOptions, botsOnly);
-      if (botsOnly) controlKeys.add('Tab');
-      else controlKeys.delete('Tab');
       const botsUrl = new URL(location.href);
       writeRaceBots(botsUrl.searchParams, botOptions, botsOnly);
       history.replaceState(null, '', botsUrl);
@@ -901,7 +887,12 @@ async function start() {
     }
   }
 
-  function changeCourse(id: string, seed?: number, weights?: CourseGenerationWeights) {
+  function changeCourse(
+    id: string,
+    seed?: number,
+    weights?: CourseGenerationWeights,
+    reverse = configurationState.getState().courseReverse,
+  ) {
     const customWeights = weights ?? ui.getCourseWeights();
     return loadCourse(
       () => {
@@ -921,7 +912,7 @@ async function start() {
         else url.searchParams.delete('seed');
         writeCourseWeights(url.searchParams, id === 'custom' ? customWeights : undefined);
       },
-      configurationState.getState().courseReverse,
+      reverse,
     );
   }
 
@@ -946,12 +937,17 @@ async function start() {
     await refreshRecordLap();
   }
 
-  bindCoursePicker(
-    availableCourses,
-    definition,
+  async function playCourseRun(runId: string) {
+    if (changingCourse) throw new Error('Wait for the current course change to finish');
+    const recording = await loadRun(storageKey, runId);
+    selectedRun = runId;
+    startReplay(recording);
+  }
+
+  bindCoursePicker(availableCourses, definition, configurationState, {
     changeCourse,
-    changeCourseDirection,
-    (error) => {
+    changeDirection: changeCourseDirection,
+    reportError: (error) => {
       console.error('Unable to change course:', error);
       gameState.update({
         status: {
@@ -961,10 +957,10 @@ async function start() {
         },
       });
     },
-    configurationState,
-    (name) => {
-      const saved = saveCourse(localStorage, activeDefinition, name);
+    saveCourse: (name, definition = activeDefinition) => {
+      const saved = saveCourse(localStorage, definition, name);
       availableCourses.push(saved);
+      if (definition !== activeDefinition) return saved;
       activeDefinition = saved;
       minimap.setCourse(saved);
       storageKey = replayStorageKey({
@@ -984,14 +980,26 @@ async function start() {
       history.replaceState(null, '', url);
       return saved;
     },
-    async (id) => {
+    // Records are keyed by the stable saved ID, so renaming keeps them.
+    renameCourse: (id, name) => {
+      const renamed = renameSavedCourse(localStorage, id, name);
+      availableCourses[availableCourses.findIndex((course) => course.id === id)] = renamed;
+      if (activeDefinition.id === id) {
+        activeDefinition = renamed;
+        minimap.setCourse(renamed);
+      }
+      return renamed;
+    },
+    deleteCourse: async (id) => {
       if (!loadSavedCourses(localStorage).some((course) => course.id === id))
         throw new Error('Only saved courses can be deleted');
-      const fallback = await changeCourse(courses[0].id);
+      if (changingCourse) throw new Error('Wait for the current course change to finish');
+      const active = activeDefinition.id === id;
+      const fallback = active ? await changeCourse(courses[0].id) : activeDefinition;
       try {
         deleteSavedCourse(localStorage, id);
       } catch (error) {
-        await changeCourse(id);
+        if (active) await changeCourse(id);
         throw error;
       }
       availableCourses.splice(
@@ -1000,8 +1008,14 @@ async function start() {
       );
       return fallback;
     },
-    ui.getCourseWeights,
-  );
+    playRun: playCourseRun,
+    deleteReplay: (course, reverse, id) => {
+      const key = replayStorageKey({ ...course, reverse });
+      deleteRun(key, id);
+      if (key === storageKey) refreshSavedRuns();
+    },
+    getCourseWeights: ui.getCourseWeights,
+  });
 
   function cycleCamera() {
     const styles = ['corner', 'classic', 'cabin'] as const;
@@ -1041,36 +1055,44 @@ async function start() {
     history.replaceState(null, '', url);
   }
 
+  function syncObservedBot() {
+    const url = new URL(location.href);
+    url.searchParams.set('observed-bot', String(physics.observedBot));
+    history.replaceState(null, '', url);
+    forward.set(0, 0, 1).applyQuaternion(car.chassis.quaternion);
+    drivingCamera.reset(Math.atan2(forward.x, forward.z));
+    tireEffects.reset();
+    audio.reset();
+  }
+
   window.addEventListener('keydown', (event) => {
+    if (inputBindings.isCaptureActive()) return;
     if (dialogOpen) return;
     if (event.target instanceof HTMLSelectElement || event.target instanceof HTMLInputElement)
       return;
-    if (!controlKeys.has(event.code)) return;
+    const action = keyboardActionForCode(event.code);
+    const cycleObservedBot =
+      botsOnly && event.code === 'Tab' && !(event.target instanceof HTMLButtonElement);
+    if (!action && !cycleObservedBot) return;
     if (event.target instanceof HTMLButtonElement && event.code === 'Space') return;
     event.preventDefault();
-    if (event.code === 'KeyR') {
+    if (action === 'reset') {
       if (!event.repeat) reset();
-    } else if (event.code === 'KeyV') {
+    } else if (action === 'camera') {
       if (!event.repeat) cycleCamera();
-    } else if (event.code === 'Tab') {
+    } else if (cycleObservedBot) {
       if (!event.repeat && physics.cycleObservedBot()) {
-        const url = new URL(location.href);
-        url.searchParams.set('observed-bot', String(physics.observedBot));
-        history.replaceState(null, '', url);
-        forward.set(0, 0, 1).applyQuaternion(car.chassis.quaternion);
-        drivingCamera.reset(Math.atan2(forward.x, forward.z));
-        tireEffects.reset();
-        audio.reset();
+        syncObservedBot();
       }
-    } else if (event.code === 'KeyD') {
+    } else if (action === 'driveMode') {
       if (!event.repeat) toggleDriveMode();
-    } else if (event.code === 'KeyM') {
+    } else if (action === 'map') {
       if (!event.repeat) controls.mapView = !controls.mapView;
-    } else if (event.code === 'KeyW') {
+    } else if (action === 'timeOfDay') {
       if (!event.repeat) cycleTimeOfDay();
-    } else if (event.code === 'KeyS') {
+    } else if (action === 'stereo') {
       if (!event.repeat) pressStereo();
-    } else if (event.code === 'KeyU') {
+    } else if (action === 'hud') {
       if (!event.repeat) {
         const level = ui.cycleHudVisibility();
         const url = new URL(location.href);
@@ -1080,12 +1102,16 @@ async function start() {
     } else keys.add(event.code);
   });
   window.addEventListener('keyup', (event) => {
+    if (inputBindings.isCaptureActive()) {
+      keys.clear();
+      return;
+    }
     if (event.target instanceof HTMLInputElement) {
       keys.delete(event.code);
       return;
     }
     if (event.target instanceof HTMLSelectElement) return;
-    if (controlKeys.has(event.code)) {
+    if (keys.has(event.code) || keyboardActionForCode(event.code)) {
       event.preventDefault();
       keys.delete(event.code);
     }
@@ -1111,18 +1137,6 @@ async function start() {
     press: pressLapRecorder,
     seek(time) {
       if (replay && !changingCourse) startReplay(replay.recording, time);
-    },
-    select(id) {
-      selectedRun = id;
-      syncLapRecorder();
-    },
-    remove(id) {
-      try {
-        deleteRun(storageKey, id);
-      } catch (error) {
-        reportLapError('Unable to delete saved laps:', error);
-      }
-      refreshSavedRuns();
     },
   });
   refreshSavedRuns();
@@ -1231,7 +1245,11 @@ async function start() {
       replaying ? [] : physics.botMarkers,
       !botsOnly || replaying,
     );
-    leaderboard.update(physics.standings, physics.raceEntrants);
+    leaderboard.update(
+      physics.standings,
+      physics.raceEntrants,
+      botsOnly ? physics.observedBot : null,
+    );
     // Manifold pressure: closed-throttle vacuum through to full turbo boost.
     const manifoldMmHg =
       THREE.MathUtils.lerp(-550, 0, engine.load) * (1 - engine.boost) + 650 * engine.boost;

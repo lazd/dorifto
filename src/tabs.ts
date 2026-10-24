@@ -5,6 +5,8 @@ export class Tabs {
   constructor(root: HTMLElement) {
     const list = root.querySelector<HTMLElement>('[role="tablist"]');
     if (!list) throw new Error('Tabs require a tablist');
+    const orientation =
+      list.getAttribute('aria-orientation') === 'vertical' ? 'vertical' : 'horizontal';
     this.tabs = [...list.querySelectorAll<HTMLButtonElement>('button[role="tab"]')];
     if (!this.tabs.length) throw new Error('Tabs require at least one tab');
     this.panels = this.tabs.map((tab) => {
@@ -18,9 +20,19 @@ export class Tabs {
         let next: number;
         switch (event.key) {
           case 'ArrowRight':
+            if (orientation !== 'horizontal') return;
             next = (index + 1) % this.tabs.length;
             break;
           case 'ArrowLeft':
+            if (orientation !== 'horizontal') return;
+            next = (index + this.tabs.length - 1) % this.tabs.length;
+            break;
+          case 'ArrowDown':
+            if (orientation !== 'vertical') return;
+            next = (index + 1) % this.tabs.length;
+            break;
+          case 'ArrowUp':
+            if (orientation !== 'vertical') return;
             next = (index + this.tabs.length - 1) % this.tabs.length;
             break;
           case 'Home':

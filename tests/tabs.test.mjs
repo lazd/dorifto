@@ -17,7 +17,7 @@ after(async () => {
   await server?.close();
 });
 
-function fixture() {
+function fixture(orientation = 'horizontal') {
   let focused = null;
   class Element extends EventTarget {
     attributes = new Map();
@@ -47,8 +47,14 @@ function fixture() {
     panel.setAttribute('role', 'tabpanel');
     return panel;
   });
+  const list = {
+    getAttribute(name) {
+      return name === 'aria-orientation' ? orientation : null;
+    },
+    querySelectorAll: () => tabs,
+  };
   const root = {
-    querySelector: () => ({ querySelectorAll: () => tabs }),
+    querySelector: () => list,
     ownerDocument: { getElementById: (id) => panels.find((panel) => panel.id === id) ?? null },
     contains: (node) => panels.includes(node),
   };
@@ -63,6 +69,22 @@ function checkSelected({ tabs, panels }, index) {
     assert.equal(panels[i].getAttribute('aria-labelledby'), tab.id);
   });
 }
+
+test('vertical tablists use Up/Down while horizontal tablists keep Left/Right', () => {
+  const dom = fixture('vertical');
+  new Tabs(dom.root);
+  const wrongAxis = new Event('keydown', { cancelable: true });
+  Object.defineProperty(wrongAxis, 'key', { value: 'ArrowRight' });
+  dom.tabs[0].dispatchEvent(wrongAxis);
+  assert.equal(wrongAxis.defaultPrevented, false);
+  checkSelected(dom, 0);
+  const down = new Event('keydown', { cancelable: true });
+  Object.defineProperty(down, 'key', { value: 'ArrowDown' });
+  dom.tabs[0].dispatchEvent(down);
+  assert.equal(down.defaultPrevented, true);
+  assert.equal(dom.focused(), dom.tabs[1]);
+  checkSelected(dom, 1);
+});
 
 test('defaults to the first tab and initializes ARIA relationships and roving focus', () => {
   const dom = fixture();
