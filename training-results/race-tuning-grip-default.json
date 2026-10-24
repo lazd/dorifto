@@ -25,59 +25,59 @@
     }
   ],
   "tuning": {
-    "corneringGrip": 15.185853388189217,
-    "brakingLimit": 6.7567092878399695,
-    "smallSpeedDrop": 5.736674064471701,
-    "brakeThreshold": 3.368534825018695,
-    "lookaheadTime": 0.1422767266151566,
+    "corneringGrip": 15.329674977406249,
+    "brakingLimit": 6.845606714257082,
+    "smallSpeedDrop": 5.688701928743717,
+    "brakeThreshold": 3.5247561667823266,
+    "lookaheadTime": 0.13154942716413717,
     "edgeMargin": 1.5,
-    "countersteerSlip": 0.08963882858028036,
-    "tractionSlip": 0.06249023285601525
+    "countersteerSlip": 0.09585443011219665,
+    "tractionSlip": 0.07004823898556244
   },
-  "cost": 5.253971415561817,
+  "cost": 5.1636640742396445,
   "times": [
-    30.86430376780405, 30.266765782936385, 14.380082701060948, 36.08977134654857, 120.48741541268127
+    30.739200370253254, 30.032486807533562, 14.337317080131092, 34.07252557133416, 118.7140317361126
   ],
   "results": [
     {
       "failures": 0,
       "failure": null,
-      "lapTime": 30.86430376780405,
+      "lapTime": 30.739200370253254,
       "invalidLaps": 0,
-      "brakesPerLap": 4.111111111111111,
-      "liftsPerLap": 10.333333333333334
+      "brakesPerLap": 3.3333333333333335,
+      "liftsPerLap": 10.888888888888888
     },
     {
       "failures": 0,
       "failure": null,
-      "lapTime": 30.266765782936385,
+      "lapTime": 30.032486807533562,
       "invalidLaps": 0,
-      "brakesPerLap": 3.4444444444444446,
-      "liftsPerLap": 6.4444444444444455
+      "brakesPerLap": 3.5555555555555554,
+      "liftsPerLap": 6
     },
     {
       "failures": 0,
       "failure": null,
-      "lapTime": 14.380082701060948,
+      "lapTime": 14.337317080131092,
       "invalidLaps": 0,
-      "brakesPerLap": 1.6666666666666667,
-      "liftsPerLap": 3.111111111111111
+      "brakesPerLap": 2.3333333333333335,
+      "liftsPerLap": 3.444444444444444
     },
     {
       "failures": 0,
       "failure": null,
-      "lapTime": 36.08977134654857,
+      "lapTime": 34.07252557133416,
       "invalidLaps": 0,
-      "brakesPerLap": 2.8888888888888893,
-      "liftsPerLap": 7.4444444444444455
+      "brakesPerLap": 3,
+      "liftsPerLap": 5.444444444444444
     },
     {
       "failures": 0,
       "failure": null,
-      "lapTime": 120.48741541268127,
+      "lapTime": 118.7140317361126,
       "invalidLaps": 0,
-      "brakesPerLap": 4,
-      "liftsPerLap": 16
+      "brakesPerLap": 5,
+      "liftsPerLap": 15
     }
   ],
   "evaluations": 1
