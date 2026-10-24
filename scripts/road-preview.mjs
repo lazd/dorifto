@@ -61,7 +61,7 @@ function updateCommand() {
     ` --slug ${quote(fields.slug.value)} --name ${quote(fields.name.value)}` +
     ` --venue-name ${quote(fields.venue.value)} --config-name ${quote(fields.config.value)}` +
     ` --width ${Number(fields.width.value)}` +
-    (fields.divider.value === 'double-yellow' ? ' --double-yellow' : '');
+    (fields.divider.value === 'double-yellow' ? ' --double-yellow' : ' --no-double-yellow');
 }
 
 async function copyCommand() {

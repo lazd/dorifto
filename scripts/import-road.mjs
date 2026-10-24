@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createServer } from 'vite';
-import { fetchElevationProfile, roadDistances } from './import-track.mjs';
+import { roadDistances, roadImportDefaults } from './import-track.mjs';
 
 const overpassEndpoint = 'https://overpass-api.de/api/interpreter';
 const geocodingEndpoint = 'https://nominatim.openstreetmap.org/search';
@@ -220,7 +220,11 @@ async function writeRoadPreview(source, output) {
       x: (point.lon - lon) * radians * earthRadius * Math.cos(lat * radians),
       z: (point.lat - lat) * radians * earthRadius,
     }));
-    const svg = roadPreviewSvg(points, 15, { size: 800, padding: 32, title: source.display_name });
+    const svg = roadPreviewSvg(points, roadImportDefaults.width, {
+      size: 800,
+      padding: 32,
+      title: source.display_name,
+    });
     const escape = (text) =>
       text.replace(/[&<>"']/g, (character) => `&#${character.charCodeAt(0)};`);
     const previewScript = await readFile(new URL('./road-preview.mjs', import.meta.url), 'utf8');
@@ -258,8 +262,8 @@ async function writeRoadPreview(source, output) {
     <label>Display name<input id="segment-name" value="${escape(source.display_name)}"></label>
     <label>Venue name<input id="segment-venue" value="${escape(source.display_name)}"></label>
     <label>Configuration name<input id="segment-config" value=""></label>
-    <label>Road width (meters)<input id="segment-width" type="number" min="0.1" step="0.1" value="15"></label>
-    <label>Center divider<select id="segment-divider"><option value="">None</option><option value="double-yellow">Double yellow</option></select></label>
+    <label>Road width (meters)<input id="segment-width" type="number" min="0.1" step="0.1" value="${roadImportDefaults.width}"></label>
+    <label>Center divider<select id="segment-divider"><option value="">None</option><option value="double-yellow" selected>Double yellow</option></select></label>
   </div>
   <textarea id="import-command" readonly aria-label="Import command" data-source="${escape(path.relative(process.cwd(), output.replace(/\.html$/, '.json')))}" data-slug="${escape(source.slug)}"></textarea>
   <button id="copy-command" disabled>Copy import command</button>
@@ -289,7 +293,7 @@ export async function importRoad({
   if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
     throw new Error('Slug must contain only lowercase letters, numbers, and hyphens');
   }
-  console.log(`\n📍 [1/5] Finding ${locationQuery}`);
+  console.log(`\n📍 [1/4] Finding ${locationQuery}`);
   const bbox = await fetchPlaceBoundingBox(locationQuery, fetchImpl, cacheDir);
   const [south, north, west, east] = bbox;
   const latitude = (value) => `${Math.abs(value).toFixed(6)}° ${value < 0 ? 'S' : 'N'}`;
@@ -302,7 +306,7 @@ export async function importRoad({
       `     East:  ${longitude(east)}`,
   );
   const query = buildOverpassQuery(name, bbox);
-  console.log(`\n🛣️  [2/5] Finding ${name}`);
+  console.log(`\n🛣️  [2/4] Finding ${name}`);
   const coordinates = await fetchRoadCoordinates(query, name, locationQuery, fetchImpl, cacheDir);
   if (coordinates.length < 8) {
     throw new Error(`${name}: expected at least 8 coordinates, got ${coordinates.length}`);
@@ -310,6 +314,8 @@ export async function importRoad({
   console.log(
     `  ✅ ${coordinates.length.toLocaleString('en-US')} coordinates ordered from start to finish`,
   );
+  const length = roadDistances(coordinates).at(-1);
+  if (!(length > 0)) throw new Error(`${name}: road has no length`);
 
   const source = {
     slug,
@@ -323,26 +329,18 @@ export async function importRoad({
     featured_lap: { points: coordinates },
   };
   const output = path.join(outDir, `${source.slug}.json`);
-  console.log(`\n📝 [3/5] Saving road source`);
+  console.log(`\n📝 [3/4] Saving road source`);
   await mkdir(outDir, { recursive: true });
   await writeFile(output, `${JSON.stringify(source, null, 2)}\n`);
   console.log(`  💾 ${output}`);
-  console.log(`\n🖼️  [4/5] Generating HTML preview`);
+  console.log(`\n🖼️  [4/4] Generating HTML preview`);
   const previewOutput = path.join(outDir, `${source.slug}.html`);
   await writeRoadPreview(source, previewOutput);
   console.log(`  🔗 ${previewOutput}`);
-  console.log(`\n🏔️  [5/5] Fetching road elevation`);
-  const distances = roadDistances(coordinates);
-  const length = distances.at(-1);
-  if (!(length > 0)) throw new Error(`${name}: road has no length`);
-  source.elevation = await fetchElevationProfile(slug, coordinates, {
-    cacheDir,
-    fetch: fetchImpl,
-    fractions: distances.map((distance) => distance / length),
-  });
-  await writeFile(output, `${JSON.stringify(source, null, 2)}\n`);
-  console.log(`  💾 Elevation saved to ${output}`);
   console.log(`\n✅ ${name} imported successfully (${(length / 1000).toFixed(2)} km, open route)`);
+  console.log(
+    '  👉 Open the HTML preview to select a section before fetching elevation at track import.',
+  );
   console.log(
     `  👉 Import into the game:\n     npm run import-track -- ${path.relative(process.cwd(), output)}`,
   );

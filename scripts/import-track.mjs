@@ -6,8 +6,10 @@ import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { fetchTerrainRaster } from './import-terrain.mjs';
+import { geographicRasterSampler } from '../src/terrain-raster.mjs';
 
 const earthRadius = 6371008.8;
+export const roadImportDefaults = { width: 8, doubleYellow: true };
 const defaults = { width: 15, spacing: 8, elevationSpacing: 5, elevationSmoothing: 15 };
 const elevationEndpoint = 'https://epqs.nationalmap.gov/v1/json';
 const elevationCacheDir = fileURLToPath(
@@ -202,12 +204,27 @@ export async function fetchMissingElevation(
     lat: lat0 + ((z / earthRadius) * 180) / Math.PI,
     lon: lon0 - ((x / (earthRadius * cosLat)) * 180) / Math.PI,
   }));
+  const fractions = coordinates.map(
+    (_, i) => i / (data.closed === false ? coordinates.length - 1 : coordinates.length),
+  );
+  if (data.terrain) {
+    const sample = geographicRasterSampler(data.terrain);
+    console.log(`  🏔️  ${data.slug}: sampling road elevation from terrain raster`);
+    return {
+      ...data,
+      elevation: {
+        source: data.terrain.source,
+        points: coordinates.map(({ lat, lon }, i) => ({
+          dist_frac: fractions[i],
+          altitude_m: sample(lat, lon),
+        })),
+      },
+    };
+  }
   const elevation = await fetchElevationProfile(data.slug, coordinates, {
     cacheDir,
     fetch,
-    fractions: coordinates.map(
-      (_, i) => i / (data.closed === false ? coordinates.length - 1 : coordinates.length),
-    ),
+    fractions,
   });
   return { ...data, elevation };
 }
@@ -322,7 +339,11 @@ export async function fetchElevationProfile(
 }
 
 export function convertTrack(data, options = {}) {
-  const settings = { ...defaults, ...options };
+  const settings = {
+    ...defaults,
+    ...(data.closed === false ? roadImportDefaults : {}),
+    ...options,
+  };
   if (!Number.isFinite(settings.width) || settings.width <= 0)
     throw new Error('--width must be a positive finite number');
   const closed = data.closed !== false;
@@ -418,6 +439,7 @@ function parseArguments(argv) {
     if (argument === '--out-dir') outDir = value();
     else if (argument === '--width') options.width = Number(value());
     else if (argument === '--double-yellow') options.doubleYellow = true;
+    else if (argument === '--no-double-yellow') options.doubleYellow = false;
     else if (argument === '--spacing') options.spacing = Number(value());
     else if (argument === '--start') selection.start = Number(value());
     else if (argument === '--finish') selection.finish = Number(value());
@@ -454,7 +476,7 @@ async function main() {
   );
   if (help || !inputs.length) {
     console.log(
-      'Usage: npm run import-track -- <track.json...> [--start <index> --finish <index>] [--slug <slug>] [--name <name>] [--venue-name <venue>] [--config-name <configuration>] [--terrain] [--terrain-resolution 5] [--terrain-margin 250] [--out-dir src/tracks] [--width 15] [--double-yellow] [--spacing 8]',
+      'Usage: npm run import-track -- <track.json...> [--start <index> --finish <index>] [--slug <slug>] [--name <name>] [--venue-name <venue>] [--config-name <configuration>] [--terrain] [--terrain-resolution 5] [--terrain-margin 250] [--out-dir src/tracks] [--width <m> (roads: 8, circuits: 15)] [--double-yellow | --no-double-yellow] [--spacing 8]',
     );
     if (!help) process.exitCode = 1;
     return;
@@ -462,12 +484,7 @@ async function main() {
   await mkdir(outDir, { recursive: true });
   for (const input of inputs) {
     const source = selectTrackSegment(JSON.parse(await readFile(input, 'utf8')), selection);
-    const data = await fetchMissingElevation(
-      { ...source, ...metadata },
-      source.closed === false
-        ? { cacheDir: fileURLToPath(new URL('../road-imports/cache/', import.meta.url)) }
-        : {},
-    );
+    let data = { ...source, ...metadata };
     if (
       data.closed === false ||
       terrainOptions.enabled ||
@@ -477,6 +494,12 @@ async function main() {
       console.log(`🌄 Fetching surrounding terrain for ${data.display_name ?? data.slug}`);
       data.terrain = await fetchTerrainRaster(data, terrainOptions);
     }
+    data = await fetchMissingElevation(
+      data,
+      source.closed === false
+        ? { cacheDir: fileURLToPath(new URL('../road-imports/cache/', import.meta.url)) }
+        : {},
+    );
     const course = convertTrack(data, options);
     const output = path.join(outDir, `${course.id}.json`);
     await writeFile(output, `${JSON.stringify(course)}\n`);

@@ -469,7 +469,9 @@ npm run import-track -- road-imports/newtown-road.json --start 20 --finish 100 \
 ```
 
 `--start` and `--finish` are zero-based, inclusive source point indices and must
-be supplied together. Segment imports reuse and trim the source elevation profile.
+be supplied together. Elevation and surrounding terrain are fetched only at track
+import, after selecting the segment, so unselected roadway is not sampled.
+Older source files with elevation profiles reuse and trim those profiles.
 Without naming overrides, a segment gets a unique `<source-slug>-<start>-<finish>`
 slug and a `Segment <start>–<finish>` configuration name. Naming/selection options
 apply to a single input file, so separate segments cannot accidentally overwrite
@@ -485,14 +487,14 @@ keyed by the location query or the road query including its bounding box.
 Repeated imports reuse these responses without contacting either service.
 Delete the corresponding cache files to refresh the data. Import logs show each
 step, cache hits and misses, request durations, and the generated output path.
-As its last step, the road importer fetches USGS 3DEP elevation for each original
-road coordinate using the track importer's shared elevation fetcher. Heights are
-saved in the source JSON as an `elevation.points` profile with distance fractions
-from 0 (start) to 1 (finish), without sampling a closing segment. Elevation is
-cached in `road-imports/cache/<slug>.json` and reused when coordinates match.
-An in-place terminal progress line reports completed samples, percentage, and elapsed
+The road importer saves geometry and the HTML preview without fetching elevation.
+Use the preview to choose a section, then run its track-import command to download
+USGS 3DEP terrain for that section and sample road elevation locally from it.
+Importing without a selection downloads terrain covering the entire road.
+Raster-backed imports make no individual elevation point requests.
+For imports without a raster, an in-place terminal progress line reports completed samples, percentage, and elapsed
 time after each batch of up to four requests (redirected output prints only the final
-summary). Failed elevation requests stop the import; the source
+summary). Failed elevation requests stop the track import; the source
 geometry and HTML preview remain available for retrying.
 `display_name` becomes the course `name` (falling back to `slug` if absent);
 `venue_name` and `config_name` are stored as optional `venueName` and `configName`.
@@ -512,9 +514,13 @@ Their elevation uses a Gaussian filter with a 15 m standard deviation and
 monotone cubic interpolation for continuous grades, without wrapping or a seam
 bridge. Raw GPS and cached USGS samples are unchanged. Re-import existing road
 configurations to apply the elevation filter. When elevation
-points are absent or empty, the importer fetches terrain heights from the
+points are absent or empty, raster-backed imports sample absolute heights locally
+at 10 m intervals using the same bilinear interpolation as the game's terrain,
+then apply the road-height smoothing described above. Imports without a raster
+fetch terrain heights from the
 [USGS 3DEP Elevation Point Query Service](https://apps.nationalmap.gov/epqs/)
-at 10 m intervals along the GPS lap, including the closing segment. Supplied
+at 10 m intervals along the selected route, including the closing segment only
+for closed circuits. Supplied
 elevation profiles are preserved; invalid supplied profiles and failed or missing
 USGS results stop the import instead of silently producing a flat road.
 Fetched profiles are cached locally in `src/trackImports/elevation-cache/`, keyed
@@ -522,17 +528,19 @@ by the sampled GPS coordinates, so unchanged laps can be re-imported offline.
 Remove a track's cache file to refresh its elevation. Generated courses identify
 fetched data with `elevationSource: "USGS 3DEP"`. These are terrain estimates, not
 surveyed road heights; coverage and source resolution vary by location.
-Options: `--width <m>` (default 15),
+Options: `--width <m>` (default 8 for open roads, 15 for closed circuits),
 `--spacing <m>` (default 8), and `--out-dir <dir>`.
 Width is the distance between the white edge lines; shoulders are added separately.
+Open roads default to double-yellow center lines; closed circuits default to none.
 Use `--double-yellow` to draw two continuous yellow center lines, following the
 road's curves, elevation, and banking. This is visual only, not a barrier;
-omitting the flag keeps the center unmarked. The HTML segment selector includes
-road width and center-divider controls in its copied import command.
-For example, a two-lane road can use `--width 7.5 --double-yellow`.
+use `--no-double-yellow` to keep the center unmarked. The HTML segment selector
+defaults to 8 m width and double yellow, and includes both controls in its copied
+import command. For example, a narrower road can use `--width 7.5`.
 
-After selecting a segment and fetching any missing centerline elevation, the track
-importer automatically downloads surrounding USGS 3DEP terrain for open roads.
+After selecting a segment, the track importer automatically downloads surrounding
+USGS 3DEP terrain for open roads, then derives any missing centerline elevation
+from that raster. Supplied elevation profiles remain unchanged.
 Closed tracks can opt in with `--terrain`. The default raster spacing is 5 m, with
 a 250 m margin around the selected GPS bounds; configure these with
 `--terrain-resolution <m>` (minimum 1) and `--terrain-margin <m>` (minimum 210).

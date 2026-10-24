@@ -174,8 +174,9 @@ test('imported road width and optional double-yellow lines reach the terrain-dra
       ],
     },
   };
-  assert.equal(convertTrack(source).width, 15);
-  assert.equal(convertTrack(source).doubleYellow, undefined);
+  assert.equal(convertTrack(source).width, 8);
+  assert.equal(convertTrack(source).doubleYellow, true);
+  assert.equal(convertTrack(source, { doubleYellow: false }).doubleYellow, undefined);
   for (const width of [0, -1, NaN, Infinity])
     assert.throws(() => convertTrack(source, { width }), /--width/);
   const imported = convertTrack(source, { width: 7.5, doubleYellow: true });
