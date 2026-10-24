@@ -20,6 +20,10 @@ export interface CourseDefinition {
     lon: number;
   };
   width: number;
+  /** Paved width beyond each white edge line; omitted uses courseShoulderWidth. */
+  shoulderWidth?: number;
+  /** Raster terrain transition distance outside the paved shoulder, in meters. */
+  terrainTransition?: number;
   /** Optional pair of solid yellow lines along the road center. */
   doubleYellow?: boolean;
   coneSpacing?: number;

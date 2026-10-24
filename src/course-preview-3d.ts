@@ -55,7 +55,7 @@ export function createCoursePreviewModel(
       polygonOffset: true,
       polygonOffsetFactor: -1,
     });
-    const halfRoad = definition.width / 2 + courseShoulderWidth;
+    const halfRoad = definition.width / 2 + (definition.shoulderWidth ?? courseShoulderWidth);
     const bounds = new THREE.Box2();
     if (definition.padRadius !== undefined) {
       const pad = new THREE.CircleGeometry(definition.padRadius, 96);

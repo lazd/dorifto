@@ -24,7 +24,7 @@ export class CourseTerrain {
   private readonly padRadius?: number;
 
   constructor(definition: CourseDefinition, buildVisuals = true) {
-    this.halfWidth = definition.width / 2 + courseShoulderWidth;
+    this.halfWidth = definition.width / 2 + (definition.shoulderWidth ?? courseShoulderWidth);
     this.padRadius = definition.padRadius;
     // Driving direction must not change the heightfield or its banking.
     const route = courseRoute({ ...definition, reverse: false });
@@ -112,8 +112,10 @@ export class CourseTerrain {
         const base = terrainBaseHeight(px, pz);
         const hills =
           12 + 9 * Math.sin(px / 48 + 0.6) * Math.cos(pz / 61) + 5 * Math.sin((px - pz) / 83);
-        const blendStart = Math.min(this.halfWidth + 3, 48);
-        const blendEnd = rasterHeight ? this.halfWidth + 18 : Math.min(this.halfWidth + 48, 50);
+        const blendStart = rasterHeight ? this.halfWidth : Math.min(this.halfWidth + 3, 48);
+        const blendEnd = rasterHeight
+          ? this.halfWidth + (definition.terrainTransition ?? 3)
+          : Math.min(this.halfWidth + 48, 50);
         const blend = THREE.MathUtils.smoothstep(near.distance, blendStart, blendEnd);
         // Elevation follows the centerline, not the hillside's cross-slope:
         // positive turns lower the inside (+across) and raise the outside.
@@ -138,11 +140,14 @@ export class CourseTerrain {
             ? Math.hypot(px, pz) - this.padRadius
             : near.distance - this.halfWidth;
         this.heights[i] = height;
-        smoothingWeights[i] = THREE.MathUtils.smoothstep(
-          near.distance,
-          this.halfWidth + 3,
-          this.halfWidth + 18,
-        );
+        smoothingWeights[i] = rasterHeight
+          ? THREE.MathUtils.smoothstep(
+              near.distance,
+              this.halfWidth,
+              this.halfWidth + this.spacing,
+            ) *
+            (1 - THREE.MathUtils.smoothstep(near.distance, blendEnd, blendEnd + this.spacing * 2))
+          : THREE.MathUtils.smoothstep(near.distance, this.halfWidth + 3, this.halfWidth + 18);
         min = Math.min(min, height);
         max = Math.max(max, height);
         positions.push(px, this.heights[i], pz);
@@ -151,9 +156,10 @@ export class CourseTerrain {
         colors.push(shade, shade * 0.98, shade * 0.91);
       }
     }
-    // Smooth infield seams without changing pavement or its immediate shoulder.
+    // Raster smoothing is confined to the roadside blend; preserve pavement and distant survey heights.
     const smoothed = new Float32Array(this.heights.length);
-    for (let pass = 0; pass < 12 && !definition.flat; pass++) {
+    const smoothingPasses = rasterHeight ? 4 : 12;
+    for (let pass = 0; pass < smoothingPasses && !definition.flat; pass++) {
       smoothed.set(this.heights);
       for (let z = 1; z < this.rows - 1; z++) {
         for (let x = 1; x < this.columns - 1; x++) {

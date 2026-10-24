@@ -9,7 +9,7 @@ const copyStatus = document.querySelector('#copy-status');
 const command = document.querySelector('#import-command');
 const copyButton = document.querySelector('#copy-command');
 const fields = Object.fromEntries(
-  ['slug', 'name', 'venue', 'config', 'width', 'divider'].map((key) => [
+  ['slug', 'name', 'venue', 'config', 'width', 'shoulder', 'transition', 'divider'].map((key) => [
     key,
     document.querySelector(`#segment-${key}`),
   ]),
@@ -48,12 +48,17 @@ function updateCommand() {
     /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(fields.slug.value) &&
     ['name', 'venue', 'config'].every((key) => fields[key].value.trim()) &&
     Number.isFinite(Number(fields.width.value)) &&
-    Number(fields.width.value) > 0;
+    Number(fields.width.value) > 0 &&
+    fields.shoulder.value.trim() !== '' &&
+    Number.isFinite(Number(fields.shoulder.value)) &&
+    Number(fields.shoulder.value) >= 0 &&
+    Number.isFinite(Number(fields.transition.value)) &&
+    Number(fields.transition.value) > 0;
   copyButton.disabled = !valid;
   if (!valid) {
     command.value = '';
     copyStatus.textContent =
-      'Provide a lowercase hyphenated slug, nonempty names, and a positive road width.';
+      'Provide a lowercase hyphenated slug, nonempty names, positive road width and terrain transition, and a nonnegative shoulder width.';
     return;
   }
   command.value =
@@ -61,6 +66,8 @@ function updateCommand() {
     ` --slug ${quote(fields.slug.value)} --name ${quote(fields.name.value)}` +
     ` --venue-name ${quote(fields.venue.value)} --config-name ${quote(fields.config.value)}` +
     ` --width ${Number(fields.width.value)}` +
+    ` --shoulder-width ${Number(fields.shoulder.value)}` +
+    ` --terrain-transition ${Number(fields.transition.value)}` +
     (fields.divider.value === 'double-yellow' ? ' --double-yellow' : ' --no-double-yellow');
 }
 

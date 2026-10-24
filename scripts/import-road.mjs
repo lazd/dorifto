@@ -263,6 +263,8 @@ async function writeRoadPreview(source, output) {
     <label>Venue name<input id="segment-venue" value="${escape(source.display_name)}"></label>
     <label>Configuration name<input id="segment-config" value=""></label>
     <label>Road width (meters)<input id="segment-width" type="number" min="0.1" step="0.1" value="${roadImportDefaults.width}"></label>
+    <label>Paved shoulder width (meters per side)<input id="segment-shoulder" type="number" min="0" step="0.1" value="1.6"></label>
+    <label>Terrain transition (meters)<input id="segment-transition" type="number" min="0.1" step="0.1" value="3"></label>
     <label>Center divider<select id="segment-divider"><option value="">None</option><option value="double-yellow" selected>Double yellow</option></select></label>
   </div>
   <textarea id="import-command" readonly aria-label="Import command" data-source="${escape(path.relative(process.cwd(), output.replace(/\.html$/, '.json')))}" data-slug="${escape(source.slug)}"></textarea>

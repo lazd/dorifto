@@ -220,7 +220,13 @@ function buildCourse(scene: THREE.Group, definition: CourseDefinition, carWidth:
     pad.name = 'skidpad-asphalt';
     pad.receiveShadow = true;
     scene.add(pad);
-  } else ribbon(0, definition.width + courseShoulderWidth * 2, 0.008, asphalt);
+  } else
+    ribbon(
+      0,
+      definition.width + (definition.shoulderWidth ?? courseShoulderWidth) * 2,
+      0.008,
+      asphalt,
+    );
   for (const side of [-1, 1]) ribbon((side * definition.width) / 2, courseLineWidth, 0.016, white);
   if (definition.doubleYellow) {
     const yellow = new THREE.MeshBasicMaterial({ color: 0xffd32a, side: THREE.DoubleSide });

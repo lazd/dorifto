@@ -36,6 +36,10 @@ test('road preview needs no elevation; track import fetches only the selected se
   assert.match(preview, /id="segment-width"[^>]*value="8"/);
   assert.match(preview, /value="double-yellow" selected/);
   assert.ok(preview.includes('--no-double-yellow'));
+  assert.match(preview, /id="segment-shoulder"[^>]*value="1.6"/);
+  assert.match(preview, /id="segment-transition"[^>]*value="3"/);
+  assert.ok(preview.includes('--shoulder-width'));
+  assert.ok(preview.includes('--terrain-transition'));
   let requests = 0;
   const selected = await fetchMissingElevation(
     selectTrackSegment(source, { start: 2, finish: 4 }),

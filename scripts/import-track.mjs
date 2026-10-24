@@ -346,6 +346,16 @@ export function convertTrack(data, options = {}) {
   };
   if (!Number.isFinite(settings.width) || settings.width <= 0)
     throw new Error('--width must be a positive finite number');
+  if (
+    settings.shoulderWidth !== undefined &&
+    (!Number.isFinite(settings.shoulderWidth) || settings.shoulderWidth < 0)
+  )
+    throw new Error('--shoulder-width must be a nonnegative finite number');
+  if (
+    settings.terrainTransition !== undefined &&
+    (!Number.isFinite(settings.terrainTransition) || settings.terrainTransition <= 0)
+  )
+    throw new Error('--terrain-transition must be a positive finite number');
   const closed = data.closed !== false;
   const { unique, lat0, lon0, cosLat } = projectLap(data);
   const { points, length } = resampleLoop(unique, settings.spacing, closed);
@@ -403,6 +413,10 @@ export function convertTrack(data, options = {}) {
     configName: data.config_name,
     location: data.location,
     width: settings.width,
+    ...(settings.shoulderWidth !== undefined ? { shoulderWidth: settings.shoulderWidth } : {}),
+    ...(settings.terrainTransition !== undefined
+      ? { terrainTransition: settings.terrainTransition }
+      : {}),
     ...(settings.doubleYellow ? { doubleYellow: true } : {}),
     coneSpacing: 10,
     points: points.map(([x, z]) => [round(x, 2), round(z, 2)]),
@@ -438,6 +452,8 @@ function parseArguments(argv) {
     };
     if (argument === '--out-dir') outDir = value();
     else if (argument === '--width') options.width = Number(value());
+    else if (argument === '--shoulder-width') options.shoulderWidth = Number(value());
+    else if (argument === '--terrain-transition') options.terrainTransition = Number(value());
     else if (argument === '--double-yellow') options.doubleYellow = true;
     else if (argument === '--no-double-yellow') options.doubleYellow = false;
     else if (argument === '--spacing') options.spacing = Number(value());
@@ -459,6 +475,16 @@ function parseArguments(argv) {
     if (number !== undefined && (!Number.isFinite(number) || number <= 0))
       throw new Error(`--${key} must be a positive finite number`);
   }
+  if (
+    options.shoulderWidth !== undefined &&
+    (!Number.isFinite(options.shoulderWidth) || options.shoulderWidth < 0)
+  )
+    throw new Error('--shoulder-width must be a nonnegative finite number');
+  if (
+    options.terrainTransition !== undefined &&
+    (!Number.isFinite(options.terrainTransition) || options.terrainTransition <= 0)
+  )
+    throw new Error('--terrain-transition must be a positive finite number');
   if (metadata.slug !== undefined && !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(metadata.slug))
     throw new Error('--slug must contain lowercase letters, numbers, and hyphens');
   if ((Object.keys(metadata).length || Object.keys(selection).length) && inputs.length > 1)
@@ -476,7 +502,7 @@ async function main() {
   );
   if (help || !inputs.length) {
     console.log(
-      'Usage: npm run import-track -- <track.json...> [--start <index> --finish <index>] [--slug <slug>] [--name <name>] [--venue-name <venue>] [--config-name <configuration>] [--terrain] [--terrain-resolution 5] [--terrain-margin 250] [--out-dir src/tracks] [--width <m> (roads: 8, circuits: 15)] [--double-yellow | --no-double-yellow] [--spacing 8]',
+      'Usage: npm run import-track -- <track.json...> [--start <index> --finish <index>] [--slug <slug>] [--name <name>] [--venue-name <venue>] [--config-name <configuration>] [--terrain] [--terrain-resolution 5] [--terrain-margin 250] [--terrain-transition 3] [--out-dir src/tracks] [--width <m> (roads: 8, circuits: 15)] [--shoulder-width 1.6] [--double-yellow | --no-double-yellow] [--spacing 8]',
     );
     if (!help) process.exitCode = 1;
     return;

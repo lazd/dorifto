@@ -530,12 +530,14 @@ fetched data with `elevationSource: "USGS 3DEP"`. These are terrain estimates, n
 surveyed road heights; coverage and source resolution vary by location.
 Options: `--width <m>` (default 8 for open roads, 15 for closed circuits),
 `--spacing <m>` (default 8), and `--out-dir <dir>`.
-Width is the distance between the white edge lines; shoulders are added separately.
+Width is the distance between the white edge lines. `--shoulder-width <m>` sets
+the paved shoulder beyond each line (default 1.6 m per side; accepts zero).
+For a road with pavement ending at the white lines, use `--shoulder-width 0`.
 Open roads default to double-yellow center lines; closed circuits default to none.
 Use `--double-yellow` to draw two continuous yellow center lines, following the
 road's curves, elevation, and banking. This is visual only, not a barrier;
 use `--no-double-yellow` to keep the center unmarked. The HTML segment selector
-defaults to 8 m width and double yellow, and includes both controls in its copied
+defaults to 8 m width and double yellow, and includes width, shoulder, and divider controls in its copied
 import command. For example, a narrower road can use `--width 7.5`.
 
 After selecting a segment, the track importer automatically downloads surrounding
@@ -557,6 +559,15 @@ The generated course embeds the geographic raster and elevation datum, so the ga
 does not fetch terrain or depend on the local cache. Terrain follows real hillsides
 and dropoffs outside the smoothed pavement and shoulders. Older courses without a
 raster retain their existing procedural surroundings; re-import to add real terrain.
+Raster-backed terrain begins blending immediately outside the paved shoulder and
+returns fully to raster heights within `--terrain-transition <m>` (default 3 m;
+must be positive). Four local smoothing passes soften grid-aligned roadside
+facets without modifying pavement vertices or distant raster heights. Smoothing
+fades out over a 3 m collar beyond the transition. The preview includes
+this setting in its copied import command.
+Rendering and physics use the same heightfield. Non-raster terrain keeps its existing
+wider transition and smoothing. Existing courses retain 1.6 m shoulders unless
+re-imported with `--shoulder-width`.
 
 Imported-track terrain banking is blended over 50 m around the closed loop, preventing small
 GPS stitching S-bends from creating abrupt cross-slope bumps at start/finish.

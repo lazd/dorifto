@@ -130,6 +130,67 @@ test('terrain sampling preserves geographic orientation, height datum, and rever
       ),
       /Invalid terrain/,
     );
+    const { CourseTerrain } = await server.ssrLoadModule('/src/terrain.ts');
+    const narrow = new CourseTerrain({ ...course, shoulderWidth: 0 }, false);
+    const wide = new CourseTerrain({ ...course, shoulderWidth: 8 }, false);
+    const gradual = new CourseTerrain(
+      { ...course, shoulderWidth: 0, terrainTransition: 12 },
+      false,
+    );
+    try {
+      const { courseProfileHeight } = await server.ssrLoadModule('/src/courses.ts');
+      const raw = new Float32Array(narrow.heights.length);
+      let samples = 0;
+      for (let z = 0; z < narrow.rows; z++) {
+        for (let x = 0; x < narrow.columns; x++) {
+          const px = narrow.minX + x * narrow.spacing;
+          const pz = narrow.minZ + z * narrow.spacing;
+          const near = narrow.nearest(px, pz);
+          const t = Math.max(0, Math.min(1, (near.distance - course.width / 2) / 3));
+          const blend = t * t * (3 - 2 * t);
+          const road =
+            courseProfileHeight(course.elevation, near.fraction, false) + near.bank * near.across;
+          const i = z * narrow.columns + x;
+          raw[i] = road + (sample(px, pz) - road) * blend;
+          if (near.distance <= course.width / 2)
+            assert.equal(narrow.heights[i], raw[i], 'smoothing must not modify pavement vertices');
+          if (near.distance < course.width / 2 + 6 || near.distance > course.width / 2 + 8)
+            continue;
+          assert.ok(Math.abs(narrow.heights[z * narrow.columns + x] - sample(px, pz)) < 1e-4);
+          samples++;
+        }
+      }
+      assert.ok(samples > 0, 'raster heights beyond the blend smoothing collar remain unchanged');
+      let before = 0;
+      let after = 0;
+      for (let z = 1; z < narrow.rows - 1; z++) {
+        for (let x = 1; x < narrow.columns - 1; x++) {
+          const i = z * narrow.columns + x;
+          for (const step of [1, narrow.columns]) {
+            before += (raw[i - step] - 2 * raw[i] + raw[i + step]) ** 2;
+            after +=
+              (narrow.heights[i - step] - 2 * narrow.heights[i] + narrow.heights[i + step]) ** 2;
+          }
+        }
+      }
+      assert.ok(after < before, `roadside curvature energy must decrease: ${before} -> ${after}`);
+      assert.ok(
+        narrow.heights.some((height, i) => Math.abs(height - wide.heights[i]) > 0.1),
+        'shoulder width changes the protected pavement area',
+      );
+      assert.ok(
+        narrow.heights.some((height, i) => Math.abs(height - gradual.heights[i]) > 0.1),
+        'terrain transition changes the roadside blend',
+      );
+    } finally {
+      for (const terrain of [narrow, wide, gradual]) {
+        for (const mesh of [terrain.mesh, terrain.grass]) {
+          mesh.geometry.dispose();
+          mesh.material.dispose();
+        }
+        terrain.grass.dispose();
+      }
+    }
     assert.throws(
       () => terrainRasterSampler({ ...course.terrain, heights: [] }),
       /Invalid terrain/,
