@@ -140,9 +140,10 @@ export class DrivingControls {
     const button = (action: ControllerAction) => pad?.buttons[bindings.controller.buttons[action]];
     const pressed = (action: ControllerAction) => Boolean(button(action)?.pressed);
     const value = (action: ControllerAction) => {
+      const input = button(action);
       const triggerValue = Math.max(
         0,
-        Math.min(1, Math.max(button(action)?.value ?? 0, Number(pressed(action)))),
+        Math.min(1, input?.value ?? Number(input?.pressed ?? false)),
       );
       return Math.max(0, (triggerValue - TRIGGER_DEADZONE) / (1 - TRIGGER_DEADZONE));
     };

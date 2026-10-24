@@ -107,6 +107,59 @@ test('runtime reads remapped keyboard, controller buttons, and map axes from the
   assert.equal(r.controls.steer, 1, 'keyboard steering uses the remapped code');
 });
 
+test('pedals preserve analog values across the pressed threshold in both directions', (t) => {
+  const r = rig(t);
+  const { buttons } = inputBindings.get().controller;
+  for (const direction of [1, -1]) {
+    for (let step = 0; step <= 100; step++) {
+      const value = (direction === 1 ? step : 100 - step) / 100;
+      for (const action of ['accelerate', 'brake']) {
+        r.pad.buttons[buttons[action]] = { value, pressed: value > 0.5 };
+      }
+      r.poll();
+      assert.equal(r.controls.throttle, value);
+      assert.equal(r.controls.brake, value);
+      assert.equal(r.controls.reverse, value);
+    }
+  }
+});
+
+test('keyboard pedals override analog input only while held', (t) => {
+  const r = rig(t);
+  const { keyboard, controller } = inputBindings.get();
+  r.pad.buttons[controller.buttons.accelerate] = { value: 0.25, pressed: true };
+  r.pad.buttons[controller.buttons.brake] = { value: 0.75, pressed: true };
+  r.controls.keys.add(keyboard.accelerate);
+  r.controls.keys.add(keyboard.brake);
+  r.poll();
+  assert.equal(r.controls.throttle, 1);
+  assert.equal(r.controls.brake, 1);
+  assert.equal(r.controls.reverse, 1);
+  r.controls.keys.clear();
+  r.poll();
+  assert.equal(r.controls.throttle, 0.25);
+  assert.equal(r.controls.brake, 0.75);
+  assert.equal(r.controls.reverse, 0.75);
+});
+
+test('pedals support digital bindings without an analog value and release on disconnect', (t) => {
+  const r = rig(t);
+  const { buttons } = inputBindings.get().controller;
+  for (const pressed of [true, false, true]) {
+    r.pad.buttons[buttons.accelerate] = { pressed };
+    r.pad.buttons[buttons.brake] = { pressed };
+    r.poll();
+    assert.equal(r.controls.throttle, Number(pressed));
+    assert.equal(r.controls.brake, Number(pressed));
+    assert.equal(r.controls.reverse, Number(pressed));
+  }
+  r.pad.connected = false;
+  r.poll();
+  assert.equal(r.controls.throttle, 0);
+  assert.equal(r.controls.brake, 0);
+  assert.equal(r.controls.reverse, 0);
+});
+
 for (const keyboard of [true, false]) {
   const input = keyboard ? 'F' : 'left bumper';
   test(`${input}: short presses flash; holding 1 second toggles high beams once`, (t) => {

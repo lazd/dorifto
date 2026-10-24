@@ -617,7 +617,9 @@ motion, then engages reverse only near a stop; release LT to leave reverse.
 Reverse is limited to 35 km/h. Keyboard X also brakes into reverse near a stop;
 release X to leave reverse, or press Z to switch to forward drive. Sticks use a
 rescaled deadzone to avoid drift, and trigger values control torque/brake force
-proportionally. Keyboard inputs remain available alongside the controller.
+continuously across their full range; crossing the controller's digital press
+threshold does not force full throttle or braking. Keyboard pedals remain on/off
+and available alongside the controller.
 Disconnecting releases controller inputs immediately, and losing focus releases
 all controls until the game regains focus.
 
