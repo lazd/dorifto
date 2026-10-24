@@ -6,10 +6,10 @@
     <meta name="theme-color" content="#10191f" />
     <meta name="referrer" content="no-referrer" />
     <title>Dorifto — Z32 Playground</title>
-    <script type="module" crossorigin src="./assets/index-T7UXXcUf.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-CEiwDgYv.css">
+    <script type="module" crossorigin src="./assets/index-iRm_4do-.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-8AP8gZuh.css">
   </head>
-  <body class="loading" hidden>
+  <body hidden>
     <div id="app"></div>
     <div id="status" role="status">
       <span id="status-message"></span>
@@ -32,7 +32,7 @@
         ×
       </button>
     </div>
-    <aside class="course-hud" aria-label="Course map and options">
+    <aside class="course-hud hide-when-loading" aria-label="Course map and options">
       <button
         id="minimap"
         class="minimap"
@@ -115,7 +115,7 @@
         </div>
       </div>
     </aside>
-    <div class="lap-recorder" hidden>
+    <div class="lap-recorder hide-when-loading">
       <button id="lap-recorder-button" type="button" data-mode="off">
         <span class="lap-recorder-icon" aria-hidden="true"></span>
         <span id="lap-recorder-label">REC</span>
@@ -154,7 +154,7 @@
         </button>
       </span>
     </div>
-    <aside class="telemetry" aria-label="Driving information">
+    <aside class="telemetry hide-when-loading" aria-label="Driving information">
       <div
         id="tachometer"
         role="meter"
@@ -299,7 +299,7 @@
         </button>
       </div>
     </dialog>
-    <header>
+    <header class="hide-when-loading">
       <div class="controls">
         <button
           id="settings"
@@ -517,6 +517,10 @@
         <dd>Toggle Grip / Drift mode</dd>
         <dt><kbd>M</kbd></dt>
         <dd>Toggle bird's-eye map view</dd>
+        <dt><kbd>U</kbd></dt>
+        <dd>
+          Hide tach, then map, then leaderboard, then all HUD; press again to restore (?hide-ui=0–4)
+        </dd>
         <dt><kbd>W</kbd></dt>
         <dd>Cycle time of day: noon, sunset, night (once per press)</dd>
         <dt><kbd>S</kbd></dt>
