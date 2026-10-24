@@ -8,7 +8,7 @@ import {
   courseRoute,
   courseShoulderWidth,
 } from './courses';
-import { surfaceMaterial } from './surfaces';
+import { roadDirtMaterial, surfaceMaterial } from './surfaces';
 import { CourseTerrain } from './terrain';
 import { courseTurnSignPlacements, createTurnSignFactory, type TurnSignMode } from './turn-sign';
 import { createTrainingGates } from './racing-line';
@@ -183,7 +183,7 @@ function buildCourse(scene: THREE.Group, definition: CourseDefinition, carWidth:
         const point = center.clone().addScaledVector(across, offset + edge);
         positions.push(point.x, height, point.z);
         uvs.push(point.x / 5, point.z / 5);
-        lateral.push(edge);
+        lateral.push(offset + edge);
       }
     }
     const indices: number[] = [];
@@ -203,13 +203,7 @@ function buildCourse(scene: THREE.Group, definition: CourseDefinition, carWidth:
     scene.add(mesh);
     return mesh;
   }
-  const asphalt = surfaceMaterial(
-    'asphalt',
-    1,
-    definition.padRadius === undefined
-      ? definition.width / 2 + (definition.shoulderWidth ?? courseShoulderWidth)
-      : undefined,
-  );
+  const asphalt = surfaceMaterial('asphalt');
   asphalt.polygonOffset = true;
   asphalt.polygonOffsetFactor = 1;
   asphalt.polygonOffsetUnits = 1;
@@ -356,6 +350,19 @@ function buildCourse(scene: THREE.Group, definition: CourseDefinition, carWidth:
     curbs.receiveShadow = true;
     scene.add(curbs);
   });
+  // Dirt washes in from beyond the pavement or kerbs, whichever reaches further, with drifts
+  // long enough to cross the edge line.
+  const dirtEdge =
+    definition.width / 2 + Math.max(definition.shoulderWidth ?? courseShoulderWidth, 0.8);
+  const dirtReach = dirtEdge - definition.width / 2 + 0.35;
+  const dirt = definition.padRadius === undefined && roadDirtMaterial(dirtEdge, dirtReach);
+  if (dirt)
+    for (const side of [-1, 1]) {
+      const stripWidth = dirtReach + 1.4;
+      const strip = ribbon(side * (dirtEdge + 0.6 - stripWidth / 2), stripWidth, 0.03, dirt);
+      strip.name = 'road-edge-dirt';
+      strip.renderOrder = 1;
+    }
   return {
     cones,
     cornerCones,

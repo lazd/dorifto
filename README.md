@@ -580,6 +580,9 @@ outside the paved shoulder so hillside vertices cannot lift triangles crossing
 the pavement edge. This does not widen the asphalt. Terrain blends after that collar and
 returns fully to raster heights within `--terrain-transition <m>` (default 3 m;
 must be positive); the preview includes this setting in its copied import command.
+Where the raster rises or falls more than that beside the road, the transition widens
+to match the height difference, up to 8 m, so walls and drops start with a rounded foot
+instead of a crease. The cap keeps blends from switchback legs from meeting.
 Roadside raster heights are not grid-smoothed; each vertex samples
 the anti-aliased raster blend at its own position.
 Within 20 m of the pavement, raster terrain splits each 1.5 m grid cell along the
@@ -1178,7 +1181,8 @@ Terrain uses ambientCG Rock030, Ground037, and Grass004 CC0 scanned materials,
 with separate 1024px color, OpenGL normal, and roughness maps. Soil blends into
 rock on steep slopes and grass on gentler ground. A ragged brown dirt verge runs
 2.5–5 m out from the pavement and washes 0.1–0.9 m onto the asphalt's outer edge in
-drifts and loose grains, so the paving edge isn't a clean line. Rock is tinted tan so cut banks read as earth rather
+drifts and loose grains, drawn as a transparent overlay above edge lines, kerbs, and the
+start/finish line so the paving edge isn't a clean line. Rock is tinted tan so cut banks read as earth rather
 than gray stone. Maps load before the first course;
 download failures stop loading with the normal startup error rather than silently
 substituting textures. Headless training retains procedural surfaces without image loading.

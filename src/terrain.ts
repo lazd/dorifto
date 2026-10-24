@@ -117,14 +117,12 @@ export class CourseTerrain {
     const blendStart = rasterHeight
       ? this.halfWidth + supportWidth
       : Math.min(this.halfWidth + 3, 48);
-    const blendEnd = rasterHeight
-      ? blendStart + (definition.terrainTransition ?? 3)
-      : Math.min(this.halfWidth + 48, 50);
+    const blendEnd = Math.min(this.halfWidth + 48, 50);
+    const transition = definition.terrainTransition ?? 3;
     const vertex = (i: number, px: number, pz: number, near = this.nearest(px, pz)) => {
       const base = terrainBaseHeight(px, pz);
       const hills =
         12 + 9 * Math.sin(px / 48 + 0.6) * Math.cos(pz / 61) + 5 * Math.sin((px - pz) / 83);
-      const blend = THREE.MathUtils.smoothstep(near.distance, blendStart, blendEnd);
       // Elevation follows the centerline, not the hillside's cross-slope:
       // positive turns lower the inside (+across) and raise the outside.
       const road =
@@ -143,9 +141,13 @@ export class CourseTerrain {
         this.padRadius !== undefined
           ? Math.hypot(px, pz) - this.padRadius
           : near.distance - this.halfWidth;
+      const rise = ground * elevationScale - road;
+      const end = rasterHeight
+        ? blendStart + Math.max(transition, Math.min(Math.abs(rise), maxTerrainTransition))
+        : blendEnd;
       this.heights[i] = definition.flat
         ? 0
-        : THREE.MathUtils.lerp(road, ground * elevationScale, blend);
+        : road + rise * THREE.MathUtils.smoothstep(near.distance, blendStart, end);
       smoothingWeights[i] = THREE.MathUtils.smoothstep(
         near.distance,
         this.halfWidth + 3,
@@ -167,7 +169,7 @@ export class CourseTerrain {
       rasterHeight && !definition.flat && this.padRadius === undefined
         ? new Map<number, Point>()
         : undefined;
-    const snapLines = Math.ceil((blendEnd - blendStart) / this.spacing);
+    const snapLines = Math.ceil(Math.max(transition, maxTerrainTransition) / this.spacing);
     for (let i = 0; i < this.heights.length; i++) {
       const px = this.minX + (i % this.columns) * this.spacing;
       const pz = this.minZ + Math.floor(i / this.columns) * this.spacing;
@@ -744,6 +746,10 @@ function profileSurroundings(samples: { x: number; z: number; height: number }[]
 }
 
 const contourCorridor = 20;
+// Raster walls beside the road need a transition at least as wide as they are tall, or the
+// climb squeezes into a crease at their foot. Wider blends could reach past the midpoint
+// between switchback legs, where the nearest road and its height change.
+export const maxTerrainTransition = 8;
 
 /** Whether each of a cell's diagonals (unflipped, flipped) yields two upright triangles. */
 function cellSplits(positions: Float32Array, a: number, b: number, c: number, d: number) {

@@ -138,7 +138,7 @@ test('terrain sampling preserves geographic orientation, height datum, and rever
       ),
       /Invalid terrain/,
     );
-    const { CourseTerrain } = await server.ssrLoadModule('/src/terrain.ts');
+    const { CourseTerrain, maxTerrainTransition } = await server.ssrLoadModule('/src/terrain.ts');
     const narrow = new CourseTerrain({ ...course, shoulderWidth: 0 }, false);
     const wide = new CourseTerrain({ ...course, shoulderWidth: 8 }, false);
     const gradual = new CourseTerrain(
@@ -218,10 +218,12 @@ test('terrain sampling preserves geographic orientation, height datum, and rever
         const { x: px, z: pz } = vertexPosition(data, i);
         const near = narrow.nearest(px, pz);
         if (near.distance > blendStart + 8) continue;
-        const t = Math.max(0, Math.min(1, (near.distance - blendStart) / 3));
         const road =
           courseProfileHeight(course.elevation, near.fraction, false) + near.bank * near.across;
-        const expected = road + (sample(px, pz) - road) * t * t * (3 - 2 * t);
+        const rise = sample(px, pz) - road;
+        const width = Math.max(3, Math.min(Math.abs(rise), maxTerrainTransition));
+        const t = Math.max(0, Math.min(1, (near.distance - blendStart) / width));
+        const expected = road + rise * t * t * (3 - 2 * t);
         assert.ok(
           Math.abs(narrow.heights[i] - expected) < 1e-3,
           'roadside vertices follow the blend at their own position without grid smoothing',

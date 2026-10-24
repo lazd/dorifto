@@ -45,14 +45,61 @@ export async function loadTerrainSurfaces() {
 }
 
 /**
- * `roadHalfWidth` lets roadside dirt spill irregularly over the outer pavement edge of a
- * ribbon whose geometry carries a signed `lateral` distance from its centerline.
+ * Transparent overlay of dirt washed inward from `outerEdge` (distance from the centerline)
+ * in drifts reaching up to `maxReach`, with loose grains beyond. Its geometry carries a signed
+ * `lateral` distance from the road centerline; it draws above lines, kerbs, and gates.
+ * Undefined without scanned soil (headless builds).
  */
-export function surfaceMaterial(
-  surface: 'asphalt' | TerrainSurface,
-  repeats = 1,
-  roadHalfWidth?: number,
-) {
+export function roadDirtMaterial(outerEdge: number, maxReach: number) {
+  const soil = terrainMaps.get('gravel')?.[0];
+  if (!soil) return undefined;
+  const map = soil.clone();
+  map.repeat.setScalar(1 / 0.6);
+  const material = new THREE.MeshStandardMaterial({
+    map,
+    roughness: 1,
+    transparent: true,
+    depthWrite: false,
+  });
+  material.defines = { DIRT_EDGE: outerEdge.toFixed(3), DIRT_REACH: maxReach.toFixed(3) };
+  material.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader
+      .replace(
+        '#include <common>',
+        '#include <common>\nattribute float lateral;\nvarying float vLateral;',
+      )
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvLateral = lateral;');
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        '#include <common>',
+        `#include <common>
+        varying float vLateral;
+        ${terrainNoiseGlsl}`,
+      )
+      .replace(
+        '#include <map_fragment>',
+        `vec2 roadWorld = vMapUv * 0.6 * 5.0;
+        float edgeDistance = DIRT_EDGE - abs(vLateral);
+        float drift = terrainNoise(roadWorld * 0.7) * 0.65 +
+          terrainNoise(roadWorld * 3.1 + vec2(4.7, 1.3)) * 0.35;
+        float reach = 0.15 + drift * DIRT_REACH;
+        float grains = step(0.82, terrainNoise(roadWorld * 23.0)) *
+          (1.0 - smoothstep(reach, reach + 0.5, edgeDistance));
+        float cover = max(1.0 - smoothstep(reach - 0.12, reach + 0.04, edgeDistance),
+          grains * 0.8);
+        // Fade out past the edge so the overlay blends into the terrain's own dirt.
+        cover *= 1.0 - smoothstep(0.0, 0.6, -edgeDistance);
+        if (cover < 0.01) discard;
+        diffuseColor.rgb *= roadDirt(texture2D(map, vMapUv).rgb);
+        diffuseColor.a *= cover;`,
+      );
+  };
+  material.customProgramCacheKey = () => 'road-dirt';
+  material.addEventListener('dispose', () => map.dispose());
+  return material;
+}
+
+export function surfaceMaterial(surface: 'asphalt' | TerrainSurface, repeats = 1) {
   const scanned = surface === 'asphalt' ? undefined : terrainMaps.get(surface);
   if (scanned) {
     const [map, normalMap, roughnessMap] = scanned.map((texture) => {
@@ -165,67 +212,16 @@ export function surfaceMaterial(
       roughnessMap,
       roughness: 1,
     });
-    const soilMap = terrainMaps.get('gravel')?.[0];
-    if (soilMap && roadHalfWidth !== undefined)
-      material.defines = { ROAD_DIRT: '', ROAD_HALF_WIDTH: roadHalfWidth.toFixed(3) };
     material.onBeforeCompile = (shader) => {
-      shader.uniforms.soilMap = { value: soilMap };
-      shader.vertexShader = shader.vertexShader
-        .replace(
-          '#include <common>',
-          `#include <common>
-          #ifdef ROAD_DIRT
-            attribute float lateral;
-            varying float vLateral;
-          #endif`,
-        )
-        .replace(
-          '#include <begin_vertex>',
-          `#include <begin_vertex>
-          #ifdef ROAD_DIRT
-            vLateral = lateral;
-          #endif`,
-        );
-      shader.fragmentShader = shader.fragmentShader
-        .replace(
-          '#include <common>',
-          `#include <common>
-          #ifdef ROAD_DIRT
-            uniform sampler2D soilMap;
-            varying float vLateral;
-            ${terrainNoiseGlsl}
-          #endif`,
-        )
-        .replace(
-          '#include <map_fragment>',
-          `#include <map_fragment>
-          #ifdef USE_MAP
-            vec3 weathering = texture2D(map, vMapUv * 0.073).rgb;
-            float wear = smoothstep(0.035, 0.065, dot(weathering, vec3(0.333333)));
-            diffuseColor.rgb *= mix(0.92, 1.08, wear);
-          #endif
-          #ifdef ROAD_DIRT
-            // Dirt washes 0.1-0.9 m onto the pavement in drifts, with loose grains beyond.
-            vec2 roadWorld = vMapUv * 5.0;
-            float edgeDistance = ROAD_HALF_WIDTH - abs(vLateral);
-            float drift = terrainNoise(roadWorld * 0.7) * 0.65 +
-              terrainNoise(roadWorld * 3.1 + vec2(4.7, 1.3)) * 0.35;
-            float reach = 0.1 + drift * 0.8;
-            float grains = step(0.82, terrainNoise(roadWorld * 23.0)) *
-              (1.0 - smoothstep(reach, reach + 0.5, edgeDistance));
-            float roadDirtCover = max(1.0 - smoothstep(reach - 0.12, reach + 0.04, edgeDistance),
-              grains * 0.8);
-            diffuseColor.rgb = mix(diffuseColor.rgb,
-              roadDirt(texture2D(soilMap, roadWorld / 3.0).rgb), roadDirtCover);
-          #endif`,
-        )
-        .replace(
-          '#include <roughnessmap_fragment>',
-          `#include <roughnessmap_fragment>
-          #ifdef ROAD_DIRT
-            roughnessFactor = mix(roughnessFactor, 1.0, roadDirtCover);
-          #endif`,
-        );
+      shader.fragmentShader = shader.fragmentShader.replace(
+        '#include <map_fragment>',
+        `#include <map_fragment>
+        #ifdef USE_MAP
+          vec3 weathering = texture2D(map, vMapUv * 0.073).rgb;
+          float wear = smoothstep(0.035, 0.065, dot(weathering, vec3(0.333333)));
+          diffuseColor.rgb *= mix(0.92, 1.08, wear);
+        #endif`,
+      );
     };
     material.customProgramCacheKey = () => 'asphalt-weathering';
     return material;
