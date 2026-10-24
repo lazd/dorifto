@@ -14,7 +14,7 @@ import AmmoFactory from 'ammojs-typed';
 import { loadTrainingCarGeometry } from './bot-assets.mjs';
 import { applyBotTuning } from './apply-bot-tuning.mjs';
 
-const bounds = {
+export const bounds = {
   corneringGrip: [8, 24],
   brakingLimit: [5, 13],
   smallSpeedDrop: [0, 15],
@@ -23,6 +23,7 @@ const bounds = {
   edgeMargin: [0, 1.5],
   countersteerSlip: [0.03, 0.4],
   tractionSlip: [0.05, 0.4],
+  yawDamping: [0, 0.4],
 };
 const tracks = [
   { course: 'hillside', reverse: false },
@@ -89,13 +90,6 @@ async function main() {
     runs: 0,
     latest: [],
     selectedAction: 0,
-    // The saved result is overwritten every generation, so read the last run's now.
-    previous: await readFile(path.resolve(values.output), 'utf8')
-      .then(JSON.parse)
-      .catch((error) => {
-        if (error.code === 'ENOENT') return undefined;
-        throw error;
-      }),
   };
   const startPhase = (total) => Object.assign(state.progress, { done: 0, total });
   await mkdir(path.dirname(path.resolve(values.log)), { recursive: true });
@@ -144,9 +138,13 @@ async function main() {
     throw new Error(
       'Checkpoint does not match this preset, skill, samples, track or tuning configuration',
     );
+  // Records are updated every save, so the session's starting records are kept in the checkpoint.
+  const records = await readRecords(path.resolve(values.output));
+  checkpoint.previousBest ??= tracks.map((track) => records[trackName(track)] ?? null);
   let best = checkpoint.best;
   const steps = checkpoint.steps;
   Object.assign(state, {
+    previousBest: checkpoint.previousBest,
     baseline: checkpoint.baseline,
     reference: checkpoint.reference,
     best: checkpoint.baseline ? best : undefined,
@@ -395,10 +393,15 @@ async function main() {
 
   async function save(result, snapshot) {
     const output = path.resolve(values.output);
+    tracks.forEach((track, i) => {
+      const time = result.times?.[i];
+      if (Number.isFinite(time) && !(records[trackName(track)] <= time))
+        records[trackName(track)] = time;
+    });
     await mkdir(path.dirname(output), { recursive: true });
     await writeFile(
       `${output}.tmp`,
-      `${JSON.stringify({ preset: values.preset, tracks, ...result }, null, 2)}\n`,
+      `${JSON.stringify({ preset: values.preset, tracks, ...result, records }, null, 2)}\n`,
     );
     await rename(`${output}.tmp`, output);
     await writeFile(`${tuneOutput}.tmp`, `${JSON.stringify(result.tuning, null, 2)}\n`);
@@ -480,8 +483,18 @@ function formatSteps(steps) {
     .join(', ')}`;
 }
 
-function signed(value, digits = 2) {
+export function signed(value, digits = 2) {
   return `${value >= 0 ? '+' : ''}${value.toFixed(digits)}`;
+}
+
+// Fastest lap per track name across every session, kept in the result file as `records`.
+async function readRecords(output) {
+  try {
+    return JSON.parse(await readFile(output, 'utf8')).records ?? {};
+  } catch (error) {
+    if (error.code === 'ENOENT') return {};
+    throw error;
+  }
 }
 
 function trackName({ course, reverse }) {
@@ -498,7 +511,7 @@ const paint = (text, style, color) =>
   color && style ? `\x1b[${ansi[style]}m${text}\x1b[0m` : text;
 
 // Cells are `[text, style?]`; the first column is left-aligned, the rest right-aligned.
-function formatTable(columns, rows, color, minimumWidths = {}) {
+export function formatTable(columns, rows, color, minimumWidths = {}) {
   const cells = rows.map((row) => columns.map((column) => row[column] ?? ['']));
   const widths = columns.map((column, c) =>
     Math.max(minimumWidths[column] ?? 0, column.length, ...cells.map((row) => row[c][0].length)),
@@ -519,14 +532,10 @@ function formatTable(columns, rows, color, minimumWidths = {}) {
 // Lower is better for lap times and pedal counts.
 const improvement = (delta) => (delta < 0 ? 'green' : delta > 0 ? 'red' : undefined);
 
-// `live` adds the latest run per track; otherwise the last saved result is shown for comparison.
-function trackTable({ baseline, best, reference, latest, previous }, color, live) {
-  const previousTimes = tracks.map((track) => {
-    const index = previous?.tracks.findIndex((saved) => trackName(saved) === trackName(track));
-    return previous?.times?.[index] ?? NaN;
-  });
+// `live` adds the latest run per track; the summary compares against the previous best instead.
+function trackTable({ baseline, best, reference, latest, previousBest }, color, live) {
   const lap = (time) =>
-    time === undefined ? '–' : Number.isFinite(time) ? `${time.toFixed(2)}s` : 'fail';
+    time == null ? '–' : Number.isFinite(time) ? `${time.toFixed(2)}s` : 'fail';
   const change = (before, after) => {
     if (!Number.isFinite(before) || !Number.isFinite(after)) return ['–'];
     const delta = after - before;
@@ -542,8 +551,8 @@ function trackTable({ baseline, best, reference, latest, previous }, color, live
     Baseline: [lap(reference?.[i] ?? latest[i]?.lapTime)],
     Best: [lap(best?.times[i])],
     Change: change(reference?.[i], best?.times[i]),
-    Previous: [lap(previousTimes[i]), 'dim'],
-    'vs Previous': change(previousTimes[i], best?.times[i]),
+    'Prev Best': [lap(previousBest?.[i]), 'dim'],
+    'vs Prev Best': change(previousBest?.[i], best?.times[i]),
     Latest: [latest[i] ? lap(latest[i].lapTime) : '–', 'dim'],
     'Before B/L': pedals(baseline?.results[i]),
     'After B/L': pedals(best?.results[i]),
@@ -555,16 +564,17 @@ function trackTable({ baseline, best, reference, latest, previous }, color, live
   }));
   const columns = [
     'Track',
+    'Prev Best',
     'Baseline',
     'Best',
     'Change',
-    ...(live ? ['Latest'] : previous ? ['Previous', 'vs Previous'] : []),
+    ...(live ? ['Latest'] : ['vs Prev Best']),
     'Before B/L',
     'After B/L',
     'Inv',
     'Fail',
   ];
-  return formatTable(columns, rows, color, { Baseline: 7, Best: 7, Latest: 7, Previous: 7 });
+  return formatTable(columns, rows, color, { 'Prev Best': 7, Baseline: 7, Best: 7, Latest: 7 });
 }
 
 function tuneScore({ baseline, best, reference }, color) {
@@ -660,7 +670,7 @@ async function importTuning() {
   }
 }
 
-function viteServer() {
+export function viteServer() {
   return createServer({
     optimizeDeps: { noDiscovery: true, include: [] },
     server: { middlewareMode: true, hmr: false, ws: false, watch: null },
@@ -734,5 +744,7 @@ async function worker() {
   });
 }
 
-if (process.argv[2] === '--worker') await worker();
-else await main();
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  if (process.argv[2] === '--worker') await worker();
+  else await main();
+}

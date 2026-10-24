@@ -41,6 +41,8 @@ export interface RaceBotTuning {
   countersteerSlip: number;
   /** Body slip (rad) where throttle starts fading out, fully off at twice this. */
   tractionSlip: number;
+  /** Steering correction (rad) per rad/s of yaw rate beyond the racing line's curvature. */
+  yawDamping: number;
 }
 /**
  * Driver model constants per car setup, bundled from `race-bot-tunings.json`.
@@ -552,7 +554,7 @@ export function createRaceBot(
     const excessSlip =
       Math.sign(state.slipAngle) * Math.max(0, Math.abs(state.slipAngle) - slipLimit);
     const stabilization =
-      state.speed > 5 ? state.slipAngle * 0.3 + excessSlip - yawError * 0.08 : 0;
+      state.speed > 5 ? state.slipAngle * 0.3 + excessSlip - yawError * driver.yawDamping : 0;
     thinking.conditions.stabilizing = state.speed > 5 && excessSlip !== 0;
     controls.steer = clamp((wheelAngle + stabilization) / steeringLimit, -1, 1);
     if (Math.abs(controls.steer) > 0.95) saturationSeconds += dt;

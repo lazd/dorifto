@@ -72,5 +72,12 @@
       "brakesPerLap": 10,
       "liftsPerLap": 11
     }
-  ]
+  ],
+  "records": {
+    "hillside": 30.45771696935128,
+    "hillside-rev": 30.295026413569687,
+    "sweeper": 14.627633172656367,
+    "hilly-drift": 32.19063787500778,
+    "sonoma-raceway": 106.88941574046736
+  }
 }

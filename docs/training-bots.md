@@ -25,10 +25,13 @@ npm run train:bot -- --preset grip-fast --generations 15
   invalid laps per run across tracks. Scores are relative to this session's
   baseline (preserved on resume), not comparable between fresh sessions.
 - Use `--workers 4` to limit CPU usage, or `--samples 5` for more robustness.
-- A live table shows each track's baseline, best and latest lap times, brake
-  applications and throttle lifts, paired as brakes/lifts in Before B/L and
-  After B/L columns. A summary follows with the change from the
-  start of the run, the change from the previous saved result and each tuning value.
+- A live table shows each track's previous best, baseline, best and latest lap
+  times, brake applications and throttle lifts, paired as brakes/lifts in Before
+  B/L and After B/L columns. A summary follows with the change from the start of
+  the run, the change from the previous best and each tuning value.
+- **Prev Best** is the fastest lap per track from earlier sessions, kept in the
+  result file's `records` and fixed for the session (including on resume). It can
+  come from older bot versions.
 - Details go to `.bot-training/optimize-<preset>.log` (the ignored folder); from
   another terminal, follow them with `tail -f`.
 - Terminal buttons: use **arrow keys / Tab** to select **🛑 Cancel** or **💾 Save**,
@@ -49,8 +52,8 @@ An interrupted session continues to its original generation target. Resuming a
 finished session adds another requested batch (15 generations by default).
 Older results without a checkpoint cannot be resumed; start a new training run
 once to create one. If no checkpoint exists, the resume command exits with a
-message without starting training or changing files. Keep the checkpoint
-alongside the result and tune files.
+message without starting training or changing files. Checkpoints are local
+and gitignored; don't commit them.
 
 ## Apply and check
 
@@ -58,12 +61,46 @@ Results go to `training-results/race-tuning-grip-default.json`, and just the tun
 `training-results/race-tuning-grip-default-tune.json`. Run `npm run apply:bot` (or
 `npm run apply:bot -- grip-fast`) to copy the tune into
 [race-bot-tunings.json](../src/race-bot-tunings.json), which the game bundles at build
-time. Commit the `training-results/` files too: the next run
-reads them first and compares its lap times against them.
+time. Commit the `training-results/` files too: their `records` feed the next
+run's Prev Best column.
 
 Reload the game and test with `bot-preset=grip-default&bot-skill=1&bot-learning=0`.
 Check Sonoma and hilly tracks in-game: clean headless results do **not** guarantee
 reliable driving in the browser.
+
+## Learn from a human lap
+
+`learn:bot` compares one of your record laps with the bot on the same course,
+then suggests tuning values from what you did differently:
+
+```sh
+npm run learn:bot -- .bot-training/human-hillside.json [--course hillside] [--reverse] [--preset grip-default] [--apply]
+```
+
+The input is a JSON object of localStorage entries, such as the output of
+`copy(JSON.stringify(localStorage))` in the browser console. It needs a
+`dorifto.record.v1:…` record lap. Pass `--course` and `--reverse` when the file
+has records for more than one course or direction.
+
+The corner table shows minimum speed, peak lateral acceleration and your slip
+for each corner, plus the time the bot loses in the section around it. These
+section gaps add up to the lap gap. Suggestions come from measured driving:
+
+- `corneringGrip` from corner speeds;
+- `tractionSlip` from slip at full throttle;
+- `countersteerSlip` from when you countersteer;
+- `smallSpeedDrop` from speed drops you coast through;
+- `brakingLimit` from your deceleration under braking;
+- `edgeMargin` from how close your apexes are to the edge.
+
+Each suggestion is driven alone on that course (skill 1, learning off). If
+your value is slower, the value halfway to it is also tried. The changes that
+helped are then driven together. `--apply` writes the fastest tested set into
+[race-bot-tunings.json](../src/race-bot-tunings.json).
+
+A suggestion only proves itself on one course, so run `npm run train:bot`
+afterwards to check the other tracks. `brakeThreshold`, `lookaheadTime` and
+`yawDamping` can't be measured from a recording; leave them to training.
 
 ## Evaluate a single track
 

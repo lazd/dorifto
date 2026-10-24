@@ -3,3 +3,4 @@ trackImports/
 dist/
 .DS_Store
 .bot-training/
+training-results/*-checkpoint.json

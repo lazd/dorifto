@@ -14,6 +14,7 @@
     "train:bot:resume": "npm run train:bot -- --resume",
     "evaluate:bot": "node scripts/evaluate-bot.mjs",
     "apply:bot": "node scripts/apply-bot-tuning.mjs",
+    "learn:bot": "node scripts/learn-from-lap.mjs",
     "lint": "oxlint",
     "format": "oxfmt",
     "format:check": "oxfmt --check",

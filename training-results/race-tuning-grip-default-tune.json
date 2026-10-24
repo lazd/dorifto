@@ -1,10 +1,11 @@
 {
-  "corneringGrip": 15.329674977406249,
-  "brakingLimit": 6.845606714257082,
-  "smallSpeedDrop": 5.688701928743717,
-  "brakeThreshold": 3.5247561667823266,
-  "lookaheadTime": 0.13154942716413717,
-  "edgeMargin": 1.5,
-  "countersteerSlip": 0.09585443011219665,
-  "tractionSlip": 0.07004823898556244
+  "corneringGrip": 14.779716645097656,
+  "brakingLimit": 7.5557353067298365,
+  "smallSpeedDrop": 10.118835585841696,
+  "brakeThreshold": 2.4425730656897047,
+  "lookaheadTime": 0.1446700795778327,
+  "edgeMargin": 1.4448653728563947,
+  "countersteerSlip": 0.14005307320755686,
+  "tractionSlip": 0.26628878971748804,
+  "yawDamping": 0.10553846734319645
 }
