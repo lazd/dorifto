@@ -95,8 +95,10 @@ test('terrain sampling preserves geographic orientation, height datum, and rever
     };
     const fetch = () => assert.fail('Raster-backed elevation must not make point requests');
     const supplied = { ...source, terrain };
-    assert.equal(await fetchMissingElevation(supplied, { fetch }), supplied);
+    const replaced = await fetchMissingElevation(supplied, { fetch });
     const data = await fetchMissingElevation({ ...source, terrain, elevation: null }, { fetch });
+    assert.deepEqual(replaced.elevation, data.elevation);
+    assert.notDeepEqual(replaced.elevation.points, supplied.elevation.points);
     assert.equal(data.elevation.source, terrain.source);
     assert.equal(data.elevation.points[0].dist_frac, 0);
     assert.equal(data.elevation.points.at(-1).dist_frac, 1);

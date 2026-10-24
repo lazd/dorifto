@@ -186,18 +186,6 @@ export async function fetchMissingElevation(
   data,
   { cacheDir = elevationCacheDir, fetch = globalThis.fetch } = {},
 ) {
-  if (data.elevation?.points?.length) {
-    if (
-      data.elevation.points.length < 2 ||
-      !data.elevation.points.every(
-        (point) => Number.isFinite(point.altitude_m) && Number.isFinite(point.dist_frac),
-      )
-    ) {
-      throw new Error(`${data.slug}: supplied elevation profile is invalid`);
-    }
-    return data;
-  }
-
   const { unique, lat0, lon0, cosLat } = projectLap(data);
   const { points } = resampleLoop(unique, 10, data.closed !== false);
   const coordinates = points.map(([x, z]) => ({
@@ -521,7 +509,10 @@ async function main() {
   }
   await mkdir(outDir, { recursive: true });
   for (const input of inputs) {
-    const source = selectTrackSegment(JSON.parse(await readFile(input, 'utf8')), selection);
+    const source = selectTrackSegment(
+      { ...JSON.parse(await readFile(input, 'utf8')), elevation: undefined },
+      selection,
+    );
     let data = { ...source, ...metadata };
     if (
       data.closed === false ||

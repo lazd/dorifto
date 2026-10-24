@@ -473,7 +473,8 @@ npm run import-track -- road-imports/newtown-road.json --start 20 --finish 100 \
 `--start` and `--finish` are zero-based, inclusive source point indices and must
 be supplied together. Elevation and surrounding terrain are fetched only at track
 import, after selecting the segment, so unselected roadway is not sampled.
-Older source files with elevation profiles reuse and trim those profiles.
+Source JSON elevation profiles are ignored; track import derives fresh heights
+from USGS data after selecting the segment.
 Without naming overrides, a segment gets a unique `<source-slug>-<start>-<finish>`
 slug and a `Segment <start>–<finish>` configuration name. Naming/selection options
 apply to a single input file, so separate segments cannot accidentally overwrite
@@ -515,16 +516,15 @@ endpoints and use an endpoint-preserving cubic B-spline for the playable centerl
 Their elevation uses a Gaussian filter with a 15 m standard deviation and
 monotone cubic interpolation for continuous grades, without wrapping or a seam
 bridge. Raw GPS and cached USGS samples are unchanged. Re-import existing road
-configurations to apply the elevation filter. When elevation
-points are absent or empty, raster-backed imports sample absolute heights locally
+configurations to apply the elevation filter. Raster-backed imports sample absolute heights locally
 at 10 m intervals using the same raster sampler as the game's terrain,
 then apply the road-height smoothing described above. Imports without a raster
 fetch terrain heights from the
 [USGS 3DEP Elevation Point Query Service](https://apps.nationalmap.gov/epqs/)
 at 10 m intervals along the selected route, including the closing segment only
-for closed circuits. Supplied
-elevation profiles are preserved; invalid supplied profiles and failed or missing
-USGS results stop the import instead of silently producing a flat road.
+for closed circuits. Supplied elevation profiles are ignored so the road and
+surrounding terrain share the same vertical datum. Failed or missing USGS results
+stop the import instead of silently producing a flat road.
 Fetched profiles are cached locally in `src/trackImports/elevation-cache/`, keyed
 by the sampled GPS coordinates, so unchanged laps can be re-imported offline.
 Remove a track's cache file to refresh its elevation. Generated courses identify
@@ -543,8 +543,8 @@ defaults to 8 m width and double yellow, and includes width, shoulder, and divid
 import command. For example, a narrower road can use `--width 7.5`.
 
 After selecting a segment, the track importer automatically downloads surrounding
-USGS 3DEP terrain for open roads, then derives any missing centerline elevation
-from that raster. Supplied elevation profiles remain unchanged.
+USGS 3DEP terrain for open roads, then derives centerline elevation
+from that raster regardless of any supplied elevation profile.
 Closed tracks can opt in with `--terrain`. The default raster spacing is 5 m, with
 a 250 m margin around the selected GPS bounds; configure these with
 `--terrain-resolution <m>` (minimum 1) and `--terrain-margin <m>` (minimum 210).
