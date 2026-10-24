@@ -50,6 +50,7 @@ import { createLeaderboard } from './leaderboard';
 import { createPhysicsClient } from './physics-client';
 import {
   raceBotDriverName,
+  botDriveMode,
   botTuning,
   readBotsOnly,
   readRaceBots,
@@ -226,7 +227,7 @@ async function start() {
   let recordedDriver = recordedDriverFor(botOptions, botsOnly);
   if (botsOnly)
     configurationState.update({
-      driveMode: 'grip',
+      driveMode: botDriveMode(botOptions[0]?.preset),
       ...(!courseUrl.searchParams.has('camera') ? { cameraStyle: 'fpv' as const } : {}),
     });
   const availableCourses = [...courses, ...loadSavedCourses(localStorage)];
@@ -657,7 +658,7 @@ async function start() {
       const nextMode = readOption('mode', requestedMode, isDriveMode);
       const nextCamera = readOption('camera', requestedCamera, isCameraStyle);
       configurationState.update({
-        driveMode: nextBotsOnly ? 'grip' : nextMode,
+        driveMode: nextBotsOnly ? botDriveMode(nextBots[0]?.preset) : nextMode,
         cameraStyle: nextBotsOnly && !url.searchParams.has('camera') ? 'fpv' : nextCamera,
       });
       const next = await createCourseSession(activeDefinition, course, nextBots, nextBotsOnly);
@@ -1227,7 +1228,7 @@ async function start() {
     drivingCamera.update(
       dt,
       replayVelocity3d ?? physics.linearVelocity,
-      botsOnly ? 'grip' : cameraState.driveMode,
+      botsOnly ? botDriveMode(recordedBot?.preset) : cameraState.driveMode,
       cameraState.cameraStyle,
       reversing,
       cameraState.cabinHeadMotion,

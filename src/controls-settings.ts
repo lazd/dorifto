@@ -21,6 +21,7 @@ const controllerDiagramLabels: Partial<Record<ControllerAction, string>> = {
   accelerate: 'Accelerate',
   brake: 'Brake',
   handbrake: 'Handbrake',
+  clutch: 'Clutch kick',
   highBeams: 'High beams',
   headlights: 'Headlights',
   driveMode: 'Grip / Drift',

@@ -1,0 +1,48 @@
+{
+  "preset": "drift-default",
+  "tracks": ["hillside", "sweeper"],
+  "tuning": {
+    "rearSlipRatio": 0.591109465915639,
+    "speedSlipGain": 0.0087067596228015,
+    "slipGain": 6.325287591231146,
+    "slipIntegral": 5.432668771236863,
+    "yawGain": 4.928568362621794,
+    "lookaheadTime": 0.6584847249124494,
+    "previewTime": 0.7949188842829863,
+    "driftCurvature": 0.016181483142463073,
+    "driftGrip": 11.434555188078619,
+    "brakingLimit": 9.085293387553406,
+    "exitThrottle": 0.3248721843880308,
+    "driftAngle": 0.7159233041251418,
+    "angleGain": 0.8774916438445103,
+    "handbrakeSlip": 0.4083618775036031
+  },
+  "score": 71.88692824599767,
+  "results": [
+    {
+      "score": 55.32366267247643,
+      "failures": 0,
+      "failure": null,
+      "laps": 2.0000000000000244,
+      "coverage": 0.2949695121951227,
+      "angle": 35.0350392822952,
+      "drifts": 5.4999999999999325,
+      "transitions": 0.9999999999999878,
+      "dirt": 0,
+      "yawError": 0.6652990589178933
+    },
+    {
+      "score": 88.45019381951889,
+      "failures": 0,
+      "failure": null,
+      "laps": 2.0000000000000044,
+      "coverage": 0.524,
+      "angle": 27.69716050992058,
+      "drifts": 2.9999999999999933,
+      "transitions": 2.249999999999995,
+      "dirt": 0,
+      "yawError": 0.7293641503042317
+    }
+  ],
+  "evaluations": 1
+}

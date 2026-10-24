@@ -73,6 +73,7 @@ export function createPhysicsSimulation(Ammo: typeof AmmoFactory, data: PhysicsI
     reverse: 0,
     steer: 0,
     handbrake: false,
+    clutch: false,
   };
   let hazards = false;
   let hazardsEnabled = false;
@@ -303,6 +304,7 @@ export function createPhysicsSimulation(Ammo: typeof AmmoFactory, data: PhysicsI
                 reverse: 0,
                 steer: 0,
                 handbrake: false,
+                clutch: false,
               });
           } else if (bots.length) {
             const states = vehicles.map((vehicle) => vehicle.readState());

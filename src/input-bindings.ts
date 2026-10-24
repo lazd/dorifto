@@ -24,6 +24,7 @@ export const controllerActions = [
   { id: 'accelerate', label: 'Accelerate', defaultButton: 7 },
   { id: 'brake', label: 'Brake / Reverse', defaultButton: 6 },
   { id: 'handbrake', label: 'Handbrake', defaultButton: 5 },
+  { id: 'clutch', label: 'Clutch kick', defaultButton: 0 },
   { id: 'highBeams', label: 'High beams', defaultButton: 4 },
   { id: 'headlights', label: 'Headlights', defaultButton: 2 },
   { id: 'driveMode', label: 'Switch Grip / Drift', defaultButton: 3 },
@@ -140,6 +141,22 @@ export function validateInputBindings(value: unknown): InputBindings {
   return { keyboard, controller: { buttons, axes } };
 }
 
+// Actions added since the bindings were saved get their defaults instead of failing validation.
+function withNewDefaults(stored: Partial<InputBindings>) {
+  const defaults = defaultInputBindings();
+  return {
+    ...stored,
+    keyboard: stored.keyboard && { ...defaults.keyboard, ...stored.keyboard },
+    controller: stored.controller && {
+      ...stored.controller,
+      buttons: stored.controller.buttons && {
+        ...defaults.controller.buttons,
+        ...stored.controller.buttons,
+      },
+    },
+  };
+}
+
 export class InputBindingsStore {
   private bindings = defaultInputBindings();
   private captureActive = false;
@@ -164,7 +181,7 @@ export class InputBindingsStore {
     }
     try {
       const stored = storage.getItem(inputBindingsStorageKey);
-      if (stored) this.bindings = validateInputBindings(JSON.parse(stored));
+      if (stored) this.bindings = validateInputBindings(withNewDefaults(JSON.parse(stored)));
     } catch (error) {
       this.bindings = defaultInputBindings();
       reportError(

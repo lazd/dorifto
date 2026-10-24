@@ -88,6 +88,7 @@ test('runtime reads remapped keyboard, controller buttons, and map axes from the
   const remapped = defaultInputBindings();
   remapped.keyboard.steerLeft = 'KeyA';
   remapped.controller.buttons.map = 0;
+  remapped.controller.buttons.clutch = 1;
   remapped.controller.axes.steering = { index: 1, inverted: false };
   remapped.controller.axes.mapZoom = { index: 1, inverted: true };
   inputBindings.load({ getItem: () => JSON.stringify(remapped), setItem() {} });

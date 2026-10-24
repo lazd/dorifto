@@ -68,6 +68,36 @@ Reload the game and test with `bot-preset=grip-default&bot-skill=1&bot-learning=
 Check Sonoma and hilly tracks in-game: clean headless results do **not** guarantee
 reliable driving in the browser.
 
+## Training drift bots
+
+Drift bots (`drift-default`) have their own trainer, which tunes the constants of
+the drift controller in [drift-bot.ts](../src/drift-bot.ts) rather than lap time:
+
+```sh
+npm run train:drift
+```
+
+- Runs 20 generations of the same (1+λ) search, two jittered samples per track,
+  two laps per run, on Hillside and Sweeper.
+- The score ([`driftScore`](../src/drift-training.ts)) is higher for more of the
+  lap drifted through corners, a mean drift angle near 35°, and linked
+  transitions (direction changes without regaining grip). It is lower for time
+  on dirt, sliding on straights, yaw-rate tracking error and steering effort.
+  Running beyond the white lines is fine; touching dirt is not. Spins, more than
+  2 s on dirt, or getting stuck cost 200 points.
+- The live table shows each track's start, best and latest results: laps
+  covered, drift %, mean angle, new drifts and linked transitions per lap, dirt
+  seconds per lap, yaw error and failures. **S** saves the best tune into the
+  app; **C / Ctrl+C** cancels and saves it to the result files only.
+- Results go to `training-results/drift-tuning-drift-default.json` and
+  `-tune.json`, and the log to `.bot-training/optimize-drift-default.log`. Apply with
+  `npm run apply:bot -- drift-default`, which writes
+  [drift-bot-tunings.json](../src/drift-bot-tunings.json).
+- There is no resume; rerun training to continue from the applied tuning.
+
+Test in-game with `bots-only=1&bot-preset=drift-default`, or choose **Drift** as a
+bot's drive mode in the bots dialog.
+
 ## Learn from a human lap
 
 `learn:bot` compares one of your record laps with the bot on the same course,

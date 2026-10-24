@@ -21,7 +21,7 @@ const wattsPerHorsepower = 745.699872;
 
 export type PhysicsControls = Pick<
   DrivingControls,
-  'throttle' | 'brake' | 'reverse' | 'steer' | 'handbrake'
+  'throttle' | 'brake' | 'reverse' | 'steer' | 'handbrake' | 'clutch'
 >;
 export type PhysicsConfiguration = Pick<ConfigurationState, 'driveMode' | 'profiles' | 'coneMode'>;
 export type PhysicsCar = Pick<
@@ -186,7 +186,7 @@ export function createVehiclePhysics({
     reversing: false,
     wheelSpeed: 0,
     roadWheelSpeed: 0,
-    handbrake: false,
+    declutched: false,
     speedLimited: false,
     peakTorque: 0,
     peakPower: 0,
@@ -485,7 +485,7 @@ export function createVehiclePhysics({
     drivetrainInput.throttle = throttle;
     drivetrainInput.startNeutral = neutralHeld;
     drivetrainInput.reversing = reversing;
-    drivetrainInput.handbrake = handbrake;
+    drivetrainInput.declutched = handbrake || controls.clutch;
     drivetrainInput.roadWheelSpeed = forwardSpeed / drivenWheelRadius;
     drivetrainInput.speedLimited = reversing && speed >= 35;
     const powerScale = tireTune.horsepower / Math.round(tireTune.enginePower / wattsPerHorsepower);

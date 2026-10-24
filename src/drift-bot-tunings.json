@@ -1,18 +1,18 @@
 {
   "drift-default": {
-    "rearSlipRatio": 0.5,
-    "speedSlipGain": 0.05,
-    "slipGain": 3,
-    "slipIntegral": 4,
-    "yawGain": 6,
-    "lookaheadTime": 0.6,
-    "previewTime": 1.2,
-    "driftCurvature": 0.012,
-    "driftGrip": 9,
-    "brakingLimit": 6,
-    "exitThrottle": 0.15,
-    "driftAngle": 0.6,
-    "angleGain": 1,
-    "handbrakeSlip": 0.2
+    "rearSlipRatio": 0.591109465915639,
+    "speedSlipGain": 0.0087067596228015,
+    "slipGain": 6.325287591231146,
+    "slipIntegral": 5.432668771236863,
+    "yawGain": 4.928568362621794,
+    "lookaheadTime": 0.6584847249124494,
+    "previewTime": 0.7949188842829863,
+    "driftCurvature": 0.016181483142463073,
+    "driftGrip": 11.434555188078619,
+    "brakingLimit": 9.085293387553406,
+    "exitThrottle": 0.3248721843880308,
+    "driftAngle": 0.7159233041251418,
+    "angleGain": 0.8774916438445103,
+    "handbrakeSlip": 0.4083618775036031
   }
 }

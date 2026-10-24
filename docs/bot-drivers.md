@@ -81,6 +81,37 @@ which points the front wheels along the car's velocity once body slip exceeds a
 threshold. For drifting, make the threshold a target slip angle per style and
 hold it with throttle instead of recovering from it.
 
+### Implemented solo drift controller
+
+[drift-bot.ts](../src/drift-bot.ts) (`drift-default` preset) follows Joa et al., _A new
+control approach for automated drifting in consumer vehicles_ (2020), simplified
+for our physics:
+
+- **Modes** (paper Fig. 4): grip → initiation when a corner sharper than
+  `driftCurvature` lies within `previewTime`; initiation → drift once the rear slip
+  angle exceeds 6°; drift → termination when the corner ends; termination → grip
+  once the rear stops sliding. The plate shows `GRIP`, `INIT`, `DRIFT` or `EXIT`.
+- **Lateral (eqs. 12–14):** steering tracks a desired yaw rate. The path loop
+  sets γ_des = v_x·κ toward a centerline lookahead point. The yaw loop turns the
+  yaw error into a front lateral force (gain `yawGain`), and steering inverts
+  the tire model to get the front slip angle. The paper estimates front
+  stiffness with RLS; we read it from the tire model instead.
+- **Longitudinal (eq. 9):** in drift, a PI loop holds the rear-wheel slip ratio
+  at `rearSlipRatio` (the paper uses 0.3). Initiation uses full throttle and
+  termination uses `exitThrottle`.
+- **Additions for our physics**, each of which can be set to 0 to get the pure
+  paper controller:
+  - `angleGain` adds a body-slip term toward `driftAngle`, because our tires keep
+    rear lateral force under wheelspin and throttle alone gives shallow angles.
+  - `handbrakeSlip` taps the handbrake (which also declutches) when the car won't
+    rotate. A clutch kick (the `clutch` control) was tried instead but doesn't
+    rotate the car enough.
+  - `speedSlipGain` lowers the slip target when the car is faster than its
+    curvature speed profile, so drifts don't run wide.
+
+Training scores drift coverage, angle, transitions, dirt contact, spins, yaw
+tracking and steering effort (see [training bots](training-bots.md)).
+
 Gameplay presets over one controller:
 
 | Style                                       | Priorities                                                                                        |
@@ -188,7 +219,9 @@ racing or human-friendly tuning. Live bots retain experience across resets only;
 CLI reports persist it across processes. Richer mistakes, competitive defending,
 live experience import, and automatic tuning searches remain future work.
 
-**Next: phase 3, solo drift control and Sweeper drift evaluation.**
+**Phase 3 (solo drift control) is in place:** `drift-default` bots drift
+Hillside and Sweeper, trained with `npm run train:drift`. Next: drift styles and
+tandem.
 
 ### Race presentation and pace follow-up
 

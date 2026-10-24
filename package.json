@@ -12,6 +12,7 @@
     "import-track": "node scripts/import-track.mjs",
     "train:bot": "node scripts/optimize-race-bot.mjs --preset grip-default --generations 30",
     "train:bot:resume": "npm run train:bot -- --resume",
+    "train:drift": "node scripts/optimize-drift-bot.mjs --preset drift-default --generations 20",
     "evaluate:bot": "node scripts/evaluate-bot.mjs",
     "apply:bot": "node scripts/apply-bot-tuning.mjs",
     "learn:bot": "node scripts/learn-from-lap.mjs",

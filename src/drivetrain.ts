@@ -24,7 +24,8 @@ export interface DrivetrainInput {
   reversing: boolean;
   wheelSpeed: number;
   roadWheelSpeed: number;
-  handbrake: boolean;
+  /** Clutch pedal down (the handbrake also declutches); shifts wait until it's released. */
+  declutched: boolean;
   speedLimited: boolean;
   peakTorque: number;
   peakPower: number;
@@ -147,7 +148,7 @@ export class Drivetrain {
       this.shiftTime = 0.18;
       this.shiftCooldown = 0.65;
     }
-    if (!this.reversing && !this.shiftCooldown && !input.handbrake) {
+    if (!this.reversing && !this.shiftCooldown && !input.declutched) {
       const requested = this.determineGear();
       if (this.canShiftTo(requested, input)) {
         this.gearIndex = requested - 1;
@@ -164,7 +165,7 @@ export class Drivetrain {
       smoothstep(this.state.rpm, 2500, 4400),
       smoothstep(shaftRpm, 1400, 2400),
     );
-    return input.handbrake
+    return input.declutched
       ? 0
       : Math.max(560, input.peakTorque * 1.25) * launchEngagement * shiftEngagement;
   }

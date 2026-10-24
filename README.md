@@ -510,6 +510,7 @@ Settings > Controls. The first connected standard-mapped controller is used.
 | Right stick                         | Camera orbit/height; pan up/down/left/right in map view                             |
 | Right stick left / right (hold 1 s) | Corresponding turn signal flashes four times; camera still pans (not in map view)   |
 | R1 / RB                             | Handbrake                                                                           |
+| A / Cross (south face button)       | Clutch: hold at high revs, release to clutch kick                                   |
 | X / Square (west face button)       | Tap to toggle headlights; hold 1 second to toggle fog lights                        |
 | L1 / LB                             | Flash high beams; hold 1 second to toggle high beams on/off                         |
 | R3 (right-stick click, hold)        | Look behind; move right stick to pan; release to return                             |

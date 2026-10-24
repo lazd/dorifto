@@ -124,6 +124,10 @@ export function botEdgeMargin(preset: BotPreset = 'grip-fast') {
   return isDriftBotPreset(preset) ? undefined : raceBotTunings[preset].edgeMargin;
 }
 
+export function botDriveMode(preset: BotPreset = 'grip-fast') {
+  return isDriftBotPreset(preset) ? ('drift' as const) : ('grip' as const);
+}
+
 /** The driver constants a preset's bot uses. */
 export function botTuning(preset: BotPreset = 'grip-fast'): Record<string, number> {
   return isDriftBotPreset(preset) ? driftBotTunings[preset] : raceBotTunings[preset];
@@ -359,6 +363,7 @@ export function createRaceBot(
     reverse: 0,
     steer: 0,
     handbrake: false,
+    clutch: false,
   };
   const tuning = configuration.profiles[configuration.driveMode];
   const { frontTorqueNm, rearTorqueNm } = vehicleSettings.brakes;
@@ -501,7 +506,14 @@ export function createRaceBot(
     thinking.racePosition = null;
     for (const key of Object.keys(thinking.conditions) as (keyof BotThinking['conditions'])[])
       thinking.conditions[key] = false;
-    Object.assign(controls, { throttle: 0, brake: 0, reverse: 0, steer: 0, handbrake: false });
+    Object.assign(controls, {
+      throttle: 0,
+      brake: 0,
+      reverse: 0,
+      steer: 0,
+      handbrake: false,
+      clutch: false,
+    });
   }
 
   function update(

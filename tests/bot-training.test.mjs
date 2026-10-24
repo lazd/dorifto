@@ -31,6 +31,8 @@ let raceBotGridSpacing;
 let defaultTuningPresets;
 let createTrafficPlanner;
 let chaseSkillBonus;
+let runDriftBot;
+let sweeper;
 
 before(async () => {
   server = await createServer({
@@ -63,6 +65,9 @@ before(async () => {
   ({ createTrafficPlanner } = await server.ssrLoadModule('/src/bot-traffic.ts'));
   ({ raceStartDelay } = await server.ssrLoadModule('/src/physics-messages.ts'));
   ({ startRevLimitRpm } = await server.ssrLoadModule('/src/drivetrain.ts'));
+  ({ runDriftBot } = await server.ssrLoadModule('/src/drift-training.ts'));
+  const sweeperDefinition = { ...courses.find(({ id }) => id === 'sweeper'), reverse: false };
+  sweeper = { definition: sweeperDefinition, terrain: new CourseTerrain(sweeperDefinition, false) };
   definition = { ...courses.find(({ id }) => id === trainingCourses.race), reverse: false };
   terrain = new CourseTerrain(definition, false);
   geometry = await loadTrainingCarGeometry(server);
@@ -72,10 +77,12 @@ before(async () => {
 });
 
 after(async () => {
-  terrain?.mesh.geometry.dispose();
-  terrain?.mesh.material.dispose();
-  terrain?.grass.geometry.dispose();
-  terrain?.grass.material.dispose();
+  for (const { mesh, grass } of [terrain, sweeper?.terrain].filter(Boolean)) {
+    mesh.geometry.dispose();
+    mesh.material.dispose();
+    grass.geometry.dispose();
+    grass.material.dispose();
+  }
   await server?.close();
 });
 
@@ -114,6 +121,16 @@ test('race driver completes repeated three-lap runs and serializes bounded learn
   assert.equal(failed.runs[0].completed, false);
   assert.equal(failed.runs[0].failure, 'timeout');
   assert.equal(failed.runs[0].laps.length, 0);
+});
+
+test('drift driver laps Sweeper sideways without spinning or touching dirt', () => {
+  const drift = raceBotConfiguration(configuration, 'drift-default');
+  const run = runDriftBot(Ammo, sweeper.definition, sweeper.terrain, geometry, drift, undefined, {
+    laps: 1,
+  });
+  assert.equal(run.failure, null);
+  assert.equal(run.dirtSeconds, 0);
+  assert.ok(run.driftDistance > 0.2 * run.lapLength, 'drifts through a good share of the lap');
 });
 
 test('driver rejects incompatible experience and invalid configuration', () => {

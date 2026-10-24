@@ -19,7 +19,10 @@ const transitionGap = 0.6;
 
 export interface DriftRun {
   targetLaps: number;
+  /** Centerline lap length, m. */
+  lapLength: number;
   failure: 'timeout' | 'stuck' | 'off-track' | 'spin' | null;
+  /** Valid lap times, s. */
   laps: number[];
   seconds: number;
   /** Forward distance along the centerline, m. */
@@ -43,12 +46,12 @@ export interface DriftRun {
 }
 
 /** One number to maximize; every term is per lap so short failed runs can't win. */
-export function driftScore(run: DriftRun, lapLength: number) {
-  const laps = Math.max(run.distance / lapLength, 0.25);
+export function driftScore(run: DriftRun) {
+  const laps = Math.max(run.distance / run.lapLength, 0.25);
   const coverage = run.driftDistance / Math.max(run.distance, 1);
   const angle = 1 - Math.min(1, Math.abs(run.meanAngle - targetDriftAngle) / targetDriftAngle);
   return (
-    20 * Math.min(1, run.distance / (lapLength * run.targetLaps)) +
+    20 * Math.min(1, run.distance / (run.lapLength * run.targetLaps)) +
     100 * coverage +
     25 * angle * coverage +
     (8 * run.transitions) / laps -
@@ -102,6 +105,7 @@ export function runDriftBot(
   );
   const run: DriftRun = {
     targetLaps: lapCount,
+    lapLength: map.length,
     failure: 'timeout',
     laps: [],
     seconds: 0,
@@ -184,12 +188,13 @@ export function runDriftBot(
         break;
       }
       if (laps.lap !== lastLap) {
-        if (lastLap > 0) run.laps.push(laps.last ?? 0);
+        if (lastLap > 0 && laps.last !== null) run.laps.push(laps.last);
         lastLap = laps.lap;
-        if (run.laps.length === lapCount) {
-          run.failure = null;
-          break;
-        }
+      }
+      // Lap validity is about cutting corners, not drifting; dirt is scored separately.
+      if (run.distance >= lapCount * map.length) {
+        run.failure = null;
+        break;
       }
     }
   } finally {

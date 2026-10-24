@@ -1,17 +1,19 @@
 import './bot-tuning.css';
 import {
+  botDriveMode,
+  botPresets,
   defaultRaceBotOptions,
   maxRaceBots,
-  raceBotPresets,
   readBotsOnly,
   readRaceBots,
+  type BotPreset,
   type RaceBotOptions,
-  type RaceBotPreset,
 } from './race-bot';
 import { botColor, botName } from './bot-car';
 import { defaultTuningPresets } from './configuration-state';
 
 const presetNames = new Map(defaultTuningPresets().map((preset) => [preset.id, preset.name]));
+const modeNames = { grip: 'Grip', drift: 'Drift' };
 
 function makeElement<T extends HTMLElement>(tag: string, className?: string, text?: string) {
   const element = document.createElement(tag) as T;
@@ -119,7 +121,7 @@ export function bindBotDialog(
         avatar.setAttribute('aria-hidden', 'true');
         avatar.style.setProperty('--avatar-color', botColor(index));
         title.textContent = botName(index);
-        profile.textContent = `Grip · ${presetNames.get(preset) ?? preset}`;
+        profile.textContent = `${modeNames[botDriveMode(preset)]} · ${presetNames.get(preset) ?? preset}`;
         summary.textContent = `Skill ${Math.round(bot.skill * 100)}% · Agg. ${Math.round(bot.aggression * 100)}%`;
         main.append(avatar, text);
         text.append(title, profile, summary);
@@ -171,7 +173,7 @@ export function bindBotDialog(
       const modeHelp = makeElement<HTMLParagraphElement>(
         'p',
         'dialog-help',
-        'Bots currently use Grip handling; Drift mode is not available.',
+        'Grip bots race the line; Drift bots slide through corners for style.',
       );
       const sliders = makeElement<HTMLDivElement>('div', 'bot-sliders');
       const options = makeElement<HTMLDivElement>('div', 'bot-options');
@@ -179,16 +181,24 @@ export function bindBotDialog(
       avatar.setAttribute('aria-hidden', 'true');
       avatar.style.setProperty('--avatar-color', botColor(selectedBotIndex));
       title.id = 'selected-bot-title';
-      mode.disabled = true;
+      const preset = bot.preset ?? defaultRaceBotOptions.preset!;
       mode.setAttribute('aria-describedby', 'bot-drive-mode-help');
-      mode.add(new Option('Grip', 'grip', true, true));
+      for (const [id, name] of Object.entries(modeNames)) mode.add(new Option(name, id));
+      mode.value = botDriveMode(preset);
+      mode.addEventListener('change', () => {
+        bot.preset = botPresets.find((id) => botDriveMode(id) === mode.value);
+        render();
+        editor.querySelector<HTMLSelectElement>('[aria-label="Drive mode"]')?.focus();
+      });
+      mode.setAttribute('aria-label', 'Drive mode');
       modeHelp.id = 'bot-drive-mode-help';
       modeLabel.append(modeTitle, mode);
       profile.setAttribute('aria-label', 'Tuning profile');
-      for (const id of raceBotPresets) profile.add(new Option(presetNames.get(id) ?? id, id));
-      profile.value = bot.preset ?? defaultRaceBotOptions.preset!;
+      for (const id of botPresets)
+        if (botDriveMode(id) === mode.value) profile.add(new Option(presetNames.get(id) ?? id, id));
+      profile.value = preset;
       profile.addEventListener('change', () => {
-        bot.preset = profile.value as RaceBotPreset;
+        bot.preset = profile.value as BotPreset;
         render();
         editor.querySelector<HTMLSelectElement>('[aria-label="Tuning profile"]')?.focus();
       });

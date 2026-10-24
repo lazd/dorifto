@@ -26,6 +26,8 @@ export class DrivingControls {
   brake = 0;
   reverse = 0;
   handbrake = false;
+  /** Held to disengage the clutch; releasing it at high revs kicks the rear loose. */
+  clutch = false;
   highBeams = false;
   leftSignal = false;
   rightSignal = false;
@@ -90,7 +92,7 @@ export class DrivingControls {
     this.steer = this.throttle = this.brake = this.reverse = 0;
     this.cameraX = this.cameraY = 0;
     this.mapZoom = 0;
-    this.handbrake = this.lookBehind = false;
+    this.handbrake = this.clutch = this.lookBehind = false;
     this.highBeams = false;
     this.highBeamPressedAt = null;
     this.highBeamToggled = this.highBeamsLatched = false;
@@ -188,6 +190,7 @@ export class DrivingControls {
     this.brake = Math.max(Number(keyDown('brake')), value('brake'));
     this.reverse = this.brake;
     this.handbrake = keyDown('handbrake') || pressed('handbrake');
+    this.clutch = pressed('clutch');
     const highBeamPressed = keyDown('highBeams') || pressed('highBeams');
     const now = performance.now();
     if (highBeamPressed) {

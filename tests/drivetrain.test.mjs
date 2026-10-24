@@ -13,7 +13,7 @@ const input = {
   reversing: false,
   wheelSpeed: 0,
   roadWheelSpeed: 0,
-  handbrake: true,
+  declutched: true,
   speedLimited: false,
   peakTorque: 400,
   peakPower: 220000,
@@ -108,7 +108,7 @@ test('pre-start neutral free revs at its limiter without wheel torque and releas
     const torque = drivetrain.step(dt, {
       ...input,
       throttle: 1,
-      handbrake: false,
+      declutched: false,
       startNeutral: true,
     });
     assert.equal(torque, 0);
@@ -117,7 +117,7 @@ test('pre-start neutral free revs at its limiter without wheel torque and releas
     limited ||= drivetrain.state.limiterCut;
   }
   assert.ok(limited, 'neutral reaches the pre-start limiter');
-  for (let i = 0; i < 100; i++) drivetrain.step(dt, { ...input, throttle: 1, handbrake: false });
+  for (let i = 0; i < 100; i++) drivetrain.step(dt, { ...input, throttle: 1, declutched: false });
   assert.equal(drivetrain.state.gear, 1);
   assert.equal(drivetrain.state.limiterCut, false);
 });

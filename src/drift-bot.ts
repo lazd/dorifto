@@ -89,7 +89,8 @@ export function createDriftBot(
   options: { preset?: RaceBotOptions['preset']; tuning?: DriftBotTuning } = {},
 ) {
   const driver =
-    options.tuning ?? driftBotTunings[isDriftBotPreset(options.preset) ? options.preset : 'drift-default'];
+    options.tuning ??
+    driftBotTunings[isDriftBotPreset(options.preset) ? options.preset : 'drift-default'];
   const tuning = configuration.profiles[configuration.driveMode];
   const { centers, rights, spacing } = map;
   const count = centers.length;
@@ -118,6 +119,7 @@ export function createDriftBot(
     reverse: 0,
     steer: 0,
     handbrake: false,
+    clutch: false,
   };
   const thinking: BotThinking = {
     phase: 'driving',
@@ -154,7 +156,14 @@ export function createDriftBot(
     thinking.maneuver = 'grip';
     for (const key of Object.keys(thinking.conditions) as (keyof BotThinking['conditions'])[])
       thinking.conditions[key] = false;
-    Object.assign(controls, { throttle: 0, brake: 0, reverse: 0, steer: 0, handbrake: false });
+    Object.assign(controls, {
+      throttle: 0,
+      brake: 0,
+      reverse: 0,
+      steer: 0,
+      handbrake: false,
+      clutch: false,
+    });
   }
 
   /** Largest centerline curvature over a distance ahead, signed. */
@@ -171,9 +180,14 @@ export function createDriftBot(
     let nearest = index;
     let best = Infinity;
     const search = index < 0 ? count : 20;
-    for (let i = index < 0 ? 0 : index - search; i < (index < 0 ? count : index + search + 1); i++) {
+    for (
+      let i = index < 0 ? 0 : index - search;
+      i < (index < 0 ? count : index + search + 1);
+      i++
+    ) {
       const candidate = wrap(i, count);
-      const distance = (centers[candidate].x - state.x) ** 2 + (centers[candidate].z - state.z) ** 2;
+      const distance =
+        (centers[candidate].x - state.x) ** 2 + (centers[candidate].z - state.z) ** 2;
       if (distance < best) {
         nearest = candidate;
         best = distance;
@@ -269,7 +283,6 @@ export function createDriftBot(
     const overspeed = state.speed - targetSpeed;
     let throttle: number;
     let brake = 0;
-    let handbrake = false;
     if (mode === 'drift') {
       // Lifting regains rear grip when the car rotates past the drift angle.
       const overrotation = THREE.MathUtils.smoothstep(
@@ -293,8 +306,8 @@ export function createDriftBot(
       brake = overspeed > 2 ? clamp((overspeed - 2) * 0.3, 0, 1) : 0;
     }
     // The paper initiates on throttle alone, but at our speeds the engine can't always break the
-    // rear loose; tap the handbrake (which also declutches) when the car won't rotate. Training
-    // can disable this with a zero handbrake slip.
+    // rear loose; tap the handbrake when the car won't rotate. A clutch kick (`controls.clutch`)
+    // revs but doesn't rotate the car enough. Training can disable this with a zero handbrake slip.
     const wantHandbrake =
       (mode === 'initiation' || mode === 'drift') &&
       state.speed > minDriftSpeed &&
@@ -303,13 +316,12 @@ export function createDriftBot(
     handbrakeTime = handbrakeTime > 0 ? handbrakeTime + dt : 0;
     if (handbrakeTime > handbrakePulse * 2) handbrakeTime = 0;
     if (wantHandbrake && handbrakeTime === 0) handbrakeTime = dt;
-    handbrake = handbrakeTime > 0 && handbrakeTime <= handbrakePulse;
     thinking.conditions.braking = brake > 0;
     thinking.conditions.slowing = throttle === 0 && brake === 0;
     thinking.conditions.stabilizing = Math.abs(state.slipAngle) > 1;
     controls.throttle = brake > 0 ? 0 : throttle;
     controls.brake = brake;
-    controls.handbrake = handbrake;
+    controls.handbrake = handbrakeTime > 0 && handbrakeTime <= handbrakePulse;
     return controls;
   }
 
