@@ -5,6 +5,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { fetchTerrainRaster } from './import-terrain.mjs';
 
 const earthRadius = 6371008.8;
 const defaults = { width: 15, spacing: 8, elevationSpacing: 5, elevationSmoothing: 15 };
@@ -322,14 +323,17 @@ export async function fetchElevationProfile(
 
 export function convertTrack(data, options = {}) {
   const settings = { ...defaults, ...options };
+  if (!Number.isFinite(settings.width) || settings.width <= 0)
+    throw new Error('--width must be a positive finite number');
   const closed = data.closed !== false;
-  const { unique } = projectLap(data);
+  const { unique, lat0, lon0, cosLat } = projectLap(data);
   const { points, length } = resampleLoop(unique, settings.spacing, closed);
 
   const profile = data.elevation?.points
     ?.filter((point) => Number.isFinite(point.altitude_m) && Number.isFinite(point.dist_frac))
     .sort((a, b) => a.dist_frac - b.dist_frac);
   let elevation = [0];
+  let elevationOffset = 0;
   if (profile?.length >= 2) {
     const count = Math.max(8, Math.round(length / settings.elevationSpacing));
     const raw = Array.from({ length: count }, (_, i) =>
@@ -366,6 +370,7 @@ export function convertTrack(data, options = {}) {
       return sum / (2 * radius + 1);
     });
     const min = Math.min(...smoothed);
+    elevationOffset = min;
     elevation = smoothed.map((height) => round(height - min, 2));
   }
 
@@ -377,9 +382,21 @@ export function convertTrack(data, options = {}) {
     configName: data.config_name,
     location: data.location,
     width: settings.width,
+    ...(settings.doubleYellow ? { doubleYellow: true } : {}),
     coneSpacing: 10,
     points: points.map(([x, z]) => [round(x, 2), round(z, 2)]),
     elevation,
+    ...(data.terrain
+      ? {
+          terrain: {
+            ...data.terrain,
+            originLat: lat0,
+            originLon: lon0,
+            metersPerLongitude: ((earthRadius * Math.PI) / 180) * cosLat,
+            elevationOffset,
+          },
+        }
+      : {}),
     ...(data.elevation?.source ? { elevationSource: data.elevation.source } : {}),
   };
 }
@@ -389,6 +406,7 @@ function parseArguments(argv) {
   const options = {};
   const selection = {};
   const metadata = {};
+  const terrainOptions = {};
   let outDir = fileURLToPath(new URL('../src/tracks/', import.meta.url));
   for (let i = 0; i < argv.length; i++) {
     const argument = argv[i];
@@ -399,6 +417,7 @@ function parseArguments(argv) {
     };
     if (argument === '--out-dir') outDir = value();
     else if (argument === '--width') options.width = Number(value());
+    else if (argument === '--double-yellow') options.doubleYellow = true;
     else if (argument === '--spacing') options.spacing = Number(value());
     else if (argument === '--start') selection.start = Number(value());
     else if (argument === '--finish') selection.finish = Number(value());
@@ -406,27 +425,36 @@ function parseArguments(argv) {
     else if (argument === '--name') metadata.display_name = value();
     else if (argument === '--venue-name') metadata.venue_name = value();
     else if (argument === '--config-name') metadata.config_name = value();
+    else if (argument === '--terrain-resolution') terrainOptions.resolution = Number(value());
+    else if (argument === '--terrain-margin') terrainOptions.margin = Number(value());
+    else if (argument === '--terrain') terrainOptions.enabled = true;
     else if (argument === '--help' || argument === '-h') return { help: true };
     else if (argument.startsWith('-')) throw new Error(`Unknown option: ${argument}`);
     else inputs.push(argument);
   }
-  for (const [key, number] of Object.entries(options)) {
-    if (!(number > 0)) throw new Error(`--${key} must be a positive number`);
+  for (const key of ['width', 'spacing']) {
+    const number = options[key];
+    if (number !== undefined && (!Number.isFinite(number) || number <= 0))
+      throw new Error(`--${key} must be a positive finite number`);
   }
   if (metadata.slug !== undefined && !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(metadata.slug))
     throw new Error('--slug must contain lowercase letters, numbers, and hyphens');
   if ((Object.keys(metadata).length || Object.keys(selection).length) && inputs.length > 1)
     throw new Error('Naming and segment options require a single input file');
-  return { inputs, options, outDir, selection, metadata };
+  for (const key of ['resolution', 'margin']) {
+    if (terrainOptions[key] !== undefined && !Number.isFinite(terrainOptions[key]))
+      throw new Error(`Invalid terrain ${key}`);
+  }
+  return { inputs, options, outDir, selection, metadata, terrainOptions };
 }
 
 async function main() {
-  const { help, inputs, options, outDir, selection, metadata } = parseArguments(
+  const { help, inputs, options, outDir, selection, metadata, terrainOptions } = parseArguments(
     process.argv.slice(2),
   );
   if (help || !inputs.length) {
     console.log(
-      'Usage: npm run import-track -- <track.json...> [--start <index> --finish <index>] [--slug <slug>] [--name <name>] [--venue-name <venue>] [--config-name <configuration>] [--out-dir src/tracks] [--width 15] [--spacing 8]',
+      'Usage: npm run import-track -- <track.json...> [--start <index> --finish <index>] [--slug <slug>] [--name <name>] [--venue-name <venue>] [--config-name <configuration>] [--terrain] [--terrain-resolution 5] [--terrain-margin 250] [--out-dir src/tracks] [--width 15] [--double-yellow] [--spacing 8]',
     );
     if (!help) process.exitCode = 1;
     return;
@@ -440,6 +468,15 @@ async function main() {
         ? { cacheDir: fileURLToPath(new URL('../road-imports/cache/', import.meta.url)) }
         : {},
     );
+    if (
+      data.closed === false ||
+      terrainOptions.enabled ||
+      terrainOptions.resolution !== undefined ||
+      terrainOptions.margin !== undefined
+    ) {
+      console.log(`🌄 Fetching surrounding terrain for ${data.display_name ?? data.slug}`);
+      data.terrain = await fetchTerrainRaster(data, terrainOptions);
+    }
     const course = convertTrack(data, options);
     const output = path.join(outDir, `${course.id}.json`);
     await writeFile(output, `${JSON.stringify(course)}\n`);

@@ -9,7 +9,7 @@ const copyStatus = document.querySelector('#copy-status');
 const command = document.querySelector('#import-command');
 const copyButton = document.querySelector('#copy-command');
 const fields = Object.fromEntries(
-  ['slug', 'name', 'venue', 'config'].map((key) => [
+  ['slug', 'name', 'venue', 'config', 'width', 'divider'].map((key) => [
     key,
     document.querySelector(`#segment-${key}`),
   ]),
@@ -46,17 +46,22 @@ function updateCommand() {
   }
   const valid =
     /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(fields.slug.value) &&
-    ['name', 'venue', 'config'].every((key) => fields[key].value.trim());
+    ['name', 'venue', 'config'].every((key) => fields[key].value.trim()) &&
+    Number.isFinite(Number(fields.width.value)) &&
+    Number(fields.width.value) > 0;
   copyButton.disabled = !valid;
   if (!valid) {
     command.value = '';
-    copyStatus.textContent = 'Provide a lowercase hyphenated slug and nonempty names.';
+    copyStatus.textContent =
+      'Provide a lowercase hyphenated slug, nonempty names, and a positive road width.';
     return;
   }
   command.value =
     `npm run import-track -- ${quote(command.dataset.source)} --start ${start} --finish ${finish}` +
     ` --slug ${quote(fields.slug.value)} --name ${quote(fields.name.value)}` +
-    ` --venue-name ${quote(fields.venue.value)} --config-name ${quote(fields.config.value)}`;
+    ` --venue-name ${quote(fields.venue.value)} --config-name ${quote(fields.config.value)}` +
+    ` --width ${Number(fields.width.value)}` +
+    (fields.divider.value === 'double-yellow' ? ' --double-yellow' : '');
 }
 
 async function copyCommand() {

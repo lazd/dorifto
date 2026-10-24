@@ -239,7 +239,7 @@ async function writeRoadPreview(source, output) {
     p { line-height: 1.5; }
     .fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
     label { display: grid; gap: 6px; }
-    input, textarea, button { font: inherit; padding: 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); color: inherit; }
+    input, select, textarea, button { font: inherit; padding: 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); color: inherit; }
     textarea { box-sizing: border-box; width: 100%; margin: 16px 0; min-height: 100px; }
     button { cursor: pointer; }
     button:disabled { opacity: .5; cursor: default; }
@@ -258,6 +258,8 @@ async function writeRoadPreview(source, output) {
     <label>Display name<input id="segment-name" value="${escape(source.display_name)}"></label>
     <label>Venue name<input id="segment-venue" value="${escape(source.display_name)}"></label>
     <label>Configuration name<input id="segment-config" value=""></label>
+    <label>Road width (meters)<input id="segment-width" type="number" min="0.1" step="0.1" value="15"></label>
+    <label>Center divider<select id="segment-divider"><option value="">None</option><option value="double-yellow">Double yellow</option></select></label>
   </div>
   <textarea id="import-command" readonly aria-label="Import command" data-source="${escape(path.relative(process.cwd(), output.replace(/\.html$/, '.json')))}" data-slug="${escape(source.slug)}"></textarea>
   <button id="copy-command" disabled>Copy import command</button>

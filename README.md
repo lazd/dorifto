@@ -524,6 +524,31 @@ fetched data with `elevationSource: "USGS 3DEP"`. These are terrain estimates, n
 surveyed road heights; coverage and source resolution vary by location.
 Options: `--width <m>` (default 15),
 `--spacing <m>` (default 8), and `--out-dir <dir>`.
+Width is the distance between the white edge lines; shoulders are added separately.
+Use `--double-yellow` to draw two continuous yellow center lines, following the
+road's curves, elevation, and banking. This is visual only, not a barrier;
+omitting the flag keeps the center unmarked. The HTML segment selector includes
+road width and center-divider controls in its copied import command.
+For example, a two-lane road can use `--width 7.5 --double-yellow`.
+
+After selecting a segment and fetching any missing centerline elevation, the track
+importer automatically downloads surrounding USGS 3DEP terrain for open roads.
+Closed tracks can opt in with `--terrain`. The default raster spacing is 5 m, with
+a 250 m margin around the selected GPS bounds; configure these with
+`--terrain-resolution <m>` (minimum 1) and `--terrain-margin <m>` (minimum 210).
+Source resolution varies by location: requesting a finer grid does not guarantee
+additional surveyed detail. Oversized requests fail with guidance to select a
+shorter segment or use coarser spacing.
+
+Validated GeoTIFFs are cached in `road-imports/cache/terrain-<hash>.tif`, keyed by
+the service request, including geographic bounds, resolution, and margin.
+Identical imports reuse the cached raster; other segments or resolutions request
+their own raster. Delete the corresponding file to refresh it. Terminal output
+reports downloads and cache hits. Missing data or service failures stop the import.
+The generated course embeds the geographic raster and elevation datum, so the game
+does not fetch terrain or depend on the local cache. Terrain follows real hillsides
+and dropoffs outside the smoothed pavement and shoulders. Older courses without a
+raster retain their existing procedural surroundings; re-import to add real terrain.
 
 Imported-track terrain banking is blended over 50 m around the closed loop, preventing small
 GPS stitching S-bends from creating abrupt cross-slope bumps at start/finish.

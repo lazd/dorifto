@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { courseProfileHeight, courseRoute, courseShoulderWidth } from './courses';
 import type { CourseDefinition } from './courses';
 import { surfaceMaterial } from './surfaces';
-import { terrainBaseHeight } from './terrain-profile';
+import { terrainBaseHeight, terrainRasterSampler } from './terrain-profile';
 import { TerrainSurface, heightAt, normalAt, type TerrainQueryData } from './terrain-query';
 
 type Point = { x: number; z: number };
@@ -73,7 +73,9 @@ export class CourseTerrain {
     }
     const bounds = new THREE.Box3().setFromPoints(this.segments.map((segment) => segment.a));
     const profile = definition.elevation;
+    const rasterHeight = definition.terrain ? terrainRasterSampler(definition.terrain) : undefined;
     const surroundings =
+      !rasterHeight &&
       profile &&
       profileSurroundings(
         this.segments.map(({ a }, i) => ({
@@ -111,7 +113,7 @@ export class CourseTerrain {
         const hills =
           12 + 9 * Math.sin(px / 48 + 0.6) * Math.cos(pz / 61) + 5 * Math.sin((px - pz) / 83);
         const blendStart = Math.min(this.halfWidth + 3, 48);
-        const blendEnd = Math.min(this.halfWidth + 48, 50);
+        const blendEnd = rasterHeight ? this.halfWidth + 18 : Math.min(this.halfWidth + 48, 50);
         const blend = THREE.MathUtils.smoothstep(near.distance, blendStart, blendEnd);
         // Elevation follows the centerline, not the hillside's cross-slope:
         // positive turns lower the inside (+across) and raise the outside.
@@ -122,7 +124,11 @@ export class CourseTerrain {
             elevationScale +
           near.bank * near.across * bankingScale;
         // Imported tracks settle into ground interpolated from nearby course heights.
-        const ground = surroundings ? surroundings(px, pz) + 0.35 * (hills - 12) : base + hills;
+        const ground = rasterHeight
+          ? rasterHeight(px, pz)
+          : surroundings
+            ? surroundings(px, pz) + 0.35 * (hills - 12)
+            : base + hills;
         const height = definition.flat
           ? 0
           : THREE.MathUtils.lerp(road, ground * elevationScale, blend);

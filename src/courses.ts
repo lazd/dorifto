@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { terrainBaseHeight } from './terrain-profile';
+import { terrainBaseHeight, type TerrainRaster } from './terrain-profile';
 import type { CourseGenerationWeights } from './course-generation';
 
 export const startDistance = 5;
@@ -20,6 +20,8 @@ export interface CourseDefinition {
     lon: number;
   };
   width: number;
+  /** Optional pair of solid yellow lines along the road center. */
+  doubleYellow?: boolean;
   coneSpacing?: number;
   flat?: boolean;
   elevationScale?: number;
@@ -40,6 +42,7 @@ export interface CourseDefinition {
    */
   elevation?: readonly number[];
   elevationSource?: string;
+  terrain?: TerrainRaster;
 }
 
 /** Periodic heights for circuits; slope-continuous, monotone heights for open roads. */

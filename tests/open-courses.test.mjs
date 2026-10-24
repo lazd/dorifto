@@ -156,3 +156,74 @@ test('segment imports trim and reverse source geometry and elevation without clo
   assert.throws(() => selectTrackSegment(source, { start: 2 }), /valid source point/);
   assert.throws(() => selectTrackSegment(source, { start: 2, finish: 2 }), /valid source point/);
 });
+
+test('imported road width and optional double-yellow lines reach the terrain-draped game mesh', async (t) => {
+  const source = {
+    slug: 'narrow-road',
+    closed: false,
+    featured_lap: {
+      points: [
+        { lat: 38, lon: -120 },
+        { lat: 38.001, lon: -120 },
+      ],
+    },
+    elevation: {
+      points: [
+        { dist_frac: 0, altitude_m: 100 },
+        { dist_frac: 1, altitude_m: 105 },
+      ],
+    },
+  };
+  assert.equal(convertTrack(source).width, 15);
+  assert.equal(convertTrack(source).doubleYellow, undefined);
+  for (const width of [0, -1, NaN, Infinity])
+    assert.throws(() => convertTrack(source, { width }), /--width/);
+  const imported = convertTrack(source, { width: 7.5, doubleYellow: true });
+  assert.equal(imported.width, 7.5);
+  assert.equal(imported.doubleYellow, true);
+
+  const previousDocument = globalThis.document;
+  const context = {
+    createImageData: (width, height) => ({ data: new Uint8ClampedArray(width * height * 4) }),
+    getImageData: (_x, _y, width, height) => ({ data: new Uint8ClampedArray(width * height * 4) }),
+    putImageData() {},
+    beginPath() {},
+    ellipse() {},
+    fill() {},
+    moveTo() {},
+    lineTo() {},
+    stroke() {},
+  };
+  globalThis.document = { createElement: () => ({ getContext: () => context }) };
+  t.after(() => {
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+  });
+  const { createCourse } = await server.ssrLoadModule('/src/course.ts');
+  const { Scene } = await import('three');
+  const scene = new Scene();
+  for (const doubleYellow of [false, true]) {
+    const course = createCourse(scene, { ...imported, doubleYellow }, 1.8);
+    try {
+      const lines = scene.getObjectsByProperty('name', 'double-yellow-center-line');
+      assert.equal(lines.length, doubleYellow ? 2 : 0);
+      for (const line of lines) {
+        const positions = line.geometry.getAttribute('position');
+        for (let i = 0; i < positions.count; i++) {
+          const x = positions.getX(i);
+          const y = positions.getY(i);
+          const z = positions.getZ(i);
+          assert.ok(Math.abs(y - course.terrain.heightAt(x, z) - 0.016) < 1e-5);
+        }
+      }
+      if (doubleYellow) {
+        for (const line of lines) line.geometry.computeBoundingBox();
+        const [a, b] = lines.map((line) => line.geometry.boundingBox);
+        assert.ok(a.max.x < 0 && b.min.x > 0, 'lines straddle the center with a gap');
+        assert.ok(a.max.x - a.min.x > 0, 'lines have visible width');
+      }
+    } finally {
+      course.dispose();
+    }
+  }
+});

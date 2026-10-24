@@ -222,6 +222,13 @@ function buildCourse(scene: THREE.Group, definition: CourseDefinition, carWidth:
     scene.add(pad);
   } else ribbon(0, definition.width + courseShoulderWidth * 2, 0.008, asphalt);
   for (const side of [-1, 1]) ribbon((side * definition.width) / 2, courseLineWidth, 0.016, white);
+  if (definition.doubleYellow) {
+    const yellow = new THREE.MeshBasicMaterial({ color: 0xffd32a, side: THREE.DoubleSide });
+    for (const side of [-1, 1]) {
+      const line = ribbon(side * courseLineWidth, courseLineWidth, 0.016, yellow);
+      line.name = 'double-yellow-center-line';
+    }
+  }
   const columns = Math.ceil(definition.width / 0.5);
   const tileWidth = definition.width / columns;
   for (const gateT of definition.closed === false ? [0, 1] : [startDistance / length]) {
