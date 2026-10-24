@@ -14,6 +14,12 @@ import { defaultTuningPresets } from './configuration-state';
 
 const presetNames = new Map(defaultTuningPresets().map((preset) => [preset.id, preset.name]));
 const modeNames = { grip: 'Grip', drift: 'Drift' };
+// Drift bots drive solo and don't learn, so aggression, learning and attack are race-only.
+const racing = (bot: RaceBotOptions) =>
+  botDriveMode(bot.preset ?? defaultRaceBotOptions.preset!) === 'grip';
+const botSummary = (bot: RaceBotOptions) =>
+  `Skill ${Math.round(bot.skill * 100)}%` +
+  (racing(bot) ? ` · Agg. ${Math.round(bot.aggression * 100)}%` : '');
 
 function makeElement<T extends HTMLElement>(tag: string, className?: string, text?: string) {
   const element = document.createElement(tag) as T;
@@ -92,8 +98,7 @@ export function bindBotDialog(
   const refreshSummary = (index: number) => {
     const summary = list.querySelectorAll<HTMLElement>('.bot-summary')[index];
     const bot = bots[index];
-    if (summary && bot)
-      summary.textContent = `Skill ${Math.round(bot.skill * 100)}% · Agg. ${Math.round(bot.aggression * 100)}%`;
+    if (summary && bot) summary.textContent = botSummary(bot);
   };
 
   const render = (focus = false) => {
@@ -122,7 +127,7 @@ export function bindBotDialog(
         avatar.style.setProperty('--avatar-color', botColor(index));
         title.textContent = botName(index);
         profile.textContent = `${modeNames[botDriveMode(preset)]} · ${presetNames.get(preset) ?? preset}`;
-        summary.textContent = `Skill ${Math.round(bot.skill * 100)}% · Agg. ${Math.round(bot.aggression * 100)}%`;
+        summary.textContent = botSummary(bot);
         main.append(avatar, text);
         text.append(title, profile, summary);
         main.addEventListener('click', () => {
@@ -209,10 +214,13 @@ export function bindBotDialog(
         makeSlider('skill', 'Skill', 'Beginner', 'Expert', bot, () =>
           refreshSummary(selectedBotIndex),
         ),
-        makeSlider('aggression', 'Aggression', 'Cautious', 'Bold', bot, () =>
-          refreshSummary(selectedBotIndex),
-        ),
       );
+      if (racing(bot))
+        sliders.append(
+          makeSlider('aggression', 'Aggression', 'Cautious', 'Bold', bot, () =>
+            refreshSummary(selectedBotIndex),
+          ),
+        );
 
       const makeOption = (
         key: 'learning' | 'attackThrottleBoost',
@@ -235,14 +243,15 @@ export function bindBotDialog(
         return row;
       };
 
-      options.append(
-        makeOption('learning', 'Learn between laps', 'Adapt driving using previous laps.'),
-        makeOption(
-          'attackThrottleBoost',
-          'Attack throttle boost',
-          'Allow extra throttle when attacking.',
-        ),
-      );
+      if (racing(bot))
+        options.append(
+          makeOption('learning', 'Learn between laps', 'Adapt driving using previous laps.'),
+          makeOption(
+            'attackThrottleBoost',
+            'Attack throttle boost',
+            'Allow extra throttle when attacking.',
+          ),
+        );
       panel.setAttribute('aria-labelledby', title.id);
       panel.append(heading, fields, modeHelp, sliders, options);
       editor.replaceChildren(panel);
