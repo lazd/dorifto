@@ -755,13 +755,18 @@ async function start() {
       runOrigin = timing.elapsedTime;
       run = new RunRecording();
     }
+    if (timing.finished && run.lapTimes.length) return;
     if (!run.started && timing.lap) {
       run.lapStarts.push(timing.lapStartedAt - runOrigin);
       syncLapRecorder();
     }
-    if (run.lapStarts.length < timing.lap && timing.last !== null)
+    if (
+      (run.lapStarts.length < timing.lap || (timing.finished && !run.lapTimes.length)) &&
+      timing.last !== null
+    )
       run.completeLap(timing.lapStartedAt - runOrigin, timing.last, timing.lastCones ?? 0);
     else if (
+      !timing.finished &&
       run.started &&
       run.lapStarts[run.lapStarts.length - 1] !== timing.lapStartedAt - runOrigin
     )
@@ -1285,6 +1290,7 @@ async function start() {
       ? replay.recording.timingAt(replay.time)
       : {
           lap: laps.lap,
+          finished: laps.finished,
           current: laps.current,
           last: laps.last,
           best: laps.best,
@@ -1303,6 +1309,7 @@ async function start() {
         gear: engine.gear,
         limiter: engine.limiterCut,
         ...timing,
+        finished: !replaying && laps.finished,
         invalid: !replaying && laps.invalid,
         cones: replaying ? 0 : laps.conesHit,
         driving: spawnBrakeHeld

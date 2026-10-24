@@ -77,6 +77,7 @@ export function createPhysicsInit(
 export type LapState = Pick<
   LapTimer,
   | 'lap'
+  | 'finished'
   | 'invalid'
   | 'current'
   | 'last'
@@ -90,6 +91,7 @@ export type LapState = Pick<
 export function emptyLapState(): LapState {
   return {
     lap: 0,
+    finished: false,
     invalid: false,
     current: 0,
     last: null,

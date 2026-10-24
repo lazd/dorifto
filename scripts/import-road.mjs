@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createServer } from 'vite';
+import { fetchElevationProfile, roadDistances } from './import-track.mjs';
 
 const overpassEndpoint = 'https://overpass-api.de/api/interpreter';
 const geocodingEndpoint = 'https://nominatim.openstreetmap.org/search';
@@ -22,11 +23,11 @@ async function cachedResponse(url, { service, timeout, fetchImpl, cacheDir, vali
   }
   if (cached !== undefined) {
     const result = validate(JSON.parse(cached));
-    console.log(`  ${service}: cache hit`);
+    console.log(`  📦 ${service}: using cached response`);
     return result;
   }
 
-  console.log(`  ${service}: cache miss, requesting data...`);
+  console.log(`  🌐 ${service}: requesting fresh data…`);
   const started = performance.now();
   const response = await fetchImpl(url, {
     headers: { accept: 'application/json', 'user-agent': 'Dorifto road importer' },
@@ -43,7 +44,7 @@ async function cachedResponse(url, { service, timeout, fetchImpl, cacheDir, vali
   await mkdir(cacheDir, { recursive: true });
   await writeFile(cacheFile, `${JSON.stringify(data)}\n`);
   console.log(
-    `  ${service}: response cached (${((performance.now() - started) / 1000).toFixed(1)}s)`,
+    `  💾 ${service}: response cached in ${((performance.now() - started) / 1000).toFixed(1)} seconds`,
   );
   return result;
 }
@@ -159,7 +160,9 @@ export async function fetchRoadCoordinates(
           `Overpass API returned an invalid response${result.remark ? `: ${result.remark}` : ''}`,
         );
       }
-      console.log(`  Overpass: ordering ${result.elements.length} road segments`);
+      console.log(
+        `  🧩 Connecting ${result.elements.length.toLocaleString('en-US')} road segments`,
+      );
       return orderWaySegments(result.elements, `${roadName} in ${locationQuery}`);
     },
   });
@@ -220,6 +223,7 @@ async function writeRoadPreview(source, output) {
     const svg = roadPreviewSvg(points, 15, { size: 800, padding: 32, title: source.display_name });
     const escape = (text) =>
       text.replace(/[&<>"']/g, (character) => `&#${character.charCodeAt(0)};`);
+    const previewScript = await readFile(new URL('./road-preview.mjs', import.meta.url), 'utf8');
     await writeFile(
       output,
       `<!doctype html>
@@ -229,10 +233,18 @@ async function writeRoadPreview(source, output) {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${escape(source.display_name)} — Road preview</title>
   <style>
-    :root { color-scheme: dark; font-family: system-ui, sans-serif; background: #181818; color: #eee; }
+    :root { color-scheme: dark; font-family: system-ui, sans-serif; background: #181818; color: #eee; --accent: #6de2b8; --panel: #262626; --border: #555; }
     body { max-width: 800px; margin: auto; padding: 24px; }
-    svg { display: block; width: 100%; height: auto; }
+    svg { display: block; width: 100%; height: auto; cursor: crosshair; }
     p { line-height: 1.5; }
+    .fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+    label { display: grid; gap: 6px; }
+    input, textarea, button { font: inherit; padding: 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); color: inherit; }
+    textarea { box-sizing: border-box; width: 100%; margin: 16px 0; min-height: 100px; }
+    button { cursor: pointer; }
+    button:disabled { opacity: .5; cursor: default; }
+    .selection { stroke: var(--accent); stroke-width: 5; fill: none; pointer-events: none; }
+    .endpoint { fill: var(--accent); stroke: #181818; stroke-width: 2; pointer-events: none; }
   </style>
 </head>
 <body>
@@ -240,6 +252,18 @@ async function writeRoadPreview(source, output) {
   <p>${escape(source.venue_name)} · ${points.length} coordinates · North up</p>
   ${svg}
   <p>Open road: checkered markers show the start and finish. No closing segment is added.</p>
+  <p id="selection-status" role="status">Click the road to choose a start, then click again to choose a finish.</p>
+  <div class="fields">
+    <label>Import slug<input id="segment-slug" value="${escape(source.slug)}"></label>
+    <label>Display name<input id="segment-name" value="${escape(source.display_name)}"></label>
+    <label>Venue name<input id="segment-venue" value="${escape(source.display_name)}"></label>
+    <label>Configuration name<input id="segment-config" value=""></label>
+  </div>
+  <textarea id="import-command" readonly aria-label="Import command" data-source="${escape(path.relative(process.cwd(), output.replace(/\.html$/, '.json')))}" data-slug="${escape(source.slug)}"></textarea>
+  <button id="copy-command" disabled>Copy import command</button>
+  <button id="reset-selection">Reset selection</button>
+  <p id="copy-status" role="status"></p>
+  <script type="module">${previewScript}</script>
 </body>
 </html>
 `,
@@ -263,20 +287,31 @@ export async function importRoad({
   if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
     throw new Error('Slug must contain only lowercase letters, numbers, and hyphens');
   }
-  console.log(`[1/4] Finding bounding box for ${locationQuery}`);
+  console.log(`\n📍 [1/5] Finding ${locationQuery}`);
   const bbox = await fetchPlaceBoundingBox(locationQuery, fetchImpl, cacheDir);
   const [south, north, west, east] = bbox;
-  console.log(`${name}: bounding box`, { south, west, north, east });
+  const latitude = (value) => `${Math.abs(value).toFixed(6)}° ${value < 0 ? 'S' : 'N'}`;
+  const longitude = (value) => `${Math.abs(value).toFixed(6)}° ${value < 0 ? 'W' : 'E'}`;
+  console.log(
+    `  🗺️  Search bounds:\n` +
+      `     North: ${latitude(north)}\n` +
+      `     South: ${latitude(south)}\n` +
+      `     West:  ${longitude(west)}\n` +
+      `     East:  ${longitude(east)}`,
+  );
   const query = buildOverpassQuery(name, bbox);
-  console.log(`[2/4] Finding ${name} road geometry`);
+  console.log(`\n🛣️  [2/5] Finding ${name}`);
   const coordinates = await fetchRoadCoordinates(query, name, locationQuery, fetchImpl, cacheDir);
   if (coordinates.length < 8) {
     throw new Error(`${name}: expected at least 8 coordinates, got ${coordinates.length}`);
   }
-  console.log(`${name}: fetched ${coordinates.length} ordered road coordinates`);
+  console.log(
+    `  ✅ ${coordinates.length.toLocaleString('en-US')} coordinates ordered from start to finish`,
+  );
 
   const source = {
     slug,
+    closed: false,
     display_name: name,
     venue_name: locationQuery,
     location: {
@@ -286,15 +321,29 @@ export async function importRoad({
     featured_lap: { points: coordinates },
   };
   const output = path.join(outDir, `${source.slug}.json`);
-  console.log(`[3/4] Writing road source`);
+  console.log(`\n📝 [3/5] Saving road source`);
   await mkdir(outDir, { recursive: true });
   await writeFile(output, `${JSON.stringify(source, null, 2)}\n`);
-  console.log(`${name}: wrote ${output}`);
-  console.log(`[4/4] Generating HTML preview`);
+  console.log(`  💾 ${output}`);
+  console.log(`\n🖼️  [4/5] Generating HTML preview`);
   const previewOutput = path.join(outDir, `${source.slug}.html`);
   await writeRoadPreview(source, previewOutput);
-  console.log(`${name}: preview ${previewOutput}`);
-  console.log(`Next: npm run import-track -- ${path.relative(process.cwd(), output)}`);
+  console.log(`  🔗 ${previewOutput}`);
+  console.log(`\n🏔️  [5/5] Fetching road elevation`);
+  const distances = roadDistances(coordinates);
+  const length = distances.at(-1);
+  if (!(length > 0)) throw new Error(`${name}: road has no length`);
+  source.elevation = await fetchElevationProfile(slug, coordinates, {
+    cacheDir,
+    fetch: fetchImpl,
+    fractions: distances.map((distance) => distance / length),
+  });
+  await writeFile(output, `${JSON.stringify(source, null, 2)}\n`);
+  console.log(`  💾 Elevation saved to ${output}`);
+  console.log(`\n✅ ${name} imported successfully (${(length / 1000).toFixed(2)} km, open route)`);
+  console.log(
+    `  👉 Import into the game:\n     npm run import-track -- ${path.relative(process.cwd(), output)}`,
+  );
 }
 
 export function parseArguments(argv) {
@@ -311,12 +360,12 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
       console.log(`${helpText}\nQuote each multiword argument.`);
     } else {
       importRoad(options).catch((error) => {
-        console.error(`Road import failed: ${error.message}`);
+        console.error(`❌ Road import failed: ${error.message}`);
         process.exitCode = 1;
       });
     }
   } catch (error) {
-    console.error(`Road import failed: ${error.message}`);
+    console.error(`❌ Road import failed: ${error.message}`);
     process.exitCode = 1;
   }
 }

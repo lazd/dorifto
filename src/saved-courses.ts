@@ -64,6 +64,7 @@ function isCourse(value: unknown): value is CourseDefinition {
     ) &&
     (course.flat === undefined || typeof course.flat === 'boolean') &&
     (course.reverse === undefined || typeof course.reverse === 'boolean') &&
+    (course.closed === undefined || typeof course.closed === 'boolean') &&
     (course.generation === undefined || isGeneration(course.generation)) &&
     (course.elevation === undefined ||
       (Array.isArray(course.elevation) &&

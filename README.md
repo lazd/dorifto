@@ -452,31 +452,66 @@ npm run import-track -- road-imports/newtown-road.json
 ```
 
 Generated road source files are ignored by Git.
-The final import step also generates a standalone `road-imports/<slug>.html`
+The importer also generates a standalone `road-imports/<slug>.html`
 preview using the shared course-preview SVG renderer. Open it directly in a
 browser to inspect the north-up road geometry and its start/finish markers;
-the preview does not connect the endpoints.
+the preview does not connect the endpoints. Click the road once for the start
+and again for the finish to highlight a segment and copy an import command.
+Selection snaps to original source coordinates; selecting in reverse order
+imports the segment in the opposite direction. Edit the slug, display name,
+venue name, and configuration name in the preview, then use **Copy import command**.
+If clipboard access is blocked, the command is selected for manual copying.
+
+```sh
+npm run import-track -- road-imports/newtown-road.json --start 20 --finish 100 \
+  --slug newtown-lower --name "Newtown Lower" \
+  --venue-name "Newtown Road" --config-name "Lower section"
+```
+
+`--start` and `--finish` are zero-based, inclusive source point indices and must
+be supplied together. Segment imports reuse and trim the source elevation profile.
+Without naming overrides, a segment gets a unique `<source-slug>-<start>-<finish>`
+slug and a `Segment <start>–<finish>` configuration name. Naming/selection options
+apply to a single input file, so separate segments cannot accidentally overwrite
+one another in a batch.
 Road imports preserve an open, ordered route with distinct start and finish
-points; the endpoints do not need to connect. Open-road support in the course
-converter and game is deferred: the current track converter still closes routes,
-so road source files should not yet be treated as playable point-to-point courses.
+points using `closed: false`; the endpoints do not need to connect. The converter,
+game terrain, and maps preserve the open route. The car spawns at its first point,
+timing begins when the spawn brake is released, and crossing the finish ends a
+single run. The timer remains on lap 1 and freezes until reset; reverse direction
+swaps the endpoints. Existing courses without `closed: false` remain closed circuits.
 Successful geocoding and Overpass responses are cached in `road-imports/cache/`,
 keyed by the location query or the road query including its bounding box.
 Repeated imports reuse these responses without contacting either service.
 Delete the corresponding cache files to refresh the data. Import logs show each
 step, cache hits and misses, request durations, and the generated output path.
+As its last step, the road importer fetches USGS 3DEP elevation for each original
+road coordinate using the track importer's shared elevation fetcher. Heights are
+saved in the source JSON as an `elevation.points` profile with distance fractions
+from 0 (start) to 1 (finish), without sampling a closing segment. Elevation is
+cached in `road-imports/cache/<slug>.json` and reused when coordinates match.
+An in-place terminal progress line reports completed samples, percentage, and elapsed
+time after each batch of up to four requests (redirected output prints only the final
+summary). Failed elevation requests stop the import; the source
+geometry and HTML preview remain available for retrying.
 `display_name` becomes the course `name` (falling back to `slug` if absent);
 `venue_name` and `config_name` are stored as optional `venueName` and `configName`.
 The optional `location` object retains `city`, `state`, `country`, `lat`, and `lon`.
 `blurb` is not imported.
 `featured_lap.points` (lat/lon) is projected to meters around the lap's centroid
 (north up, east right in the map view) and resampled every 8 m; a gap between the
-last fix and the start is bridged straight. `elevation.points` (`dist_frac`,
+last fix and the start is bridged straight for closed circuits only.
+`elevation.points` (`dist_frac`,
 `altitude_m`) becomes a smoothed road-height profile along the route, and the
 surrounding terrain is interpolated from nearby course heights. The last and first
 100 m of elevation are joined with a height- and grade-matched curve before
 smoothing, preventing recording endpoint mismatches from forming a start/finish
-bump (the transition is shortened for very small loops). When elevation
+bump (the transition is shortened for very small loops). Open roads preserve both
+endpoints and use an endpoint-preserving cubic B-spline for the playable centerline.
+Their elevation uses a Gaussian filter with a 15 m standard deviation and
+monotone cubic interpolation for continuous grades, without wrapping or a seam
+bridge. Raw GPS and cached USGS samples are unchanged. Re-import existing road
+configurations to apply the elevation filter. When elevation
 points are absent or empty, the importer fetches terrain heights from the
 [USGS 3DEP Elevation Point Query Service](https://apps.nationalmap.gov/epqs/)
 at 10 m intervals along the GPS lap, including the closing segment. Supplied

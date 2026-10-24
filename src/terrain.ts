@@ -30,12 +30,18 @@ export class CourseTerrain {
     const route = courseRoute({ ...definition, reverse: false });
     const length = route.getLength();
     const count = Math.ceil(length);
+    const fraction = (t: number) =>
+      definition.closed === false
+        ? THREE.MathUtils.clamp(t, 0, 1)
+        : THREE.MathUtils.euclideanModulo(t, 1);
     this.segments = Array.from({ length: count }, (_, i) => {
       const t = i / count;
       const a = route.getPointAt(t);
       const b = route.getPointAt((i + 1) / count);
-      const before = route.getTangentAt(THREE.MathUtils.euclideanModulo(t - 5 / length, 1));
-      const after = route.getTangentAt((t + 5 / length) % 1);
+      const before = route.getTangentAt(fraction(t - 5 / length));
+      const after = route.getTangentAt(
+        definition.closed === false ? fraction(t + 5 / length) : (t + 5 / length) % 1,
+      );
       const bend = Math.atan2(before.z * after.x - before.x * after.z, before.dot(after));
       return { a, b, bank: -THREE.MathUtils.clamp((bend / 10) * 2.5, -0.065, 0.065) };
     });
@@ -55,7 +61,11 @@ export class CourseTerrain {
         let totalWeight = 0;
         for (let offset = -bankRadius; offset <= bankRadius; offset++) {
           const weight = weights[offset + bankRadius];
-          weightedBank += banks[THREE.MathUtils.euclideanModulo(i + offset, count)] * weight;
+          const index =
+            definition.closed === false
+              ? THREE.MathUtils.clamp(i + offset, 0, count - 1)
+              : THREE.MathUtils.euclideanModulo(i + offset, count);
+          weightedBank += banks[index] * weight;
           totalWeight += weight;
         }
         segment.bank = weightedBank / totalWeight;
@@ -69,7 +79,7 @@ export class CourseTerrain {
         this.segments.map(({ a }, i) => ({
           x: a.x,
           z: a.z,
-          height: courseProfileHeight(profile, i / count),
+          height: courseProfileHeight(profile, i / count, definition.closed !== false),
         })),
       );
     if (this.padRadius !== undefined) {
@@ -107,7 +117,7 @@ export class CourseTerrain {
         // positive turns lower the inside (+across) and raise the outside.
         const road =
           (profile
-            ? courseProfileHeight(profile, near.fraction)
+            ? courseProfileHeight(profile, near.fraction, definition.closed !== false)
             : terrainBaseHeight(near.x, near.z)) *
             elevationScale +
           near.bank * near.across * bankingScale;

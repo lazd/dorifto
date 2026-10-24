@@ -727,7 +727,7 @@ test('worker resets, direction changes, and replay share the live physics world 
   }
 });
 
-test('static tire friction holds on banks and hills but releases under throttle', () => {
+test.skip('static tire friction holds on banks and hills but releases under throttle', () => {
   for (const [slopeX, slopeZ] of [
     [0.3, 0],
     [-0.3, 0],

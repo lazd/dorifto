@@ -635,7 +635,7 @@ export function createVehiclePhysics({
       lapTirePoints[i * 3 + 1].copy(center).add(lapTireAcross);
       lapTirePoints[i * 3 + 2].copy(center).sub(lapTireAcross);
     }
-    if (!startHeld) laps.update(lapPosition, fixedStep, lapTirePoints);
+    if (!startHeld) laps.update(lapPosition, fixedStep, lapTirePoints, spawnBrakeHeld);
     offTrackTime = isAsphalt(lapPosition) ? 0 : offTrackTime + fixedStep;
     car.setHazards(offTrackTime > 3 && (offTrackTime - 3) % 0.8 < 0.4, offTrackTime > 3);
     for (let i = 0; i < 4; i++) {

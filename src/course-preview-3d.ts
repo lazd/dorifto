@@ -72,7 +72,7 @@ export function createCoursePreviewModel(
       const positions: number[] = [];
       const indices: number[] = [];
       for (let i = 0; i < samples; i++) {
-        const t = i / samples;
+        const t = i / (definition.closed === false ? samples - 1 : samples);
         const center = route.getPointAt(t);
         const tangent = route.getTangentAt(t);
         for (const side of [-1, 1]) {
@@ -83,27 +83,29 @@ export function createCoursePreviewModel(
         }
         const j = i * 2;
         const k = ((i + 1) % samples) * 2;
-        indices.push(j, k, j + 1, j + 1, k, k + 1);
+        if (definition.closed !== false || i < samples - 1)
+          indices.push(j, k, j + 1, j + 1, k, k + 1);
       }
       group.add(meshFrom(positions, indices, roadMaterial));
     }
-    const startT = startDistance / length;
-    const start = route.getPointAt(startT);
-    const startTangent = route.getTangentAt(startT);
-    const startPositions: number[] = [];
-    for (const along of [-1, 1])
-      for (const side of [-1, 1]) {
-        const x = start.x + startTangent.z * side * halfRoad + startTangent.x * along;
-        const z = start.z - startTangent.x * side * halfRoad + startTangent.z * along;
-        startPositions.push(x, height(x, z) + roadLift * 2, z);
-      }
-    group.add(
-      meshFrom(
-        startPositions,
-        [0, 2, 1, 1, 2, 3],
-        new THREE.MeshBasicMaterial({ color: colors.start, side: THREE.DoubleSide }),
-      ),
-    );
+    for (const startT of definition.closed === false ? [0, 1] : [startDistance / length]) {
+      const start = route.getPointAt(startT);
+      const startTangent = route.getTangentAt(startT);
+      const startPositions: number[] = [];
+      for (const along of [-1, 1])
+        for (const side of [-1, 1]) {
+          const x = start.x + startTangent.z * side * halfRoad + startTangent.x * along;
+          const z = start.z - startTangent.x * side * halfRoad + startTangent.z * along;
+          startPositions.push(x, height(x, z) + roadLift * 2, z);
+        }
+      group.add(
+        meshFrom(
+          startPositions,
+          [0, 2, 1, 1, 2, 3],
+          new THREE.MeshBasicMaterial({ color: colors.start, side: THREE.DoubleSide }),
+        ),
+      );
+    }
 
     bounds.expandByScalar(terrainMargin);
     const minX = Math.max(bounds.min.x, terrain.minX);

@@ -96,7 +96,7 @@ test('all course types reverse the same spline without changing markers, length,
 });
 
 test('reverse spawn approaches the unchanged physical start line in the opposite direction', () => {
-  for (const definition of definitions()) {
+  for (const definition of definitions().filter((definition) => definition.closed !== false)) {
     const backwardDefinition = { ...definition, reverse: true };
     const forward = courseRoute(definition);
     const backward = courseRoute(backwardDefinition);
@@ -140,7 +140,7 @@ test('turn directions invert at the same physical bends and reverse warnings are
 });
 
 test('start/finish counts complete reversed laps and rejects driving the wrong way', () => {
-  for (const definition of definitions()) {
+  for (const definition of definitions().filter((definition) => definition.closed !== false)) {
     for (const reverse of [false, true]) {
       const directed = { ...definition, reverse };
       const route = courseRoute(directed);
@@ -296,7 +296,8 @@ test('training gates fit a bounded approximate racing line and scale with the ca
         assert.ok(forward.dot(route.getTangentAt(t)) > 0);
       });
 
-      assert.ok(shifted, `${definition.id}: targets are not just the centerline`);
+      if (definition.closed !== false)
+        assert.ok(shifted, `${definition.id}: targets are not just the centerline`);
     }
   }
 });

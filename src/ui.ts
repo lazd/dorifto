@@ -1690,7 +1690,7 @@ export function bindGameUI(
       speed(mph);
       tachometer(t.rpm, mph, t.limiter);
       gear(t.gear < 0 ? 'R' : t.gear === 0 ? 'N' : String(t.gear));
-      lap(t.lap ? String(t.lap) : '--');
+      lap(t.finished ? 'Finished' : t.lap ? String(t.lap) : '--');
       current(formatLapTime(t.lap ? t.current : null));
       if (currentLap.classList.contains('is-invalid') !== t.invalid) {
         currentLap.classList.toggle('is-invalid', t.invalid);

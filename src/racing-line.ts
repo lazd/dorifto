@@ -74,20 +74,27 @@ export function createTrainingGates(definition: CourseDefinition, carWidth: numb
   const start = courseStartDistance(definition, length);
   const count = Math.max(64, Math.ceil(length / 5));
   const centers = Array.from({ length: count }, (_, i) =>
-    route.getPointAt(((start + (i * length) / count) % length) / length),
+    route.getPointAt(
+      definition.closed === false
+        ? i / (count - 1)
+        : ((start + (i * length) / count) % length) / length,
+    ),
   );
   const limit = Math.max(0, definition.width / 2 - halfWidth);
-  const points = optimizeRacingLine(centers, limit);
+  const points = definition.closed === false ? centers : optimizeRacingLine(centers, limit);
   // Keep two thirds of the former targets without reducing optimizer resolution.
   const gateCount = Math.round((Math.ceil(count / 3) * 2) / 3);
   const gates = Array.from({ length: gateCount }, (_, gate) => {
     const i = Math.floor((gate * count) / gateCount);
     return {
-      distance: (start + (i * length) / count) % length,
+      distance:
+        definition.closed === false
+          ? (i * length) / (count - 1)
+          : (start + (i * length) / count) % length,
       center: points[i],
-      forward: points[(i + 1) % count]
+      forward: points[definition.closed === false ? Math.min(i + 1, count - 1) : (i + 1) % count]
         .clone()
-        .sub(points[(i + count - 1) % count])
+        .sub(points[definition.closed === false ? Math.max(i - 1, 0) : (i + count - 1) % count])
         .normalize(),
     };
   });

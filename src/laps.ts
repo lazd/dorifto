@@ -10,12 +10,15 @@ export class LapTimer {
   last: number | null = null;
   best: number | null = null;
   lastCones: number | null = null;
+  finished = false;
   private readonly hitCones = new Set<number>();
   private elapsed = 0;
   private startedAt = 0;
   private readonly previous = new THREE.Vector3();
   private readonly crossing = new THREE.Vector3();
   private readonly start;
+  private readonly finish;
+  private readonly open;
   private readonly surface;
   private readonly halfWidth: number;
 
@@ -25,6 +28,8 @@ export class LapTimer {
     const length = route.getLength();
     const t = courseStartDistance(definition, length) / length;
     this.start = { center: route.getPointAt(t), forward: route.getTangentAt(t) };
+    this.open = definition.closed === false;
+    this.finish = { center: route.getPointAt(1), forward: route.getTangentAt(1) };
     const count = Math.ceil(length);
     this.surface = new TerrainSurface(
       Array.from({ length: count }, (_, i) => ({
@@ -43,6 +48,8 @@ export class LapTimer {
     this.lastCones = null;
     this.hitCones.clear();
     this.previous.copy(position);
+    this.finished = false;
+    if (this.open) this.lap = 1;
   }
 
   /** Seconds since reset, advanced once per physics step. */
@@ -63,8 +70,7 @@ export class LapTimer {
     if (this.lap > 0) this.hitCones.add(id);
   }
 
-  private startCrossing(position: THREE.Vector3) {
-    const gate = this.start;
+  private startCrossing(position: THREE.Vector3, gate = this.start) {
     const before =
       (this.previous.x - gate.center.x) * gate.forward.x +
       (this.previous.z - gate.center.z) * gate.forward.z;
@@ -82,7 +88,12 @@ export class LapTimer {
   }
 
   /** Tire samples include the center and both tread edges, in world coordinates. */
-  update(position: THREE.Vector3, dt: number, tirePoints: readonly THREE.Vector3[]) {
+  update(position: THREE.Vector3, dt: number, tirePoints: readonly THREE.Vector3[], held = false) {
+    if (this.finished) return;
+    if (this.open && held) {
+      this.previous.copy(position);
+      return;
+    }
     if (
       this.lap > 0 &&
       !this.invalid &&
@@ -90,13 +101,20 @@ export class LapTimer {
     ) {
       this.invalid = true;
     }
-    const crossing = this.startCrossing(position);
+    const crossing = this.startCrossing(position, this.open ? this.finish : this.start);
     if (crossing?.withinWidth) {
       const time = this.elapsed + dt * crossing.fraction;
       if (this.lap > 0 && !this.invalid) {
         this.lastCones = this.conesHit;
         this.last = time - this.startedAt;
         this.best = this.best === null ? this.last : Math.min(this.best, this.last);
+      }
+      if (this.open) {
+        this.finished = true;
+        this.current = time - this.startedAt;
+        this.elapsed = time;
+        this.startedAt = time;
+        return;
       }
       if (!this.invalid) this.lap++;
       this.startedAt = time;

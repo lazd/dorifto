@@ -224,29 +224,31 @@ function buildCourse(scene: THREE.Group, definition: CourseDefinition, carWidth:
   for (const side of [-1, 1]) ribbon((side * definition.width) / 2, courseLineWidth, 0.016, white);
   const columns = Math.ceil(definition.width / 0.5);
   const tileWidth = definition.width / columns;
-  const start = route.getPointAt(startDistance / length);
-  const startTangent = route.getTangentAt(startDistance / length);
-  across.set(startTangent.z, 0, -startTangent.x).normalize();
-  for (let row = 0; row < 2; row++) {
-    for (let column = 0; column < columns; column++) {
-      const tile = new THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>(
-        new THREE.PlaneGeometry(tileWidth, 0.5),
-        (row + column) % 2 ? dark : white,
-      );
-      tile.rotation.set(-Math.PI / 2, 0, Math.atan2(startTangent.x, startTangent.z));
-      tile.position
-        .copy(start)
-        .addScaledVector(across, -definition.width / 2 + (column + 0.5) * tileWidth)
-        .addScaledVector(startTangent, row * 0.5)
-        .setY(0.02);
-      tile.updateMatrix();
-      const geometry = tile.geometry.clone().applyMatrix4(tile.matrix);
-      tile.geometry.dispose();
-      tile.geometry = terrain.projectGeometry(geometry, 0.02);
-      geometry.dispose();
-      tile.position.set(0, 0, 0);
-      tile.rotation.set(0, 0, 0);
-      scene.add(tile);
+  for (const gateT of definition.closed === false ? [0, 1] : [startDistance / length]) {
+    const start = route.getPointAt(gateT);
+    const startTangent = route.getTangentAt(gateT);
+    across.set(startTangent.z, 0, -startTangent.x).normalize();
+    for (let row = 0; row < 2; row++) {
+      for (let column = 0; column < columns; column++) {
+        const tile = new THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>(
+          new THREE.PlaneGeometry(tileWidth, 0.5),
+          (row + column) % 2 ? dark : white,
+        );
+        tile.rotation.set(-Math.PI / 2, 0, Math.atan2(startTangent.x, startTangent.z));
+        tile.position
+          .copy(start)
+          .addScaledVector(across, -definition.width / 2 + (column + 0.5) * tileWidth)
+          .addScaledVector(startTangent, row * 0.5)
+          .setY(0.02);
+        tile.updateMatrix();
+        const geometry = tile.geometry.clone().applyMatrix4(tile.matrix);
+        tile.geometry.dispose();
+        tile.geometry = terrain.projectGeometry(geometry, 0.02);
+        geometry.dispose();
+        tile.position.set(0, 0, 0);
+        tile.rotation.set(0, 0, 0);
+        scene.add(tile);
+      }
     }
   }
   const signVariants = [false, true].flatMap((reverse) =>

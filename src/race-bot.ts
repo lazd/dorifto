@@ -26,7 +26,11 @@ const raceGridLaneOffset = 2.5;
 export function raceGridSpawn(definition: CourseDefinition, slot: number) {
   const row = Math.floor(slot / 2);
   const lateralOffset = slot % 2 === 0 ? -raceGridLaneOffset : raceGridLaneOffset;
-  return courseSpawn(definition, 30 + row * raceBotGridSpacing, lateralOffset);
+  return courseSpawn(
+    definition,
+    30 + (definition.closed === false ? -row : row) * raceBotGridSpacing,
+    lateralOffset,
+  );
 }
 
 export const raceBotPresets = ['grip-default', 'grip-fast'] as const;
@@ -266,16 +270,20 @@ export function createDrivingMap(
   const route = courseRoute(definition);
   const length = route.getLength();
   const count = Math.ceil(length / 3);
-  const spacing = length / count;
-  const centers = Array.from({ length: count }, (_, i) => route.getPointAt(i / count));
+  const open = definition.closed === false;
+  const spacing = length / (open ? count - 1 : count);
+  const indexAt = (i: number) => (open ? THREE.MathUtils.clamp(i, 0, count - 1) : wrap(i, count));
+  const centers = Array.from({ length: count }, (_, i) =>
+    route.getPointAt(open ? i / (count - 1) : i / count),
+  );
   const rights = Array.from({ length: count }, (_, i) => {
-    const tangent = route.getTangentAt(i / count);
+    const tangent = route.getTangentAt(open ? i / (count - 1) : i / count);
     return new THREE.Vector3(tangent.z, 0, -tangent.x);
   });
   const clearance = definition.width / 2 - halfWidth - edgeMargin;
   if (clearance <= 0) throw new Error('Course is too narrow for this vehicle');
-  const line = optimizeRacingLine(centers, clearance);
-  const at = (i: number) => line[wrap(i, count)];
+  const line = open ? centers : optimizeRacingLine(centers, clearance);
+  const at = (i: number) => line[indexAt(i)];
   const samples = line.map((point, i) => {
     const before = at(i - 1);
     const after = at(i + 1);
@@ -302,10 +310,7 @@ export function createDrivingMap(
   });
   // Crests (negative) unload the tires; dips (positive) load them.
   const verticalCurvatures = samples.map(
-    (_, i) =>
-      (samples[(i + 1) % samples.length].grade -
-        samples[(i - 1 + samples.length) % samples.length].grade) /
-      (2 * spacing),
+    (_, i) => (samples[indexAt(i + 1)].grade - samples[indexAt(i - 1)].grade) / (2 * spacing),
   );
   return { definition, length, spacing, centers, rights, samples, verticalCurvatures };
 }
@@ -320,6 +325,10 @@ export function createRaceBot(
   saved?: RaceExperience,
 ) {
   validateRaceBotOptions(options);
+  const wrap = (i: number, count: number) =>
+    map.definition.closed === false
+      ? THREE.MathUtils.clamp(i, 0, count - 1)
+      : THREE.MathUtils.euclideanModulo(i, count);
   const preset = options.preset ?? 'grip-fast';
   if (isDriftBotPreset(preset)) throw new Error(`${preset} is driven by the drift bot`);
   const driver = raceBotTunings[preset];
@@ -454,7 +463,7 @@ export function createRaceBot(
     // Two circular passes propagate braking across the start line.
     for (let pass = 0; pass < 2; pass++) {
       for (let i = count - 1; i >= 0; i--) {
-        const next = (i + 1) % count;
+        const next = wrap(i + 1, count);
         const deceleration = Math.max(
           2,
           brakingDeceleration * remainingGrip(cornerGrip, next, speeds[next]) +

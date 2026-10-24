@@ -66,18 +66,20 @@ export function isDriftBotPreset(preset: string | undefined): preset is DriftBot
 export function centerlineCurvatures(map: DrivingMap) {
   const { centers, spacing } = map;
   const count = centers.length;
+  const at = (i: number) =>
+    map.definition.closed === false ? THREE.MathUtils.clamp(i, 0, count - 1) : wrap(i, count);
   const headings = centers.map((_, i) => {
-    const after = centers[(i + 1) % count];
-    const before = centers[(i - 1 + count) % count];
+    const after = centers[at(i + 1)];
+    const before = centers[at(i - 1)];
     return Math.atan2(after.x - before.x, after.z - before.z);
   });
   const raw = headings.map(
-    (_, i) => angle(headings[(i + 1) % count] - headings[(i - 1 + count) % count]) / (2 * spacing),
+    (_, i) => angle(headings[at(i + 1)] - headings[at(i - 1)]) / (2 * spacing),
   );
   const span = 2;
   return raw.map((_, i) => {
     let sum = 0;
-    for (let k = -span; k <= span; k++) sum += raw[wrap(i + k, count)];
+    for (let k = -span; k <= span; k++) sum += raw[at(i + k)];
     return sum / (2 * span + 1);
   });
 }
@@ -88,6 +90,10 @@ export function createDriftBot(
   dimensions: { wheelbase: number; halfWidth: number; halfLength: number },
   options: { preset?: RaceBotOptions['preset']; tuning?: DriftBotTuning } = {},
 ) {
+  const wrap = (i: number, count: number) =>
+    map.definition.closed === false
+      ? THREE.MathUtils.clamp(i, 0, count - 1)
+      : THREE.MathUtils.euclideanModulo(i, count);
   const driver =
     options.tuning ??
     driftBotTunings[isDriftBotPreset(options.preset) ? options.preset : 'drift-default'];
@@ -109,7 +115,7 @@ export function createDriftBot(
   );
   for (let pass = 0; pass < 2; pass++)
     for (let i = count - 1; i >= 0; i--) {
-      const next = speeds[(i + 1) % count];
+      const next = speeds[wrap(i + 1, count)];
       speeds[i] = Math.min(speeds[i], Math.sqrt(next ** 2 + 2 * driver.brakingLimit * spacing));
     }
 
@@ -170,7 +176,7 @@ export function createDriftBot(
   function curvatureAhead(distance: number) {
     let peak = 0;
     for (let k = 0; k * spacing <= distance; k++) {
-      const curvature = curvatures[(index + k) % count];
+      const curvature = curvatures[wrap(index + k, count)];
       if (Math.abs(curvature) > Math.abs(peak)) peak = curvature;
     }
     return peak;
@@ -228,7 +234,7 @@ export function createDriftBot(
     // Supervisor: path curvature from the velocity direction, so a sideways car still aims
     // its travel at the centerline, and the desired yaw rate γ = vₓ·κ of the paper (eq 5).
     const lookahead = 6 + state.speed * driver.lookaheadTime;
-    const targetIndex = (index + Math.max(1, Math.round(lookahead / spacing))) % count;
+    const targetIndex = wrap(index + Math.max(1, Math.round(lookahead / spacing)), count);
     const target = centers[targetIndex];
     const dx = target.x - state.x;
     const dz = target.z - state.z;

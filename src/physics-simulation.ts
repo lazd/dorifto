@@ -57,7 +57,18 @@ function createPose(data: PoseData) {
 function lapState(laps: LapTimer): LapState {
   const { lap, invalid, current, last, best, lastCones, elapsedTime, lapStartedAt, conesHit } =
     laps;
-  return { lap, invalid, current, last, best, lastCones, elapsedTime, lapStartedAt, conesHit };
+  return {
+    lap,
+    finished: laps.finished,
+    invalid,
+    current,
+    last,
+    best,
+    lastCones,
+    elapsedTime,
+    lapStartedAt,
+    conesHit,
+  };
 }
 
 export function createPhysicsSimulation(Ammo: typeof AmmoFactory, data: PhysicsInit) {
@@ -320,6 +331,15 @@ export function createPhysicsSimulation(Ammo: typeof AmmoFactory, data: PhysicsI
                   raceStandings?.position(stateIndex) ?? null,
                 ),
               );
+              if (bot.laps.finished) {
+                Object.assign(bot.controls, {
+                  throttle: 0,
+                  brake: 1,
+                  reverse: 0,
+                  steer: 0,
+                  handbrake: false,
+                });
+              }
             });
           }
           for (const vehicle of vehicles) vehicle.beforeStep(startHeld);

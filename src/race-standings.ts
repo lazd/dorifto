@@ -84,8 +84,9 @@ export function createRaceStandings(
   const count = Math.ceil(length / 3);
   const spacing = length / count;
   const start = courseStartDistance(definition, length);
-  const points = Array.from({ length: count }, (_, i) =>
-    route.getPointAt(((start + i * spacing) % length) / length),
+  const open = definition.closed === false;
+  const points = Array.from({ length: count + (open ? 1 : 0) }, (_, i) =>
+    route.getPointAt(open ? i / count : ((start + i * spacing) % length) / length),
   );
   const wrap = (distance: number) => MathUtils.euclideanModulo(distance, length);
   const states = entrants.map(() => ({
@@ -125,6 +126,7 @@ export function createRaceStandings(
     let segment = 0;
     let phase = 0;
     for (let i = first; i < end; i++) {
+      if (open && (i < 0 || i >= count)) continue;
       const candidate = MathUtils.euclideanModulo(i, count);
       const a = points[candidate];
       const b = points[(candidate + 1) % count];
@@ -147,7 +149,7 @@ export function createRaceStandings(
       }
     }
     state.segment = segment;
-    state.phase = wrap(phase);
+    state.phase = open ? phase : wrap(phase);
   }
 
   function reset() {
@@ -157,7 +159,7 @@ export function createRaceStandings(
     entrants.forEach((entrant, index) => {
       const state = states[index];
       project(entrant.position, state, true);
-      state.distance = state.phase > length / 2 ? state.phase - length : state.phase;
+      state.distance = !open && state.phase > length / 2 ? state.phase - length : state.phase;
       state.lap = entrant.laps.lap;
       state.lapStartedAt = entrant.laps.lapStartedAt;
       state.marker = state.distance;
@@ -172,11 +174,14 @@ export function createRaceStandings(
       const state = states[index];
       const phase = state.phase;
       project(entrant.position, state);
-      const delta = wrap(state.phase - phase + length / 2) - length / 2;
+      const delta = open
+        ? state.phase - phase
+        : wrap(state.phase - phase + length / 2) - length / 2;
       const before = state.distance;
       state.distance += delta;
       // The timer keeps its lap number on an invalid finish; charge it only at that crossing.
       if (
+        !open &&
         state.lap > 0 &&
         entrant.laps.lapStartedAt !== state.lapStartedAt &&
         entrant.laps.lap === state.lap

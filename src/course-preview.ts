@@ -32,13 +32,13 @@ export function coursePreviewGeometry(
 ) {
   const route = courseRoute(definition);
   const points = route.getSpacedPoints(samples);
-  points.pop();
+  if (definition.closed !== false) points.pop();
   const { path, scale, project, roadWidth, startLine } = createCourseMapGeometry(
     points,
     size,
     padding,
     definition.width,
-    { minStrokeWidth, invertZ: true },
+    { minStrokeWidth, invertZ: true, closed: definition.closed },
   );
   const projectSpawn = (x: number, z: number) => {
     const { x: px, y: py } = project({ x, z });
@@ -53,6 +53,10 @@ export function coursePreviewGeometry(
     heading: spawn.heading,
     roadWidth,
     startLine: startLine(route.getPointAt(startT), route.getTangentAt(startT)),
+    finishLine:
+      definition.closed === false
+        ? startLine(route.getPointAt(1), route.getTangentAt(1))
+        : undefined,
   };
 }
 
@@ -67,14 +71,22 @@ export function coursePreviewSvg(definition: CourseDefinition, options: CoursePr
     minStrokeWidth = 1.5,
     title = definition.name,
   } = options;
-  const { path, startLine, roadWidth } = coursePreviewGeometry(
+  const { path, startLine, finishLine, roadWidth } = coursePreviewGeometry(
     definition,
     size,
     padding,
     samples,
     minStrokeWidth,
   );
-  return previewSvg(path, [startLine], roadWidth, size, title, trackColor, startColor);
+  return previewSvg(
+    path,
+    finishLine ? [startLine, finishLine] : [startLine],
+    roadWidth,
+    size,
+    title,
+    trackColor,
+    startColor,
+  );
 }
 
 /** Preview an ordered open road without adding a closing segment or smoothing its geometry. */

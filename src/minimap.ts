@@ -27,15 +27,20 @@ export function createMinimapLayout(definition: CourseDefinition) {
     size,
     padding,
     definition.width,
-    { padRadius: definition.padRadius, minimumRoadWidth: 3 },
+    { padRadius: definition.padRadius, minimumRoadWidth: 3, closed: definition.closed },
   );
-  const start = route.getPointAt(startDistance / route.getLength());
-  const tangent = route.getTangentAt(startDistance / route.getLength());
+  const startT = definition.closed === false ? 0 : startDistance / route.getLength();
+  const start = route.getPointAt(startT);
+  const tangent = route.getTangentAt(startT);
   return {
     path,
     project,
     roadWidth,
-    startLine: startLine(start, tangent),
+    startLine:
+      startLine(start, tangent) +
+      (definition.closed === false
+        ? ` ${startLine(route.getPointAt(1), route.getTangentAt(1))}`
+        : ''),
     pad,
   };
 }

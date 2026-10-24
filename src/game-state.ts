@@ -36,6 +36,7 @@ export interface GameState {
     gear: number;
     limiter: boolean;
     lap: number;
+    finished: boolean;
     invalid: boolean;
     current: number;
     last: number | null;
@@ -67,6 +68,7 @@ export function createGameState() {
       gear: 1,
       limiter: false,
       lap: 0,
+      finished: false,
       invalid: false,
       current: 0,
       last: null,

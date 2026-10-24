@@ -27,6 +27,8 @@ export interface CourseDefinition {
   bankingScale?: number;
   padRadius?: number;
   reverse?: boolean;
+  /** False for a single point-to-point run; omitted keeps the course closed. */
+  closed?: boolean;
   generation?:
     | { type: 'random'; seed: number }
     | { type: 'custom'; seed: number; weights: CourseGenerationWeights };
@@ -40,13 +42,33 @@ export interface CourseDefinition {
   elevationSource?: string;
 }
 
-/** Periodic linear interpolation of an elevation profile at a forward route fraction. */
-export function courseProfileHeight(elevation: readonly number[], fraction: number) {
-  const scaled = THREE.MathUtils.euclideanModulo(fraction, 1) * elevation.length;
+/** Periodic heights for circuits; slope-continuous, monotone heights for open roads. */
+export function courseProfileHeight(elevation: readonly number[], fraction: number, closed = true) {
+  const scaled = closed
+    ? THREE.MathUtils.euclideanModulo(fraction, 1) * elevation.length
+    : THREE.MathUtils.clamp(fraction, 0, 1) * (elevation.length - 1);
   const index = Math.floor(scaled) % elevation.length;
+  if (!closed && elevation.length > 1) {
+    const next = Math.min(index + 1, elevation.length - 1);
+    const delta = elevation[next] - elevation[index];
+    const slope = (i: number) => {
+      if (i === 0) return elevation[1] - elevation[0];
+      if (i === elevation.length - 1) return elevation[i] - elevation[i - 1];
+      const before = elevation[i] - elevation[i - 1];
+      const after = elevation[i + 1] - elevation[i];
+      return before * after <= 0 ? 0 : (2 * before * after) / (before + after);
+    };
+    const u = scaled - index;
+    return (
+      elevation[index] +
+      delta * (3 * u ** 2 - 2 * u ** 3) +
+      slope(index) * (u ** 3 - 2 * u ** 2 + u) +
+      slope(next) * (u ** 3 - u ** 2)
+    );
+  }
   return THREE.MathUtils.lerp(
     elevation[index],
-    elevation[(index + 1) % elevation.length],
+    elevation[closed ? (index + 1) % elevation.length : Math.min(index + 1, elevation.length - 1)],
     scaled - Math.floor(scaled),
   );
 }
@@ -55,12 +77,19 @@ class CourseCurve extends THREE.Curve<THREE.Vector3> {
   constructor(
     private readonly markers: CourseDefinition['points'],
     private readonly reverse = false,
+    readonly closed = true,
   ) {
     super();
   }
 
   getPoint(t: number, target = new THREE.Vector3()) {
-    const scaled = THREE.MathUtils.euclideanModulo(this.reverse ? -t : t, 1) * this.markers.length;
+    const scaled = this.closed
+      ? THREE.MathUtils.euclideanModulo(this.reverse ? -t : t, 1) * this.markers.length
+      : THREE.MathUtils.clamp(this.reverse ? 1 - t : t, 0, 1) * (this.markers.length - 1);
+    if (!this.closed && (scaled === 0 || scaled === this.markers.length - 1)) {
+      const [x, z] = this.markers[scaled];
+      return target.set(x, 0, z);
+    }
     const index = Math.floor(scaled);
     const u = scaled - index;
     const v = 1 - u;
@@ -72,7 +101,19 @@ class CourseCurve extends THREE.Curve<THREE.Vector3> {
     ];
     target.set(0, 0, 0);
     for (let i = 0; i < 4; i++) {
-      const [x, z] = this.markers[(index + i - 1 + this.markers.length) % this.markers.length];
+      const marker = index + i - 1;
+      let x: number;
+      let z: number;
+      if (!this.closed && (marker < 0 || marker >= this.markers.length)) {
+        // Linear endpoint extension preserves both endpoint position and approach direction.
+        const end = marker < 0 ? 0 : this.markers.length - 1;
+        const neighbor = marker < 0 ? 1 : end - 1;
+        const distance = Math.abs(marker - end);
+        x = this.markers[end][0] + distance * (this.markers[end][0] - this.markers[neighbor][0]);
+        z = this.markers[end][1] + distance * (this.markers[end][1] - this.markers[neighbor][1]);
+      } else {
+        [x, z] = this.markers[(marker + this.markers.length) % this.markers.length];
+      }
       target.x += (x * weights[i]) / 6;
       target.z += (z * weights[i]) / 6;
     }
@@ -89,27 +130,31 @@ class CourseCurve extends THREE.Curve<THREE.Vector3> {
 
 export function courseRoute(definition: CourseDefinition) {
   // A periodic cubic B-spline rounds marker corners instead of overshooting them.
-  const route = new CourseCurve(definition.points, definition.reverse);
+  const route = new CourseCurve(definition.points, definition.reverse, definition.closed !== false);
   route.arcLengthDivisions = Math.max(1000, definition.points.length * 100);
   return route;
 }
 
 export function courseTurns(route: THREE.Curve<THREE.Vector3>) {
   const length = route.getLength();
+  const open = route instanceof CourseCurve && !route.closed;
   const count = Math.ceil(length / 2);
   const spacing = length / count;
   // Signed curvature (1 / radius) sampled every ~2 m.
   const curvature = Array.from({ length: count }, (_, i) => {
-    const before = route.getTangentAt(
-      THREE.MathUtils.euclideanModulo((i * spacing - 4) / length, 1),
-    );
-    const after = route.getTangentAt(((i * spacing + 4) / length) % 1);
+    const before = route.getTangentAt(courseFraction(route, i * spacing - 4));
+    const after = route.getTangentAt(courseFraction(route, i * spacing + 4));
     return Math.atan2(before.z * after.x - before.x * after.z, before.dot(after)) / 8;
   });
-  const at = (i: number) => curvature[THREE.MathUtils.euclideanModulo(i, count)];
+  const at = (i: number) =>
+    route instanceof CourseCurve && !route.closed
+      ? i < 0 || i >= count
+        ? 0
+        : curvature[i]
+      : curvature[THREE.MathUtils.euclideanModulo(i, count)];
   const bending = (i: number) => Math.abs(at(i)) > 1 / 100;
   const straight = curvature.findIndex((_, i) => !bending(i));
-  if (straight < 0) return [];
+  if (!open && straight < 0) return [];
   // A turn is a sustained bend that changes heading by 45 degrees and tightens below a 70 m radius.
   const turns: {
     distance: number;
@@ -117,7 +162,11 @@ export function courseTurns(route: THREE.Curve<THREE.Vector3>) {
     apexDistance: number;
     exitDistance: number;
   }[] = [];
-  for (let entry = straight + 1; entry <= straight + count; entry++) {
+  for (
+    let entry = open ? 0 : straight + 1;
+    entry <= (open ? count - 1 : straight + count);
+    entry++
+  ) {
     if (
       !bending(entry) ||
       (bending(entry - 1) && Math.sign(at(entry - 1)) === Math.sign(at(entry)))
@@ -133,23 +182,21 @@ export function courseTurns(route: THREE.Curve<THREE.Vector3>) {
       peak = Math.max(peak, Math.abs(at(i)));
     }
     if (heading < Math.PI / 4 || peak < 1 / 70) continue;
-    const distance = THREE.MathUtils.euclideanModulo(entry * spacing - 4, length);
+    const routeDistance = (distance: number) =>
+      open
+        ? THREE.MathUtils.clamp(distance, 0, length)
+        : THREE.MathUtils.euclideanModulo(distance, length);
+    const distance = routeDistance(entry * spacing - 4);
     // Half the heading change gives broad, constant-radius bends a stable apex too.
     const apexIndex = headings.findIndex((value) => value >= heading / 2);
     const previousHeading = apexIndex === 0 ? 0 : headings[apexIndex - 1];
     const apexFraction = (heading / 2 - previousHeading) / (headings[apexIndex] - previousHeading);
-    const apexDistance = THREE.MathUtils.euclideanModulo(
-      (entry + apexIndex + apexFraction - 0.5) * spacing,
-      length,
-    );
-    const exitDistance = THREE.MathUtils.euclideanModulo(
-      (entry + headings.length) * spacing,
-      length,
-    );
+    const apexDistance = routeDistance((entry + apexIndex + apexFraction - 0.5) * spacing);
+    const exitDistance = routeDistance((entry + headings.length) * spacing);
     if (
       turns.every((turn) => {
         const gap = Math.abs(turn.distance - distance);
-        return Math.min(gap, length - gap) > 24;
+        return (open ? gap : Math.min(gap, length - gap)) > 24;
       })
     )
       turns.push({ distance, direction, apexDistance, exitDistance });
@@ -158,26 +205,33 @@ export function courseTurns(route: THREE.Curve<THREE.Vector3>) {
 }
 
 export function courseCornerAt(route: THREE.Curve<THREE.Vector3>, distance: number) {
-  const length = route.getLength();
-  const before = route.getTangentAt(THREE.MathUtils.euclideanModulo(distance - 6, length) / length);
-  const after = route.getTangentAt(THREE.MathUtils.euclideanModulo(distance + 6, length) / length);
+  const before = route.getTangentAt(courseFraction(route, distance - 6));
+  const after = route.getTangentAt(courseFraction(route, distance + 6));
   const bend = Math.atan2(before.z * after.x - before.x * after.z, before.dot(after));
   return Math.abs(bend) > 12 / 75;
+}
+
+function courseFraction(route: THREE.Curve<THREE.Vector3>, distance: number) {
+  const length = route.getLength();
+  return route instanceof CourseCurve && !route.closed
+    ? THREE.MathUtils.clamp(distance / length, 0, 1)
+    : THREE.MathUtils.euclideanModulo(distance, length) / length;
 }
 
 export function courseKerbSegments(route: THREE.Curve<THREE.Vector3>) {
   const length = route.getLength();
   const count = Math.ceil(length / 2);
   const spacing = length / count;
-  const wrap = (index: number) => THREE.MathUtils.euclideanModulo(index, count);
+  const wrap = (index: number) =>
+    route instanceof CourseCurve && !route.closed
+      ? index < 0 || index >= count
+        ? -1
+        : index
+      : THREE.MathUtils.euclideanModulo(index, count);
   const curvature = Array.from({ length: count }, (_, index) => {
     const distance = (index + 0.5) * spacing;
-    const before = route.getTangentAt(
-      THREE.MathUtils.euclideanModulo(distance - 12, length) / length,
-    );
-    const after = route.getTangentAt(
-      THREE.MathUtils.euclideanModulo(distance + 12, length) / length,
-    );
+    const before = route.getTangentAt(courseFraction(route, distance - 12));
+    const after = route.getTangentAt(courseFraction(route, distance + 12));
     return Math.atan2(before.z * after.x - before.x * after.z, before.dot(after)) / 24;
   });
   const directions = curvature.map((value) => (Math.abs(value) >= 1 / 180 ? Math.sign(value) : 0));
@@ -221,7 +275,7 @@ export function courseKerbSegments(route: THREE.Curve<THREE.Vector3>) {
     ]) {
       for (let extension = 1; extension * spacing <= 4; extension++) {
         const current = wrap(edge + extension * step);
-        if (curvature[current] * direction < 1 / 1000 || directions[current]) break;
+        if (current < 0 || curvature[current] * direction < 1 / 1000 || directions[current]) break;
         accepted[current] = direction;
       }
     }
@@ -236,6 +290,7 @@ export function courseKerbSegments(route: THREE.Curve<THREE.Vector3>) {
 }
 
 export function courseStartDistance(definition: CourseDefinition, length: number) {
+  if (definition.closed === false) return 0;
   return definition.reverse ? length - startDistance : startDistance;
 }
 
@@ -255,10 +310,12 @@ export function courseSpawn(
   // Spawn on the approach side of the same physical start line in either direction.
   const length = route.getLength();
   const t =
-    THREE.MathUtils.euclideanModulo(
-      courseStartDistance(definition, length) - approachDistance,
-      length,
-    ) / length;
+    definition.closed === false
+      ? THREE.MathUtils.clamp((spawnDistance - approachDistance) / length, 0, 1)
+      : THREE.MathUtils.euclideanModulo(
+          courseStartDistance(definition, length) - approachDistance,
+          length,
+        ) / length;
   const position = route.getPointAt(t);
   const tangent = route.getTangentAt(t);
   const heading = Math.atan2(tangent.x, tangent.z);
