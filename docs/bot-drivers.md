@@ -304,7 +304,7 @@ and dynamics already execute in the physics worker. Profiling and rendering
 optimization, rather than adding visual latency, remain the performance work.
 
 `bots-only=1` creates only bot vehicles and initially follows the first with the
-corner-aware chase camera (an explicit `camera` URL setting takes precedence).
+FPV drone camera (an explicit `camera` URL setting takes precedence).
 V cycles camera styles; Tab cycles the observed bot. The full-detail model,
 interior, telemetry, audio, effects and lap HUD belong to
 that bot, not to an additional hidden player. This mode also supports observing

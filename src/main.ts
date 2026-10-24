@@ -227,7 +227,7 @@ async function start() {
   if (botsOnly)
     configurationState.update({
       driveMode: 'grip',
-      ...(!courseUrl.searchParams.has('camera') ? { cameraStyle: 'corner' as const } : {}),
+      ...(!courseUrl.searchParams.has('camera') ? { cameraStyle: 'fpv' as const } : {}),
     });
   const availableCourses = [...courses, ...loadSavedCourses(localStorage)];
   const courseId = courseUrl.searchParams.get('course');
@@ -658,7 +658,7 @@ async function start() {
       const nextCamera = readOption('camera', requestedCamera, isCameraStyle);
       configurationState.update({
         driveMode: nextBotsOnly ? 'grip' : nextMode,
-        cameraStyle: nextBotsOnly && !url.searchParams.has('camera') ? 'corner' : nextCamera,
+        cameraStyle: nextBotsOnly && !url.searchParams.has('camera') ? 'fpv' : nextCamera,
       });
       const next = await createCourseSession(activeDefinition, course, nextBots, nextBotsOnly);
       const previousPhysics = physics;
@@ -1018,7 +1018,7 @@ async function start() {
   });
 
   function cycleCamera() {
-    const styles = ['corner', 'classic', 'fpv', 'cabin'] as const;
+    const styles = ['fpv', 'classic', 'cabin'] as const;
     const cameraStyle =
       styles[(styles.indexOf(configurationState.getState().cameraStyle) + 1) % styles.length];
     configurationState.update({ cameraStyle });
@@ -1396,7 +1396,7 @@ async function start() {
     placeholderSky.needsUpdate = true;
     for (const [index, interior] of [false, true].entries()) {
       showLoading('Compiling shaders…', 0.45 + 0.2 * index);
-      car.setMirrors(interior ? 'cabin' : 'corner', warmMirrorResolution);
+      car.setMirrors(interior ? 'cabin' : 'fpv', warmMirrorResolution);
       const view = interior ? mirrorWarmupCamera : warmupCamera;
       scene.background = index % 2 ? placeholderSky : sky;
       await renderer.compileAsync(scene, view);
@@ -1411,7 +1411,7 @@ async function start() {
     await car.warmMirrors(renderer, scene, mirrorWarmupCamera);
     showLoading('Preparing the ghost car…', 0.95);
     restoreLighting();
-    car.setMirrors('corner', configurationState.getState().mirrorResolution);
+    car.setMirrors('fpv', configurationState.getState().mirrorResolution);
     ghost.visible = true;
     await renderer.compileAsync(scene, warmupCamera);
     const depth = tireEffects.captureDepth(renderer, scene, warmupCamera, true);

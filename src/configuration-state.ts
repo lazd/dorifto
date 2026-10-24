@@ -13,7 +13,7 @@ import {
 export { defaultTuning, defaultTuningPresets } from './tuning-presets';
 
 export function isCameraStyle(value: string): value is ConfigurationState['cameraStyle'] {
-  return value === 'corner' || value === 'classic' || value === 'fpv' || value === 'cabin';
+  return value === 'classic' || value === 'fpv' || value === 'cabin';
 }
 
 export function isTimeOfDay(value: string): value is ConfigurationState['timeOfDay'] {
@@ -60,7 +60,7 @@ export interface ConfigurationState {
   profiles: Readonly<Record<DriveMode, DrivingTuning>>;
   selectedTuningPresets: Readonly<Record<DriveMode, string | null>>;
   tuningPresets: readonly TuningPreset[];
-  cameraStyle: 'corner' | 'classic' | 'fpv' | 'cabin';
+  cameraStyle: 'classic' | 'fpv' | 'cabin';
   cabinHeadMotion: boolean;
   mirrorResolution: 'off' | 'low' | 'medium' | 'high';
   minimapOrientation: 'north-up' | 'heading-up';

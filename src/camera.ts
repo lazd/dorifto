@@ -90,13 +90,8 @@ export function createDrivingCamera(
   const cabinTiltAngles = new THREE.Euler();
   let hasCabinVelocity = false;
   let previousCameraStyle: ConfigurationState['cameraStyle'] | null = null;
-  const previousTravel = new THREE.Vector3();
   const cameraRight = new THREE.Vector3();
-  const cornerTarget = new THREE.Vector3();
   const routeTangent = new THREE.Vector3();
-  let slideCameraAmount = 0;
-  let outsideOffset = 0;
-  let cameraTurnRate = 0;
   const up = new THREE.Vector3(0, 1, 0);
 
   const cameraHeight = 2.3;
@@ -139,8 +134,6 @@ export function createDrivingCamera(
     mapOffset.set(0, 0, 0);
     mapZoom = 1;
     cameraYaw = cameraPitch = 0;
-    slideCameraAmount = outsideOffset = cameraTurnRate = 0;
-    previousTravel.set(0, 0, 0);
     hasCabinVelocity = false;
     cabinOffset.set(0, 0, 0);
     cabinOffsetVelocity.set(0, 0, 0);
@@ -210,22 +203,17 @@ export function createDrivingCamera(
     return nearest / cameraRoutePoints.length;
   }
 
-  // How strongly to trust the course over the car's own motion: on course, moving, roughly along it.
-  function routeConfidence(speed: number, minSpeed: number, fullSpeed: number) {
-    return (
-      (1 - THREE.MathUtils.smoothstep(routeDistance, cameraCourseWidth / 2, cameraCourseWidth)) *
-      THREE.MathUtils.smoothstep(travelVelocity.dot(routeTangent), 0.2, 0.8) *
-      THREE.MathUtils.smoothstep(speed, minSpeed, fullSpeed)
-    );
-  }
-
   function updateDrone(dt: number, speed: number, followCourse: boolean, snap: boolean) {
     const motion = fpvCameraMotion;
     droneHeadingTarget.copy(travel);
     if (followCourse) {
       const t = nearestRouteT();
       cameraRoute.getTangentAt(t, routeTangent);
-      const amount = routeConfidence(speed, 2, 8);
+      // Trust the course over the car's own motion only when on course, moving, and roughly along it.
+      const amount =
+        (1 - THREE.MathUtils.smoothstep(routeDistance, cameraCourseWidth / 2, cameraCourseWidth)) *
+        THREE.MathUtils.smoothstep(travelVelocity.dot(routeTangent), 0.2, 0.8) *
+        THREE.MathUtils.smoothstep(speed, 2, 8);
       const lookahead = THREE.MathUtils.clamp(
         speed * motion.courseLookahead,
         motion.minCourseLookahead,
@@ -353,27 +341,15 @@ export function createDrivingCamera(
       cabinUp.set(0, 1, 0).applyQuaternion(cabinTilt).applyQuaternion(car.chassis.quaternion);
       camera.up.copy(cabinUp);
       camera.lookAt(desiredLookTarget.copy(camera.position).add(cabinDirection));
-      previousTravel.copy(travelVelocity);
     } else {
       const fpv = cameraStyle === 'fpv';
-      const motionTurn =
-        speed > 3 && previousTravel.lengthSq() > 0
-          ? Math.atan2(
-              previousTravel.z * travelVelocity.x - previousTravel.x * travelVelocity.z,
-              previousTravel.dot(travelVelocity),
-            ) / Math.max(dt, 0.001)
-          : 0;
-      previousTravel.copy(travelVelocity);
-      cameraTurnRate = THREE.MathUtils.damp(cameraTurnRate, motionTurn, 4, dt);
-      const manualCamera =
-        controls.lookBehind ||
-        Math.abs(cameraYaw) > 0.1 ||
-        Math.abs(cameraX) > 0 ||
-        Math.abs(cameraY) > 0;
-      const courseCamera = !manualCamera && !reversing;
-      const cornerCamera = cameraStyle === 'corner' && courseCamera;
       if (fpv) {
-        updateDrone(dt, speed, courseCamera, previousCameraStyle !== 'fpv');
+        const manualCamera =
+          controls.lookBehind ||
+          Math.abs(cameraYaw) > 0.1 ||
+          Math.abs(cameraX) > 0 ||
+          Math.abs(cameraY) > 0;
+        updateDrone(dt, speed, !manualCamera && !reversing, previousCameraStyle !== 'fpv');
       } else {
         camera.up.copy(up);
         cameraOrbit.copy(cameraDirection).applyAxisAngle(up, cameraYaw);
@@ -381,26 +357,6 @@ export function createDrivingCamera(
           .copy(car.chassis.position)
           .addScaledVector(cameraOrbit, -9 - Math.min(speed * 0.04, 2));
         desiredCamera.y = car.chassis.position.y + cameraHeight + cameraPitch;
-        const slideAngle =
-          speed > 3 ? Math.acos(THREE.MathUtils.clamp(forward.dot(travelVelocity), -1, 1)) : 0;
-        const slideAmount = cornerCamera
-          ? THREE.MathUtils.smoothstep(slideAngle, 0.12, 0.65) *
-            THREE.MathUtils.smoothstep(speed, 3, 10)
-          : 0;
-        slideCameraAmount = THREE.MathUtils.damp(slideCameraAmount, slideAmount, 3, dt);
-        outsideOffset = THREE.MathUtils.damp(
-          outsideOffset,
-          -THREE.MathUtils.clamp(cameraTurnRate / 0.35, -1, 1) * slideCameraAmount * 1.8,
-          3,
-          dt,
-        );
-        if (cameraStyle === 'corner') {
-          cameraRight.set(cameraDirection.z, 0, -cameraDirection.x);
-          desiredCamera
-            .addScaledVector(cameraRight, outsideOffset)
-            .addScaledVector(cameraOrbit, -slideCameraAmount);
-          desiredCamera.y += slideCameraAmount * 0.7;
-        }
         if (previousCameraStyle === 'cabin') camera.position.copy(desiredCamera);
         else camera.position.lerp(desiredCamera, 1 - Math.exp(-tune.cameraPositionResponse * dt));
       }
@@ -411,18 +367,7 @@ export function createDrivingCamera(
       );
       desiredLookTarget.copy(car.chassis.position).addScaledVector(velocity, fpv ? 0.12 : 0.18);
       desiredLookTarget.y = car.chassis.position.y + 0.65;
-      if (cornerCamera) {
-        const t = nearestRouteT();
-        cameraRoute.getTangentAt(t, routeTangent);
-        const amount = routeConfidence(speed, 2, 8);
-        cameraRoute.getPointAt(
-          (t + THREE.MathUtils.clamp(speed * 0.8, 10, 28) / cameraRouteLength) % 1,
-          cornerTarget,
-        );
-        cornerTarget.y = terrain.heightAt(cornerTarget.x, cornerTarget.z) + 0.65;
-        desiredLookTarget.lerp(cornerTarget, amount * 0.4);
-      }
-      const lookResponse = fpv ? fpvCameraMotion.lookResponse : cameraStyle === 'corner' ? 5 : 10;
+      const lookResponse = fpv ? fpvCameraMotion.lookResponse : 10;
       if (previousCameraStyle === 'cabin') lookTarget.copy(desiredLookTarget);
       else lookTarget.lerp(desiredLookTarget, 1 - Math.exp(-lookResponse * dt));
       camera.lookAt(lookTarget);

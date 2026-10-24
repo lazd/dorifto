@@ -88,7 +88,7 @@ test('each configuration subscription runs only when its settings actually chang
     selectedTuningPresets: { ...original.selectedTuningPresets, drift: null },
     coneMode: 'off',
     muted: true,
-    cameraStyle: 'corner',
+    cameraStyle: 'fpv',
   };
   for (const [key, value] of Object.entries(changes)) {
     configuration.update({ [key]: value });

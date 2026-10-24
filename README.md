@@ -54,7 +54,7 @@ For a **bots-only spectator session**, add `bots-only=1`:
 ```
 
 No player-controlled vehicle is created. The first bot uses the primary car model,
-telemetry, sound, tire effects and lap HUD, and the corner-aware chase camera
+telemetry, sound, tire effects and lap HUD, and the FPV drone camera
 follows it initially unless `camera` is specified. **V** cycles cameras normally;
 Click a bot in the leaderboard to spectate it; the observed bot is highlighted.
 **Tab** cycles the observed bot when the driving view has focus, including in cabin view, and saves its zero-based
@@ -471,22 +471,22 @@ bindings; close Settings with Done, Close or Escape. Driving inputs are disabled
 while the dialog is open, but the simulation continues. The following tables show
 the default bindings; remapped bindings are reflected in the in-app diagrams.
 
-| Key                 | Action                                                             |
-| ------------------- | ------------------------------------------------------------------ |
-| Left / right arrows | Steer                                                              |
-| Z                   | Accelerate (rear-wheel drive)                                      |
-| X (hold)            | Brake, then reverse near a stop                                    |
-| X + Z               | Brakestand (front brakes hold, rear tires spin)                    |
-| Space               | Lock the rear wheels / initiate a slide                            |
-| F                   | Flash high beams; hold 1 second to toggle high beams on/off        |
-| H                   | Tap to toggle headlights; hold 1 second to toggle fog lights       |
-| R                   | Reset the car, cones, smoke, and tire marks                        |
-| V                   | Cycle corner-aware chase, classic chase, in-cabin (once per press) |
-| D                   | Toggle Grip / Drift mode (once per press)                          |
-| M                   | Toggle the bird's-eye map view of the whole course                 |
-| U                   | Hide tach, map, leaderboard, then all HUD; press again to restore  |
-| W                   | Cycle Noon / Sunset / Night (once per press)                       |
-| S                   | Turn on the stereo / next station / off after the last station     |
+| Key                 | Action                                                            |
+| ------------------- | ----------------------------------------------------------------- |
+| Left / right arrows | Steer                                                             |
+| Z                   | Accelerate (rear-wheel drive)                                     |
+| X (hold)            | Brake, then reverse near a stop                                   |
+| X + Z               | Brakestand (front brakes hold, rear tires spin)                   |
+| Space               | Lock the rear wheels / initiate a slide                           |
+| F                   | Flash high beams; hold 1 second to toggle high beams on/off       |
+| H                   | Tap to toggle headlights; hold 1 second to toggle fog lights      |
+| R                   | Reset the car, cones, smoke, and tire marks                       |
+| V                   | Cycle FPV drone, classic chase, in-cabin (once per press)         |
+| D                   | Toggle Grip / Drift mode (once per press)                         |
+| M                   | Toggle the bird's-eye map view of the whole course                |
+| U                   | Hide tach, map, leaderboard, then all HUD; press again to restore |
+| W                   | Cycle Noon / Sunset / Night (once per press)                      |
+| S                   | Turn on the stereo / next station / off after the last station    |
 
 Map view switches instantly in both directions, without an animated camera flight.
 Each U press advances one step; holding it does not repeat. Restoring the HUD preserves
@@ -516,7 +516,7 @@ Settings > Controls. The first connected standard-mapped controller is used.
 | B / Circle (east face button)       | Dismiss a nonfatal error; otherwise toggle the bird's-eye map view (once per press) |
 | RT + LT                             | Brakestand                                                                          |
 | Start / Menu / Options              | Reset (once per press)                                                              |
-| View / Select / Back                | Cycle corner-aware chase, classic chase, in-cabin (once per press)                  |
+| View / Select / Back                | Cycle FPV drone, classic chase, in-cabin (once per press)                           |
 | Y / Triangle (north face button)    | Toggle Grip / Drift mode (once per press)                                           |
 | D-pad Down                          | Cycle Noon / Sunset / Night (once per press)                                        |
 | D-pad Up                            | Stop recording and replay, or play saved laps before the start line                 |
@@ -859,8 +859,8 @@ switching courses. Tune values are defined in `src/drive-modes.ts`.
 
 ## Camera style
 
-The live Camera style picker offers **Corner-aware chase** (default) and
-**Classic chase** (the original camera), **FPV drone**, plus **In-cabin** at the right-hand
+The live Camera style picker offers **FPV drone** and **Classic chase** (the original
+camera), plus **In-cabin** at the right-hand
 driver's seat. In-cabin follows the car's orientation, including hills, banking,
 and slides, with a wider 75-degree field of view. A damped head response shifts
 opposite the car's measured 3D acceleration, with subtle pitch/roll from the same
@@ -875,13 +875,8 @@ The choice persists in the URL as `?head-motion=off` or `?head-motion=on`.
 Turning it off clears the offset immediately; re-enabling it starts with fresh
 motion history, avoiding a jump from stale velocity. Right-stick look and R3
 look-behind remain available. Camera style is independent of drive mode.
-Corner-aware chase shifts gently outside the direction of motion's turn during
-slides, raises/pulls back slightly, and looks ahead along the course toward the
-exit. Off-course, low-speed, reverse, and manual camera input fade or suppress
-the assistance. Transitions are smoothed; counter-steering does not flip the offset.
-Classic chase keeps the original framing and motion. `?camera=corner`,
-`?camera=classic`, `?camera=fpv`, or `?camera=cabin` persists the choice through reloads and
-course changes.
+Classic chase keeps the original framing and motion. `?camera=fpv`, `?camera=classic`,
+or `?camera=cabin` persists the choice through reloads and course changes.
 FPV drone flies low and close behind the car with a wider field of view, lining up with
 the course a short, speed-scaled distance ahead rather than the car's body heading, so
 drifts stay framed side-on instead of swinging the camera around. Its offset from the
@@ -889,9 +884,8 @@ car follows a critically damped spring, and it banks into turns in proportion to
 own lateral acceleration. Off-course, low-speed, reverse, and manual camera input fall
 back to the car's direction of travel. `fpvCameraMotion` in `src/camera.ts` holds its
 distance, height, field of view, course look-ahead, responses, and bank limits.
-Corner look-ahead projects continuously between route samples; filtered motion
-turn rate and a slower look-target response prevent small physics changes from
-jerking the view.
+Course look-ahead projects continuously between route samples, so small physics
+changes don't jerk the view.
 
 ## Time of day
 

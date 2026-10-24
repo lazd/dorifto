@@ -39,14 +39,14 @@ test('only cabin view enables interior illumination, while all driving views ena
   const car = { chassis: new THREE.Group(), aimMirrors() {} };
   const driving = createDrivingCamera(camera, car, controls, courses[0], { heightAt: () => 0 });
   driving.reset(0);
-  for (const style of ['corner', 'classic', 'cabin', 'fpv', 'classic', 'cabin', 'fpv', 'corner']) {
+  for (const style of ['fpv', 'classic', 'cabin', 'classic', 'fpv', 'cabin', 'fpv']) {
     driving.update(1 / 60, new THREE.Vector3(), 'drift', style, false);
     assert.equal(camera.layers.isEnabled(carLightLayers.headlights), true);
     assert.equal(camera.layers.isEnabled(carLightLayers.interior), style === 'cabin');
   }
 });
 
-for (const style of ['corner', 'classic', 'fpv', 'cabin']) {
+for (const style of ['classic', 'fpv', 'cabin']) {
   test(`${style}: map view snaps on and off in one frame and preserves the driving camera`, () => {
     const definition = courses.find((course) => course.id === 'hillside');
     const terrain = { heightAt: () => 0 };
@@ -121,7 +121,7 @@ for (const style of ['corner', 'classic', 'fpv', 'cabin']) {
 }
 
 test('chase cameras follow irregular physics translations without car-relative jitter', () => {
-  for (const style of ['classic', 'corner', 'fpv']) {
+  for (const style of ['classic', 'fpv']) {
     const controls = { mapView: false, mapZoom: 0, cameraX: 0, cameraY: 0, lookBehind: true };
     const car = { chassis: new THREE.Group(), aimMirrors() {} };
     const camera = new THREE.PerspectiveCamera();
@@ -204,7 +204,7 @@ function cabinRig(rotation = new THREE.Quaternion()) {
   };
 }
 
-for (const style of ['corner', 'classic', 'fpv', 'cabin']) {
+for (const style of ['classic', 'fpv', 'cabin']) {
   test(`${style}: right stick pans horizontally while looking behind and recenters on release`, () => {
     const { camera, controls, update } = cabinRig();
     const settle = () => {
@@ -420,7 +420,7 @@ test('map stick pans in all screen directions, stops on release, and resets fram
 });
 
 test('map panning and zoom do not alter the hidden driving camera', () => {
-  for (const style of ['corner', 'classic', 'fpv', 'cabin']) {
+  for (const style of ['classic', 'fpv', 'cabin']) {
     const rig = cabinRig();
     const reference = cabinRig();
     rig.controls.mapView = true;
@@ -558,7 +558,7 @@ test('head motion continues through map view and preserves manual look controls'
 });
 
 test('vertical camera velocity does not change any chase camera framing', () => {
-  for (const style of ['classic', 'corner', 'fpv']) {
+  for (const style of ['classic', 'fpv']) {
     const rig = cabinRig();
     const reference = cabinRig();
     rig.velocity.set(4, 12, 10);
