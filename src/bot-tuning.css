@@ -106,7 +106,8 @@
 }
 
 .bot-fields,
-.bot-sliders {
+.bot-sliders,
+.bot-options {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-4);
@@ -178,8 +179,6 @@
 }
 
 .bot-options {
-  display: grid;
-  gap: var(--space-3);
   padding-top: var(--space-4);
   border-top: var(--line) solid var(--color-border);
 }
@@ -368,6 +367,7 @@
 @media (max-width: 30rem) {
   .bot-fields,
   .bot-sliders,
+  .bot-options,
   .tuning-controls {
     grid-template-columns: minmax(0, 1fr);
   }
