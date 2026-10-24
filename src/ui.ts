@@ -1194,10 +1194,13 @@ export function bindCoursePicker(
       );
       savedDescription.replaceChildren(request, textElement('p', '', 'This cannot be undone.'));
     } else if (deleting) {
-      savedDescription.replaceChildren(
-        textElement('p', '', `Remove “${course.name}” from your saved courses?`),
-        textElement('p', '', 'This cannot be undone.'),
+      const request = textElement('p', '', '');
+      request.append(
+        document.createTextNode('Remove '),
+        textElement('strong', '', course.name),
+        document.createTextNode(' from your saved courses?'),
       );
+      savedDescription.replaceChildren(request, textElement('p', '', 'This cannot be undone.'));
       if (course.id === selected.id)
         savedDescription.append(
           textElement('p', '', 'It is the current course, so the first built-in course will load.'),
@@ -1212,7 +1215,7 @@ export function bindCoursePicker(
       deletingReplay
         ? 'The course and local record are kept.'
         : deleting
-          ? 'Recorded laps are not deleted.'
+          ? 'Recorded laps and replays are deleted.'
           : 'Records and replays stay with the course.',
     );
     savedNameField.hidden = deleting;

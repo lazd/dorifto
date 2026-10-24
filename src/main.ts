@@ -64,6 +64,7 @@ import {
   RunRecording,
   applyCarPose,
   createReplayFrame,
+  deleteCourseRecords,
   deleteRun,
   describeRun,
   listSavedRuns,
@@ -997,8 +998,8 @@ async function start() {
       return renamed;
     },
     deleteCourse: async (id) => {
-      if (!loadSavedCourses(localStorage).some((course) => course.id === id))
-        throw new Error('Only saved courses can be deleted');
+      const savedCourse = loadSavedCourses(localStorage).find((course) => course.id === id);
+      if (!savedCourse) throw new Error('Only saved courses can be deleted');
       if (changingCourse) throw new Error('Wait for the current course change to finish');
       const active = activeDefinition.id === id;
       const fallback = active ? await changeCourse(courses[0].id) : activeDefinition;
@@ -1012,6 +1013,11 @@ async function start() {
         availableCourses.findIndex((course) => course.id === id),
         1,
       );
+      try {
+        deleteCourseRecords(savedCourse);
+      } catch (error) {
+        reportLapError('Unable to delete course records:', error);
+      }
       return fallback;
     },
     playRun: playCourseRun,

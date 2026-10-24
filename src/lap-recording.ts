@@ -712,3 +712,13 @@ export function deleteRun(key: string, id: string, storage: Storage = localStora
     JSON.stringify(readIndex(storage, key).filter((run) => run.id !== id)),
   );
 }
+
+export function deleteCourseRecords(course: CourseDefinition, storage: Storage = localStorage) {
+  for (const reverse of [false, true]) {
+    const key = replayStorageKey({ ...course, reverse });
+    for (const run of readIndex(storage, key))
+      storage.removeItem(`${storagePrefix}:${key}:${run.id}`);
+    storage.removeItem(`${storagePrefix}:${key}`);
+    storage.removeItem(`${recordPrefix}:${key}`);
+  }
+}
