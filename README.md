@@ -860,7 +860,7 @@ switching courses. Tune values are defined in `src/drive-modes.ts`.
 ## Camera style
 
 The live Camera style picker offers **Corner-aware chase** (default) and
-**Classic chase** (the original camera), plus **In-cabin** at the right-hand
+**Classic chase** (the original camera), **FPV drone**, plus **In-cabin** at the right-hand
 driver's seat. In-cabin follows the car's orientation, including hills, banking,
 and slides, with a wider 75-degree field of view. A damped head response shifts
 opposite the car's measured 3D acceleration, with subtle pitch/roll from the same
@@ -879,8 +879,16 @@ Corner-aware chase shifts gently outside the direction of motion's turn during
 slides, raises/pulls back slightly, and looks ahead along the course toward the
 exit. Off-course, low-speed, reverse, and manual camera input fade or suppress
 the assistance. Transitions are smoothed; counter-steering does not flip the offset.
-Classic chase keeps the original framing and motion. `?camera=corner` or
-`?camera=classic` or `?camera=cabin` persists the choice through reloads and course changes.
+Classic chase keeps the original framing and motion. `?camera=corner`,
+`?camera=classic`, `?camera=fpv`, or `?camera=cabin` persists the choice through reloads and
+course changes.
+FPV drone flies low and close behind the car with a wider field of view, lining up with
+the course a short, speed-scaled distance ahead rather than the car's body heading, so
+drifts stay framed side-on instead of swinging the camera around. Its offset from the
+car follows a critically damped spring, and it banks into turns in proportion to its
+own lateral acceleration. Off-course, low-speed, reverse, and manual camera input fall
+back to the car's direction of travel. `fpvCameraMotion` in `src/camera.ts` holds its
+distance, height, field of view, course look-ahead, responses, and bank limits.
 Corner look-ahead projects continuously between route samples; filtered motion
 turn rate and a slower look-target response prevent small physics changes from
 jerking the view.

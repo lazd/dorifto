@@ -6,6 +6,7 @@ import { createServer } from 'vite';
 let server;
 let createDrivingCamera;
 let cabinCameraMotion;
+let fpvCameraMotion;
 let courses;
 let courseRoute;
 let generateCustomCourse;
@@ -18,7 +19,8 @@ before(async () => {
     server: { middlewareMode: true, hmr: false, ws: false, watch: null },
     appType: 'custom',
   });
-  ({ createDrivingCamera, cabinCameraMotion } = await server.ssrLoadModule('/src/camera.ts'));
+  ({ createDrivingCamera, cabinCameraMotion, fpvCameraMotion } =
+    await server.ssrLoadModule('/src/camera.ts'));
   ({ carLightLayers } = await server.ssrLoadModule('/src/car.ts'));
   ({ DrivingControls } = await server.ssrLoadModule('/src/controls.ts'));
   ({ courses, courseRoute } = await server.ssrLoadModule('/src/courses.ts'));
@@ -37,14 +39,14 @@ test('only cabin view enables interior illumination, while all driving views ena
   const car = { chassis: new THREE.Group(), aimMirrors() {} };
   const driving = createDrivingCamera(camera, car, controls, courses[0], { heightAt: () => 0 });
   driving.reset(0);
-  for (const style of ['corner', 'classic', 'cabin', 'classic', 'cabin', 'corner']) {
+  for (const style of ['corner', 'classic', 'cabin', 'fpv', 'classic', 'cabin', 'fpv', 'corner']) {
     driving.update(1 / 60, new THREE.Vector3(), 'drift', style, false);
     assert.equal(camera.layers.isEnabled(carLightLayers.headlights), true);
     assert.equal(camera.layers.isEnabled(carLightLayers.interior), style === 'cabin');
   }
 });
 
-for (const style of ['corner', 'classic', 'cabin']) {
+for (const style of ['corner', 'classic', 'fpv', 'cabin']) {
   test(`${style}: map view snaps on and off in one frame and preserves the driving camera`, () => {
     const definition = courses.find((course) => course.id === 'hillside');
     const terrain = { heightAt: () => 0 };
@@ -119,7 +121,7 @@ for (const style of ['corner', 'classic', 'cabin']) {
 }
 
 test('chase cameras follow irregular physics translations without car-relative jitter', () => {
-  for (const style of ['classic', 'corner']) {
+  for (const style of ['classic', 'corner', 'fpv']) {
     const controls = { mapView: false, mapZoom: 0, cameraX: 0, cameraY: 0, lookBehind: true };
     const car = { chassis: new THREE.Group(), aimMirrors() {} };
     const camera = new THREE.PerspectiveCamera();
@@ -128,7 +130,7 @@ test('chase cameras follow irregular physics translations without car-relative j
     });
     const velocity = new THREE.Vector3(0, 0, 20);
     driving.reset(0);
-    for (let i = 0; i < 300; i++) driving.update(1 / 60, velocity, 'grip', style, false);
+    for (let i = 0; i < 600; i++) driving.update(1 / 60, velocity, 'grip', style, false);
     const relative = camera.position.clone().sub(car.chassis.position);
     const rotation = camera.quaternion.clone();
     for (const distance of [0.16, 0.5, 0, 0.33, 0.17, 0.66]) {
@@ -202,7 +204,7 @@ function cabinRig(rotation = new THREE.Quaternion()) {
   };
 }
 
-for (const style of ['corner', 'classic', 'cabin']) {
+for (const style of ['corner', 'classic', 'fpv', 'cabin']) {
   test(`${style}: right stick pans horizontally while looking behind and recenters on release`, () => {
     const { camera, controls, update } = cabinRig();
     const settle = () => {
@@ -418,7 +420,7 @@ test('map stick pans in all screen directions, stops on release, and resets fram
 });
 
 test('map panning and zoom do not alter the hidden driving camera', () => {
-  for (const style of ['corner', 'classic', 'cabin']) {
+  for (const style of ['corner', 'classic', 'fpv', 'cabin']) {
     const rig = cabinRig();
     const reference = cabinRig();
     rig.controls.mapView = true;
@@ -555,8 +557,8 @@ test('head motion continues through map view and preserves manual look controls'
   assert.equal(rig.mirrorAims(), 1);
 });
 
-test('vertical camera velocity does not change either chase camera framing', () => {
-  for (const style of ['classic', 'corner']) {
+test('vertical camera velocity does not change any chase camera framing', () => {
+  for (const style of ['classic', 'corner', 'fpv']) {
     const rig = cabinRig();
     const reference = cabinRig();
     rig.velocity.set(4, 12, 10);
@@ -568,4 +570,50 @@ test('vertical camera velocity does not change either chase camera framing', () 
     assert.ok(rig.camera.position.distanceTo(reference.camera.position) < 1e-8);
     assert.ok(rig.camera.quaternion.angleTo(reference.camera.quaternion) < 1e-7);
   }
+});
+
+test('fpv drone chases along the course through drifts and banks into turns', () => {
+  const definition = courses.find((course) => course.id === 'hillside');
+  const route = courseRoute(definition);
+  const car = { chassis: new THREE.Group(), aimMirrors() {} };
+  const controls = { mapView: false, mapZoom: 0, cameraX: 0, cameraY: 0, lookBehind: false };
+  const camera = new THREE.PerspectiveCamera();
+  const driving = createDrivingCamera(camera, car, controls, definition, { heightAt: () => -100 });
+  const speed = 20;
+  const length = route.getLength();
+  const tangent = new THREE.Vector3();
+  let distance = 0;
+  const place = () => {
+    route.getPointAt((distance / length) % 1, car.chassis.position);
+    route
+      .getTangentAt((distance / length) % 1, tangent)
+      .setY(0)
+      .normalize();
+    // Sideways drift: the body points 50 degrees off the direction of travel.
+    car.chassis.rotation.set(0, Math.atan2(tangent.x, tangent.z) + 0.9, 0);
+  };
+  place();
+  driving.reset(Math.atan2(tangent.x, tangent.z));
+  driving.update(1 / 60, tangent.clone().multiplyScalar(speed), 'drift', 'fpv', false);
+  assert.equal(camera.fov, fpvCameraMotion.fov);
+  let maxBank = 0;
+  for (let i = 0; i < 600; i++) {
+    distance += speed / 60;
+    place();
+    const velocity = tangent.clone().multiplyScalar(speed);
+    driving.update(1 / 60, velocity, 'drift', 'fpv', false);
+    const behind = camera.position.clone().sub(car.chassis.position).setY(0).normalize();
+    if (i > 120) {
+      // Trailing the drifting body's heading instead would put this near -cos(0.9) ≈ -0.62.
+      assert.ok(behind.dot(tangent) < -0.9, 'drone trails along the course, not the body');
+    }
+    const left = new THREE.Vector3(tangent.z, 0, -tangent.x);
+    const turn = route.getTangentAt(((distance + 8) / length) % 1, new THREE.Vector3());
+    const turning = tangent.x * turn.z - tangent.z * turn.x;
+    if (Math.abs(turning) > 0.1 && i > 120) {
+      assert.equal(Math.sign(camera.up.dot(left)), -Math.sign(turning), 'banks into the turn');
+    }
+    maxBank = Math.max(maxBank, Math.acos(camera.up.y));
+  }
+  assert.ok(maxBank > 0.05 && maxBank <= fpvCameraMotion.maxBank + 1e-6);
 });

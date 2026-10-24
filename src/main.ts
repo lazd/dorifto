@@ -1018,7 +1018,7 @@ async function start() {
   });
 
   function cycleCamera() {
-    const styles = ['corner', 'classic', 'cabin'] as const;
+    const styles = ['corner', 'classic', 'fpv', 'cabin'] as const;
     const cameraStyle =
       styles[(styles.indexOf(configurationState.getState().cameraStyle) + 1) % styles.length];
     configurationState.update({ cameraStyle });
