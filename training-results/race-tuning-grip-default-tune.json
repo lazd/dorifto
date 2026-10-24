@@ -1,0 +1,10 @@
+{
+  "corneringGrip": 15.185853388189217,
+  "brakingLimit": 6.7567092878399695,
+  "smallSpeedDrop": 5.736674064471701,
+  "brakeThreshold": 3.368534825018695,
+  "lookaheadTime": 0.1422767266151566,
+  "edgeMargin": 1.5,
+  "countersteerSlip": 0.08963882858028036,
+  "tractionSlip": 0.06249023285601525
+}

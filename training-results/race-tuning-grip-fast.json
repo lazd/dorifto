@@ -1,0 +1,76 @@
+{
+  "tracks": [
+    {
+      "course": "hillside",
+      "reverse": false
+    },
+    {
+      "course": "hillside",
+      "reverse": true
+    },
+    {
+      "course": "sweeper",
+      "reverse": false
+    },
+    {
+      "course": "hilly-drift",
+      "reverse": false
+    },
+    {
+      "course": "sonoma-raceway",
+      "reverse": false,
+      "laps": 1,
+      "maxSeconds": 240
+    }
+  ],
+  "tuning": {
+    "corneringGrip": 14.482926057057139,
+    "brakingLimit": 5.8920720619252585,
+    "smallSpeedDrop": 4.498908097856541,
+    "brakeThreshold": 2.2853724922254837,
+    "lookaheadTime": 0.10556866950226126,
+    "edgeMargin": 0.6405897391298832,
+    "countersteerSlip": 0.0918893586208204
+  },
+  "cost": 5.1992647309712705,
+  "times": [
+    30.45771696935128, 30.295026413569687, 14.627633172656367, 32.19063787500778, 106.88941574046736
+  ],
+  "results": [
+    {
+      "failure": null,
+      "lapTime": 30.45771696935128,
+      "invalidLaps": 0,
+      "brakesPerLap": 5.666666666666667,
+      "liftsPerLap": 9.333333333333334
+    },
+    {
+      "failure": null,
+      "lapTime": 30.295026413569687,
+      "invalidLaps": 0,
+      "brakesPerLap": 5,
+      "liftsPerLap": 11
+    },
+    {
+      "failure": null,
+      "lapTime": 14.627633172656367,
+      "invalidLaps": 0,
+      "brakesPerLap": 2.6666666666666665,
+      "liftsPerLap": 5
+    },
+    {
+      "failure": null,
+      "lapTime": 32.19063787500778,
+      "invalidLaps": 0,
+      "brakesPerLap": 4,
+      "liftsPerLap": 5
+    },
+    {
+      "failure": null,
+      "lapTime": 106.88941574046736,
+      "invalidLaps": 1,
+      "brakesPerLap": 10,
+      "liftsPerLap": 11
+    }
+  ]
+}

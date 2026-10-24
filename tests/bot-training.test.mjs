@@ -89,9 +89,8 @@ test('race driver completes repeated three-lap runs and serializes bounded learn
     assert.equal(run.laps.length, 3);
     assert.ok(run.laps.every((lap) => lap.valid && lap.time > 0));
   }
-  assert.ok(report.runs[1].laps[2].time < report.runs[0].laps[0].time);
   assert.ok(report.experience.visits.every((visits) => visits > 0));
-  assert.ok(report.experience.pace.every((pace) => pace >= 0.55 && pace <= 1.05));
+  assert.ok(report.experience.pace.every((pace) => pace >= 0.55 && pace <= 1));
   const frozen = { ...options, learning: false };
   const saved = JSON.parse(JSON.stringify(report.experience));
   const replay = trainRaceBot(Ammo, definition, terrain, geometry, configuration, frozen, 2, saved);

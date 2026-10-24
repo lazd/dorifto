@@ -72,12 +72,15 @@ buffer or artificial input delay is enabled. Chase cameras inherit the car's
 translation on the same rendered sample and smooth their relative offset,
 rather than independently damping world-space translation.
 
-Run repeatable solo training without rendering:
+Search driver tuning across tracks with `npm run train:bot`; see
+[training race bots](docs/training-bots.md) for the optimizer and applying results.
+
+Run repeatable single-track evaluation without rendering:
 
 ```sh
-npm run train:bot -- --runs=3
-npm run train:bot -- --runs=3 --experience=.bot-training/race.json --output=.bot-training/continued.json
-npm run train:bot -- --frozen --experience=.bot-training/continued.json --output=.bot-training/evaluation.json
+npm run evaluate:bot -- --runs=3
+npm run evaluate:bot -- --runs=3 --experience=.bot-training/race.json --output=.bot-training/continued.json
+npm run evaluate:bot -- --frozen --experience=.bot-training/continued.json --output=.bot-training/evaluation.json
 ```
 
 Each run attempts three timed laps on **Hillside Circuit**, excluding the approach

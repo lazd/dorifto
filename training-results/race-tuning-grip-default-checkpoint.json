@@ -1,0 +1,3974 @@
+{
+  "version": 1,
+  "preset": "grip-default",
+  "skill": "1",
+  "samples": 3,
+  "tracks": [
+    {
+      "course": "hillside",
+      "reverse": false
+    },
+    {
+      "course": "hillside",
+      "reverse": true
+    },
+    {
+      "course": "sweeper",
+      "reverse": false
+    },
+    {
+      "course": "hilly-drift",
+      "reverse": false
+    },
+    {
+      "course": "sonoma-raceway",
+      "reverse": false,
+      "laps": 1,
+      "maxSeconds": 240
+    }
+  ],
+  "completedGeneration": 15,
+  "steps": {
+    "corneringGrip": 0.24775662012552546,
+    "brakingLimit": 0.12387831006276273,
+    "smallSpeedDrop": 0.23227183136768015,
+    "brakeThreshold": 0.061939155031381365,
+    "lookaheadTime": 0.009290873254707207,
+    "edgeMargin": 0.023227183136768016,
+    "countersteerSlip": 0.005729371840402778,
+    "tractionSlip": 0.005419676065245871
+  },
+  "best": {
+    "tuning": {
+      "corneringGrip": 15.185853388189217,
+      "brakingLimit": 6.7567092878399695,
+      "smallSpeedDrop": 5.736674064471701,
+      "brakeThreshold": 3.368534825018695,
+      "lookaheadTime": 0.1422767266151566,
+      "edgeMargin": 1.5,
+      "countersteerSlip": 0.08963882858028036,
+      "tractionSlip": 0.06249023285601525
+    },
+    "cost": 5.253971415561817,
+    "times": [
+      30.86430376780405, 30.266765782936385, 14.380082701060948, 36.08977134654857,
+      120.48741541268127
+    ],
+    "results": [
+      {
+        "failures": 0,
+        "failure": null,
+        "lapTime": 30.86430376780405,
+        "invalidLaps": 0,
+        "brakesPerLap": 4.111111111111111,
+        "liftsPerLap": 10.333333333333334
+      },
+      {
+        "failures": 0,
+        "failure": null,
+        "lapTime": 30.266765782936385,
+        "invalidLaps": 0,
+        "brakesPerLap": 3.4444444444444446,
+        "liftsPerLap": 6.4444444444444455
+      },
+      {
+        "failures": 0,
+        "failure": null,
+        "lapTime": 14.380082701060948,
+        "invalidLaps": 0,
+        "brakesPerLap": 1.6666666666666667,
+        "liftsPerLap": 3.111111111111111
+      },
+      {
+        "failures": 0,
+        "failure": null,
+        "lapTime": 36.08977134654857,
+        "invalidLaps": 0,
+        "brakesPerLap": 2.8888888888888893,
+        "liftsPerLap": 7.4444444444444455
+      },
+      {
+        "failures": 0,
+        "failure": null,
+        "lapTime": 120.48741541268127,
+        "invalidLaps": 0,
+        "brakesPerLap": 4,
+        "liftsPerLap": 16
+      }
+    ],
+    "evaluations": 1
+  },
+  "groups": [
+    [
+      {
+        "tuning": {
+          "corneringGrip": 15.139357126265681,
+          "brakingLimit": 6.759406030808161,
+          "smallSpeedDrop": 5.712311278074313,
+          "brakeThreshold": 3.3537166714259947,
+          "lookaheadTime": 0.14271655631642882,
+          "edgeMargin": 1.5032367377878528,
+          "countersteerSlip": 0.08882962156212301,
+          "tractionSlip": 0.06266186758640448
+        },
+        "trackIndex": 0,
+        "result": {
+          "failure": null,
+          "lapTime": 30.83584784506415,
+          "invalidLaps": 0,
+          "brakesPerLap": 4,
+          "liftsPerLap": 10.666666666666666
+        }
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.23068200930692,
+          "brakingLimit": 6.785216647102796,
+          "smallSpeedDrop": 5.720158882941869,
+          "brakeThreshold": 3.3443176728555057,
+          "lookaheadTime": 0.14197429688481214,
+          "edgeMargin": 1.4873376178661226,
+          "countersteerSlip": 0.08984395409802415,
+          "tractionSlip": 0.06290287708267452
+        },
+        "trackIndex": 0,
+        "result": {
+          "failure": null,
+          "lapTime": 30.85630648824099,
+          "invalidLaps": 0,
+          "brakesPerLap": 4.333333333333333,
+          "liftsPerLap": 10.333333333333334
+        }
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.265748596153623,
+          "brakingLimit": 6.741051152292379,
+          "smallSpeedDrop": 5.7575065578438815,
+          "brakeThreshold": 3.354682753940079,
+          "lookaheadTime": 0.14323855619422127,
+          "edgeMargin": 1.5014107599369533,
+          "countersteerSlip": 0.09003369680445153,
+          "tractionSlip": 0.0630756808060141
+        },
+        "trackIndex": 0,
+        "result": {
+          "failure": null,
+          "lapTime": 30.831550006217746,
+          "invalidLaps": 0,
+          "brakesPerLap": 4.333333333333333,
+          "liftsPerLap": 10
+        }
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.256811909821886,
+          "brakingLimit": 6.760370031071322,
+          "smallSpeedDrop": 5.750154498973347,
+          "brakeThreshold": 3.373958460064308,
+          "lookaheadTime": 0.14342511608228536,
+          "edgeMargin": 1.5073357086254358,
+          "countersteerSlip": 0.09051184463635374,
+          "tractionSlip": 0.062080632726460194
+        },
+        "trackIndex": 1,
+        "result": {
+          "failure": null,
+          "lapTime": 30.33218371963634,
+          "invalidLaps": 0,
+          "brakesPerLap": 3,
+          "liftsPerLap": 7
+        }
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.104323247352863,
+          "brakingLimit": 6.759592095702283,
+          "smallSpeedDrop": 5.783672981118583,
+          "brakeThreshold": 3.3630400300102217,
+          "lookaheadTime": 0.1431845377384051,
+          "edgeMargin": 1.5061507095971933,
+          "countersteerSlip": 0.0893603460640469,
+          "tractionSlip": 0.06293442355202297
+        },
+        "trackIndex": 1,
+        "result": {
+          "failure": null,
+          "lapTime": 30.287324106283663,
+          "invalidLaps": 0,
+          "brakesPerLap": 3.3333333333333335,
+          "liftsPerLap": 6.333333333333333
+        }
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.072288694765687,
+          "brakingLimit": 6.819940770163139,
+          "smallSpeedDrop": 5.77492445786049,
+          "brakeThreshold": 3.396973107292844,
+          "lookaheadTime": 0.1427967343060697,
+          "edgeMargin": 1.5054489073444395,
+          "countersteerSlip": 0.08978710631304528,
+          "tractionSlip": 0.06250378106839041
+        },
+        "trackIndex": 1,
+        "result": {
+          "failure": null,
+          "lapTime": 30.300898000795364,
+          "invalidLaps": 0,
+          "brakesPerLap": 3.6666666666666665,
+          "liftsPerLap": 7
+        }
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.152222942756222,
+          "brakingLimit": 6.703449158080556,
+          "smallSpeedDrop": 5.74687669778779,
+          "brakeThreshold": 3.387341317750553,
+          "lookaheadTime": 0.14312030220696156,
+          "edgeMargin": 1.4942570838670886,
+          "countersteerSlip": 0.08995320258472853,
+          "tractionSlip": 0.062092259085254974
+        },
+        "trackIndex": 2,
+        "result": {
+          "failure": null,
+          "lapTime": 14.391530281266554,
+          "invalidLaps": 0,
+          "brakesPerLap": 1.6666666666666667,
+          "liftsPerLap": 3.6666666666666665
+        }
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.209375456036797,
+          "brakingLimit": 6.726412217808469,
+          "smallSpeedDrop": 5.684519151742665,
+          "brakeThreshold": 3.3749208666896844,
+          "lookaheadTime": 0.14308739529764772,
+          "edgeMargin": 1.5148557375339526,
+          "countersteerSlip": 0.08938486275175549,
+          "tractionSlip": 0.06291868177846864
+        },
+        "trackIndex": 2,
+        "result": {
+          "failure": null,
+          "lapTime": 14.38307625302729,
+          "invalidLaps": 0,
+          "brakesPerLap": 1.6666666666666667,
+          "liftsPerLap": 3
+        }
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.262630463247044,
+          "brakingLimit": 6.746458045346584,
+          "smallSpeedDrop": 5.713805390057255,
+          "brakeThreshold": 3.3594316900932975,
+          "lookaheadTime": 0.1410300797150268,
+          "edgeMargin": 1.4850462031014606,
+          "countersteerSlip": 0.09026024411557965,
+          "tractionSlip": 0.06308353016157059
+        },
+        "trackIndex": 2,
+        "result": {
+          "failure": null,
+          "lapTime": 14.354069444460134,
+          "invalidLaps": 0,
+          "brakesPerLap": 1.6666666666666667,
+          "liftsPerLap": 3
+        }
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.088229695039697,
+          "brakingLimit": 6.729033412596397,
+          "smallSpeedDrop": 5.699963738710528,
+          "brakeThreshold": 3.345299941994367,
+          "lookaheadTime": 0.14266430885959655,
+          "edgeMargin": 1.4981613920602435,
+          "countersteerSlip": 0.08922743447068579,
+          "tractionSlip": 0.06271331271734919
+        },
+        "trackIndex": 3,
+        "result": {
+          "failure": null,
+          "lapTime": 36.25661332979931,
+          "invalidLaps": 0,
+          "brakesPerLap": 2.6666666666666665,
+          "liftsPerLap": 7
+        }
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.213479482363343,
+          "brakingLimit": 6.691593752920828,
+          "smallSpeedDrop": 5.725312894223746,
+          "brakeThreshold": 3.358985024046664,
+          "lookaheadTime": 0.14130308705317524,
+          "edgeMargin": 1.490604595039197,
+          "countersteerSlip": 0.08886080970289566,
+          "tractionSlip": 0.0626247500411041
+        },
+        "trackIndex": 3,
+        "result": {
+          "failure": null,
+          "lapTime": 36.601152445764626,
+          "invalidLaps": 0,
+          "brakesPerLap": 2.6666666666666665,
+          "liftsPerLap": 7.333333333333333
+        }
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.103686015364794,
+          "brakingLimit": 6.763430021594193,
+          "smallSpeedDrop": 5.7628080010056895,
+          "brakeThreshold": 3.336312934023281,
+          "lookaheadTime": 0.14243568378835514,
+          "edgeMargin": 1.4949873442805184,
+          "countersteerSlip": 0.0905125087595924,
+          "tractionSlip": 0.06235141339973683
+        },
+        "trackIndex": 3,
+        "result": {
+          "failure": null,
+          "lapTime": 36.0103333817101,
+          "invalidLaps": 0,
+          "brakesPerLap": 2.3333333333333335,
+          "liftsPerLap": 7.333333333333333
+        }
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.039749115541312,
+          "brakingLimit": 6.7777137808791155,
+          "smallSpeedDrop": 5.761209125512359,
+          "brakeThreshold": 3.3522162703718186,
+          "lookaheadTime": 0.14311063074771846,
+          "edgeMargin": 1.4971530422936266,
+          "countersteerSlip": 0.08904150442978001,
+          "tractionSlip": 0.06286086433780148
+        },
+        "trackIndex": 4,
+        "result": {
+          "failure": null,
+          "lapTime": 119.71286263418568,
+          "invalidLaps": 0,
+          "brakesPerLap": 4,
+          "liftsPerLap": 18
+        }
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.082627836954034,
+          "brakingLimit": 6.776075092012648,
+          "smallSpeedDrop": 5.765152264435436,
+          "brakeThreshold": 3.3746742017569797,
+          "lookaheadTime": 0.14200241814524897,
+          "edgeMargin": 1.5076874370354645,
+          "countersteerSlip": 0.08875451600802292,
+          "tractionSlip": 0.06260524116698092
+        },
+        "trackIndex": 4,
+        "result": {
+          "failure": null,
+          "lapTime": 120.19404648705245,
+          "invalidLaps": 0,
+          "brakesPerLap": 4,
+          "liftsPerLap": 17
+        }
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.25690579984948,
+          "brakingLimit": 6.759832592170377,
+          "smallSpeedDrop": 5.713200081879346,
+          "brakeThreshold": 3.400197321258056,
+          "lookaheadTime": 0.14110470666764663,
+          "edgeMargin": 1.4908285684798452,
+          "countersteerSlip": 0.089415242562261,
+          "tractionSlip": 0.06277903970956726
+        },
+        "trackIndex": 4,
+        "result": {
+          "failure": null,
+          "lapTime": 120.30213965381706,
+          "invalidLaps": 0,
+          "brakesPerLap": 4,
+          "liftsPerLap": 17
+        }
+      }
+    ],
+    [
+      {
+        "tuning": {
+          "corneringGrip": 15.26176281216072,
+          "brakingLimit": 6.47573348683079,
+          "smallSpeedDrop": 5.025876359782351,
+          "brakeThreshold": 3.407378764996509,
+          "lookaheadTime": 0.14526674483145577,
+          "edgeMargin": 1.5114970461273658,
+          "countersteerSlip": 0.08502422295156414,
+          "tractionSlip": 0.07287028301693689
+        },
+        "trackIndex": 0,
+        "result": {
+          "failure": null,
+          "lapTime": 30.47026924839217,
+          "invalidLaps": 0,
+          "brakesPerLap": 3.3333333333333335,
+          "liftsPerLap": 8.333333333333334
+        }
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.041580927582208,
+          "brakingLimit": 6.564969886252955,
+          "smallSpeedDrop": 4.997124434551916,
+          "brakeThreshold": 3.383048307285799,
+          "lookaheadTime": 0.14546828746988272,
+          "edgeMargin": 1.4915396006448574,
+          "countersteerSlip": 0.08417399864992697,
+          "tractionSlip": 0.07351786318634111
+        },
+        "trackIndex": 0,
+        "result": {
+          "failure": null,
+          "lapTime": 30.468919449965284,
+          "invalidLaps": 0,
+          "brakesPerLap": 3.6666666666666665,
+          "liftsPerLap": 9.333333333333334
+        }
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.234207764439489,
+          "brakingLimit": 6.538037910499613,
+          "smallSpeedDrop": 5.038166837279186,
+          "brakeThreshold": 3.4067910493066647,
+          "lookaheadTime": 0.14547126681775258,
+          "edgeMargin": 1.5141981606067443,
+          "countersteerSlip": 0.08507069386684911,
+          "tractionSlip": 0.07303411817506929
+        },
+        "trackIndex": 0,
+        "result": {
+          "failure": null,
+          "lapTime": 30.477691331830357,
+          "invalidLaps": 0,
+          "brakesPerLap": 3.3333333333333335,
+          "liftsPerLap": 9.333333333333334
+        }
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.307651719744776,
+          "brakingLimit": 6.478402176558055,
+          "smallSpeedDrop": 4.996424641085844,
+          "brakeThreshold": 3.3894703648949833,
+          "lookaheadTime": 0.14565245391183437,
+          "edgeMargin": 1.4884160073646675,
+          "countersteerSlip": 0.0839041821670245,
+          "tractionSlip": 0.07232833920819197
+        },
+        "trackIndex": 1,
+        "result": {
+          "failure": null,
+          "lapTime": 30.096412845732715,
+          "invalidLaps": 0,
+          "brakesPerLap": 3.6666666666666665,
+          "liftsPerLap": 6
+        }
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.262941303095134,
+          "brakingLimit": 6.462039308482958,
+          "smallSpeedDrop": 5.024295979977364,
+          "brakeThreshold": 3.4445470911006484,
+          "lookaheadTime": 0.1455801584463977,
+          "edgeMargin": 1.498314554485208,
+          "countersteerSlip": 0.08399736160973814,
+          "tractionSlip": 0.07336412531601462
+        },
+        "trackIndex": 1,
+        "result": {
+          "failure": null,
+          "lapTime": 30.10076805583175,
+          "invalidLaps": 0,
+          "brakesPerLap": 3.6666666666666665,
+          "liftsPerLap": 6
+        }
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.119687316351783,
+          "brakingLimit": 6.507606747017683,
+          "smallSpeedDrop": 5.0505735291650975,
+          "brakeThreshold": 3.440200197831413,
+          "lookaheadTime": 0.14457572534899957,
+          "edgeMargin": 1.4887020752932254,
+          "countersteerSlip": 0.0838039320673377,
+          "tractionSlip": 0.07340314173950306
+        },
+        "trackIndex": 1,
+        "result": {
+          "failure": null,
+          "lapTime": 30.119183986583877,
+          "invalidLaps": 0,
+          "brakesPerLap": 3.6666666666666665,
+          "liftsPerLap": 6.333333333333333
+        }
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.147997105055364,
+          "brakingLimit": 6.453759477078764,
+          "smallSpeedDrop": 5.068471559515175,
+          "brakeThreshold": 3.403536251747734,
+          "lookaheadTime": 0.1441037788477616,
+          "edgeMargin": 1.4954707300126144,
+          "countersteerSlip": 0.08396485039542848,
+          "tractionSlip": 0.07261558193541846
+        },
+        "trackIndex": 2,
+        "result": {
+          "failure": null,
+          "lapTime": 14.488397268365539,
+          "invalidLaps": 0,
+          "brakesPerLap": 3,
+          "liftsPerLap": 3.6666666666666665
+        }
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.262645286935108,
+          "brakingLimit": 6.52982529050654,
+          "smallSpeedDrop": 5.069211044017786,
+          "brakeThreshold": 3.439864109950749,
+          "lookaheadTime": 0.1452044281461983,
+          "edgeMargin": 1.4937573057528968,
+          "countersteerSlip": 0.08460016313739367,
+          "tractionSlip": 0.07347905415506796
+        },
+        "trackIndex": 2,
+        "result": {
+          "failure": null,
+          "lapTime": 14.445333717100787,
+          "invalidLaps": 0,
+          "brakesPerLap": 3,
+          "liftsPerLap": 3
+        }
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.109270198493086,
+          "brakingLimit": 6.579124735986384,
+          "smallSpeedDrop": 5.013370472557236,
+          "brakeThreshold": 3.4297089171507826,
+          "lookaheadTime": 0.14309722224303986,
+          "edgeMargin": 1.4984945413557798,
+          "countersteerSlip": 0.08460075498550157,
+          "tractionSlip": 0.07268339480884492
+        },
+        "trackIndex": 2,
+        "result": {
+          "failure": null,
+          "lapTime": 14.489525208590823,
+          "invalidLaps": 0,
+          "brakesPerLap": 3,
+          "liftsPerLap": 3.6666666666666665
+        }
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.237907446603124,
+          "brakingLimit": 6.514696700571892,
+          "smallSpeedDrop": 5.032066180493635,
+          "brakeThreshold": 3.431463610169485,
+          "lookaheadTime": 0.14427557785937004,
+          "edgeMargin": 1.4987269257929876,
+          "countersteerSlip": 0.08374083397513538,
+          "tractionSlip": 0.07372306654329133
+        },
+        "trackIndex": 3,
+        "result": {
+          "failure": null,
+          "lapTime": 34.35323099270912,
+          "invalidLaps": 0,
+          "brakesPerLap": 2.3333333333333335,
+          "liftsPerLap": 4.666666666666667
+        }
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.232845929491704,
+          "brakingLimit": 6.480948112745228,
+          "smallSpeedDrop": 5.095918027595127,
+          "brakeThreshold": 3.427314034478961,
+          "lookaheadTime": 0.14393114086585151,
+          "edgeMargin": 1.506487427971429,
+          "countersteerSlip": 0.0847351108926955,
+          "tractionSlip": 0.07271115125574618
+        },
+        "trackIndex": 3,
+        "result": {
+          "failure": null,
+          "lapTime": 34.38591875338925,
+          "invalidLaps": 0,
+          "brakesPerLap": 2.3333333333333335,
+          "liftsPerLap": 6
+        }
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.269278714780675,
+          "brakingLimit": 6.5833786123830755,
+          "smallSpeedDrop": 5.080184556973916,
+          "brakeThreshold": 3.4435495435977925,
+          "lookaheadTime": 0.1455261641134576,
+          "edgeMargin": 1.4870174901334314,
+          "countersteerSlip": 0.08385077578177652,
+          "tractionSlip": 0.07245839574121951
+        },
+        "trackIndex": 3,
+        "result": {
+          "failure": null,
+          "lapTime": 36.38422957922903,
+          "invalidLaps": 0,
+          "brakesPerLap": 2.3333333333333335,
+          "liftsPerLap": 6.666666666666667
+        }
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.282820709640172,
+          "brakingLimit": 6.574111473595278,
+          "smallSpeedDrop": 5.06318152307655,
+          "brakeThreshold": 3.424848232168095,
+          "lookaheadTime": 0.14399243382684057,
+          "edgeMargin": 1.4896872812552704,
+          "countersteerSlip": 0.08387683977222193,
+          "tractionSlip": 0.07328332084826876
+        },
+        "trackIndex": 4,
+        "result": {
+          "failure": "off-track",
+          "lapTime": null,
+          "invalidLaps": 0,
+          "brakesPerLap": 1,
+          "liftsPerLap": 2
+        }
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.15721850700561,
+          "brakingLimit": 6.465053756514565,
+          "smallSpeedDrop": 5.051400831155636,
+          "brakeThreshold": 3.4343009176279624,
+          "lookaheadTime": 0.145972883772131,
+          "edgeMargin": 1.5118535394829422,
+          "countersteerSlip": 0.08402894869352945,
+          "tractionSlip": 0.07307478999565173
+        },
+        "trackIndex": 4,
+        "result": {
+          "failure": null,
+          "lapTime": 118.00426395488581,
+          "invalidLaps": 0,
+          "brakesPerLap": 4,
+          "liftsPerLap": 14
+        }
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.092185939377837,
+          "brakingLimit": 6.540666743694022,
+          "smallSpeedDrop": 5.00971293764068,
+          "brakeThreshold": 3.416344896710692,
+          "lookaheadTime": 0.1447071809838146,
+          "edgeMargin": 1.4881142094995041,
+          "countersteerSlip": 0.08421178760988156,
+          "tractionSlip": 0.07344225227953403
+        },
+        "trackIndex": 4,
+        "result": {
+          "failure": "spin",
+          "lapTime": null,
+          "invalidLaps": 0,
+          "brakesPerLap": 1,
+          "liftsPerLap": 2
+        }
+      }
+    ],
+    [
+      {
+        "tuning": {
+          "corneringGrip": 15.05603950989946,
+          "brakingLimit": 6.760984100536138,
+          "smallSpeedDrop": 6.160900172301046,
+          "brakeThreshold": 3.4353609370671734,
+          "lookaheadTime": 0.1499811371090558,
+          "edgeMargin": 1.4869092591077846,
+          "countersteerSlip": 0.08631083051860104,
+          "tractionSlip": 0.07484346668987857
+        },
+        "trackIndex": 0,
+        "result": {
+          "failure": null,
+          "lapTime": 30.549752289807103,
+          "invalidLaps": 0,
+          "brakesPerLap": 3.3333333333333335,
+          "liftsPerLap": 9.666666666666666
+        }
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.008333907434071,
+          "brakingLimit": 6.809956621979155,
+          "smallSpeedDrop": 6.179366664494166,
+          "brakeThreshold": 3.4169345632348183,
+          "lookaheadTime": 0.151264775003364,
+          "edgeMargin": 1.5077684678699903,
+          "countersteerSlip": 0.08667061844412886,
+          "tractionSlip": 0.0740751717834136
+        },
+        "trackIndex": 0,
+        "result": {
+          "failure": null,
+          "lapTime": 30.598440480423747,
+          "invalidLaps": 0,
+          "brakesPerLap": 3.6666666666666665,
+          "liftsPerLap": 9.666666666666666
+        }
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.16709829561414,
+          "brakingLimit": 6.765300091194616,
+          "smallSpeedDrop": 6.210424365874321,
+          "brakeThreshold": 3.392921379459004,
+          "lookaheadTime": 0.1521209386802862,
+          "edgeMargin": 1.4949768044886511,
+          "countersteerSlip": 0.08742930023623029,
+          "tractionSlip": 0.07416022769745942
+        },
+        "trackIndex": 0,
+        "result": {
+          "failure": null,
+          "lapTime": 30.496972333353142,
+          "invalidLaps": 0,
+          "brakesPerLap": 4,
+          "liftsPerLap": 9
+        }
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.091491877160847,
+          "brakingLimit": 6.848973879381577,
+          "smallSpeedDrop": 6.2342963608745245,
+          "brakeThreshold": 3.3927923502557604,
+          "lookaheadTime": 0.14972112843090707,
+          "edgeMargin": 1.5119667326156607,
+          "countersteerSlip": 0.0876524212711294,
+          "tractionSlip": 0.07491957097371738
+        },
+        "trackIndex": 1,
+        "result": {
+          "failure": null,
+          "lapTime": 30.092499869862607,
+          "invalidLaps": 0,
+          "brakesPerLap": 3.3333333333333335,
+          "liftsPerLap": 7
+        }
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.22756549308572,
+          "brakingLimit": 6.800319823642085,
+          "smallSpeedDrop": 6.185490907619586,
+          "brakeThreshold": 3.4544020719580093,
+          "lookaheadTime": 0.15233668317563498,
+          "edgeMargin": 1.489360328342487,
+          "countersteerSlip": 0.0862737029093169,
+          "tractionSlip": 0.07481459419739954
+        },
+        "trackIndex": 1,
+        "result": {
+          "failure": null,
+          "lapTime": 30.047056256316615,
+          "invalidLaps": 0,
+          "brakesPerLap": 3.3333333333333335,
+          "liftsPerLap": 6.666666666666667
+        }
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.263077702395504,
+          "brakingLimit": 6.812844221751421,
+          "smallSpeedDrop": 6.189526821349231,
+          "brakeThreshold": 3.3975599780580152,
+          "lookaheadTime": 0.15100795583835333,
+          "edgeMargin": 1.506834944936609,
+          "countersteerSlip": 0.08687573085031723,
+          "tractionSlip": 0.07409808508257108
+        },
+        "trackIndex": 1,
+        "result": {
+          "failure": null,
+          "lapTime": 30.04442966426184,
+          "invalidLaps": 0,
+          "brakesPerLap": 3.3333333333333335,
+          "liftsPerLap": 6.666666666666667
+        }
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.136963691608143,
+          "brakingLimit": 6.832804803140687,
+          "smallSpeedDrop": 6.160619714728165,
+          "brakeThreshold": 3.3958008020660895,
+          "lookaheadTime": 0.1523972248145669,
+          "edgeMargin": 1.4892737989837173,
+          "countersteerSlip": 0.08677932178751198,
+          "tractionSlip": 0.07459194675252456
+        },
+        "trackIndex": 2,
+        "result": {
+          "failure": null,
+          "lapTime": 14.390001917415479,
+          "invalidLaps": 0,
+          "brakesPerLap": 1.6666666666666667,
+          "liftsPerLap": 3
+        }
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.256346280307211,
+          "brakingLimit": 6.847042135190841,
+          "smallSpeedDrop": 6.237745437216509,
+          "brakeThreshold": 3.406986048214178,
+          "lookaheadTime": 0.14981030810749005,
+          "edgeMargin": 1.5092554617597354,
+          "countersteerSlip": 0.0867172627556024,
+          "tractionSlip": 0.07380971102101809
+        },
+        "trackIndex": 2,
+        "result": {
+          "failure": null,
+          "lapTime": 14.342311146864503,
+          "invalidLaps": 0,
+          "brakesPerLap": 1.6666666666666667,
+          "liftsPerLap": 3.6666666666666665
+        }
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.111845246733147,
+          "brakingLimit": 6.763655601290694,
+          "smallSpeedDrop": 6.2530206844983995,
+          "brakeThreshold": 3.4054198335894053,
+          "lookaheadTime": 0.15219387158203465,
+          "edgeMargin": 1.5004528296043165,
+          "countersteerSlip": 0.08713521351278913,
+          "tractionSlip": 0.07476980413202614
+        },
+        "trackIndex": 2,
+        "result": {
+          "failure": null,
+          "lapTime": 14.396671208362505,
+          "invalidLaps": 0,
+          "brakesPerLap": 1.6666666666666667,
+          "liftsPerLap": 3.6666666666666665
+        }
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.16228545844436,
+          "brakingLimit": 6.770628333471914,
+          "smallSpeedDrop": 6.144212947690868,
+          "brakeThreshold": 3.3898931838727204,
+          "lookaheadTime": 0.15002321594362367,
+          "edgeMargin": 1.487502937199043,
+          "countersteerSlip": 0.08707787146390174,
+          "tractionSlip": 0.07485013202584646
+        },
+        "trackIndex": 3,
+        "result": {
+          "failure": null,
+          "lapTime": 34.65740089827631,
+          "invalidLaps": 0,
+          "brakesPerLap": 2.3333333333333335,
+          "liftsPerLap": 4.333333333333333
+        }
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.004415749414594,
+          "brakingLimit": 6.845341252160751,
+          "smallSpeedDrop": 6.152173564778854,
+          "brakeThreshold": 3.4212852113992698,
+          "lookaheadTime": 0.15066882743663274,
+          "edgeMargin": 1.4902955109954925,
+          "countersteerSlip": 0.0868919891751933,
+          "tractionSlip": 0.07419187877352863
+        },
+        "trackIndex": 3,
+        "result": {
+          "failure": null,
+          "lapTime": 37.05755151901124,
+          "invalidLaps": 0,
+          "brakesPerLap": 2.3333333333333335,
+          "liftsPerLap": 6.333333333333333
+        }
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.123114594050557,
+          "brakingLimit": 6.820667986631078,
+          "smallSpeedDrop": 6.251873004013215,
+          "brakeThreshold": 3.433878142029679,
+          "lookaheadTime": 0.15196522076213956,
+          "edgeMargin": 1.5120542106775183,
+          "countersteerSlip": 0.08633133053770346,
+          "tractionSlip": 0.07504331591439281
+        },
+        "trackIndex": 3,
+        "result": {
+          "failure": null,
+          "lapTime": 34.83247155782758,
+          "invalidLaps": 0,
+          "brakesPerLap": 1.3333333333333333,
+          "liftsPerLap": 5.333333333333333
+        }
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.276630737036179,
+          "brakingLimit": 6.76577886430994,
+          "smallSpeedDrop": 6.254399515323305,
+          "brakeThreshold": 3.454122082833861,
+          "lookaheadTime": 0.15163419909996073,
+          "edgeMargin": 1.4938452066038415,
+          "countersteerSlip": 0.08643939807012076,
+          "tractionSlip": 0.07510713549759222
+        },
+        "trackIndex": 4,
+        "result": {
+          "failure": "off-track",
+          "lapTime": null,
+          "invalidLaps": 0,
+          "brakesPerLap": 1,
+          "liftsPerLap": 2
+        }
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.303075702986128,
+          "brakingLimit": 6.772091988879008,
+          "smallSpeedDrop": 6.134814247397221,
+          "brakeThreshold": 3.394477698790126,
+          "lookaheadTime": 0.1498910393680444,
+          "edgeMargin": 1.4917221558161111,
+          "countersteerSlip": 0.08722197381904769,
+          "tractionSlip": 0.07381770544441278
+        },
+        "trackIndex": 4,
+        "result": {
+          "failure": "off-track",
+          "lapTime": null,
+          "invalidLaps": 0,
+          "brakesPerLap": 1,
+          "liftsPerLap": 2
+        }
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.06837501297055,
+          "brakingLimit": 6.844946191990329,
+          "smallSpeedDrop": 6.181483062413906,
+          "brakeThreshold": 3.4486060230974256,
+          "lookaheadTime": 0.1514394049880214,
+          "edgeMargin": 1.508969302411326,
+          "countersteerSlip": 0.08682350701928677,
+          "tractionSlip": 0.07513552027568733
+        },
+        "trackIndex": 4,
+        "result": {
+          "failure": "off-track",
+          "lapTime": null,
+          "invalidLaps": 0,
+          "brakesPerLap": 1,
+          "liftsPerLap": 2
+        }
+      }
+    ],
+    [
+      {
+        "tuning": {
+          "corneringGrip": 14.737451305908131,
+          "brakingLimit": 6.865125805900152,
+          "smallSpeedDrop": 5.8186609743853515,
+          "brakeThreshold": 3.3052262412437625,
+          "lookaheadTime": 0.13536751836959268,
+          "edgeMargin": 1.5009385939179074,
+          "countersteerSlip": 0.09037865472885773,
+          "tractionSlip": 0.06075666131461104
+        },
+        "trackIndex": 0,
+        "result": {
+          "failure": null,
+          "lapTime": 31.404678179347982,
+          "invalidLaps": 0,
+          "brakesPerLap": 4.666666666666667,
+          "liftsPerLap": 13
+        }
+      },
+      {
+        "tuning": {
+          "corneringGrip": 14.790399760742813,
+          "brakingLimit": 6.863271447593466,
+          "smallSpeedDrop": 5.825295593375836,
+          "brakeThreshold": 3.326301638265668,
+          "lookaheadTime": 0.13402596781336526,
+          "edgeMargin": 1.5040141586572715,
+          "countersteerSlip": 0.09076288910340578,
+          "tractionSlip": 0.060140554356968974
+        },
+        "trackIndex": 0,
+        "result": {
+          "failure": null,
+          "lapTime": 31.391370373559326,
+          "invalidLaps": 0,
+          "brakesPerLap": 4.666666666666667,
+          "liftsPerLap": 13
+        }
+      },
+      {
+        "tuning": {
+          "corneringGrip": 14.785836001135982,
+          "brakingLimit": 6.802418090567631,
+          "smallSpeedDrop": 5.778462552898504,
+          "brakeThreshold": 3.318664696176848,
+          "lookaheadTime": 0.13418381141357139,
+          "edgeMargin": 1.5059796570232622,
+          "countersteerSlip": 0.09091832331937723,
+          "tractionSlip": 0.060246508907946424
+        },
+        "trackIndex": 0,
+        "result": {
+          "failure": null,
+          "lapTime": 31.38761881780161,
+          "invalidLaps": 0,
+          "brakesPerLap": 4.666666666666667,
+          "liftsPerLap": 12.666666666666666
+        }
+      },
+      {
+        "tuning": {
+          "corneringGrip": 14.776482653206305,
+          "brakingLimit": 6.748077445267994,
+          "smallSpeedDrop": 5.74198402038122,
+          "brakeThreshold": 3.304721487630791,
+          "lookaheadTime": 0.13438734681155848,
+          "edgeMargin": 1.4884676101131389,
+          "countersteerSlip": 0.08986943441360476,
+          "tractionSlip": 0.06079165049466487
+        },
+        "trackIndex": 1,
+        "result": {
+          "failure": null,
+          "lapTime": 30.45821837952103,
+          "invalidLaps": 0,
+          "brakesPerLap": 3.6666666666666665,
+          "liftsPerLap": 7
+        }
+      },
+      {
+        "tuning": {
+          "corneringGrip": 14.94371706853238,
+          "brakingLimit": 6.838043006160746,
+          "smallSpeedDrop": 5.77962544870185,
+          "brakeThreshold": 3.3105642292785267,
+          "lookaheadTime": 0.1350603951873188,
+          "edgeMargin": 1.4869575737355896,
+          "countersteerSlip": 0.09023776977503865,
+          "tractionSlip": 0.0600271998782606
+        },
+        "trackIndex": 1,
+        "result": {
+          "failure": null,
+          "lapTime": 30.401434768740963,
+          "invalidLaps": 0,
+          "brakesPerLap": 3.3333333333333335,
+          "liftsPerLap": 6
+        }
+      },
+      {
+        "tuning": {
+          "corneringGrip": 14.824943389792791,
+          "brakingLimit": 6.804591392533243,
+          "smallSpeedDrop": 5.798798386090328,
+          "brakeThreshold": 3.2911918372748126,
+          "lookaheadTime": 0.13317983616631626,
+          "edgeMargin": 1.4962684937054223,
+          "countersteerSlip": 0.09009598759336446,
+          "tractionSlip": 0.06076662150323579
+        },
+        "trackIndex": 1,
+        "result": {
+          "failure": null,
+          "lapTime": 30.4342457160662,
+          "invalidLaps": 0,
+          "brakesPerLap": 3.6666666666666665,
+          "liftsPerLap": 6.333333333333333
+        }
+      },
+      {
+        "tuning": {
+          "corneringGrip": 14.767414710022214,
+          "brakingLimit": 6.809676448187527,
+          "smallSpeedDrop": 5.8435640262329205,
+          "brakeThreshold": 3.2854890553729574,
+          "lookaheadTime": 0.134808510755382,
+          "edgeMargin": 1.4852600544946009,
+          "countersteerSlip": 0.09114144790459461,
+          "tractionSlip": 0.06029537325023446
+        },
+        "trackIndex": 2,
+        "result": {
+          "failure": null,
+          "lapTime": 14.488851295192259,
+          "invalidLaps": 0,
+          "brakesPerLap": 1.6666666666666667,
+          "liftsPerLap": 3.6666666666666665
+        }
+      },
+      {
+        "tuning": {
+          "corneringGrip": 14.79574810322431,
+          "brakingLimit": 6.795251271459252,
+          "smallSpeedDrop": 5.79809374841426,
+          "brakeThreshold": 3.295480867249698,
+          "lookaheadTime": 0.13409501996447415,
+          "edgeMargin": 1.5078693292011311,
+          "countersteerSlip": 0.09069410108878123,
+          "tractionSlip": 0.060340063872631175
+        },
+        "trackIndex": 2,
+        "result": {
+          "failure": null,
+          "lapTime": 14.497033272457298,
+          "invalidLaps": 0,
+          "brakesPerLap": 1.6666666666666667,
+          "liftsPerLap": 4.333333333333333
+        }
+      },
+      {
+        "tuning": {
+          "corneringGrip": 14.956764544591529,
+          "brakingLimit": 6.7936444955533695,
+          "smallSpeedDrop": 5.741949945476879,
+          "brakeThreshold": 3.3062949546301073,
+          "lookaheadTime": 0.13557452522920851,
+          "edgeMargin": 1.4859872476064344,
+          "countersteerSlip": 0.09069151026516399,
+          "tractionSlip": 0.060032295468200395
+        },
+        "trackIndex": 2,
+        "result": {
+          "failure": null,
+          "lapTime": 14.430731986769018,
+          "invalidLaps": 0,
+          "brakesPerLap": 1.6666666666666667,
+          "liftsPerLap": 3.6666666666666665
+        }
+      },
+      {
+        "tuning": {
+          "corneringGrip": 14.69778058485757,
+          "brakingLimit": 6.840774444632076,
+          "smallSpeedDrop": 5.8193151557668115,
+          "brakeThreshold": 3.3303840203204427,
+          "lookaheadTime": 0.13446807294417468,
+          "edgeMargin": 1.5020839758293452,
+          "countersteerSlip": 0.0901271642148506,
+          "tractionSlip": 0.06023704079009621
+        },
+        "trackIndex": 3,
+        "result": {
+          "failure": null,
+          "lapTime": 38.748191067662496,
+          "invalidLaps": 0,
+          "brakesPerLap": 3.6666666666666665,
+          "liftsPerLap": 9.666666666666666
+        }
+      },
+      {
+        "tuning": {
+          "corneringGrip": 14.676703505323523,
+          "brakingLimit": 6.743479258867093,
+          "smallSpeedDrop": 5.852878323535435,
+          "brakeThreshold": 3.3212528854201606,
+          "lookaheadTime": 0.1332586491461804,
+          "edgeMargin": 1.5024823567784398,
+          "countersteerSlip": 0.09003562943048332,
+          "tractionSlip": 0.05969168346339044
+        },
+        "trackIndex": 3,
+        "result": {
+          "failure": null,
+          "lapTime": 38.61760754112772,
+          "invalidLaps": 0,
+          "brakesPerLap": 4.333333333333333,
+          "liftsPerLap": 8
+        }
+      },
+      {
+        "tuning": {
+          "corneringGrip": 14.818157872457176,
+          "brakingLimit": 6.836308679539015,
+          "smallSpeedDrop": 5.787431919884413,
+          "brakeThreshold": 3.2811040289833047,
+          "lookaheadTime": 0.1331550961145148,
+          "edgeMargin": 1.5096669778891338,
+          "countersteerSlip": 0.0904712409236011,
+          "tractionSlip": 0.06064570254185602
+        },
+        "trackIndex": 3,
+        "result": {
+          "failure": null,
+          "lapTime": 38.3354407993173,
+          "invalidLaps": 0,
+          "brakesPerLap": 3.6666666666666665,
+          "liftsPerLap": 7.666666666666667
+        }
+      },
+      {
+        "tuning": {
+          "corneringGrip": 14.758550162938638,
+          "brakingLimit": 6.775943453108752,
+          "smallSpeedDrop": 5.800786748899391,
+          "brakeThreshold": 3.285766545545545,
+          "lookaheadTime": 0.13554300889911738,
+          "edgeMargin": 1.4959941228658051,
+          "countersteerSlip": 0.09022715975656403,
+          "tractionSlip": 0.06069192796252264
+        },
+        "trackIndex": 4,
+        "result": {
+          "failure": null,
+          "lapTime": 118.12525753195246,
+          "invalidLaps": 0,
+          "brakesPerLap": 5,
+          "liftsPerLap": 17
+        }
+      },
+      {
+        "tuning": {
+          "corneringGrip": 14.81392859934296,
+          "brakingLimit": 6.8308171514234015,
+          "smallSpeedDrop": 5.82261159312456,
+          "brakeThreshold": 3.2805135748559806,
+          "lookaheadTime": 0.13494702779828982,
+          "edgeMargin": 1.4922997386718033,
+          "countersteerSlip": 0.090902719390671,
+          "tractionSlip": 0.06005875722316791
+        },
+        "trackIndex": 4,
+        "result": {
+          "failure": null,
+          "lapTime": 117.8464885419703,
+          "invalidLaps": 0,
+          "brakesPerLap": 5,
+          "liftsPerLap": 16
+        }
+      },
+      {
+        "tuning": {
+          "corneringGrip": 14.829636060298856,
+          "brakingLimit": 6.849271160394769,
+          "smallSpeedDrop": 5.8266772631045365,
+          "brakeThreshold": 3.3176485112736205,
+          "lookaheadTime": 0.13516516729037756,
+          "edgeMargin": 1.4869233922678833,
+          "countersteerSlip": 0.09097199561330996,
+          "tractionSlip": 0.06019606117198354
+        },
+        "trackIndex": 4,
+        "result": {
+          "failure": null,
+          "lapTime": 118.13274895547508,
+          "invalidLaps": 0,
+          "brakesPerLap": 5,
+          "liftsPerLap": 17
+        }
+      }
+    ],
+    [
+      {
+        "tuning": {
+          "corneringGrip": 15.246978593948297,
+          "brakingLimit": 6.836450860214795,
+          "smallSpeedDrop": 5.722579205879897,
+          "brakeThreshold": 3.3271179466687117,
+          "lookaheadTime": 0.1501066351487817,
+          "edgeMargin": 1.5057275486300166,
+          "countersteerSlip": 0.10132306215434461,
+          "tractionSlip": 0.06775980670460863
+        },
+        "trackIndex": 0,
+        "result": {
+          "failure": null,
+          "lapTime": 30.72809604995222,
+          "invalidLaps": 0,
+          "brakesPerLap": 4.333333333333333,
+          "liftsPerLap": 11.333333333333334
+        }
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.477097814861791,
+          "brakingLimit": 6.810223194648611,
+          "smallSpeedDrop": 5.747128592378191,
+          "brakeThreshold": 3.366527393942665,
+          "lookaheadTime": 0.14831852395287765,
+          "edgeMargin": 1.4928542611143967,
+          "countersteerSlip": 0.09977669272921617,
+          "tractionSlip": 0.06731894761609165
+        },
+        "trackIndex": 0,
+        "result": {
+          "failure": null,
+          "lapTime": 31.13044174043379,
+          "invalidLaps": 0,
+          "brakesPerLap": 4.666666666666667,
+          "liftsPerLap": 9.666666666666666
+        }
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.451261439066966,
+          "brakingLimit": 6.784856396198066,
+          "smallSpeedDrop": 5.775287577404919,
+          "brakeThreshold": 3.3316892473403934,
+          "lookaheadTime": 0.148699874189026,
+          "edgeMargin": 1.4909443392467674,
+          "countersteerSlip": 0.10100567820752807,
+          "tractionSlip": 0.06709230513452863
+        },
+        "trackIndex": 0,
+        "result": {
+          "failure": null,
+          "lapTime": 30.964672529762936,
+          "invalidLaps": 0,
+          "brakesPerLap": 4.666666666666667,
+          "liftsPerLap": 9.333333333333334
+        }
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.26730690051718,
+          "brakingLimit": 6.784384944041687,
+          "smallSpeedDrop": 5.749419021920777,
+          "brakeThreshold": 3.3381652234771058,
+          "lookaheadTime": 0.15007021787266273,
+          "edgeMargin": 1.4921049866750602,
+          "countersteerSlip": 0.09953462413827341,
+          "tractionSlip": 0.06701289321194585
+        },
+        "trackIndex": 1,
+        "result": {
+          "failure": null,
+          "lapTime": 30.128396888352,
+          "invalidLaps": 0,
+          "brakesPerLap": 3.3333333333333335,
+          "liftsPerLap": 7
+        }
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.512925989671439,
+          "brakingLimit": 6.785115704722714,
+          "smallSpeedDrop": 5.746321268739553,
+          "brakeThreshold": 3.36289035393041,
+          "lookaheadTime": 0.14797417503974622,
+          "edgeMargin": 1.5053377699499801,
+          "countersteerSlip": 0.10099333666823092,
+          "tractionSlip": 0.06748573554037988
+        },
+        "trackIndex": 1,
+        "result": {
+          "failure": null,
+          "lapTime": 30.153028439912177,
+          "invalidLaps": 0,
+          "brakesPerLap": 3,
+          "liftsPerLap": 6.666666666666667
+        }
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.464837354177504,
+          "brakingLimit": 6.839805304202888,
+          "smallSpeedDrop": 5.691274087481313,
+          "brakeThreshold": 3.3515636133845423,
+          "lookaheadTime": 0.14860761895656752,
+          "edgeMargin": 1.5005808042987865,
+          "countersteerSlip": 0.10090835178778575,
+          "tractionSlip": 0.0669594180564439
+        },
+        "trackIndex": 1,
+        "result": {
+          "failure": null,
+          "lapTime": 30.10491914675473,
+          "invalidLaps": 0,
+          "brakesPerLap": 3,
+          "liftsPerLap": 6.666666666666667
+        }
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.441356329478594,
+          "brakingLimit": 6.850887219141483,
+          "smallSpeedDrop": 5.6838829181944845,
+          "brakeThreshold": 3.324188384888391,
+          "lookaheadTime": 0.1488591669422772,
+          "edgeMargin": 1.4961683544619484,
+          "countersteerSlip": 0.09994248695253816,
+          "tractionSlip": 0.066893690311407
+        },
+        "trackIndex": 2,
+        "result": {
+          "failure": null,
+          "lapTime": 14.323884070994346,
+          "invalidLaps": 0,
+          "brakesPerLap": 2.3333333333333335,
+          "liftsPerLap": 3
+        }
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.254935022888391,
+          "brakingLimit": 6.770049311445833,
+          "smallSpeedDrop": 5.717658881108097,
+          "brakeThreshold": 3.3530114304616845,
+          "lookaheadTime": 0.14983101891099684,
+          "edgeMargin": 1.4981059023754586,
+          "countersteerSlip": 0.10085981818084488,
+          "tractionSlip": 0.06724380607836238
+        },
+        "trackIndex": 2,
+        "result": {
+          "failure": null,
+          "lapTime": 14.349853183234451,
+          "invalidLaps": 0,
+          "brakesPerLap": 2.3333333333333335,
+          "liftsPerLap": 3.6666666666666665
+        }
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.408648603888409,
+          "brakingLimit": 6.861470986131914,
+          "smallSpeedDrop": 5.724320970399382,
+          "brakeThreshold": 3.362019939373051,
+          "lookaheadTime": 0.15032265089012517,
+          "edgeMargin": 1.4927690465549182,
+          "countersteerSlip": 0.09984331225383453,
+          "tractionSlip": 0.06697217531102602
+        },
+        "trackIndex": 2,
+        "result": {
+          "failure": null,
+          "lapTime": 14.330168545564444,
+          "invalidLaps": 0,
+          "brakesPerLap": 2.3333333333333335,
+          "liftsPerLap": 3
+        }
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.472034341292561,
+          "brakingLimit": 6.844083230184502,
+          "smallSpeedDrop": 5.785483901003917,
+          "brakeThreshold": 3.3597586863312414,
+          "lookaheadTime": 0.15015546846434655,
+          "edgeMargin": 1.5011345153480748,
+          "countersteerSlip": 0.1004311368002175,
+          "tractionSlip": 0.06669012140821247
+        },
+        "trackIndex": 3,
+        "result": {
+          "failure": null,
+          "lapTime": 36.12802925904515,
+          "invalidLaps": 0,
+          "brakesPerLap": 2.3333333333333335,
+          "liftsPerLap": 6.333333333333333
+        }
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.32661037965563,
+          "brakingLimit": 6.782116520268151,
+          "smallSpeedDrop": 5.726654233960983,
+          "brakeThreshold": 3.32496723979404,
+          "lookaheadTime": 0.1486826071829045,
+          "edgeMargin": 1.4952288448265498,
+          "countersteerSlip": 0.09965195081500498,
+          "tractionSlip": 0.06764791104043132
+        },
+        "trackIndex": 3,
+        "result": {
+          "failure": null,
+          "lapTime": 35.10631877525884,
+          "invalidLaps": 0,
+          "brakesPerLap": 3.3333333333333335,
+          "liftsPerLap": 5.333333333333333
+        }
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.247114659282337,
+          "brakingLimit": 6.851697457732603,
+          "smallSpeedDrop": 5.694062652331914,
+          "brakeThreshold": 3.3644948275076048,
+          "lookaheadTime": 0.1492113880034532,
+          "edgeMargin": 1.4948598850971284,
+          "countersteerSlip": 0.09998635242015627,
+          "tractionSlip": 0.06729227376884522
+        },
+        "trackIndex": 3,
+        "result": {
+          "failure": null,
+          "lapTime": 36.153794299106124,
+          "invalidLaps": 0,
+          "brakesPerLap": 2.6666666666666665,
+          "liftsPerLap": 5.666666666666667
+        }
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.35816115317069,
+          "brakingLimit": 6.7957963039002,
+          "smallSpeedDrop": 5.787929322230767,
+          "brakeThreshold": 3.3544488025737977,
+          "lookaheadTime": 0.15070570467032818,
+          "edgeMargin": 1.4810310068871233,
+          "countersteerSlip": 0.1007660372070338,
+          "tractionSlip": 0.06729851152103233
+        },
+        "trackIndex": 4
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.388634166009007,
+          "brakingLimit": 6.862359663887283,
+          "smallSpeedDrop": 5.6934941376141674,
+          "brakeThreshold": 3.386976536124737,
+          "lookaheadTime": 0.15053555722670064,
+          "edgeMargin": 1.4952026565063437,
+          "countersteerSlip": 0.10075514793923729,
+          "tractionSlip": 0.06670082457789227
+        },
+        "trackIndex": 4
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.519698929394918,
+          "brakingLimit": 6.778661173142547,
+          "smallSpeedDrop": 5.745391085169988,
+          "brakeThreshold": 3.322031053505566,
+          "lookaheadTime": 0.15019443812109995,
+          "edgeMargin": 1.4905086406916603,
+          "countersteerSlip": 0.10073697901654743,
+          "tractionSlip": 0.06734412282563855
+        },
+        "trackIndex": 4
+      }
+    ],
+    [
+      {
+        "tuning": {
+          "corneringGrip": 15.226394326997786,
+          "brakingLimit": 6.619535181943042,
+          "smallSpeedDrop": 5.904272205245904,
+          "brakeThreshold": 3.3133711400981736,
+          "lookaheadTime": 0.13807000534306618,
+          "edgeMargin": 1.4708869505136764,
+          "countersteerSlip": 0.09312258017015627,
+          "tractionSlip": 0.07395753133205997
+        },
+        "trackIndex": 0
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.086051394339853,
+          "brakingLimit": 6.654941880983973,
+          "smallSpeedDrop": 5.940336522649703,
+          "brakeThreshold": 3.286105659230066,
+          "lookaheadTime": 0.13785951121080853,
+          "edgeMargin": 1.4571855184637184,
+          "countersteerSlip": 0.09414131998020056,
+          "tractionSlip": 0.0735722726609188
+        },
+        "trackIndex": 0
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.280166357354847,
+          "brakingLimit": 6.668104646519106,
+          "smallSpeedDrop": 5.97145777045016,
+          "brakeThreshold": 3.28879947595157,
+          "lookaheadTime": 0.13730680183146196,
+          "edgeMargin": 1.483277305922743,
+          "countersteerSlip": 0.09389049429805493,
+          "tractionSlip": 0.07423859234886415
+        },
+        "trackIndex": 0
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.150591972903033,
+          "brakingLimit": 6.659415426451112,
+          "smallSpeedDrop": 5.942589900326726,
+          "brakeThreshold": 3.3054810827514576,
+          "lookaheadTime": 0.1393624316699058,
+          "edgeMargin": 1.4785963344419386,
+          "countersteerSlip": 0.09323663330515533,
+          "tractionSlip": 0.07280859049109623
+        },
+        "trackIndex": 1
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.031175749267017,
+          "brakingLimit": 6.654547378782853,
+          "smallSpeedDrop": 5.874076273055293,
+          "brakeThreshold": 3.2964512877160645,
+          "lookaheadTime": 0.13918836949174415,
+          "edgeMargin": 1.483772213991961,
+          "countersteerSlip": 0.09304530723976585,
+          "tractionSlip": 0.07312884319894161
+        },
+        "trackIndex": 1
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.219537304341507,
+          "brakingLimit": 6.6344829307041415,
+          "smallSpeedDrop": 5.923047762298592,
+          "brakeThreshold": 3.304341203445053,
+          "lookaheadTime": 0.13832879182688199,
+          "edgeMargin": 1.4784120646480738,
+          "countersteerSlip": 0.09305911979977198,
+          "tractionSlip": 0.07409519991326871
+        },
+        "trackIndex": 1
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.278403580340875,
+          "brakingLimit": 6.650563248470949,
+          "smallSpeedDrop": 5.878673213323445,
+          "brakeThreshold": 3.3407894419191453,
+          "lookaheadTime": 0.13698470744758912,
+          "edgeMargin": 1.458353409421117,
+          "countersteerSlip": 0.09399182335897237,
+          "tractionSlip": 0.07357983759668517
+        },
+        "trackIndex": 2
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.0479792209928,
+          "brakingLimit": 6.7286870821750915,
+          "smallSpeedDrop": 5.900767349513157,
+          "brakeThreshold": 3.346840374912485,
+          "lookaheadTime": 0.13683032092626338,
+          "edgeMargin": 1.4844160367730659,
+          "countersteerSlip": 0.09338510195511758,
+          "tractionSlip": 0.07371713640423799
+        },
+        "trackIndex": 2
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.155806043414335,
+          "brakingLimit": 6.701092884925981,
+          "smallSpeedDrop": 5.959624151496084,
+          "brakeThreshold": 3.321764481826643,
+          "lookaheadTime": 0.13902977732708988,
+          "edgeMargin": 1.4635128646579418,
+          "countersteerSlip": 0.09461406300700817,
+          "tractionSlip": 0.07414486368662784
+        },
+        "trackIndex": 2
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.0666691654916,
+          "brakingLimit": 6.66413651493167,
+          "smallSpeedDrop": 5.91665982772109,
+          "brakeThreshold": 3.32910155450294,
+          "lookaheadTime": 0.1395479424256768,
+          "edgeMargin": 1.4600892482145613,
+          "countersteerSlip": 0.09313583064312218,
+          "tractionSlip": 0.07321946020495676
+        },
+        "trackIndex": 3
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.167217745738403,
+          "brakingLimit": 6.711189221689499,
+          "smallSpeedDrop": 5.970189915065522,
+          "brakeThreshold": 3.3298605348954338,
+          "lookaheadTime": 0.13752967160278323,
+          "edgeMargin": 1.482753042178254,
+          "countersteerSlip": 0.09369807416124412,
+          "tractionSlip": 0.07388022198212296
+        },
+        "trackIndex": 3
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.09996126671106,
+          "brakingLimit": 6.6862654703739155,
+          "smallSpeedDrop": 5.925148703572747,
+          "brakeThreshold": 3.322862406020558,
+          "lookaheadTime": 0.1391392036021904,
+          "edgeMargin": 1.4659614889997898,
+          "countersteerSlip": 0.09314338243691618,
+          "tractionSlip": 0.07330722700062238
+        },
+        "trackIndex": 3
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.267222309232,
+          "brakingLimit": 6.606883924629955,
+          "smallSpeedDrop": 5.947294245307098,
+          "brakeThreshold": 3.295314499782689,
+          "lookaheadTime": 0.13713305326664305,
+          "edgeMargin": 1.4797400739337503,
+          "countersteerSlip": 0.0940656542090165,
+          "tractionSlip": 0.07394640651981585
+        },
+        "trackIndex": 4
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.23494962816247,
+          "brakingLimit": 6.629462480521323,
+          "smallSpeedDrop": 5.931625740866625,
+          "brakeThreshold": 3.2869667193785572,
+          "lookaheadTime": 0.1370957885650884,
+          "edgeMargin": 1.4577331659488026,
+          "countersteerSlip": 0.09395357201496439,
+          "tractionSlip": 0.07285521844920863
+        },
+        "trackIndex": 4
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.092359926381098,
+          "brakingLimit": 6.650508115505139,
+          "smallSpeedDrop": 5.977349340060243,
+          "brakeThreshold": 3.3363358076289766,
+          "lookaheadTime": 0.13679403706970172,
+          "edgeMargin": 1.4590486643913199,
+          "countersteerSlip": 0.0945165608419604,
+          "tractionSlip": 0.0740981734876011
+        },
+        "trackIndex": 4
+      }
+    ],
+    [
+      {
+        "tuning": {
+          "corneringGrip": 15.147032062004973,
+          "brakingLimit": 6.779854348004754,
+          "smallSpeedDrop": 5.82981374095458,
+          "brakeThreshold": 3.375336856718767,
+          "lookaheadTime": 0.14261879855891701,
+          "edgeMargin": 1.4868795119785527,
+          "countersteerSlip": 0.08692149752397152,
+          "tractionSlip": 0.059718853180933916
+        },
+        "trackIndex": 0
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.281291379493089,
+          "brakingLimit": 6.753753084944169,
+          "smallSpeedDrop": 5.862734451173326,
+          "brakeThreshold": 3.3953734040594035,
+          "lookaheadTime": 0.14169230569714217,
+          "edgeMargin": 1.513562908903227,
+          "countersteerSlip": 0.08685027592906899,
+          "tractionSlip": 0.05985629255812044
+        },
+        "trackIndex": 0
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.313231758188607,
+          "brakingLimit": 6.803246786871912,
+          "smallSpeedDrop": 5.840784998662416,
+          "brakeThreshold": 3.4280349668366177,
+          "lookaheadTime": 0.1402169633245745,
+          "edgeMargin": 1.4969395058036101,
+          "countersteerSlip": 0.08650627870322992,
+          "tractionSlip": 0.06070328267534919
+        },
+        "trackIndex": 0
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.356508247146904,
+          "brakingLimit": 6.788878935021916,
+          "smallSpeedDrop": 5.834584244484717,
+          "brakeThreshold": 3.396650450890165,
+          "lookaheadTime": 0.1411538269411801,
+          "edgeMargin": 1.4993038624685497,
+          "countersteerSlip": 0.08772302910727575,
+          "tractionSlip": 0.06032426528287529
+        },
+        "trackIndex": 1
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.30850153522239,
+          "brakingLimit": 6.7366511030495815,
+          "smallSpeedDrop": 5.8801159812768065,
+          "brakeThreshold": 3.366863713870558,
+          "lookaheadTime": 0.14074124406432958,
+          "edgeMargin": 1.4982270831956601,
+          "countersteerSlip": 0.0876134724565187,
+          "tractionSlip": 0.06010862262166624
+        },
+        "trackIndex": 1
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.272672932417258,
+          "brakingLimit": 6.774418982203067,
+          "smallSpeedDrop": 5.782179044159342,
+          "brakeThreshold": 3.3701602407968334,
+          "lookaheadTime": 0.14123146353894833,
+          "edgeMargin": 1.5099594990739555,
+          "countersteerSlip": 0.08709932763546079,
+          "tractionSlip": 0.05985811342953373
+        },
+        "trackIndex": 1
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.436640939293374,
+          "brakingLimit": 6.778842191092423,
+          "smallSpeedDrop": 5.86089966186549,
+          "brakeThreshold": 3.389429362986727,
+          "lookaheadTime": 0.14088029192368365,
+          "edgeMargin": 1.4941691125193035,
+          "countersteerSlip": 0.08628437030941111,
+          "tractionSlip": 0.05966118922769304
+        },
+        "trackIndex": 2
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.415388654433622,
+          "brakingLimit": 6.725532887055756,
+          "smallSpeedDrop": 5.845906020556137,
+          "brakeThreshold": 3.3997731438038663,
+          "lookaheadTime": 0.14136767291812222,
+          "edgeMargin": 1.5004463002598933,
+          "countersteerSlip": 0.08663529130649901,
+          "tractionSlip": 0.06059728977518187
+        },
+        "trackIndex": 2
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.35654139416349,
+          "brakingLimit": 6.81653069133171,
+          "smallSpeedDrop": 5.858873743400454,
+          "brakeThreshold": 3.4031909270537324,
+          "lookaheadTime": 0.14226468869816658,
+          "edgeMargin": 1.5015082321720772,
+          "countersteerSlip": 0.08750174902935799,
+          "tractionSlip": 0.06013211553572334
+        },
+        "trackIndex": 2
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.286429364017117,
+          "brakingLimit": 6.792200878749452,
+          "smallSpeedDrop": 5.878385699054861,
+          "brakeThreshold": 3.385625417839565,
+          "lookaheadTime": 0.14184195124136087,
+          "edgeMargin": 1.5043686165407208,
+          "countersteerSlip": 0.08626017667753148,
+          "tractionSlip": 0.060642187289987534
+        },
+        "trackIndex": 3
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.401108151092567,
+          "brakingLimit": 6.774766802536376,
+          "smallSpeedDrop": 5.806629695050372,
+          "brakeThreshold": 3.4130260337494946,
+          "lookaheadTime": 0.14234876307224098,
+          "edgeMargin": 1.4941251023148587,
+          "countersteerSlip": 0.08705208855877049,
+          "tractionSlip": 0.06041763756551032
+        },
+        "trackIndex": 3
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.280201662043089,
+          "brakingLimit": 6.82399849237252,
+          "smallSpeedDrop": 5.810035705253756,
+          "brakeThreshold": 3.4307184830875146,
+          "lookaheadTime": 0.14156761421018363,
+          "edgeMargin": 1.5113559009810227,
+          "countersteerSlip": 0.08741422367842043,
+          "tractionSlip": 0.059931551927111755
+        },
+        "trackIndex": 3
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.25570856417196,
+          "brakingLimit": 6.79593393387398,
+          "smallSpeedDrop": 5.8809632476505715,
+          "brakeThreshold": 3.4180253927686945,
+          "lookaheadTime": 0.1414556160210748,
+          "edgeMargin": 1.4958414076256763,
+          "countersteerSlip": 0.08721337410667813,
+          "tractionSlip": 0.06007418805168844
+        },
+        "trackIndex": 4
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.440757593687707,
+          "brakingLimit": 6.830747893515426,
+          "smallSpeedDrop": 5.841995978861458,
+          "brakeThreshold": 3.4117146182541718,
+          "lookaheadTime": 0.142169924395144,
+          "edgeMargin": 1.5134220629613884,
+          "countersteerSlip": 0.08737612336169322,
+          "tractionSlip": 0.06066363031173236
+        },
+        "trackIndex": 4
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.305134758480039,
+          "brakingLimit": 6.7541646404541895,
+          "smallSpeedDrop": 5.800886832981003,
+          "brakeThreshold": 3.395580054093361,
+          "lookaheadTime": 0.1404888047357801,
+          "edgeMargin": 1.4954699521430188,
+          "countersteerSlip": 0.08745103069081928,
+          "tractionSlip": 0.05997804916249438
+        },
+        "trackIndex": 4
+      }
+    ],
+    [
+      {
+        "tuning": {
+          "corneringGrip": 14.982983129268815,
+          "brakingLimit": 6.684222349459051,
+          "smallSpeedDrop": 5.882479462320846,
+          "brakeThreshold": 3.4209008840658126,
+          "lookaheadTime": 0.1457454627160262,
+          "edgeMargin": 1.4834658607763629,
+          "countersteerSlip": 0.08603926513438644,
+          "tractionSlip": 0.060917911588400646
+        },
+        "trackIndex": 0
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.035609373113296,
+          "brakingLimit": 6.746783406896859,
+          "smallSpeedDrop": 5.911403469295554,
+          "brakeThreshold": 3.3962227797750595,
+          "lookaheadTime": 0.14462334102829244,
+          "edgeMargin": 1.5001444657094951,
+          "countersteerSlip": 0.08699210405048848,
+          "tractionSlip": 0.061286388019341866
+        },
+        "trackIndex": 0
+      },
+      {
+        "tuning": {
+          "corneringGrip": 14.928776108427593,
+          "brakingLimit": 6.654726123723916,
+          "smallSpeedDrop": 5.929929779374284,
+          "brakeThreshold": 3.40222772563702,
+          "lookaheadTime": 0.14352793269905548,
+          "edgeMargin": 1.4814636295575219,
+          "countersteerSlip": 0.08694750511473343,
+          "tractionSlip": 0.06054881817454146
+        },
+        "trackIndex": 0
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.013989116950507,
+          "brakingLimit": 6.708337727973751,
+          "smallSpeedDrop": 5.8981691467843556,
+          "brakeThreshold": 3.3749523805827204,
+          "lookaheadTime": 0.14323833236358718,
+          "edgeMargin": 1.487095124936494,
+          "countersteerSlip": 0.086499079877713,
+          "tractionSlip": 0.06056935901035511
+        },
+        "trackIndex": 1
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.096357652829,
+          "brakingLimit": 6.732622560730887,
+          "smallSpeedDrop": 5.911032625843899,
+          "brakeThreshold": 3.4259408546216528,
+          "lookaheadTime": 0.14509155376806845,
+          "edgeMargin": 1.4999885869145844,
+          "countersteerSlip": 0.08697895464019659,
+          "tractionSlip": 0.06101627545809478
+        },
+        "trackIndex": 1
+      },
+      {
+        "tuning": {
+          "corneringGrip": 14.899806368011152,
+          "brakingLimit": 6.715441765539182,
+          "smallSpeedDrop": 5.8385821421959845,
+          "brakeThreshold": 3.428101572150261,
+          "lookaheadTime": 0.14569644013672384,
+          "edgeMargin": 1.4946516694299932,
+          "countersteerSlip": 0.0863671332348428,
+          "tractionSlip": 0.0610839298809564
+        },
+        "trackIndex": 1
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.126168108904572,
+          "brakingLimit": 6.751188009608881,
+          "smallSpeedDrop": 5.848189482282617,
+          "brakeThreshold": 3.4120711244385147,
+          "lookaheadTime": 0.14525967941322268,
+          "edgeMargin": 1.5036151873112713,
+          "countersteerSlip": 0.08647204833298744,
+          "tractionSlip": 0.061574910590735346
+        },
+        "trackIndex": 2
+      },
+      {
+        "tuning": {
+          "corneringGrip": 14.964564404780775,
+          "brakingLimit": 6.725489356412317,
+          "smallSpeedDrop": 5.872276531052445,
+          "brakeThreshold": 3.387692048963514,
+          "lookaheadTime": 0.1431527020149271,
+          "edgeMargin": 1.4921803411904981,
+          "countersteerSlip": 0.08562693302659118,
+          "tractionSlip": 0.06143042915970763
+        },
+        "trackIndex": 2
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.119448045524232,
+          "brakingLimit": 6.714691558940034,
+          "smallSpeedDrop": 5.903149238785809,
+          "brakeThreshold": 3.435661523871736,
+          "lookaheadTime": 0.1429929332235794,
+          "edgeMargin": 1.4943469950221298,
+          "countersteerSlip": 0.08671016685143287,
+          "tractionSlip": 0.060645244516094106
+        },
+        "trackIndex": 2
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.155013551059556,
+          "brakingLimit": 6.764172830854438,
+          "smallSpeedDrop": 5.899531906418933,
+          "brakeThreshold": 3.402090408402393,
+          "lookaheadTime": 0.14312620807214105,
+          "edgeMargin": 1.4881682936451097,
+          "countersteerSlip": 0.0870537324361165,
+          "tractionSlip": 0.06158486028474737
+        },
+        "trackIndex": 3
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.168534868040766,
+          "brakingLimit": 6.666995335400216,
+          "smallSpeedDrop": 5.882331522355122,
+          "brakeThreshold": 3.4368372171390993,
+          "lookaheadTime": 0.1457118084543581,
+          "edgeMargin": 1.4913587591816533,
+          "countersteerSlip": 0.08707984906871694,
+          "tractionSlip": 0.06156054231769842
+        },
+        "trackIndex": 3
+      },
+      {
+        "tuning": {
+          "corneringGrip": 14.902631114593431,
+          "brakingLimit": 6.730342854577649,
+          "smallSpeedDrop": 5.94611286888575,
+          "brakeThreshold": 3.3960223103850855,
+          "lookaheadTime": 0.1455199535059152,
+          "edgeMargin": 1.504352164341551,
+          "countersteerSlip": 0.0860561601011,
+          "tractionSlip": 0.061411217502604955
+        },
+        "trackIndex": 3
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.09607019892973,
+          "brakingLimit": 6.770590546916292,
+          "smallSpeedDrop": 5.899934816896087,
+          "brakeThreshold": 3.439312294537678,
+          "lookaheadTime": 0.14293789868310547,
+          "edgeMargin": 1.4861417789388394,
+          "countersteerSlip": 0.0859806697934096,
+          "tractionSlip": 0.06101620401454611
+        },
+        "trackIndex": 4
+      },
+      {
+        "tuning": {
+          "corneringGrip": 14.993154306152412,
+          "brakingLimit": 6.692914645516493,
+          "smallSpeedDrop": 5.883308607440802,
+          "brakeThreshold": 3.4119680202898794,
+          "lookaheadTime": 0.14318728419193688,
+          "edgeMargin": 1.4846417462084647,
+          "countersteerSlip": 0.08600681002015273,
+          "tractionSlip": 0.06074048470031943
+        },
+        "trackIndex": 4
+      },
+      {
+        "tuning": {
+          "corneringGrip": 14.923575609098133,
+          "brakingLimit": 6.74116380524187,
+          "smallSpeedDrop": 5.856549563417941,
+          "brakeThreshold": 3.413209715953474,
+          "lookaheadTime": 0.1434858648487537,
+          "edgeMargin": 1.4797348588643493,
+          "countersteerSlip": 0.08604114341018358,
+          "tractionSlip": 0.06116511447341822
+        },
+        "trackIndex": 4
+      }
+    ],
+    [
+      {
+        "tuning": {
+          "corneringGrip": 15.340889021994276,
+          "brakingLimit": 6.749204002610982,
+          "smallSpeedDrop": 5.77462377993263,
+          "brakeThreshold": 3.3856748702674864,
+          "lookaheadTime": 0.15799561769586945,
+          "edgeMargin": 1.4809338696735794,
+          "countersteerSlip": 0.08625891643800097,
+          "tractionSlip": 0.057130547375950747
+        },
+        "trackIndex": 0
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.311913190357629,
+          "brakingLimit": 6.721779748049399,
+          "smallSpeedDrop": 5.715888780212899,
+          "brakeThreshold": 3.419679537942851,
+          "lookaheadTime": 0.15820286651713233,
+          "edgeMargin": 1.475341521104525,
+          "countersteerSlip": 0.08592120115152563,
+          "tractionSlip": 0.0579076039842926
+        },
+        "trackIndex": 0
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.293418494977818,
+          "brakingLimit": 6.6979329142879,
+          "smallSpeedDrop": 5.7090673925013125,
+          "brakeThreshold": 3.413247561111673,
+          "lookaheadTime": 0.15630431992087238,
+          "edgeMargin": 1.4915265687789399,
+          "countersteerSlip": 0.08593946759588607,
+          "tractionSlip": 0.05789409130199194
+        },
+        "trackIndex": 0
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.226351455552223,
+          "brakingLimit": 6.7440431519768484,
+          "smallSpeedDrop": 5.756571112439319,
+          "brakeThreshold": 3.3916181202792224,
+          "lookaheadTime": 0.15656917190592254,
+          "edgeMargin": 1.4833975965246033,
+          "countersteerSlip": 0.08669193921645672,
+          "tractionSlip": 0.0570246620413549
+        },
+        "trackIndex": 1
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.332136384388015,
+          "brakingLimit": 6.676468276668661,
+          "smallSpeedDrop": 5.73392070721754,
+          "brakeThreshold": 3.4232595836343727,
+          "lookaheadTime": 0.15736879089043682,
+          "edgeMargin": 1.4779102841948533,
+          "countersteerSlip": 0.087041279900206,
+          "tractionSlip": 0.057618598218252284
+        },
+        "trackIndex": 1
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.262643488481944,
+          "brakingLimit": 6.776252111113465,
+          "smallSpeedDrop": 5.770571915508999,
+          "brakeThreshold": 3.3583324541287376,
+          "lookaheadTime": 0.15640149254469227,
+          "edgeMargin": 1.4731994860306417,
+          "countersteerSlip": 0.08588825231134926,
+          "tractionSlip": 0.05719889402087079
+        },
+        "trackIndex": 1
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.331857375358574,
+          "brakingLimit": 6.737437174427364,
+          "smallSpeedDrop": 5.732129954299663,
+          "brakeThreshold": 3.372379576994665,
+          "lookaheadTime": 0.15813243013928238,
+          "edgeMargin": 1.4791098169222836,
+          "countersteerSlip": 0.08648021453152974,
+          "tractionSlip": 0.05748465326239616
+        },
+        "trackIndex": 2
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.071785621555279,
+          "brakingLimit": 6.717115989271408,
+          "smallSpeedDrop": 5.7350012876486955,
+          "brakeThreshold": 3.420346700340037,
+          "lookaheadTime": 0.15757914534151538,
+          "edgeMargin": 1.4653834720153953,
+          "countersteerSlip": 0.08601783452396311,
+          "tractionSlip": 0.057314192851375304
+        },
+        "trackIndex": 2
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.226641736750551,
+          "brakingLimit": 6.713357620765801,
+          "smallSpeedDrop": 5.798209755130098,
+          "brakeThreshold": 3.3922544295004347,
+          "lookaheadTime": 0.15820951961105365,
+          "edgeMargin": 1.4797104235844367,
+          "countersteerSlip": 0.0858231781934814,
+          "tractionSlip": 0.05758331758741893
+        },
+        "trackIndex": 2
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.291219441664836,
+          "brakingLimit": 6.700791060911378,
+          "smallSpeedDrop": 5.776756856408118,
+          "brakeThreshold": 3.376956244315266,
+          "lookaheadTime": 0.15821562670970457,
+          "edgeMargin": 1.478923295528231,
+          "countersteerSlip": 0.08720822511969055,
+          "tractionSlip": 0.057627320794312514
+        },
+        "trackIndex": 3
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.235841202882325,
+          "brakingLimit": 6.734725683817423,
+          "smallSpeedDrop": 5.755826539262612,
+          "brakeThreshold": 3.3732810020913067,
+          "lookaheadTime": 0.15900349822128335,
+          "edgeMargin": 1.486854472493316,
+          "countersteerSlip": 0.08736701768889135,
+          "tractionSlip": 0.057697456597363556
+        },
+        "trackIndex": 3
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.374217913103726,
+          "brakingLimit": 6.724379124526387,
+          "smallSpeedDrop": 5.7703867873486745,
+          "brakeThreshold": 3.3620515807990072,
+          "lookaheadTime": 0.15703022736667144,
+          "edgeMargin": 1.4699232525186252,
+          "countersteerSlip": 0.08585293947894251,
+          "tractionSlip": 0.056953682708347594
+        },
+        "trackIndex": 3
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.114837096068298,
+          "brakingLimit": 6.804945389654594,
+          "smallSpeedDrop": 5.746027733976193,
+          "brakeThreshold": 3.37049909009192,
+          "lookaheadTime": 0.15650067476010435,
+          "edgeMargin": 1.4648764804221865,
+          "countersteerSlip": 0.0864967411987382,
+          "tractionSlip": 0.057459496027291564
+        },
+        "trackIndex": 4
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.116187984076912,
+          "brakingLimit": 6.799005128526741,
+          "smallSpeedDrop": 5.782350810176612,
+          "brakeThreshold": 3.379322658630806,
+          "lookaheadTime": 0.15771646766843447,
+          "edgeMargin": 1.478749165170862,
+          "countersteerSlip": 0.08680346974668092,
+          "tractionSlip": 0.0567968784730418
+        },
+        "trackIndex": 4
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.280113168074868,
+          "brakingLimit": 6.801810629921512,
+          "smallSpeedDrop": 5.799691785595922,
+          "brakeThreshold": 3.41002775586601,
+          "lookaheadTime": 0.15809065749564838,
+          "edgeMargin": 1.4829740355684962,
+          "countersteerSlip": 0.0858193206054834,
+          "tractionSlip": 0.057660235851799566
+        },
+        "trackIndex": 4
+      }
+    ],
+    [
+      {
+        "tuning": {
+          "corneringGrip": 15.409886436748303,
+          "brakingLimit": 6.990107085076818,
+          "smallSpeedDrop": 5.568019440598755,
+          "brakeThreshold": 3.370210347069012,
+          "lookaheadTime": 0.13286722021173375,
+          "edgeMargin": 1.513186538927354,
+          "countersteerSlip": 0.09350719380086599,
+          "tractionSlip": 0.06189909156619481
+        },
+        "trackIndex": 0
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.409985079230868,
+          "brakingLimit": 6.994028715340789,
+          "smallSpeedDrop": 5.576637270367517,
+          "brakeThreshold": 3.3989269003177123,
+          "lookaheadTime": 0.13432113600912193,
+          "edgeMargin": 1.5047230505510314,
+          "countersteerSlip": 0.09254991518295357,
+          "tractionSlip": 0.061334714957837
+        },
+        "trackIndex": 0
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.308086025256182,
+          "brakingLimit": 6.971200168442826,
+          "smallSpeedDrop": 5.6179076795746825,
+          "brakeThreshold": 3.3915946861459783,
+          "lookaheadTime": 0.1336550714692783,
+          "edgeMargin": 1.4884162454284002,
+          "countersteerSlip": 0.09317855827635803,
+          "tractionSlip": 0.062476713374808236
+        },
+        "trackIndex": 0
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.29443940338014,
+          "brakingLimit": 6.959777363763493,
+          "smallSpeedDrop": 5.615526020076999,
+          "brakeThreshold": 3.3661430132264645,
+          "lookaheadTime": 0.13343206485738818,
+          "edgeMargin": 1.4893585859726235,
+          "countersteerSlip": 0.09231351917332828,
+          "tractionSlip": 0.061822064256151124
+        },
+        "trackIndex": 1
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.448611731946299,
+          "brakingLimit": 6.970818978739964,
+          "smallSpeedDrop": 5.646262159992621,
+          "brakeThreshold": 3.3797147660792444,
+          "lookaheadTime": 0.133636061937347,
+          "edgeMargin": 1.4921436174633644,
+          "countersteerSlip": 0.09361968075164374,
+          "tractionSlip": 0.061632838570017175
+        },
+        "trackIndex": 1
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.309115257327033,
+          "brakingLimit": 6.951747949181353,
+          "smallSpeedDrop": 5.635136194544777,
+          "brakeThreshold": 3.387031090892156,
+          "lookaheadTime": 0.13439464447443225,
+          "edgeMargin": 1.4929752604751605,
+          "countersteerSlip": 0.09348166748914592,
+          "tractionSlip": 0.06183436053433161
+        },
+        "trackIndex": 1
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.495050477616424,
+          "brakingLimit": 7.024713959349192,
+          "smallSpeedDrop": 5.64805464007063,
+          "brakeThreshold": 3.3960749413792386,
+          "lookaheadTime": 0.13438820650925976,
+          "edgeMargin": 1.4895236213476535,
+          "countersteerSlip": 0.09236945401753427,
+          "tractionSlip": 0.06167729233366926
+        },
+        "trackIndex": 2
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.526521124338563,
+          "brakingLimit": 7.011923686217316,
+          "smallSpeedDrop": 5.61321884609545,
+          "brakeThreshold": 3.3379323490249484,
+          "lookaheadTime": 0.132025859012013,
+          "edgeMargin": 1.4856724085499493,
+          "countersteerSlip": 0.09217769766446848,
+          "tractionSlip": 0.06171707693811881
+        },
+        "trackIndex": 2
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.523089315470568,
+          "brakingLimit": 6.981490445404234,
+          "smallSpeedDrop": 5.664271483783025,
+          "brakeThreshold": 3.3533559793743155,
+          "lookaheadTime": 0.1328157352053257,
+          "edgeMargin": 1.5144422971208593,
+          "countersteerSlip": 0.09310693021974004,
+          "tractionSlip": 0.06245875460875537
+        },
+        "trackIndex": 2
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.31497383744671,
+          "brakingLimit": 6.959890918239063,
+          "smallSpeedDrop": 5.620650187592399,
+          "brakeThreshold": 3.392063212859761,
+          "lookaheadTime": 0.13298128488729424,
+          "edgeMargin": 1.4850213313100178,
+          "countersteerSlip": 0.0930948939949828,
+          "tractionSlip": 0.061581047532751856
+        },
+        "trackIndex": 3
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.458647776676614,
+          "brakingLimit": 6.961122070433677,
+          "smallSpeedDrop": 5.60947840541804,
+          "brakeThreshold": 3.341870117577299,
+          "lookaheadTime": 0.13237775853797432,
+          "edgeMargin": 1.503156554111675,
+          "countersteerSlip": 0.09361703926780827,
+          "tractionSlip": 0.06229510822803986
+        },
+        "trackIndex": 3
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.457095973149132,
+          "brakingLimit": 7.039823420261282,
+          "smallSpeedDrop": 5.600571115354928,
+          "brakeThreshold": 3.3819102914820443,
+          "lookaheadTime": 0.13400907013166774,
+          "edgeMargin": 1.4916012108872545,
+          "countersteerSlip": 0.09343513913834672,
+          "tractionSlip": 0.061530950578646174
+        },
+        "trackIndex": 3
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.440119784212976,
+          "brakingLimit": 7.064719391766862,
+          "smallSpeedDrop": 5.635897853424188,
+          "brakeThreshold": 3.3743742371975314,
+          "lookaheadTime": 0.13415851167784676,
+          "edgeMargin": 1.4945570618046444,
+          "countersteerSlip": 0.09368290166667327,
+          "tractionSlip": 0.062266251973746835
+        },
+        "trackIndex": 4
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.435461031777235,
+          "brakingLimit": 6.967347836939512,
+          "smallSpeedDrop": 5.6406537135343395,
+          "brakeThreshold": 3.392416015215526,
+          "lookaheadTime": 0.13300361990073448,
+          "edgeMargin": 1.5073796945535585,
+          "countersteerSlip": 0.09261217270546487,
+          "tractionSlip": 0.06188299930560387
+        },
+        "trackIndex": 4
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.527902838385296,
+          "brakingLimit": 6.953674913742837,
+          "smallSpeedDrop": 5.601847538218342,
+          "brakeThreshold": 3.397458285295187,
+          "lookaheadTime": 0.13197021338490988,
+          "edgeMargin": 1.5066624761080383,
+          "countersteerSlip": 0.09349563342982746,
+          "tractionSlip": 0.06195115102487943
+        },
+        "trackIndex": 4
+      }
+    ],
+    [
+      {
+        "tuning": {
+          "corneringGrip": 14.802219200484542,
+          "brakingLimit": 6.70286294410275,
+          "smallSpeedDrop": 5.8059980226941725,
+          "brakeThreshold": 3.42190097287027,
+          "lookaheadTime": 0.13353822765325898,
+          "edgeMargin": 1.5064416310137083,
+          "countersteerSlip": 0.07834618931824446,
+          "tractionSlip": 0.0601554231504045
+        },
+        "trackIndex": 0
+      },
+      {
+        "tuning": {
+          "corneringGrip": 14.805571909912787,
+          "brakingLimit": 6.801870496622618,
+          "smallSpeedDrop": 5.843807206697292,
+          "brakeThreshold": 3.4514590744457236,
+          "lookaheadTime": 0.13328945056168634,
+          "edgeMargin": 1.4899758098523983,
+          "countersteerSlip": 0.07806620187090126,
+          "tractionSlip": 0.06120582872382402
+        },
+        "trackIndex": 0
+      },
+      {
+        "tuning": {
+          "corneringGrip": 14.813364231942343,
+          "brakingLimit": 6.7249393896179175,
+          "smallSpeedDrop": 5.869667343632858,
+          "brakeThreshold": 3.4235707928988393,
+          "lookaheadTime": 0.1330089508506616,
+          "edgeMargin": 1.512628458942829,
+          "countersteerSlip": 0.07795408040181492,
+          "tractionSlip": 0.060164798274838865
+        },
+        "trackIndex": 0
+      },
+      {
+        "tuning": {
+          "corneringGrip": 14.985698150522396,
+          "brakingLimit": 6.727305038605151,
+          "smallSpeedDrop": 5.833390498234299,
+          "brakeThreshold": 3.4148998882402264,
+          "lookaheadTime": 0.133789978383259,
+          "edgeMargin": 1.512878934847386,
+          "countersteerSlip": 0.07940852271388084,
+          "tractionSlip": 0.06016534898448683
+        },
+        "trackIndex": 1
+      },
+      {
+        "tuning": {
+          "corneringGrip": 14.729313222503649,
+          "brakingLimit": 6.82566185155701,
+          "smallSpeedDrop": 5.8811214529488,
+          "brakeThreshold": 3.3910426660699593,
+          "lookaheadTime": 0.13285359843816788,
+          "edgeMargin": 1.5091121171028932,
+          "countersteerSlip": 0.07919186824849893,
+          "tractionSlip": 0.06114588566221348
+        },
+        "trackIndex": 1
+      },
+      {
+        "tuning": {
+          "corneringGrip": 14.725475426740218,
+          "brakingLimit": 6.788109811747217,
+          "smallSpeedDrop": 5.789257383891179,
+          "brakeThreshold": 3.4150254718635993,
+          "lookaheadTime": 0.13383690741292892,
+          "edgeMargin": 1.489393300812222,
+          "countersteerSlip": 0.07794846005262453,
+          "tractionSlip": 0.06104774945741616
+        },
+        "trackIndex": 1
+      },
+      {
+        "tuning": {
+          "corneringGrip": 14.971759618601828,
+          "brakingLimit": 6.709398651994164,
+          "smallSpeedDrop": 5.879034250940192,
+          "brakeThreshold": 3.4494130822063513,
+          "lookaheadTime": 0.1334464859203798,
+          "edgeMargin": 1.5141517765241161,
+          "countersteerSlip": 0.07911540716680063,
+          "tractionSlip": 0.0601825438732271
+        },
+        "trackIndex": 2
+      },
+      {
+        "tuning": {
+          "corneringGrip": 14.739146298997454,
+          "brakingLimit": 6.706712205011072,
+          "smallSpeedDrop": 5.835852647029027,
+          "brakeThreshold": 3.4040458979169497,
+          "lookaheadTime": 0.13196139845585944,
+          "edgeMargin": 1.4899751118994335,
+          "countersteerSlip": 0.07900686159504795,
+          "tractionSlip": 0.06109541392008802
+        },
+        "trackIndex": 2
+      },
+      {
+        "tuning": {
+          "corneringGrip": 14.827212315431067,
+          "brakingLimit": 6.769916844415072,
+          "smallSpeedDrop": 5.855342397870514,
+          "brakeThreshold": 3.4208976005510303,
+          "lookaheadTime": 0.13301420003868275,
+          "edgeMargin": 1.5050866331605852,
+          "countersteerSlip": 0.07903843928265712,
+          "tractionSlip": 0.060918927459278197
+        },
+        "trackIndex": 2
+      },
+      {
+        "tuning": {
+          "corneringGrip": 14.697943315419826,
+          "brakingLimit": 6.8176408846154875,
+          "smallSpeedDrop": 5.8413296678164075,
+          "brakeThreshold": 3.4236412413001647,
+          "lookaheadTime": 0.13332376819003194,
+          "edgeMargin": 1.5105916248192766,
+          "countersteerSlip": 0.07836835324610576,
+          "tractionSlip": 0.06034763321155479
+        },
+        "trackIndex": 3
+      },
+      {
+        "tuning": {
+          "corneringGrip": 14.925835444848408,
+          "brakingLimit": 6.743203323802993,
+          "smallSpeedDrop": 5.890009299481379,
+          "brakeThreshold": 3.453357242422749,
+          "lookaheadTime": 0.13431902219089117,
+          "edgeMargin": 1.4918699961311743,
+          "countersteerSlip": 0.07874964364611212,
+          "tractionSlip": 0.06055011232322506
+        },
+        "trackIndex": 3
+      },
+      {
+        "tuning": {
+          "corneringGrip": 14.737786152362172,
+          "brakingLimit": 6.8249896199588695,
+          "smallSpeedDrop": 5.829823132889115,
+          "brakeThreshold": 3.4249963407342716,
+          "lookaheadTime": 0.13433858442374844,
+          "edgeMargin": 1.5011699327635104,
+          "countersteerSlip": 0.0779658720469824,
+          "tractionSlip": 0.060188049202333456
+        },
+        "trackIndex": 3
+      },
+      {
+        "tuning": {
+          "corneringGrip": 14.946399616365333,
+          "brakingLimit": 6.743773335912164,
+          "smallSpeedDrop": 5.78245528605202,
+          "brakeThreshold": 3.452641982639441,
+          "lookaheadTime": 0.1338145236482872,
+          "edgeMargin": 1.50864026257167,
+          "countersteerSlip": 0.07826453776045289,
+          "tractionSlip": 0.060197661441975914
+        },
+        "trackIndex": 4
+      },
+      {
+        "tuning": {
+          "corneringGrip": 14.908116156749092,
+          "brakingLimit": 6.733612395449446,
+          "smallSpeedDrop": 5.786999214356723,
+          "brakeThreshold": 3.400010031317376,
+          "lookaheadTime": 0.13303866780866744,
+          "edgeMargin": 1.4989451880967593,
+          "countersteerSlip": 0.07904937368707904,
+          "tractionSlip": 0.06035517918468435
+        },
+        "trackIndex": 4
+      },
+      {
+        "tuning": {
+          "corneringGrip": 14.826935304102953,
+          "brakingLimit": 6.806638102188123,
+          "smallSpeedDrop": 5.8805900166194265,
+          "brakeThreshold": 3.44915339760103,
+          "lookaheadTime": 0.13362810327734304,
+          "edgeMargin": 1.5054898199966478,
+          "countersteerSlip": 0.07916466705005659,
+          "tractionSlip": 0.060326242651846995
+        },
+        "trackIndex": 4
+      }
+    ],
+    [
+      {
+        "tuning": {
+          "corneringGrip": 15.678726804294564,
+          "brakingLimit": 6.690882141768533,
+          "smallSpeedDrop": 5.545685864610285,
+          "brakeThreshold": 3.4334784858620706,
+          "lookaheadTime": 0.14212826916045757,
+          "edgeMargin": 1.4802903560186549,
+          "countersteerSlip": 0.09718728440168395,
+          "tractionSlip": 0.0707390918065623
+        },
+        "trackIndex": 0
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.679014761206048,
+          "brakingLimit": 6.7226263922841,
+          "smallSpeedDrop": 5.642157873020811,
+          "brakeThreshold": 3.3771116468051496,
+          "lookaheadTime": 0.14240479924547322,
+          "edgeMargin": 1.4847446268215798,
+          "countersteerSlip": 0.0962148954609748,
+          "tractionSlip": 0.07130675589486282
+        },
+        "trackIndex": 0
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.50391807300353,
+          "brakingLimit": 6.791423262397122,
+          "smallSpeedDrop": 5.643705761952449,
+          "brakeThreshold": 3.3826415601749833,
+          "lookaheadTime": 0.1424684970493113,
+          "edgeMargin": 1.4866639102004284,
+          "countersteerSlip": 0.09546819316739351,
+          "tractionSlip": 0.07093853628759485
+        },
+        "trackIndex": 0
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.467113317962005,
+          "brakingLimit": 6.716800183576456,
+          "smallSpeedDrop": 5.5445982267650615,
+          "brakeThreshold": 3.3991986949184088,
+          "lookaheadTime": 0.14267002593337771,
+          "edgeMargin": 1.4765777758284704,
+          "countersteerSlip": 0.09606868874240805,
+          "tractionSlip": 0.07071289941326243
+        },
+        "trackIndex": 1
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.631992069249726,
+          "brakingLimit": 6.754996844273162,
+          "smallSpeedDrop": 5.590372421228605,
+          "brakeThreshold": 3.429001333742048,
+          "lookaheadTime": 0.1432270521057469,
+          "edgeMargin": 1.4901890993210614,
+          "countersteerSlip": 0.09615399077072656,
+          "tractionSlip": 0.07129510697594765
+        },
+        "trackIndex": 1
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.56947183473556,
+          "brakingLimit": 6.675641138418628,
+          "smallSpeedDrop": 5.602132125118211,
+          "brakeThreshold": 3.399276888212798,
+          "lookaheadTime": 0.1429429525265427,
+          "edgeMargin": 1.4961806385690462,
+          "countersteerSlip": 0.09614765646827082,
+          "tractionSlip": 0.07069961145827179
+        },
+        "trackIndex": 1
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.565568313660368,
+          "brakingLimit": 6.746552543077098,
+          "smallSpeedDrop": 5.580581408178904,
+          "brakeThreshold": 3.4140329330493704,
+          "lookaheadTime": 0.14320534863565215,
+          "edgeMargin": 1.4906043790134598,
+          "countersteerSlip": 0.09632366749922441,
+          "tractionSlip": 0.07039439908355936
+        },
+        "trackIndex": 2
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.601347401851582,
+          "brakingLimit": 6.774226063480649,
+          "smallSpeedDrop": 5.570880705694903,
+          "brakeThreshold": 3.4185730806610244,
+          "lookaheadTime": 0.1422054990609172,
+          "edgeMargin": 1.4904624032812155,
+          "countersteerSlip": 0.09676508857445378,
+          "tractionSlip": 0.07114570101542536
+        },
+        "trackIndex": 2
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.610831005020444,
+          "brakingLimit": 6.7781599782234725,
+          "smallSpeedDrop": 5.617679007478344,
+          "brakeThreshold": 3.379575219790259,
+          "lookaheadTime": 0.1422915769710358,
+          "edgeMargin": 1.4830056542337877,
+          "countersteerSlip": 0.09699032286463263,
+          "tractionSlip": 0.07014461037355475
+        },
+        "trackIndex": 2
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.522094236209306,
+          "brakingLimit": 6.720088554596166,
+          "smallSpeedDrop": 5.580374684847495,
+          "brakeThreshold": 3.411568564931576,
+          "lookaheadTime": 0.14417095172998082,
+          "edgeMargin": 1.4858050436932464,
+          "countersteerSlip": 0.09544114066043244,
+          "tractionSlip": 0.07037533499468013
+        },
+        "trackIndex": 3
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.715070748478768,
+          "brakingLimit": 6.723275132691415,
+          "smallSpeedDrop": 5.54532529932684,
+          "brakeThreshold": 3.415031014992264,
+          "lookaheadTime": 0.14321954058142283,
+          "edgeMargin": 1.4828315902692852,
+          "countersteerSlip": 0.09655876268715011,
+          "tractionSlip": 0.07038517201469222
+        },
+        "trackIndex": 3
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.54887450864324,
+          "brakingLimit": 6.768177157484651,
+          "smallSpeedDrop": 5.5941068470334185,
+          "brakeThreshold": 3.3736274333499416,
+          "lookaheadTime": 0.14305864102263136,
+          "edgeMargin": 1.4934107079236596,
+          "countersteerSlip": 0.0957953883823769,
+          "tractionSlip": 0.07026336029647814
+        },
+        "trackIndex": 3
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.498846244365295,
+          "brakingLimit": 6.76337615896076,
+          "smallSpeedDrop": 5.617935558089344,
+          "brakeThreshold": 3.4339159904042686,
+          "lookaheadTime": 0.14158971568554288,
+          "edgeMargin": 1.49216719666067,
+          "countersteerSlip": 0.0968311117028698,
+          "tractionSlip": 0.07078502355346156
+        },
+        "trackIndex": 4
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.643820498191578,
+          "brakingLimit": 6.786800934588843,
+          "smallSpeedDrop": 5.605211893677175,
+          "brakeThreshold": 3.4069137060052377,
+          "lookaheadTime": 0.1423385874643483,
+          "edgeMargin": 1.491682340384021,
+          "countersteerSlip": 0.09699483390635423,
+          "tractionSlip": 0.0712477607356439
+        },
+        "trackIndex": 4
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.639619155644068,
+          "brakingLimit": 6.747214673199474,
+          "smallSpeedDrop": 5.567126276567957,
+          "brakeThreshold": 3.3935451114158126,
+          "lookaheadTime": 0.1441399603262996,
+          "edgeMargin": 1.4980838930627112,
+          "countersteerSlip": 0.09678554799144094,
+          "tractionSlip": 0.07072784485606073
+        },
+        "trackIndex": 4
+      }
+    ],
+    [
+      {
+        "tuning": {
+          "corneringGrip": 15.134458843662406,
+          "brakingLimit": 6.834606057573226,
+          "smallSpeedDrop": 5.603831646441026,
+          "brakeThreshold": 3.3131357698625385,
+          "lookaheadTime": 0.14811880326525562,
+          "edgeMargin": 1.48986134599635,
+          "countersteerSlip": 0.08807357538849944,
+          "tractionSlip": 0.06430958287047879
+        },
+        "trackIndex": 0
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.051959183789064,
+          "brakingLimit": 6.813292160260718,
+          "smallSpeedDrop": 5.647544947894412,
+          "brakeThreshold": 3.339653234536028,
+          "lookaheadTime": 0.1459115995106025,
+          "edgeMargin": 1.4870212108344254,
+          "countersteerSlip": 0.08903483816335407,
+          "tractionSlip": 0.06466223814199196
+        },
+        "trackIndex": 0
+      },
+      {
+        "tuning": {
+          "corneringGrip": 14.923991012522041,
+          "brakingLimit": 6.882226958642231,
+          "smallSpeedDrop": 5.6759252279417804,
+          "brakeThreshold": 3.359444183535464,
+          "lookaheadTime": 0.1457076644933529,
+          "edgeMargin": 1.4988411950653096,
+          "countersteerSlip": 0.08795716700542082,
+          "tractionSlip": 0.0645631100633424
+        },
+        "trackIndex": 0
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.068070458041175,
+          "brakingLimit": 6.77438491074549,
+          "smallSpeedDrop": 5.65040703860112,
+          "brakeThreshold": 3.3532338285936136,
+          "lookaheadTime": 0.14637332232884662,
+          "edgeMargin": 1.4975839656717884,
+          "countersteerSlip": 0.08909918973422265,
+          "tractionSlip": 0.0643492800835882
+        },
+        "trackIndex": 1
+      },
+      {
+        "tuning": {
+          "corneringGrip": 14.991562958152919,
+          "brakingLimit": 6.845016698746885,
+          "smallSpeedDrop": 5.608247428819549,
+          "brakeThreshold": 3.3332883638897277,
+          "lookaheadTime": 0.14822913093218226,
+          "edgeMargin": 1.4906976610510354,
+          "countersteerSlip": 0.08817073284026812,
+          "tractionSlip": 0.06487400482671983
+        },
+        "trackIndex": 1
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.044129886467847,
+          "brakingLimit": 6.8812425034659634,
+          "smallSpeedDrop": 5.635305582455938,
+          "brakeThreshold": 3.3688069212985448,
+          "lookaheadTime": 0.14651363218172878,
+          "edgeMargin": 1.50920859018153,
+          "countersteerSlip": 0.0884938650237999,
+          "tractionSlip": 0.06422982220076667
+        },
+        "trackIndex": 1
+      },
+      {
+        "tuning": {
+          "corneringGrip": 14.982598829071254,
+          "brakingLimit": 6.774629504302926,
+          "smallSpeedDrop": 5.5928251068170844,
+          "brakeThreshold": 3.314650842143114,
+          "lookaheadTime": 0.14734102477350178,
+          "edgeMargin": 1.4990320435414766,
+          "countersteerSlip": 0.08854873329354906,
+          "tractionSlip": 0.06528232626247124
+        },
+        "trackIndex": 2
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.157029617426163,
+          "brakingLimit": 6.779773409480113,
+          "smallSpeedDrop": 5.601793656623488,
+          "brakeThreshold": 3.321384370319482,
+          "lookaheadTime": 0.14568070248256207,
+          "edgeMargin": 1.4998486420330353,
+          "countersteerSlip": 0.08898647760139432,
+          "tractionSlip": 0.06452654012888917
+        },
+        "trackIndex": 2
+      },
+      {
+        "tuning": {
+          "corneringGrip": 14.973636466587475,
+          "brakingLimit": 6.8613503090986,
+          "smallSpeedDrop": 5.655030362973882,
+          "brakeThreshold": 3.3502546834182305,
+          "lookaheadTime": 0.1469596927877199,
+          "edgeMargin": 1.5089434328454283,
+          "countersteerSlip": 0.08939017210574071,
+          "tractionSlip": 0.06467083371259026
+        },
+        "trackIndex": 2
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.049083611617009,
+          "brakingLimit": 6.826860772201978,
+          "smallSpeedDrop": 5.5965588059306475,
+          "brakeThreshold": 3.3265726417518025,
+          "lookaheadTime": 0.14774721555173342,
+          "edgeMargin": 1.4850133819939897,
+          "countersteerSlip": 0.0886519048667684,
+          "tractionSlip": 0.06542172698117271
+        },
+        "trackIndex": 3
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.03430535775655,
+          "brakingLimit": 6.861090998413334,
+          "smallSpeedDrop": 5.617869152735717,
+          "brakeThreshold": 3.332587121731617,
+          "lookaheadTime": 0.14593866755519594,
+          "edgeMargin": 1.4981634344462085,
+          "countersteerSlip": 0.08871968800825077,
+          "tractionSlip": 0.06484189574151797
+        },
+        "trackIndex": 3
+      },
+      {
+        "tuning": {
+          "corneringGrip": 14.973976598843725,
+          "brakingLimit": 6.805519942000488,
+          "smallSpeedDrop": 5.6668784222664135,
+          "brakeThreshold": 3.355061447446546,
+          "lookaheadTime": 0.14837216593393512,
+          "edgeMargin": 1.5133278824868537,
+          "countersteerSlip": 0.08959631352357438,
+          "tractionSlip": 0.06464792060357187
+        },
+        "trackIndex": 3
+      },
+      {
+        "tuning": {
+          "corneringGrip": 14.987363539170946,
+          "brakingLimit": 6.857252758460255,
+          "smallSpeedDrop": 5.6238308284897105,
+          "brakeThreshold": 3.329040867668224,
+          "lookaheadTime": 0.14760971908209902,
+          "edgeMargin": 1.50975829534893,
+          "countersteerSlip": 0.08936937703391792,
+          "tractionSlip": 0.06520750751074293
+        },
+        "trackIndex": 4
+      },
+      {
+        "tuning": {
+          "corneringGrip": 14.946818700295369,
+          "brakingLimit": 6.779902430489894,
+          "smallSpeedDrop": 5.678039978082093,
+          "brakeThreshold": 3.3118199963239543,
+          "lookaheadTime": 0.14687876840428887,
+          "edgeMargin": 1.4943712349973428,
+          "countersteerSlip": 0.0893634834603328,
+          "tractionSlip": 0.06436832465440356
+        },
+        "trackIndex": 4
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.14713096779772,
+          "brakingLimit": 6.8925395309312805,
+          "smallSpeedDrop": 5.63834144761035,
+          "brakeThreshold": 3.3086997482140634,
+          "lookaheadTime": 0.14683731698685104,
+          "edgeMargin": 1.496810331583033,
+          "countersteerSlip": 0.089213711258469,
+          "tractionSlip": 0.06514387134470477
+        },
+        "trackIndex": 4
+      }
+    ],
+    [
+      {
+        "tuning": {
+          "corneringGrip": 14.967171903772924,
+          "brakingLimit": 6.681413572654915,
+          "smallSpeedDrop": 5.796612001357816,
+          "brakeThreshold": 3.327233433155593,
+          "lookaheadTime": 0.14995124393583514,
+          "edgeMargin": 1.4924029868709512,
+          "countersteerSlip": 0.08832331740692308,
+          "tractionSlip": 0.059856901661880325
+        },
+        "trackIndex": 0
+      },
+      {
+        "tuning": {
+          "corneringGrip": 14.842390130448981,
+          "brakingLimit": 6.65139834256335,
+          "smallSpeedDrop": 5.729067732005855,
+          "brakeThreshold": 3.3240241627246987,
+          "lookaheadTime": 0.15153106536024316,
+          "edgeMargin": 1.4836721168801466,
+          "countersteerSlip": 0.0892392690535616,
+          "tractionSlip": 0.060049049864375384
+        },
+        "trackIndex": 0
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.019680970574344,
+          "brakingLimit": 6.643185303235572,
+          "smallSpeedDrop": 5.762856635777735,
+          "brakeThreshold": 3.2886217872073273,
+          "lookaheadTime": 0.15053223123274215,
+          "edgeMargin": 1.4672462239543453,
+          "countersteerSlip": 0.088403886294498,
+          "tractionSlip": 0.06059321771748828
+        },
+        "trackIndex": 0
+      },
+      {
+        "tuning": {
+          "corneringGrip": 14.8098630439827,
+          "brakingLimit": 6.628627676504874,
+          "smallSpeedDrop": 5.815454029602161,
+          "brakeThreshold": 3.3165102927435814,
+          "lookaheadTime": 0.14953676693952106,
+          "edgeMargin": 1.4927598947566916,
+          "countersteerSlip": 0.08914100731830302,
+          "tractionSlip": 0.05986555722866938
+        },
+        "trackIndex": 1
+      },
+      {
+        "tuning": {
+          "corneringGrip": 14.885468955960391,
+          "brakingLimit": 6.656429758415042,
+          "smallSpeedDrop": 5.809123916447451,
+          "brakeThreshold": 3.320198504615251,
+          "lookaheadTime": 0.14990647310313127,
+          "edgeMargin": 1.4856124936772426,
+          "countersteerSlip": 0.08811470962287625,
+          "tractionSlip": 0.059627948156050006
+        },
+        "trackIndex": 1
+      },
+      {
+        "tuning": {
+          "corneringGrip": 14.91069058463346,
+          "brakingLimit": 6.624801273603494,
+          "smallSpeedDrop": 5.801517976352022,
+          "brakeThreshold": 3.317205535419109,
+          "lookaheadTime": 0.15064733944201147,
+          "edgeMargin": 1.4725421975728552,
+          "countersteerSlip": 0.08893910783877197,
+          "tractionSlip": 0.059470059890203465
+        },
+        "trackIndex": 1
+      },
+      {
+        "tuning": {
+          "corneringGrip": 14.833107218683336,
+          "brakingLimit": 6.609325734109552,
+          "smallSpeedDrop": 5.811158824560623,
+          "brakeThreshold": 3.265686133311762,
+          "lookaheadTime": 0.14991180100512513,
+          "edgeMargin": 1.4793618122347088,
+          "countersteerSlip": 0.08815343259586168,
+          "tractionSlip": 0.059953784745729675
+        },
+        "trackIndex": 2
+      },
+      {
+        "tuning": {
+          "corneringGrip": 14.881605105569149,
+          "brakingLimit": 6.579020112428983,
+          "smallSpeedDrop": 5.817306983939326,
+          "brakeThreshold": 3.314625747014789,
+          "lookaheadTime": 0.15078053240545425,
+          "edgeMargin": 1.4888314408892762,
+          "countersteerSlip": 0.0881661429430169,
+          "tractionSlip": 0.05981018405851063
+        },
+        "trackIndex": 2
+      },
+      {
+        "tuning": {
+          "corneringGrip": 14.835429702059198,
+          "brakingLimit": 6.665283061718528,
+          "smallSpeedDrop": 5.800321850688852,
+          "brakeThreshold": 3.2647213312908137,
+          "lookaheadTime": 0.1498903117120026,
+          "edgeMargin": 1.4718607921788467,
+          "countersteerSlip": 0.08872189714708922,
+          "tractionSlip": 0.060136414717805634
+        },
+        "trackIndex": 2
+      },
+      {
+        "tuning": {
+          "corneringGrip": 14.914440553612843,
+          "brakingLimit": 6.666902370902327,
+          "smallSpeedDrop": 5.793187470921573,
+          "brakeThreshold": 3.2847784944968264,
+          "lookaheadTime": 0.15054688314925,
+          "edgeMargin": 1.4858753545834034,
+          "countersteerSlip": 0.08797557173558761,
+          "tractionSlip": 0.06044603781010105
+        },
+        "trackIndex": 3
+      },
+      {
+        "tuning": {
+          "corneringGrip": 14.96584678456488,
+          "brakingLimit": 6.706638745095241,
+          "smallSpeedDrop": 5.742134129208343,
+          "brakeThreshold": 3.2720319239344,
+          "lookaheadTime": 0.14971658642995914,
+          "edgeMargin": 1.4866652380930847,
+          "countersteerSlip": 0.08854797208572261,
+          "tractionSlip": 0.06029793563018295
+        },
+        "trackIndex": 3
+      },
+      {
+        "tuning": {
+          "corneringGrip": 14.779360887408767,
+          "brakingLimit": 6.637489628069626,
+          "smallSpeedDrop": 5.833562915566352,
+          "brakeThreshold": 3.2933864289157078,
+          "lookaheadTime": 0.1492654799235803,
+          "edgeMargin": 1.4915454709531992,
+          "countersteerSlip": 0.08944400861950148,
+          "tractionSlip": 0.060584696384958135
+        },
+        "trackIndex": 3
+      },
+      {
+        "tuning": {
+          "corneringGrip": 14.927355719258337,
+          "brakingLimit": 6.661434131681265,
+          "smallSpeedDrop": 5.802299821351501,
+          "brakeThreshold": 3.288110315444577,
+          "lookaheadTime": 0.15059332298256028,
+          "edgeMargin": 1.4778518126012576,
+          "countersteerSlip": 0.0880834063593505,
+          "tractionSlip": 0.06013925457867096
+        },
+        "trackIndex": 4
+      },
+      {
+        "tuning": {
+          "corneringGrip": 14.802760092228015,
+          "brakingLimit": 6.6928403076672405,
+          "smallSpeedDrop": 5.774331420598257,
+          "brakeThreshold": 3.3228921452545235,
+          "lookaheadTime": 0.15174373499234056,
+          "edgeMargin": 1.475939302340397,
+          "countersteerSlip": 0.08921815377274023,
+          "tractionSlip": 0.059474916319532146
+        },
+        "trackIndex": 4
+      },
+      {
+        "tuning": {
+          "corneringGrip": 14.945985555286486,
+          "brakingLimit": 6.604185578647436,
+          "smallSpeedDrop": 5.720397246019922,
+          "brakeThreshold": 3.2843780402915215,
+          "lookaheadTime": 0.14987986500479167,
+          "edgeMargin": 1.4714806610932838,
+          "countersteerSlip": 0.08813077609002296,
+          "tractionSlip": 0.060506920081767064
+        },
+        "trackIndex": 4
+      }
+    ],
+    [
+      {
+        "tuning": {
+          "corneringGrip": 14.882747614951336,
+          "brakingLimit": 6.486902008031335,
+          "smallSpeedDrop": 5.780246011914855,
+          "brakeThreshold": 3.4325887462602234,
+          "lookaheadTime": 0.156706965324482,
+          "edgeMargin": 1.4850972545285788,
+          "countersteerSlip": 0.08367325761960077,
+          "tractionSlip": 0.06080039568945585
+        },
+        "trackIndex": 0
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.083150655654777,
+          "brakingLimit": 6.4657368605243795,
+          "smallSpeedDrop": 5.7732349992810095,
+          "brakeThreshold": 3.4031876012192006,
+          "lookaheadTime": 0.1545509508532242,
+          "edgeMargin": 1.4955849396487548,
+          "countersteerSlip": 0.08441680994342174,
+          "tractionSlip": 0.06111188953119132
+        },
+        "trackIndex": 0
+      },
+      {
+        "tuning": {
+          "corneringGrip": 14.896593193151956,
+          "brakingLimit": 6.5877460000149135,
+          "smallSpeedDrop": 5.712554044161461,
+          "brakeThreshold": 3.3870284441643523,
+          "lookaheadTime": 0.1539782689114638,
+          "edgeMargin": 1.4842919479116017,
+          "countersteerSlip": 0.08510846892145901,
+          "tractionSlip": 0.06086240165994664
+        },
+        "trackIndex": 0
+      },
+      {
+        "tuning": {
+          "corneringGrip": 14.902770109694792,
+          "brakingLimit": 6.5114000532435865,
+          "smallSpeedDrop": 5.781854285353793,
+          "brakeThreshold": 3.4078354201856196,
+          "lookaheadTime": 0.15383338954575135,
+          "edgeMargin": 1.497839132334838,
+          "countersteerSlip": 0.08363227021787369,
+          "tractionSlip": 0.06124057585010635
+        },
+        "trackIndex": 1
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.055192027374247,
+          "brakingLimit": 6.530854026841226,
+          "smallSpeedDrop": 5.736594931850262,
+          "brakeThreshold": 3.41291372236876,
+          "lookaheadTime": 0.15450435473992646,
+          "edgeMargin": 1.4956605355229264,
+          "countersteerSlip": 0.08513670784833227,
+          "tractionSlip": 0.0604473982928174
+        },
+        "trackIndex": 1
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.041507492876754,
+          "brakingLimit": 6.501670033434181,
+          "smallSpeedDrop": 5.753153694170301,
+          "brakeThreshold": 3.4343252622613596,
+          "lookaheadTime": 0.15541323985280475,
+          "edgeMargin": 1.509146839638954,
+          "countersteerSlip": 0.08475915832953708,
+          "tractionSlip": 0.0612353850064503
+        },
+        "trackIndex": 1
+      },
+      {
+        "tuning": {
+          "corneringGrip": 14.901555687571827,
+          "brakingLimit": 6.508135409695712,
+          "smallSpeedDrop": 5.7734348705886696,
+          "brakeThreshold": 3.445994616210806,
+          "lookaheadTime": 0.15410056842494163,
+          "edgeMargin": 1.5005746300344334,
+          "countersteerSlip": 0.08502460331882877,
+          "tractionSlip": 0.060326537003981794
+        },
+        "trackIndex": 2
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.061473789600521,
+          "brakingLimit": 6.50129106224222,
+          "smallSpeedDrop": 5.789796869901717,
+          "brakeThreshold": 3.4315458522364533,
+          "lookaheadTime": 0.15574115300073926,
+          "edgeMargin": 1.4829564801147068,
+          "countersteerSlip": 0.08356877846507005,
+          "tractionSlip": 0.06130666441926246
+        },
+        "trackIndex": 2
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.076122240850413,
+          "brakingLimit": 6.560777631345457,
+          "smallSpeedDrop": 5.786042344905108,
+          "brakeThreshold": 3.427612326196597,
+          "lookaheadTime": 0.15527085056744258,
+          "edgeMargin": 1.4824990679001793,
+          "countersteerSlip": 0.08461656244741088,
+          "tractionSlip": 0.06064414187967225
+        },
+        "trackIndex": 2
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.029277588265417,
+          "brakingLimit": 6.579596679050833,
+          "smallSpeedDrop": 5.692373139675947,
+          "brakeThreshold": 3.4037706157881558,
+          "lookaheadTime": 0.15499678619224125,
+          "edgeMargin": 1.486035425394258,
+          "countersteerSlip": 0.08404157574941815,
+          "tractionSlip": 0.06050736072599119
+        },
+        "trackIndex": 3
+      },
+      {
+        "tuning": {
+          "corneringGrip": 14.837819917032288,
+          "brakingLimit": 6.562847303695789,
+          "smallSpeedDrop": 5.787104958656834,
+          "brakeThreshold": 3.3952122063692993,
+          "lookaheadTime": 0.15538318646542595,
+          "edgeMargin": 1.4816632963963028,
+          "countersteerSlip": 0.08492858819349335,
+          "tractionSlip": 0.061355279418852174
+        },
+        "trackIndex": 3
+      },
+      {
+        "tuning": {
+          "corneringGrip": 14.959646727180735,
+          "brakingLimit": 6.581794725818831,
+          "smallSpeedDrop": 5.720853383669271,
+          "brakeThreshold": 3.386169551229284,
+          "lookaheadTime": 0.15384802944189926,
+          "edgeMargin": 1.4820299317999772,
+          "countersteerSlip": 0.0839614170927385,
+          "tractionSlip": 0.06128497406063517
+        },
+        "trackIndex": 3
+      },
+      {
+        "tuning": {
+          "corneringGrip": 14.920885346958972,
+          "brakingLimit": 6.481629694730807,
+          "smallSpeedDrop": 5.79443284300486,
+          "brakeThreshold": 3.4079074877171367,
+          "lookaheadTime": 0.15555702653375036,
+          "edgeMargin": 1.5024152770566335,
+          "countersteerSlip": 0.08421106411163479,
+          "tractionSlip": 0.06132417720739091
+        },
+        "trackIndex": 4
+      },
+      {
+        "tuning": {
+          "corneringGrip": 14.866557177370533,
+          "brakingLimit": 6.493858768213046,
+          "smallSpeedDrop": 5.801038462738247,
+          "brakeThreshold": 3.4242164686865433,
+          "lookaheadTime": 0.15375560431928617,
+          "edgeMargin": 1.4985284343992658,
+          "countersteerSlip": 0.0835446746678189,
+          "tractionSlip": 0.0607465968086969
+        },
+        "trackIndex": 4
+      },
+      {
+        "tuning": {
+          "corneringGrip": 14.863772148950643,
+          "brakingLimit": 6.562812710210756,
+          "smallSpeedDrop": 5.749314837625026,
+          "brakeThreshold": 3.4371270423986364,
+          "lookaheadTime": 0.15575460810439698,
+          "edgeMargin": 1.5092042017797438,
+          "countersteerSlip": 0.08365306179483807,
+          "tractionSlip": 0.06070602779419626
+        },
+        "trackIndex": 4
+      }
+    ],
+    [
+      {
+        "tuning": {
+          "corneringGrip": 15.023440738526654,
+          "brakingLimit": 6.726607603675972,
+          "smallSpeedDrop": 5.520712945541579,
+          "brakeThreshold": 3.354892921991003,
+          "lookaheadTime": 0.15672477701940177,
+          "edgeMargin": 1.4749634649401528,
+          "countersteerSlip": 0.08601607205780669,
+          "tractionSlip": 0.061520995618172265
+        },
+        "trackIndex": 0
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.248325454525379,
+          "brakingLimit": 6.681823318617551,
+          "smallSpeedDrop": 5.4912854681053584,
+          "brakeThreshold": 3.371107800372176,
+          "lookaheadTime": 0.15813060278760757,
+          "edgeMargin": 1.4782113420671257,
+          "countersteerSlip": 0.0875748012640637,
+          "tractionSlip": 0.06167458863642332
+        },
+        "trackIndex": 0
+      },
+      {
+        "tuning": {
+          "corneringGrip": 14.986794741199384,
+          "brakingLimit": 6.7287663041010575,
+          "smallSpeedDrop": 5.5485719246304965,
+          "brakeThreshold": 3.34684536945346,
+          "lookaheadTime": 0.15773430025120408,
+          "edgeMargin": 1.4777814214741027,
+          "countersteerSlip": 0.08653637838064225,
+          "tractionSlip": 0.06160964053287382
+        },
+        "trackIndex": 0
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.007549404492185,
+          "brakingLimit": 6.709047229801884,
+          "smallSpeedDrop": 5.568084208470965,
+          "brakeThreshold": 3.405332584939481,
+          "lookaheadTime": 0.15739738895854966,
+          "edgeMargin": 1.498253831969787,
+          "countersteerSlip": 0.08640280622655426,
+          "tractionSlip": 0.06088032594657666
+        },
+        "trackIndex": 1
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.12414108854909,
+          "brakingLimit": 6.762987901950959,
+          "smallSpeedDrop": 5.581239461149286,
+          "brakeThreshold": 3.3461841988096737,
+          "lookaheadTime": 0.1581382439003396,
+          "edgeMargin": 1.4735420892729618,
+          "countersteerSlip": 0.08701690791542033,
+          "tractionSlip": 0.061341997297524986
+        },
+        "trackIndex": 1
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.251066660007027,
+          "brakingLimit": 6.695860155216178,
+          "smallSpeedDrop": 5.543852920735292,
+          "brakeThreshold": 3.370130565227829,
+          "lookaheadTime": 0.1557425919936048,
+          "edgeMargin": 1.4818758760554729,
+          "countersteerSlip": 0.086859082345226,
+          "tractionSlip": 0.0611755295525107
+        },
+        "trackIndex": 1
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.152661436419974,
+          "brakingLimit": 6.710560079844353,
+          "smallSpeedDrop": 5.497983809647997,
+          "brakeThreshold": 3.3449616968883094,
+          "lookaheadTime": 0.15530830259753997,
+          "edgeMargin": 1.4988721041681035,
+          "countersteerSlip": 0.08601658735697992,
+          "tractionSlip": 0.061850276678608755
+        },
+        "trackIndex": 2
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.081955877572673,
+          "brakingLimit": 6.720567607910304,
+          "smallSpeedDrop": 5.521550213227502,
+          "brakeThreshold": 3.3655652701753622,
+          "lookaheadTime": 0.15680132120919688,
+          "edgeMargin": 1.4904577896571145,
+          "countersteerSlip": 0.08725517228612142,
+          "tractionSlip": 0.06202253286354993
+        },
+        "trackIndex": 2
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.023637058527017,
+          "brakingLimit": 6.643652253912609,
+          "smallSpeedDrop": 5.509066390148187,
+          "brakeThreshold": 3.3609002733579385,
+          "lookaheadTime": 0.15757021111832073,
+          "edgeMargin": 1.472436352997438,
+          "countersteerSlip": 0.08616116823746892,
+          "tractionSlip": 0.06183536329119898
+        },
+        "trackIndex": 2
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.244219998190125,
+          "brakingLimit": 6.670038645199803,
+          "smallSpeedDrop": 5.541537916304001,
+          "brakeThreshold": 3.370377908157449,
+          "lookaheadTime": 0.15717321601434872,
+          "edgeMargin": 1.4750635843385371,
+          "countersteerSlip": 0.08712376103013567,
+          "tractionSlip": 0.06149445018583987
+        },
+        "trackIndex": 3
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.215122551586614,
+          "brakingLimit": 6.747105051384735,
+          "smallSpeedDrop": 5.520510529002545,
+          "brakeThreshold": 3.3570662948668155,
+          "lookaheadTime": 0.15623942899239282,
+          "edgeMargin": 1.4789186727399957,
+          "countersteerSlip": 0.08737557912861121,
+          "tractionSlip": 0.06132449197776797
+        },
+        "trackIndex": 3
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.160028268176623,
+          "brakingLimit": 6.748929776941222,
+          "smallSpeedDrop": 5.539636048188968,
+          "brakeThreshold": 3.3521548191287236,
+          "lookaheadTime": 0.15568585666688606,
+          "edgeMargin": 1.4839124681922258,
+          "countersteerSlip": 0.08606774026927061,
+          "tractionSlip": 0.061926541372525144
+        },
+        "trackIndex": 3
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.251008785672202,
+          "brakingLimit": 6.731554346167052,
+          "smallSpeedDrop": 5.554480097016182,
+          "brakeThreshold": 3.3569406258838086,
+          "lookaheadTime": 0.15525000259650842,
+          "edgeMargin": 1.47959636074797,
+          "countersteerSlip": 0.08757018988395618,
+          "tractionSlip": 0.061404002348373586
+        },
+        "trackIndex": 4
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.028060145515946,
+          "brakingLimit": 6.730613015523079,
+          "smallSpeedDrop": 5.579379942665634,
+          "brakeThreshold": 3.3413515643767293,
+          "lookaheadTime": 0.15629084050744707,
+          "edgeMargin": 1.4846853994874354,
+          "countersteerSlip": 0.08591049239182992,
+          "tractionSlip": 0.06120951414030017
+        },
+        "trackIndex": 4
+      },
+      {
+        "tuning": {
+          "corneringGrip": 15.111331825518421,
+          "brakingLimit": 6.667267656457556,
+          "smallSpeedDrop": 5.501909065142152,
+          "brakeThreshold": 3.4061794263721,
+          "lookaheadTime": 0.15683180388775436,
+          "edgeMargin": 1.4818829758170011,
+          "countersteerSlip": 0.08678793297007704,
+          "tractionSlip": 0.06186147812801425
+        },
+        "trackIndex": 4
+      }
+    ]
+  ],
+  "candidates": [
+    {
+      "corneringGrip": 15.168517148499783,
+      "brakingLimit": 6.518382885952467,
+      "smallSpeedDrop": 5.046239326913884,
+      "brakeThreshold": 3.415749146248066,
+      "lookaheadTime": 0.14453145457481376,
+      "edgeMargin": 1.5,
+      "countersteerSlip": 0.0843330148769028,
+      "tractionSlip": 0.07299695237272354
+    },
+    {
+      "corneringGrip": 15.152156626825644,
+      "brakingLimit": 6.78613601626654,
+      "smallSpeedDrop": 6.195530154643933,
+      "brakeThreshold": 3.424019667368396,
+      "lookaheadTime": 0.1509202302182916,
+      "edgeMargin": 1.5,
+      "countersteerSlip": 0.08686147890735049,
+      "tractionSlip": 0.07448558610171988
+    },
+    {
+      "corneringGrip": 14.81937841485637,
+      "brakingLimit": 6.805283964410122,
+      "smallSpeedDrop": 5.796395315944998,
+      "brakeThreshold": 3.304535791739534,
+      "lookaheadTime": 0.13424403807143764,
+      "edgeMargin": 1.5,
+      "countersteerSlip": 0.09046791790515009,
+      "tractionSlip": 0.06023183035738418
+    },
+    {
+      "corneringGrip": 15.398929431295896,
+      "brakingLimit": 6.827209501922174,
+      "smallSpeedDrop": 5.731901302495639,
+      "brakeThreshold": 3.3541429673439116,
+      "lookaheadTime": 0.1493862712495896,
+      "edgeMargin": 1.4919512654393727,
+      "countersteerSlip": 0.10044708109205996,
+      "tractionSlip": 0.06724388183067506
+    },
+    {
+      "corneringGrip": 15.151270261171636,
+      "brakingLimit": 6.673213022339225,
+      "smallSpeedDrop": 5.930334008546526,
+      "brakeThreshold": 3.3185571197720125,
+      "lookaheadTime": 0.13816890709669416,
+      "edgeMargin": 1.4717497305712628,
+      "countersteerSlip": 0.09381175128777522,
+      "tractionSlip": 0.0735130097381484
+    },
+    {
+      "corneringGrip": 15.293653586139333,
+      "brakingLimit": 6.791720107357393,
+      "smallSpeedDrop": 5.836291400221586,
+      "brakeThreshold": 3.3986915884285893,
+      "lookaheadTime": 0.1412644836962821,
+      "edgeMargin": 1.4987650624778845,
+      "countersteerSlip": 0.08687673886473682,
+      "tractionSlip": 0.06022338192776274
+    },
+    {
+      "corneringGrip": 15.03901939474971,
+      "brakingLimit": 6.721688364321919,
+      "smallSpeedDrop": 5.897460651380504,
+      "brakeThreshold": 3.406060640822127,
+      "lookaheadTime": 0.144371774638637,
+      "edgeMargin": 1.4935638124582393,
+      "countersteerSlip": 0.0864053385549477,
+      "tractionSlip": 0.06098441131959072
+    },
+    {
+      "corneringGrip": 15.223988154367207,
+      "brakingLimit": 6.738741156893666,
+      "smallSpeedDrop": 5.755760855839344,
+      "brakeThreshold": 3.389539050245408,
+      "lookaheadTime": 0.15748231645584632,
+      "edgeMargin": 1.4792050697092363,
+      "countersteerSlip": 0.08666180130143172,
+      "tractionSlip": 0.05734919529556524
+    },
+    {
+      "corneringGrip": 15.39440189605572,
+      "brakingLimit": 7.002007579520525,
+      "smallSpeedDrop": 5.612171383727928,
+      "brakeThreshold": 3.3668501226660705,
+      "lookaheadTime": 0.13309231269490474,
+      "edgeMargin": 1.5,
+      "countersteerSlip": 0.09288262123252052,
+      "tractionSlip": 0.06187496493572104
+    },
+    {
+      "corneringGrip": 14.84598921792218,
+      "brakingLimit": 6.770362523472172,
+      "smallSpeedDrop": 5.835585687026288,
+      "brakeThreshold": 3.4213338855469515,
+      "lookaheadTime": 0.13320412070001195,
+      "edgeMargin": 1.5,
+      "countersteerSlip": 0.07868311033153659,
+      "tractionSlip": 0.06070292209282927
+    },
+    {
+      "corneringGrip": 15.60738730090051,
+      "brakingLimit": 6.742467141196671,
+      "smallSpeedDrop": 5.5879169065868055,
+      "brakeThreshold": 3.4022541085009492,
+      "lookaheadTime": 0.14287741104918233,
+      "edgeMargin": 1.4851107681461981,
+      "countersteerSlip": 0.09627774269394036,
+      "tractionSlip": 0.07071427377761791
+    },
+    {
+      "corneringGrip": 15.040649767771503,
+      "brakingLimit": 6.8286068306613235,
+      "smallSpeedDrop": 5.649312747974577,
+      "brakeThreshold": 3.33782721071748,
+      "lookaheadTime": 0.14714104648013107,
+      "edgeMargin": 1.5,
+      "countersteerSlip": 0.08877918457546709,
+      "tractionSlip": 0.06484090379280401
+    },
+    {
+      "corneringGrip": 14.901344930108616,
+      "brakingLimit": 6.64053114983059,
+      "smallSpeedDrop": 5.776132017814316,
+      "brakeThreshold": 3.2955925720082138,
+      "lookaheadTime": 0.15024913937747297,
+      "edgeMargin": 1.479813588098696,
+      "countersteerSlip": 0.08876437585624135,
+      "tractionSlip": 0.06006923474069657
+    },
+    {
+      "corneringGrip": 14.98286246756117,
+      "brakingLimit": 6.523209454371146,
+      "smallSpeedDrop": 5.748030678491596,
+      "brakeThreshold": 3.420289689519836,
+      "lookaheadTime": 0.15519530331787065,
+      "edgeMargin": 1.494655476900066,
+      "countersteerSlip": 0.08430056251472408,
+      "tractionSlip": 0.060865977366124695
+    },
+    {
+      "corneringGrip": 15.112756113536532,
+      "brakingLimit": 6.700236975892315,
+      "smallSpeedDrop": 5.531474274142865,
+      "brakeThreshold": 3.374197581555538,
+      "lookaheadTime": 0.15657840628793904,
+      "edgeMargin": 1.4852566894289603,
+      "countersteerSlip": 0.08674642072978515,
+      "tractionSlip": 0.06142517422048944
+    }
+  ],
+  "baseline": {
+    "tuning": {
+      "corneringGrip": 19,
+      "brakingLimit": 5.8184841072288025,
+      "smallSpeedDrop": 8.233954374210535,
+      "brakeThreshold": 3.421639966034419,
+      "lookaheadTime": 0.15249736779043632,
+      "edgeMargin": 1.3144746207419378,
+      "countersteerSlip": 0.0889073086949847,
+      "tractionSlip": 0.17
+    },
+    "cost": 8.040333333333333,
+    "times": [28.950891452705154, "Infinity", 13.698800790315255, "Infinity", "Infinity"],
+    "results": [
+      {
+        "failures": 0,
+        "failure": null,
+        "lapTime": 28.950891452705154,
+        "invalidLaps": 0,
+        "brakesPerLap": 2.888888888888889,
+        "liftsPerLap": 6.111111111111111
+      },
+      {
+        "failures": 3,
+        "failure": "spin",
+        "lapTime": "Infinity",
+        "invalidLaps": 0,
+        "brakesPerLap": 0,
+        "liftsPerLap": 0
+      },
+      {
+        "failures": 0,
+        "failure": null,
+        "lapTime": 13.698800790315255,
+        "invalidLaps": 0,
+        "brakesPerLap": 1.3333333333333333,
+        "liftsPerLap": 3.111111111111111
+      },
+      {
+        "failures": 3,
+        "failure": "spin",
+        "lapTime": "Infinity",
+        "invalidLaps": 0,
+        "brakesPerLap": 0,
+        "liftsPerLap": 0
+      },
+      {
+        "failures": 3,
+        "failure": "spin",
+        "lapTime": "Infinity",
+        "invalidLaps": 0,
+        "brakesPerLap": 0,
+        "liftsPerLap": 0
+      }
+    ],
+    "evaluations": 1
+  },
+  "reference": [
+    28.950891452705154, 31.844204272123733, 13.698800790315255, 35.72310396523615,
+    120.59770917520113
+  ],
+  "runs": 3687,
+  "target": 30
+}

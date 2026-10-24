@@ -41,10 +41,12 @@ export function trainRaceBot(
     maxSeconds = 600,
     laps: lapCount = 3,
     onStep,
+    onRun,
   }: {
     maxSeconds?: number;
     laps?: number;
     onStep?: (state: VehicleState, bot: ReturnType<typeof createRaceBot>) => void;
+    onRun?: (run: TrainingRun) => void;
   } = {},
 ) {
   if (!Number.isInteger(runs) || runs < 1 || runs > 100)
@@ -150,6 +152,7 @@ export function trainRaceBot(
         laps: times,
         metrics: bot.metrics,
       });
+      onRun?.(results[results.length - 1]);
     }
     return {
       version: 1,
