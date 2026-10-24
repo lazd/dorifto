@@ -9,6 +9,7 @@ interface SvgPoint {
 }
 
 interface CourseMapOptions {
+  closed?: boolean;
   padRadius?: number;
   minStrokeWidth?: number;
   minimumRoadWidth?: number;
@@ -69,7 +70,7 @@ export function createCourseMapGeometry(
         const { x, y } = project(point);
         return `${index ? 'L' : 'M'}${x.toFixed(2)},${y.toFixed(2)}`;
       })
-      .join(' ') + ' Z';
+      .join(' ') + (options.closed === false ? '' : ' Z');
   const pad =
     options.padRadius === undefined
       ? undefined

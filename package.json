@@ -10,6 +10,7 @@
     "deploy": "npm run build && gh-pages --dist dist --remote origin --branch gh-pages --nojekyll",
     "preview": "vite preview --open",
     "import-track": "node scripts/import-track.mjs",
+    "import-road": "node scripts/import-road.mjs",
     "train:bot": "node scripts/optimize-race-bot.mjs --preset grip-default --generations 30",
     "train:bot:resume": "npm run train:bot -- --resume",
     "train:drift": "node scripts/optimize-drift-bot.mjs --preset drift-default --generations 20",

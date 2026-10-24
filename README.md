@@ -436,6 +436,35 @@ manually. The oxc VS Code extension reads the same config for format-on-save.
 
 `npm run import-track -- src/trackImports/*.json` converts recorded-lap track JSON
 into course files in `src/tracks/`, which appear automatically in the course picker.
+`npm run import-road -- <slug> "<road name>" "<location query>"` first
+looks up the freeform location with OpenStreetMap's geocoding API, then queries Overpass for
+the named road within the returned bounding box. It writes a compatible source
+file to `road-imports/`. Only highway ways are included, and ways tagged
+`access=private` are excluded. Use the road name as labeled in
+OpenStreetMap; common road suffixes such as `Road`/`Rd` are matched
+interchangeably. Quote each multiword argument so the script receives the slug,
+road name, and location query as separate arguments. The location query is stored
+as `venue_name`; `location` contains the road's centroid coordinates. For example:
+
+```sh
+npm run import-road -- newtown-road "Newtown Road" "Placerville, CA, US"
+npm run import-track -- road-imports/newtown-road.json
+```
+
+Generated road source files are ignored by Git.
+The final import step also generates a standalone `road-imports/<slug>.html`
+preview using the shared course-preview SVG renderer. Open it directly in a
+browser to inspect the north-up road geometry and its start/finish markers;
+the preview does not connect the endpoints.
+Road imports preserve an open, ordered route with distinct start and finish
+points; the endpoints do not need to connect. Open-road support in the course
+converter and game is deferred: the current track converter still closes routes,
+so road source files should not yet be treated as playable point-to-point courses.
+Successful geocoding and Overpass responses are cached in `road-imports/cache/`,
+keyed by the location query or the road query including its bounding box.
+Repeated imports reuse these responses without contacting either service.
+Delete the corresponding cache files to refresh the data. Import logs show each
+step, cache hits and misses, request durations, and the generated output path.
 `display_name` becomes the course `name` (falling back to `slug` if absent);
 `venue_name` and `config_name` are stored as optional `venueName` and `configName`.
 The optional `location` object retains `city`, `state`, `country`, `lat`, and `lon`.

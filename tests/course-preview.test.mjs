@@ -5,6 +5,7 @@ import { createServer } from 'vite';
 let server;
 let coursePreviewSvg;
 let coursePreviewGeometry;
+let roadPreviewSvg;
 let courses;
 let courseRoute;
 let courseSpawn;
@@ -15,7 +16,7 @@ before(async () => {
     server: { middlewareMode: true, hmr: false, ws: false, watch: null },
     appType: 'custom',
   });
-  ({ coursePreviewSvg, coursePreviewGeometry } =
+  ({ coursePreviewSvg, coursePreviewGeometry, roadPreviewSvg } =
     await server.ssrLoadModule('/src/course-preview.ts'));
   ({ courses, courseRoute, courseSpawn, courseStartDistance } =
     await server.ssrLoadModule('/src/courses.ts'));
@@ -23,6 +24,23 @@ before(async () => {
 
 after(async () => {
   await server?.close();
+});
+
+test('road previews keep the route open and mark both endpoints', () => {
+  const svg = roadPreviewSvg(
+    [
+      { x: 0, z: 0 },
+      { x: 100, z: 0 },
+      { x: 100, z: 100 },
+    ],
+    15,
+    { title: '<Road>' },
+  );
+  const roadPath = svg.match(/<path d="([^"]+)"/)[1];
+  assert.equal((roadPath.match(/L/g) ?? []).length, 2);
+  assert.ok(!roadPath.includes('Z'));
+  assert.equal((svg.match(/stroke-dasharray=/g) ?? []).length, 2);
+  assert.ok(svg.includes('<title>&#60;Road&#62;</title>'));
 });
 
 test('course previews fit every course inside the padded square and mark the start', () => {

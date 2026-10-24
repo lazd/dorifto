@@ -10,7 +10,7 @@ const earthRadius = 6371008.8;
 const defaults = { width: 15, spacing: 8, elevationSpacing: 5, elevationSmoothing: 15 };
 const elevationEndpoint = 'https://epqs.nationalmap.gov/v1/json';
 const elevationCacheDir = fileURLToPath(
-  new URL('../src/trackImports/elevation-cache/', import.meta.url),
+  new URL('../track-import/elevation-cache/', import.meta.url),
 );
 
 /** Evenly resamples a closed polyline; the closing segment bridges any gap at the start line. */

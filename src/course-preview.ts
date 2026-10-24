@@ -74,14 +74,69 @@ export function coursePreviewSvg(definition: CourseDefinition, options: CoursePr
     samples,
     minStrokeWidth,
   );
-  const stroke = roadWidth;
+  return previewSvg(path, [startLine], roadWidth, size, title, trackColor, startColor);
+}
+
+/** Preview an ordered open road without adding a closing segment or smoothing its geometry. */
+export function roadPreviewSvg(
+  points: readonly { x: number; z: number }[],
+  width: number,
+  options: CoursePreviewOptions = {},
+) {
+  if (points.length < 2) throw new Error('Road preview requires at least two points');
+  const {
+    size = 200,
+    padding = 12,
+    trackColor = 'currentColor',
+    startColor = startLineStyle.light,
+    minStrokeWidth = 1.5,
+    title = 'Road preview',
+  } = options;
+  const { path, roadWidth, startLine } = createCourseMapGeometry(points, size, padding, width, {
+    minStrokeWidth,
+    invertZ: true,
+    closed: false,
+  });
+  const endpointLine = (point: { x: number; z: number }, next: { x: number; z: number }) => {
+    const length = Math.hypot(next.x - point.x, next.z - point.z);
+    if (!length) throw new Error('Road preview endpoints must have distinct neighboring points');
+    return startLine(point, { x: (next.x - point.x) / length, z: (next.z - point.z) / length });
+  };
+  return previewSvg(
+    path,
+    [
+      endpointLine(points[0], points[1]),
+      endpointLine(points[points.length - 1], points[points.length - 2]),
+    ],
+    roadWidth,
+    size,
+    title,
+    trackColor,
+    startColor,
+  );
+}
+
+function previewSvg(
+  path: string,
+  lines: readonly string[],
+  roadWidth: number,
+  size: number,
+  title: string,
+  trackColor: string,
+  startColor: string,
+) {
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${size}" width="${size}" height="${size}" role="img">` +
     `<title>${escape(title)}</title>` +
-    `<path d="${path}" fill="none" stroke="${escape(trackColor)}" stroke-width="${stroke.toFixed(2)}" stroke-linejoin="round"/>` +
+    `<path d="${path}" fill="none" stroke="${escape(trackColor)}" stroke-width="${roadWidth.toFixed(2)}" stroke-linejoin="round"/>` +
     `<g fill="none" stroke-width="${startLineStyle.width}">` +
-    `<path d="${startLine}" stroke="${startLineStyle.dark}"/>` +
-    `<path d="${startLine}" stroke="${escape(startColor)}" stroke-dasharray="${startLineStyle.dashArray}"/>` +
+    lines
+      .map(
+        (line) =>
+          `<path d="${line}" stroke="${startLineStyle.dark}"/>` +
+          `<path d="${line}" stroke="${escape(startColor)}" stroke-dasharray="${startLineStyle.dashArray}"/>`,
+      )
+      .join('') +
     '</g>' +
     '</svg>'
   );
