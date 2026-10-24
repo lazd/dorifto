@@ -658,7 +658,7 @@ export function bindCoursePicker(
   const savedDialog = element<HTMLDialogElement>('#saved-course-dialog');
   const savedForm = element<HTMLFormElement>('#saved-course-form');
   const savedTitle = bindText('#saved-course-title');
-  const savedDescription = bindText('#saved-course-description');
+  const savedDescription = element<HTMLParagraphElement>('#saved-course-description');
   const savedHelp = bindText('#saved-course-help');
   const savedNameField = element('#saved-course-name-field');
   const savedNameInput = element<HTMLInputElement>('#saved-course-name');
@@ -1181,15 +1181,20 @@ export function bindCoursePicker(
             ? 'Save course'
             : 'Rename course',
     );
-    savedDescription(
-      deletingReplay && replay
-        ? `Remove the ${replay.date} replay (${replay.laps}) from “${course.name}” · ${directionLabel(replay.direction)}? This cannot be undone.`
-        : deleting
-          ? `Remove “${course.name}” from your saved courses? This cannot be undone.${course.id === selected.id ? ' It is the current course, so the first built-in course will load.' : ''}`
-          : kind === 'save'
-            ? 'Name this layout to add it to your saved courses.'
-            : 'Choose a name for this saved course.',
-    );
+    if (deletingReplay && replay) {
+      const courseName = textElement('strong', '', course.name);
+      savedDescription.replaceChildren(
+        document.createTextNode(`Remove the ${replay.date} replay (${replay.laps}) from “`),
+        courseName,
+        document.createTextNode(`” · ${directionLabel(replay.direction)}? This cannot be undone.`),
+      );
+    } else {
+      savedDescription.textContent = deleting
+        ? `Remove “${course.name}” from your saved courses? This cannot be undone.${course.id === selected.id ? ' It is the current course, so the first built-in course will load.' : ''}`
+        : kind === 'save'
+          ? 'Name this layout to add it to your saved courses.'
+          : 'Choose a name for this saved course.';
+    }
     savedHelp(
       deletingReplay
         ? 'The course and local record are kept.'
@@ -1210,7 +1215,8 @@ export function bindCoursePicker(
     savedConfirm.classList.toggle('danger', deleting);
     savedDialog.showModal();
     notifyUIVisibility();
-    if (deleting) savedCancel.focus();
+    if (deletingReplay) savedConfirm.focus();
+    else if (deleting) savedCancel.focus();
     else savedNameInput.select();
   }
 

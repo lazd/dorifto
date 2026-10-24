@@ -1,5 +1,5 @@
 import type AmmoFactory from 'ammojs-typed';
-import { cellTriangles, type HeightfieldData } from './terrain-query';
+import { cellTriangles, vertexPosition, type HeightfieldData } from './terrain-query';
 
 export function createPhysicsResources(Ammo: typeof AmmoFactory) {
   const buffers: { pointer: number; capacity: number; used: boolean }[] = [];
@@ -39,7 +39,7 @@ export function createPhysicsWorld(
   const world = new Ammo.btDiscreteDynamicsWorld(dispatcher, broadphase, solver, configuration);
   const vector = new Ammo.btVector3(0, -9.81, 0);
   world.setGravity(vector);
-  const contours = terrain.flippedCells && contourCollider(Ammo, terrain);
+  const contours = (terrain.flippedCells || terrain.warpedCells) && contourCollider(Ammo, terrain);
   const heightData = resources.acquireHeightfield(contours?.heights ?? terrain.heights);
   const minHeight = contours?.minHeight ?? terrain.minHeight;
   const shape = new Ammo.btHeightfieldTerrainShape(
@@ -103,18 +103,20 @@ export function createPhysicsWorld(
 }
 
 /**
- * Bullet's heightfield always splits cells along one diagonal. Cells split the other way
- * are sunk out of reach in the heightfield and covered by a triangle mesh with the
- * rendered triangulation, so collision matches the visible terrain exactly.
+ * Bullet's heightfield always splits cells along one diagonal at grid positions. Cells
+ * split the other way or with warped corners are sunk out of reach in the heightfield and
+ * covered by a triangle mesh with the rendered triangulation, so collision matches the
+ * visible terrain exactly.
  */
 function contourCollider(Ammo: typeof AmmoFactory, terrain: HeightfieldData) {
-  const { columns, rows, spacing, minX, minZ, flippedCells } = terrain;
+  const { columns, rows, flippedCells, warpedCells } = terrain;
   const minHeight = terrain.minHeight - 10;
   const heights = terrain.heights.slice();
   const sunk = new Uint8Array(heights.length);
   for (let z = 0; z < rows - 1; z++)
     for (let x = 0; x < columns - 1; x++) {
-      if (!flippedCells?.[z * (columns - 1) + x]) continue;
+      const cell = z * (columns - 1) + x;
+      if (!flippedCells?.[cell] && !warpedCells?.[cell]) continue;
       const i = z * columns + x;
       for (const corner of [i, i + 1, i + columns, i + columns + 1]) {
         sunk[corner] = 1;
@@ -128,11 +130,8 @@ function contourCollider(Ammo: typeof AmmoFactory, terrain: HeightfieldData) {
   const vertex = (i: number) => {
     let index = vertices.get(i);
     if (index === undefined) {
-      vector.setValue(
-        minX + (i % columns) * spacing,
-        terrain.heights[i],
-        minZ + Math.floor(i / columns) * spacing,
-      );
+      const { x, z } = vertexPosition(terrain, i);
+      vector.setValue(x, terrain.heights[i], z);
       index = mesh.findOrAddVertex(vector, false);
       vertices.set(i, index);
     }

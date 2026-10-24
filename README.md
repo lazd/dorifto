@@ -581,10 +581,13 @@ fades out over a 3 m collar beyond the transition. The preview includes
 this setting in its copied import command.
 Within 20 m of the pavement, raster terrain splits each 1.5 m grid cell along the
 diagonal that best follows the hillside's contours instead of one fixed diagonal,
-which otherwise turns roadside walls into sawtooth facets. Cells whose flipped
-triangles could reach the pavement keep the default split. Bullet's heightfield
-only supports a fixed diagonal, so flipped cells are sunk below the heightfield and
-covered by a triangle-mesh collider with the rendered triangulation.
+which otherwise turns roadside walls into sawtooth facets. Grid vertices within half a
+cell of the collar's outer edge are snapped onto it, so the crest where the wall
+leaves the road follows the road instead of stair-stepping along grid rows.
+Pavement and paint are clipped against the same triangles. Bullet's heightfield
+only supports a fixed diagonal at grid positions, so flipped and snapped cells are
+sunk below the heightfield and covered by a triangle-mesh collider with the rendered
+triangulation.
 Rendering and physics use the same surface. Non-raster terrain keeps its existing
 wider transition and smoothing. Existing courses retain 1.6 m shoulders unless
 re-imported with `--shoulder-width`.
@@ -1114,7 +1117,8 @@ Terrain keeps a gravel shoulder, blending to muted meadow-green ground cover
 roughly 1.5–3.2 m beyond the pavement. Per-fragment noise breaks up the transition
 edge and adds broad color patches alongside the fine grass texture. Vegetation
 favors gentle slopes and fades to exposed earth between 30 and 50 degrees, using
-the smoothed heightfield.
+the steepest edge around each vertex of the smoothed heightfield so grass does not
+creep onto walls from the flat ground at their foot or crest.
 Grass includes subdued dry strands and broad color variation. Grass and soil use
 separate procedural normal maps blended with the surface coverage. Sparse instanced
 grass tufts add height along the verge, aligned to the terrain; they are decorative

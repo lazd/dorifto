@@ -8,6 +8,8 @@ import {
   cellTriangles,
   heightAt,
   normalAt,
+  triangleHeight,
+  vertexPosition,
   type TerrainQueryData,
 } from './terrain-query';
 
@@ -25,6 +27,8 @@ export class CourseTerrain {
   readonly minHeight: number;
   readonly maxHeight: number;
   readonly flippedCells?: Uint8Array;
+  readonly warpedCells?: Uint8Array;
+  readonly warpedVertices?: Map<number, Point>;
   private readonly segments;
   private readonly surface: TerrainSurface;
   private readonly halfWidth: number;
@@ -117,13 +121,26 @@ export class CourseTerrain {
     const blendEnd = rasterHeight
       ? blendStart + (definition.terrainTransition ?? 3)
       : Math.min(this.halfWidth + 48, 50);
+    // Snap vertices nearest the support edge onto it, so the wall's crest follows the road
+    // instead of stair-stepping along grid rows.
+    const warp =
+      rasterHeight && !definition.flat && this.padRadius === undefined
+        ? new Map<number, Point>()
+        : undefined;
     let min = Infinity;
     let max = -Infinity;
     for (let z = 0; z < this.rows; z++) {
       for (let x = 0; x < this.columns; x++) {
-        const px = this.minX + x * this.spacing;
-        const pz = this.minZ + z * this.spacing;
-        const near = this.nearest(px, pz);
+        let px = this.minX + x * this.spacing;
+        let pz = this.minZ + z * this.spacing;
+        let near = this.nearest(px, pz);
+        if (warp && Math.abs(near.distance - blendStart) <= this.spacing / 2) {
+          const scale = blendStart / near.distance;
+          px = near.x + (px - near.x) * scale;
+          pz = near.z + (pz - near.z) * scale;
+          near = this.nearest(px, pz);
+          warp.set(z * this.columns + x, { x: px, z: pz });
+        }
         const base = terrainBaseHeight(px, pz);
         const hills =
           12 + 9 * Math.sin(px / 48 + 0.6) * Math.cos(pz / 61) + 5 * Math.sin((px - pz) / 83);
@@ -190,6 +207,24 @@ export class CourseTerrain {
       }
       this.heights.set(smoothed);
     }
+    // Vegetation uses the steepest adjacent edges so vertices at the foot or crest of a wall
+    // don't average to gentle and spread grass across the wall's triangles. Snapped vertices
+    // sit closer than one grid step, so measure true horizontal distances.
+    const grade = (i: number, x: number, z: number, dx: number, dz: number) => {
+      let steepest = 0;
+      for (let sign = -1; sign <= 1; sign += 2) {
+        const nx = x + sign * dx;
+        const nz = z + sign * dz;
+        if (nx < 0 || nz < 0 || nx >= this.columns || nz >= this.rows) continue;
+        const n = nz * this.columns + nx;
+        const run = Math.hypot(
+          positions[n * 3] - positions[i * 3],
+          positions[n * 3 + 2] - positions[i * 3 + 2],
+        );
+        steepest = Math.max(steepest, Math.abs(this.heights[n] - this.heights[i]) / run);
+      }
+      return steepest;
+    };
     min = Infinity;
     max = -Infinity;
     for (let i = 0; i < this.heights.length; i++) {
@@ -198,18 +233,24 @@ export class CourseTerrain {
       max = Math.max(max, this.heights[i]);
       const x = i % this.columns;
       const z = Math.floor(i / this.columns);
-      const left = Math.max(x - 1, 0);
-      const right = Math.min(x + 1, this.columns - 1);
-      const back = Math.max(z - 1, 0);
-      const front = Math.min(z + 1, this.rows - 1);
-      const dx =
-        (this.heights[z * this.columns + right] - this.heights[z * this.columns + left]) /
-        ((right - left) * this.spacing);
-      const dz =
-        (this.heights[front * this.columns + x] - this.heights[back * this.columns + x]) /
-        ((front - back) * this.spacing);
-      const slope = Math.atan(Math.hypot(dx, dz));
+      const slope = Math.atan(
+        Math.max(
+          Math.hypot(grade(i, x, z, 1, 0), grade(i, x, z, 0, 1)),
+          Math.hypot(grade(i, x, z, 1, 1), grade(i, x, z, 1, -1)),
+        ),
+      );
       vegetation.push(roadDistances[i], slope);
+    }
+    if (warp?.size) {
+      this.warpedVertices = warp;
+      this.warpedCells = new Uint8Array((this.columns - 1) * (this.rows - 1));
+      for (const i of warp.keys()) {
+        const x = i % this.columns;
+        const z = Math.floor(i / this.columns);
+        for (let cz = Math.max(z - 1, 0); cz <= Math.min(z, this.rows - 2); cz++)
+          for (let cx = Math.max(x - 1, 0); cx <= Math.min(x, this.columns - 2); cx++)
+            this.warpedCells[cz * (this.columns - 1) + cx] = 1;
+      }
     }
     if (rasterHeight && !definition.flat)
       this.flippedCells = flipCellsAlongContours(
@@ -217,8 +258,8 @@ export class CourseTerrain {
         roadDistances,
         this.columns,
         this.rows,
-        this.spacing,
         supportWidth,
+        warp,
       );
     // Bullet needs a nonzero vertical range even for an entirely flat heightfield.
     this.minHeight = min === max ? min - 0.01 : min;
@@ -447,6 +488,8 @@ export class CourseTerrain {
       minHeight,
       maxHeight,
       flippedCells,
+      warpedCells,
+      warpedVertices,
       segments,
       halfWidth,
       padRadius,
@@ -461,6 +504,8 @@ export class CourseTerrain {
       minHeight,
       maxHeight,
       flippedCells,
+      warpedCells,
+      warpedVertices,
       segments,
       halfWidth,
       padRadius,
@@ -499,24 +544,22 @@ export class CourseTerrain {
       const maxX = Math.floor((Math.max(...triangle.map((p) => p.x)) - this.minX) / this.spacing);
       const minZ = Math.floor((Math.min(...triangle.map((p) => p.z)) - this.minZ) / this.spacing);
       const maxZ = Math.floor((Math.max(...triangle.map((p) => p.z)) - this.minZ) / this.spacing);
-      for (let z = minZ; z <= maxZ; z++) {
-        for (let x = minX; x <= maxX; x++) {
-          const px = this.minX + x * this.spacing;
-          const pz = this.minZ + z * this.spacing;
-          const a = { x: px, z: pz };
-          const b = { x: px + this.spacing, z: pz };
-          const c = { x: px, z: pz + this.spacing };
-          const d = { x: px + this.spacing, z: pz + this.spacing };
+      // Warped cells can reach into the neighbors of the triangle's bounding cells.
+      const pad = this.warpedCells ? 1 : 0;
+      for (let z = Math.max(minZ - pad, 0); z <= Math.min(maxZ + pad, this.rows - 2); z++) {
+        for (let x = Math.max(minX - pad, 0); x <= Math.min(maxX + pad, this.columns - 2); x++) {
+          const corners = cellTriangles(this, x, z);
           for (const cell of [
-            [a, b, c],
-            [b, d, c],
+            [corners[0], corners[2], corners[1]],
+            [corners[3], corners[5], corners[4]],
           ]) {
+            const points = cell.map((i) => vertexPosition(this, i));
             let polygon = triangle;
-            for (let edge = 0; edge < 3; edge++)
-              polygon = clip(polygon, cell[edge], cell[(edge + 1) % 3]);
+            for (let edge = 0; edge < 3 && polygon.length; edge++)
+              polygon = clip(polygon, points[edge], points[(edge + 1) % 3]);
             for (let j = 1; j < polygon.length - 1; j++) {
               for (const p of [polygon[0], polygon[j], polygon[j + 1]]) {
-                positions.push(p.x, this.heightAt(p.x, p.z) + lift, p.z);
+                positions.push(p.x, triangleHeight(this, cell, p.x, p.z)! + lift, p.z);
                 uv.push(p.x / 5, p.z / 5);
               }
             }
@@ -577,24 +620,20 @@ const contourCorridor = 20;
 /**
  * A fixed diagonal turns roadside walls crossing it into sawtooth facets. Near the road,
  * split each cell along the diagonal whose corners differ least, following the wall's
- * contours. Vertices within `support` of the pavement lie exactly on the road profile; a
- * flipped triangle using any other vertex must stay clear of the pavement.
+ * contours. Cells within `support` of the pavement lie on the road profile; the support is
+ * a cell diagonal wide, so no other cell reaches the pavement. A triangle with three corners
+ * snapped onto the support edge would collapse, so such cells take the other diagonal.
  */
 function flipCellsAlongContours(
   heights: Float32Array,
   roadDistances: Float32Array,
   columns: number,
   rows: number,
-  spacing: number,
   support: number,
+  warped?: Map<number, unknown>,
 ) {
   const flipped = new Uint8Array((columns - 1) * (rows - 1));
-  // Every point of a grid triangle lies within half a cell diagonal of one of its vertices.
-  const clearance = (spacing * Math.SQRT2) / 2;
-  const safe = (...corners: number[]) => {
-    const distances = corners.map((i) => roadDistances[i]);
-    return Math.max(...distances) <= support || Math.min(...distances) > clearance;
-  };
+  const collapsed = (...corners: number[]) => corners.every((i) => warped?.has(i));
   for (let z = 0; z < rows - 1; z++) {
     for (let x = 0; x < columns - 1; x++) {
       const a = z * columns + x;
@@ -603,9 +642,13 @@ function flipCellsAlongContours(
       const d = c + 1;
       const near = Math.min(roadDistances[a], roadDistances[b], roadDistances[c], roadDistances[d]);
       const far = Math.max(roadDistances[a], roadDistances[b], roadDistances[c], roadDistances[d]);
-      if (far <= support || near > contourCorridor) continue;
-      if (Math.abs(heights[b] - heights[c]) <= Math.abs(heights[a] - heights[d])) continue;
-      if (safe(a, c, d) && safe(a, d, b)) flipped[z * (columns - 1) + x] = 1;
+      const keep = collapsed(a, c, d) || collapsed(a, d, b);
+      const flip = collapsed(a, c, b) || collapsed(b, c, d);
+      if (flip !== keep) flipped[z * (columns - 1) + x] = Number(flip);
+      else if (far > support + 1e-3 && near <= contourCorridor)
+        flipped[z * (columns - 1) + x] = Number(
+          Math.abs(heights[b] - heights[c]) > Math.abs(heights[a] - heights[d]),
+        );
     }
   }
   return flipped;

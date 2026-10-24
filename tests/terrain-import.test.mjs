@@ -166,15 +166,24 @@ test('terrain sampling preserves geographic orientation, height datum, and rever
       const Ammo = await AmmoFactory.call({});
       const data = narrow.physicsData();
       const physics = createPhysicsWorld(Ammo, createPhysicsResources(Ammo), data);
+      const { cellTriangles, vertexPosition } = await server.ssrLoadModule('/src/terrain-query.ts');
       const from = new Ammo.btVector3();
       const to = new Ammo.btVector3();
       let flipped = 0;
+      let warped = 0;
       for (let z = 0; z < narrow.rows - 1; z++) {
         for (let x = 0; x < narrow.columns - 1; x++) {
           const cell = z * (narrow.columns - 1) + x;
           const neighbor = data.flippedCells[cell - 1] || data.flippedCells[cell + 1];
-          if (!data.flippedCells[cell] && !neighbor) continue;
+          if (!data.flippedCells[cell] && !data.warpedCells[cell] && !neighbor) continue;
           flipped += data.flippedCells[cell];
+          warped += data.warpedCells[cell];
+          const corners = cellTriangles(data, x, z);
+          for (let t = 0; t < 6; t += 3) {
+            const [p, q, r] = corners.slice(t, t + 3).map((i) => vertexPosition(data, i));
+            const area = (q.x - p.x) * (r.z - p.z) - (r.x - p.x) * (q.z - p.z);
+            assert.ok(area < -0.01, 'snapped vertices must not fold or collapse triangles');
+          }
           for (const [u, v] of [
             [0.7, 0.2],
             [0.2, 0.7],
@@ -197,6 +206,7 @@ test('terrain sampling preserves geographic orientation, height datum, and rever
         }
       }
       assert.ok(flipped > 0, 'roadside cells follow wall contours');
+      assert.ok(warped > 0, 'grid vertices snap onto the support edge');
       Ammo.destroy(from);
       Ammo.destroy(to);
       physics.dispose();

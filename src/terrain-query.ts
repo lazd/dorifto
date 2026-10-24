@@ -11,6 +11,10 @@ export interface HeightfieldData {
   maxHeight: number;
   /** Per-cell flags; 1 splits the cell along its other diagonal (corner 0 to corner 3). */
   flippedCells?: Uint8Array;
+  /** Per-cell flags; 1 marks a cell with a corner in `warpedVertices`. */
+  warpedCells?: Uint8Array;
+  /** World positions of grid vertices moved off the regular grid. */
+  warpedVertices?: Map<number, { x: number; z: number }>;
 }
 
 export interface SurfaceSegment {
@@ -103,6 +107,17 @@ export function heightAt(terrain: HeightfieldData, x: number, z: number) {
   const u = gx - ix;
   const v = gz - iz;
   const i = iz * columns + ix;
+  if (terrain.warpedCells?.[iz * (columns - 1) + ix]) {
+    // Warped vertices move less than half a cell, so the containing triangle is in a neighbor.
+    for (let cz = Math.max(iz - 1, 0); cz <= Math.min(iz + 1, rows - 2); cz++)
+      for (let cx = Math.max(ix - 1, 0); cx <= Math.min(ix + 1, columns - 2); cx++) {
+        const corners = cellTriangles(terrain, cx, cz);
+        for (let t = 0; t < 6; t += 3) {
+          const height = triangleHeight(terrain, corners.slice(t, t + 3), x, z, 1e-6);
+          if (height !== undefined) return height;
+        }
+      }
+  }
   const a = heights[i];
   const b = heights[i + 1];
   const c = heights[i + columns];
@@ -119,6 +134,34 @@ export function normalAt(terrain: HeightfieldData, x: number, z: number) {
     2 * delta,
     heightAt(terrain, x, z - delta) - heightAt(terrain, x, z + delta),
   ).normalize();
+}
+
+export function vertexPosition(terrain: HeightfieldData, i: number) {
+  return (
+    terrain.warpedVertices?.get(i) ?? {
+      x: terrain.minX + (i % terrain.columns) * terrain.spacing,
+      z: terrain.minZ + Math.floor(i / terrain.columns) * terrain.spacing,
+    }
+  );
+}
+
+/** Height of a triangle's plane at (x, z), or undefined outside it beyond `tolerance`. */
+export function triangleHeight(
+  terrain: HeightfieldData,
+  corners: number[],
+  x: number,
+  z: number,
+  tolerance = Infinity,
+) {
+  const [p, q, r] = corners.map((i) => vertexPosition(terrain, i));
+  const area = (q.x - p.x) * (r.z - p.z) - (r.x - p.x) * (q.z - p.z);
+  if (Math.abs(area) < 1e-9) return undefined;
+  const wq = ((x - p.x) * (r.z - p.z) - (r.x - p.x) * (z - p.z)) / area;
+  const wr = ((q.x - p.x) * (z - p.z) - (x - p.x) * (q.z - p.z)) / area;
+  const wp = 1 - wq - wr;
+  if (Math.min(wp, wq, wr) < -tolerance) return undefined;
+  const { heights } = terrain;
+  return wp * heights[corners[0]] + wq * heights[corners[1]] + wr * heights[corners[2]];
 }
 
 /** Grid-vertex indices of a cell's two triangles, matching `heightAt` and Bullet's default split. */

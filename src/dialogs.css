@@ -247,6 +247,11 @@ dialog input {
   margin: 0;
 }
 
+.confirm-dialog .dialog-footer .dialog-actions {
+  flex-wrap: nowrap;
+  flex-shrink: 0;
+}
+
 dialog .dialog-help {
   display: flex;
   align-items: baseline;
