@@ -5,7 +5,13 @@ import { redlineRpm } from './drivetrain';
 import { courseRoute, generateCourse, racetracks, type CourseDefinition } from './courses';
 import { coursePreviewSvg } from './course-preview';
 import { CoursePreviewRenderer } from './course-preview-3d';
-import { courseDirectionRecords, describeRun, type RunSummary } from './lap-recording';
+import {
+  courseDirectionRecords,
+  describeRun,
+  exportRun,
+  replayStorageKey,
+  type RunSummary,
+} from './lap-recording';
 import './course-picker.css';
 import { bindSettingsLayout } from './settings';
 import { bindControlsSettings } from './controls-settings';
@@ -861,6 +867,20 @@ export function bindCoursePicker(
         const { date, laps } = describeRun(run);
         const driver = run.driver?.startsWith('bot') ? ' · Bot' : '';
         const row = textElement('li', 'record-row', '');
+        row.title = 'Right-click to copy run JSON';
+        row.addEventListener('contextmenu', async (event) => {
+          event.preventDefault();
+          pickerError('');
+          pickerStatus('');
+          try {
+            const key = replayStorageKey({ ...course, reverse: direction });
+            await navigator.clipboard.writeText(exportRun(key, run.id));
+            pickerStatus('Run JSON copied to clipboard.');
+          } catch (error) {
+            actions.reportError(error);
+            pickerError(`Unable to copy run JSON: ${errorText(error)}`);
+          }
+        });
         const time = textElement(
           'div',
           'record-time',
@@ -893,9 +913,9 @@ export function bindCoursePicker(
         remove.addEventListener('click', () => {
           editSavedCourse('delete-replay', course, remove, { id: run.id, direction, date, laps });
         });
-        const actions = textElement('div', 'record-actions', '');
-        actions.append(remove, watch);
-        row.append(text, actions);
+        const runActions = textElement('div', 'record-actions', '');
+        runActions.append(remove, watch);
+        row.append(text, runActions);
         return row;
       }),
     );

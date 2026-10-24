@@ -675,6 +675,22 @@ export async function saveRun(
   };
 }
 
+/** Export one run as localStorage-compatible JSON, including its compressed frames. */
+export function exportRun(key: string, id: string, storage: Storage = localStorage) {
+  const run = readIndex(storage, key).find((run) => run.id === id);
+  const dataKey = `${storagePrefix}:${key}:${id}`;
+  const payload = storage.getItem(dataKey);
+  if (!run || payload === null) throw new Error('Saved laps not found');
+  return JSON.stringify(
+    {
+      [`${storagePrefix}:${key}`]: JSON.stringify([run]),
+      [dataKey]: payload,
+    },
+    null,
+    2,
+  );
+}
+
 export async function loadRun(key: string, id: string, storage: Storage = localStorage) {
   const run = readIndex(storage, key).find((run) => run.id === id);
   const payload = storage.getItem(`${storagePrefix}:${key}:${id}`);

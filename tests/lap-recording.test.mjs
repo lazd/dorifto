@@ -276,7 +276,16 @@ test('round-trips runs through compressed storage per course and direction', asy
     [saved.id],
   );
   assert.deepEqual(saved.laps, [1, 0.8]);
+  const exported = JSON.parse(recording.exportRun(key, saved.id, storage));
+  const exportedStorage = new MemoryStorage();
+  for (const [name, value] of Object.entries(exported)) exportedStorage.setItem(name, value);
+  assert.deepEqual(
+    recording.listSavedRuns(key, exportedStorage),
+    recording.listSavedRuns(key, storage),
+  );
+  const exportedRun = await recording.loadRun(key, saved.id, exportedStorage);
   const loaded = await recording.loadRun(key, saved.id, storage);
+  assert.deepEqual(exportedRun, loaded);
   assert.equal(loaded.count, run.count);
   assert.deepEqual(loaded.lapStarts, run.lapStarts);
   const a = recording.createReplayFrame();
@@ -289,6 +298,7 @@ test('round-trips runs through compressed storage per course and direction', asy
   assert.ok(Math.abs(a.rpm - b.rpm) < 1);
   assert.ok(Math.abs(a.tires[3].slip - b.tires[3].slip) < 0.01);
   recording.deleteRun(key, saved.id, storage);
+  assert.throws(() => recording.exportRun(key, saved.id, storage), /Saved laps not found/);
   assert.deepEqual(recording.listSavedRuns(key, storage), []);
   assert.equal(storage.map.size, 1);
 });

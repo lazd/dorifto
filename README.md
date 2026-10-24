@@ -1100,7 +1100,9 @@ replays stay reachable; loading it rebuilds the same seed. The group disappears 
 the layout is saved or another course loads. The Saved courses group explains how to save
 a course when empty. A saved course's action disclosure offers rename and confirmed
 deletion.
-Replay rows offer **Watch** and confirmed **Delete** actions. Deleting a replay
+Replay rows offer **Watch** and confirmed **Delete** actions. Right-click a row to
+copy that run's JSON to the clipboard, including its metadata and compressed frames
+in localStorage-compatible format. Deleting a replay
 does not load its course or remove the local record. Saved-run playback and deletion
 live in the course picker; the main HUD only shows the stop-recording button while
 recording, and lap navigation during replay.
