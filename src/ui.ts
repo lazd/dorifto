@@ -658,7 +658,7 @@ export function bindCoursePicker(
   const savedDialog = element<HTMLDialogElement>('#saved-course-dialog');
   const savedForm = element<HTMLFormElement>('#saved-course-form');
   const savedTitle = bindText('#saved-course-title');
-  const savedDescription = element<HTMLParagraphElement>('#saved-course-description');
+  const savedDescription = element<HTMLDivElement>('#saved-course-description');
   const savedHelp = bindText('#saved-course-help');
   const savedNameField = element('#saved-course-name-field');
   const savedNameInput = element<HTMLInputElement>('#saved-course-name');
@@ -1182,16 +1182,29 @@ export function bindCoursePicker(
             : 'Rename course',
     );
     if (deletingReplay && replay) {
+      const request = textElement('p', '', '');
+      const replayName = textElement('strong', '', `${replay.date} replay (${replay.laps})`);
       const courseName = textElement('strong', '', course.name);
-      savedDescription.replaceChildren(
-        document.createTextNode(`Remove the ${replay.date} replay (${replay.laps}) from “`),
+      request.append(
+        document.createTextNode('Remove the '),
+        replayName,
+        document.createTextNode(' from '),
         courseName,
-        document.createTextNode(`” · ${directionLabel(replay.direction)}? This cannot be undone.`),
+        document.createTextNode(` (${directionLabel(replay.direction)})?`),
       );
+      savedDescription.replaceChildren(request, textElement('p', '', 'This cannot be undone.'));
+    } else if (deleting) {
+      savedDescription.replaceChildren(
+        textElement('p', '', `Remove “${course.name}” from your saved courses?`),
+        textElement('p', '', 'This cannot be undone.'),
+      );
+      if (course.id === selected.id)
+        savedDescription.append(
+          textElement('p', '', 'It is the current course, so the first built-in course will load.'),
+        );
     } else {
-      savedDescription.textContent = deleting
-        ? `Remove “${course.name}” from your saved courses? This cannot be undone.${course.id === selected.id ? ' It is the current course, so the first built-in course will load.' : ''}`
-        : kind === 'save'
+      savedDescription.textContent =
+        kind === 'save'
           ? 'Name this layout to add it to your saved courses.'
           : 'Choose a name for this saved course.';
     }

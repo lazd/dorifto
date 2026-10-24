@@ -292,10 +292,6 @@ dialog .course-preview-heading h3 {
   margin: 0;
 }
 
-.confirm-dialog {
-  width: min(26rem, calc(100vw - var(--space-6)));
-}
-
 @media (max-width: 40rem) {
   .course-picker .master-detail {
     grid-template-rows: minmax(8rem, 0.8fr) minmax(0, 1fr);

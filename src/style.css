@@ -144,7 +144,6 @@ h1 span {
   flex-direction: column;
   gap: 8px;
   max-height: calc(100dvh - 56px);
-  overflow-y: auto;
   scrollbar-width: thin;
 }
 .hud-panel {
@@ -747,7 +746,7 @@ dialog .dialog-close {
 .dialog-actions {
   display: flex;
   justify-content: space-between;
-  gap: var(--space-3);
+  gap: var(--space-4);
   margin-top: var(--space-5);
 }
 .avatar {

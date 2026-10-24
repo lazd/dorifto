@@ -180,6 +180,24 @@ dialog :is(button, select, input, summary, a):focus-visible {
   outline-offset: calc(3 * var(--line));
 }
 
+dialog .button:focus-visible {
+  background: var(--color-selected);
+  border-color: var(--color-accent);
+  color: var(--color-text);
+}
+
+dialog .button-primary:focus-visible {
+  background: var(--color-highlight);
+  border-color: var(--color-highlight);
+  color: var(--color-sunken);
+}
+
+dialog .button-primary.danger:focus-visible {
+  background: color-mix(in srgb, var(--color-danger), var(--color-sunken) 6%);
+  border-color: color-mix(in srgb, var(--color-danger), var(--color-sunken) 6%);
+  color: var(--color-sunken);
+}
+
 dialog [tabindex='-1']:focus {
   outline: none;
 }
@@ -247,9 +265,8 @@ dialog input {
   margin: 0;
 }
 
-.confirm-dialog .dialog-footer .dialog-actions {
-  flex-wrap: nowrap;
-  flex-shrink: 0;
+.confirm-dialog .dialog-footer .dialog-actions .button {
+  padding-inline: var(--space-3);
 }
 
 dialog .dialog-help {
@@ -262,13 +279,9 @@ dialog .dialog-help {
 }
 
 .dialog-help::before {
-  content: '';
-  flex: 0 0 var(--space-1);
-  width: var(--space-1);
-  height: var(--space-1);
+  content: 'ℹ️';
+  flex: 0 0 auto;
   align-self: center;
-  border-radius: 50%;
-  background: currentColor;
 }
 
 .tabs[role='tablist'],
@@ -645,5 +658,9 @@ dialog .selection-group-heading {
   }
   .dialog-footer .dialog-actions {
     margin-left: auto;
+  }
+  .confirm-dialog .dialog-help {
+    flex-basis: 100%;
+    white-space: normal;
   }
 }
