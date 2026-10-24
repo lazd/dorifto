@@ -415,7 +415,6 @@
         </button>
       </form>
       <h2 id="settings-title" tabindex="-1" autofocus>Settings</h2>
-      <p>Make yourself at home behind the wheel.</p>
       <div class="tabs category-layout" id="settings-tabs">
         <div role="tablist" aria-label="Settings categories" aria-orientation="vertical">
           <button
@@ -469,8 +468,280 @@
             aria-labelledby="settings-controls-tab"
           >
             <h3>Controls</h3>
-            <p id="controller-status" role="status"></p>
-            <div id="controls-settings"></div>
+            <div class="controls-settings" id="controls-settings">
+              <div class="controls-settings__toolbar">
+                <div class="tabs tabs-underlined" role="tablist" aria-label="Input device">
+                  <button
+                    type="button"
+                    role="tab"
+                    id="controls-keyboard-tab"
+                    aria-controls="controls-keyboard-panel"
+                  >
+                    Keyboard
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    id="controls-controller-tab"
+                    aria-controls="controls-controller-panel"
+                  >
+                    Xbox controller
+                  </button>
+                </div>
+              </div>
+              <section
+                id="controls-keyboard-panel"
+                role="tabpanel"
+                aria-labelledby="controls-keyboard-tab"
+              >
+                <div class="input-diagram">
+                  <div
+                    class="keyboard-diagram"
+                    role="img"
+                    aria-label="ANSI QWERTY keyboard diagram"
+                  ></div>
+                  <div class="controls-settings__legend">
+                    <span><i class="controls-settings__legend-primary"></i>Driving controls</span
+                    ><span><i class="controls-settings__legend-secondary"></i>Other shortcuts</span>
+                  </div>
+                </div>
+                <div
+                  class="tabs tabs-underlined controls-settings__group-tabs"
+                  role="tablist"
+                  aria-label="Keyboard binding groups"
+                >
+                  <button
+                    type="button"
+                    role="tab"
+                    id="controls-driving-tab"
+                    aria-controls="controls-driving-panel"
+                  >
+                    Driving
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    id="controls-shortcuts-tab"
+                    aria-controls="controls-shortcuts-panel"
+                  >
+                    Camera, lights &amp; shortcuts
+                  </button>
+                </div>
+                <section
+                  id="controls-driving-panel"
+                  role="tabpanel"
+                  aria-labelledby="controls-driving-tab"
+                >
+                  <div class="controls-settings__binding-heading">
+                    <span>Click a binding to change it · Esc to cancel</span>
+                  </div>
+                  <div class="binding-list" data-keyboard-group="driving"></div>
+                  <p class="help-text">
+                    Accelerate + brake: brakestand below 2.5 mph; all-wheel braking at higher
+                    speeds.
+                  </p>
+                </section>
+                <section
+                  id="controls-shortcuts-panel"
+                  role="tabpanel"
+                  aria-labelledby="controls-shortcuts-tab"
+                >
+                  <div class="controls-settings__binding-heading">
+                    <span>Click a binding to change it · Esc to cancel</span>
+                  </div>
+                  <div class="binding-list" data-keyboard-group="shortcuts"></div>
+                  <div class="controls-settings__shortcuts-help">
+                    <p class="help-text">Hold headlights for 1 second to toggle fog lights.</p>
+                    <p class="help-text">Hold high beams for 1 second to toggle them on or off.</p>
+                  </div>
+                </section>
+              </section>
+              <section
+                id="controls-controller-panel"
+                role="tabpanel"
+                aria-labelledby="controls-controller-tab"
+                hidden
+              >
+                <div class="input-diagram controller-preview">
+                  <p
+                    id="controller-status"
+                    class="controls-settings__device-status"
+                    role="status"
+                  ></p>
+                  <svg
+                    class="gamepad-diagram"
+                    viewBox="0 -40 760 240"
+                    role="img"
+                    aria-label="Xbox controller diagram with current control bindings"
+                  >
+                    <g class="gamepad-diagram__shell">
+                      <path
+                        d="M248 52 Q258 25 284 28 Q380 12 476 28 Q502 25 512 52 Q530 102 538 151 Q542 181 523 186 Q507 190 491 165 L464 132 Q442 120 417 128 Q380 138 343 128 Q318 120 296 132 L269 165 Q253 190 237 186 Q218 181 222 151 Q230 102 248 52Z"
+                      />
+                      <path
+                        d="M276 31 L279 12 Q294 4 311 12 L315 30 M445 30 L449 12 Q466 4 481 12 L484 31"
+                      />
+                    </g>
+                    <g class="gamepad-diagram__stick">
+                      <circle cx="294" cy="72" r="22" data-pad="10" />
+                      <circle cx="407" cy="102" r="22" data-pad="11" />
+                    </g>
+                    <g class="gamepad-diagram__dpad">
+                      <path d="M326 78 H342 V90 H354 V106 H342 V118 H326 V106 H314 V90 H326Z" />
+                      <rect x="326" y="78" width="16" height="12" data-pad="12" />
+                      <rect x="326" y="106" width="16" height="12" data-pad="13" />
+                      <rect x="314" y="90" width="12" height="16" data-pad="14" />
+                      <rect x="342" y="90" width="12" height="16" data-pad="15" />
+                    </g>
+                    <g class="gamepad-diagram__buttons">
+                      <circle cx="468" cy="55" r="12" data-pad="3" />
+                      <circle cx="489" cy="76" r="12" data-pad="1" />
+                      <circle cx="447" cy="76" r="12" data-pad="2" />
+                      <circle cx="468" cy="97" r="12" data-pad="0" />
+                      <text x="468" y="59" data-pad="3">Y</text>
+                      <text x="489" y="80" data-pad="1">B</text>
+                      <text x="447" y="80" data-pad="2">X</text>
+                      <text x="468" y="101" data-pad="0">A</text>
+                    </g>
+                    <g class="gamepad-diagram__callouts" data-driving-callouts>
+                      <text class="is-left" x="154" y="21" data-action-callout="brake">Brake</text>
+                      <text x="606" y="21" data-action-callout="accelerate">Accelerate</text>
+                      <text class="is-left" x="154" y="58" data-action-callout="highBeams">
+                        High beams
+                      </text>
+                      <text x="606" y="58" data-action-callout="handbrake">Handbrake</text>
+                      <text class="is-left" x="154" y="103">Steer</text>
+                      <text x="606" y="86" data-action-callout="driveMode">Grip / Drift</text>
+                      <text x="606" y="114" data-action-callout="map">Map</text>
+                      <text
+                        class="is-center is-bottom"
+                        x="550"
+                        y="194"
+                        data-action-callout="headlights"
+                      >
+                        Headlights
+                      </text>
+                      <text class="is-center is-top" x="450" y="-20" data-action-callout="reset">
+                        Reset
+                      </text>
+                      <text class="is-center is-top" x="300" y="-20" data-action-callout="camera">
+                        Camera
+                      </text>
+                      <text class="is-center" x="380" y="194" data-action-callout="lookBehind">
+                        Look behind
+                      </text>
+                      <path
+                        class="gamepad-diagram__connector"
+                        d="M598 165 H568 L468 110"
+                        aria-hidden="true"
+                      />
+                      <text x="606" y="169" data-button-callout="0">A: Unbound</text>
+                    </g>
+                    <g class="gamepad-diagram__callouts" data-map-callouts hidden>
+                      <g data-map-axis="0" hidden>
+                        <path
+                          class="gamepad-diagram__connector"
+                          d="M162 66 H202 L294 72"
+                          aria-hidden="true"
+                        />
+                        <text class="is-left" x="154" y="70"></text>
+                      </g>
+                      <g data-map-axis="1" hidden>
+                        <path
+                          class="gamepad-diagram__connector"
+                          d="M162 108 H202 L294 72"
+                          aria-hidden="true"
+                        />
+                        <text class="is-left" x="154" y="112"></text>
+                      </g>
+                      <g data-map-axis="2" hidden>
+                        <path
+                          class="gamepad-diagram__connector"
+                          d="M598 99 H568 L407 102"
+                          aria-hidden="true"
+                        />
+                        <text x="606" y="103"></text>
+                      </g>
+                      <g data-map-axis="3" hidden>
+                        <path
+                          class="gamepad-diagram__connector"
+                          d="M598 141 H568 L407 102"
+                          aria-hidden="true"
+                        />
+                        <text x="606" y="145"></text>
+                      </g>
+                      <text x="606" y="58" data-action-callout="map">Return to driving</text>
+                    </g>
+                    <g class="gamepad-diagram__labels">
+                      <circle cx="358" cy="58" r="5" data-pad="8" />
+                      <circle cx="398" cy="58" r="5" data-pad="9" />
+                      <text x="298" y="18" data-pad="6">LT</text>
+                      <text x="463" y="18" data-pad="7">RT</text>
+                      <text x="296" y="32" data-pad="4">LB</text>
+                      <text x="464" y="32" data-pad="5">RB</text>
+                    </g>
+                    <g class="gamepad-diagram__connectors" aria-hidden="true"></g>
+                  </svg>
+                </div>
+                <div
+                  class="tabs tabs-underlined controls-settings__group-tabs"
+                  role="tablist"
+                  aria-label="Controller binding context"
+                >
+                  <button
+                    type="button"
+                    role="tab"
+                    id="controls-controller-driving-tab"
+                    aria-controls="controls-controller-driving-panel"
+                  >
+                    Driving
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    id="controls-controller-map-tab"
+                    aria-controls="controls-controller-map-panel"
+                  >
+                    Map view
+                  </button>
+                </div>
+                <section
+                  id="controls-controller-driving-panel"
+                  role="tabpanel"
+                  aria-labelledby="controls-controller-driving-tab"
+                >
+                  <div class="controls-settings__binding-heading">
+                    <span>Click a binding, then press a controller button</span>
+                  </div>
+                  <div class="binding-list" data-controller-bindings></div>
+                  <p class="help-text">
+                    Right stick adjusts the camera; hold left or right for turn signals. Click the
+                    right stick to look behind.
+                  </p>
+                </section>
+                <section
+                  id="controls-controller-map-panel"
+                  role="tabpanel"
+                  aria-labelledby="controls-controller-map-tab"
+                  hidden
+                >
+                  <div class="controls-settings__binding-heading">
+                    <span>
+                      Assign map controls independently. Driving controls remain active; turn-signal
+                      holds and look-behind are inactive in map view.
+                    </span>
+                  </div>
+                  <div class="controls-settings__axes" data-map-axes></div>
+                  <div class="binding-list" data-map-return></div>
+                </section>
+              </section>
+              <div class="controls-settings__footer">
+                <p class="controls-settings__status" role="status" aria-live="polite"></p>
+                <button class="button button-secondary" type="button" data-reset>
+                  Restore defaults
+                </button>
+              </div>
+            </div>
           </section>
           <section
             id="settings-audio-panel"
@@ -584,10 +855,18 @@
                 </div>
                 <div
                   class="setting-illustration"
-                  data-illustration="minimap"
                   role="img"
                   aria-label="Illustration of the minimap showing your position on the course"
-                ></div>
+                >
+                  <svg viewBox="0 0 224 126" aria-hidden="true">
+                    <path
+                      class="illustration-map"
+                      d="M65 40 Q30 40 35 75 T80 108 L152 82 Q180 70 163 43 T125 44 Q105 65 88 48Z"
+                    />
+                    <path class="illustration-position" d="M96 83 L107 104 L96 99 L85 104Z" />
+                  </svg>
+                  <span aria-hidden="true">Illustration</span>
+                </div>
               </section>
               <section class="illustrated-setting">
                 <div class="field">
@@ -605,10 +884,19 @@
                 </div>
                 <div
                   class="setting-illustration"
-                  data-illustration="ghost"
                   role="img"
                   aria-label="Illustration of a translucent reference car ahead on the track"
-                ></div>
+                >
+                  <svg viewBox="0 0 224 126" aria-hidden="true">
+                    <path class="illustration-road" d="M40 126 Q68 85 112 78 T190 26" />
+                    <path class="illustration-line" d="M40 126 Q68 85 112 78 T190 26" />
+                    <g class="illustration-ghost" transform="translate(117 75) rotate(55)">
+                      <rect x="-9" y="-17" width="18" height="34" rx="5" />
+                      <path class="illustration-window" d="M-6-8 H6 V4 H-6Z" />
+                    </g>
+                  </svg>
+                  <span aria-hidden="true">Illustration</span>
+                </div>
               </section>
               <section class="illustrated-setting">
                 <div class="field">
@@ -624,10 +912,20 @@
                 </div>
                 <div
                   class="setting-illustration"
-                  data-illustration="gates"
                   role="img"
                   aria-label="Illustration of training gates along a corner's racing line"
-                ></div>
+                >
+                  <svg viewBox="0 0 224 126" aria-hidden="true">
+                    <path class="illustration-road" d="M40 126 Q68 85 112 78 T190 26" />
+                    <path class="illustration-line" d="M40 126 Q68 85 112 78 T190 26" />
+                    <g class="illustration-gate">
+                      <path d="M60 98 V67 H104 V80" />
+                      <path d="M111 73 V44 H151 V58" />
+                      <path d="M154 48 V22 H187 V33" />
+                    </g>
+                  </svg>
+                  <span aria-hidden="true">Illustration</span>
+                </div>
               </section>
             </div>
           </section>
@@ -654,10 +952,35 @@
                 </div>
                 <div
                   class="setting-illustration"
-                  data-illustration="cones"
                   role="img"
                   aria-label="Illustration of cones marking a corner"
-                ></div>
+                >
+                  <svg viewBox="0 0 224 126" aria-hidden="true">
+                    <path class="illustration-road" d="M40 126 Q68 85 112 78 T190 26" />
+                    <path class="illustration-line" d="M40 126 Q68 85 112 78 T190 26" />
+                    <g transform="translate(55 83)">
+                      <path class="illustration-cone" d="M-5 0 L0-16 L5 0Z" />
+                      <path class="illustration-mark" d="M-3-6 H3" />
+                    </g>
+                    <g transform="translate(92 61)">
+                      <path class="illustration-cone" d="M-5 0 L0-16 L5 0Z" />
+                      <path class="illustration-mark" d="M-3-6 H3" />
+                    </g>
+                    <g transform="translate(134 45)">
+                      <path class="illustration-cone" d="M-5 0 L0-16 L5 0Z" />
+                      <path class="illustration-mark" d="M-3-6 H3" />
+                    </g>
+                    <g transform="translate(106 111)">
+                      <path class="illustration-cone" d="M-5 0 L0-16 L5 0Z" />
+                      <path class="illustration-mark" d="M-3-6 H3" />
+                    </g>
+                    <g transform="translate(153 91)">
+                      <path class="illustration-cone" d="M-5 0 L0-16 L5 0Z" />
+                      <path class="illustration-mark" d="M-3-6 H3" />
+                    </g>
+                  </svg>
+                  <span aria-hidden="true">Illustration</span>
+                </div>
               </section>
               <section class="illustrated-setting">
                 <div class="field">
@@ -672,10 +995,30 @@
                 </div>
                 <div
                   class="setting-illustration"
-                  data-illustration="signs"
                   role="img"
                   aria-label="Illustration of turn signs approaching a bend"
-                ></div>
+                >
+                  <svg viewBox="0 0 224 126" aria-hidden="true">
+                    <path class="illustration-road" d="M40 126 Q68 85 112 78 T190 26" />
+                    <path class="illustration-line" d="M40 126 Q68 85 112 78 T190 26" />
+                    <g transform="translate(56 84)">
+                      <path class="illustration-post" d="M0 0 V-20" />
+                      <path class="illustration-sign" d="M-8-20 V-34 H8 V-20Z" />
+                      <path class="illustration-mark" d="M-3-31 L2-27 L-3-23" />
+                    </g>
+                    <g transform="translate(116 57)">
+                      <path class="illustration-post" d="M0 0 V-20" />
+                      <path class="illustration-sign" d="M-8-20 V-34 H8 V-20Z" />
+                      <path class="illustration-mark" d="M-3-31 L2-27 L-3-23" />
+                    </g>
+                    <g transform="translate(167 32)">
+                      <path class="illustration-post" d="M0 0 V-20" />
+                      <path class="illustration-sign" d="M-8-20 V-34 H8 V-20Z" />
+                      <path class="illustration-mark" d="M-3-31 L2-27 L-3-23" />
+                    </g>
+                  </svg>
+                  <span aria-hidden="true">Illustration</span>
+                </div>
               </section>
               <section class="illustrated-setting">
                 <div class="field">
@@ -691,10 +1034,20 @@
                 </div>
                 <div
                   class="setting-illustration"
-                  data-illustration="grass"
                   role="img"
                   aria-label="Illustration of small grass clumps beside the road"
-                ></div>
+                >
+                  <svg viewBox="0 0 224 126" aria-hidden="true">
+                    <path class="illustration-road" d="M40 126 Q68 85 112 78 T190 26" />
+                    <path class="illustration-line" d="M40 126 Q68 85 112 78 T190 26" />
+                    <g class="illustration-grass">
+                      <path
+                        d="M34 80 L30 64 M34 80 L40 62 M34 80 L45 72 M70 56 L65 40 M70 56 L73 36 M70 56 L81 45 M147 116 L141 100 M147 116 L150 94 M147 116 L160 101 M178 91 L173 74 M178 91 L182 69 M178 91 L191 79"
+                      />
+                    </g>
+                  </svg>
+                  <span aria-hidden="true">Illustration</span>
+                </div>
               </section>
             </div>
           </section>

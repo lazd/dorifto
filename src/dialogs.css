@@ -70,7 +70,7 @@ dialog.slider-dialog p,
 }
 
 dialog p {
-  margin: 0 0 var(--space-4);
+  margin: var(--space-2) 0;
 }
 
 dialog [role='alert'] {

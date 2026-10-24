@@ -1106,6 +1106,8 @@ recording, and lap navigation during replay.
 The reusable `Tabs` class in `src/tabs.ts` handles Settings and Controls tab/panel
 ARIA relationships, roving focus, orientation-aware arrow navigation with wraparound,
 and Home/End navigation.
+Static Settings and Controls markup, including illustrations, lives in `index.html`;
+TypeScript binds behavior and renders data-driven binding rows and input highlights.
 Escape, the close button, or a backdrop click dismisses the dialog and restores
 focus to the minimap. Driving inputs are disabled while it is open.
 Deleting the active saved course loads the default course. Built-in and unsaved

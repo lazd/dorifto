@@ -35,94 +35,10 @@ export function bindControlsSettings(reportError: (error: Error) => void): void 
   if (!host) return;
 
   const storage = browserStorage(reportError);
-  const status = document.createElement('p');
-  status.className = 'controls-settings__status';
-  status.setAttribute('role', 'status');
-  status.setAttribute('aria-live', 'polite');
-
-  const container = document.createElement('div');
-  container.className = 'controls-settings';
-  container.innerHTML = `
-    <p class="help-text">Make yourself at home. Select a binding to change it.</p>
-    <div class="controls-settings__toolbar">
-      <div class="tabs" role="tablist" aria-label="Input device">
-        <button class="button button-secondary" type="button" role="tab" id="controls-keyboard-tab" aria-controls="controls-keyboard-panel">Keyboard</button>
-        <button class="button button-secondary" type="button" role="tab" id="controls-controller-tab" aria-controls="controls-controller-panel">Xbox controller</button>
-      </div>
-      <button class="button button-quiet" type="button" data-reset>Restore defaults</button>
-    </div>
-    <section id="controls-keyboard-panel" role="tabpanel" aria-labelledby="controls-keyboard-tab">
-      <div class="input-diagram">
-        <div class="keyboard-diagram" role="img" aria-label="ANSI QWERTY keyboard diagram"></div>
-        <div class="controls-settings__legend"><span><i class="controls-settings__legend-primary"></i>Driving controls</span><span><i class="controls-settings__legend-secondary"></i>Other shortcuts</span></div>
-      </div>
-      <div class="tabs tabs-underlined controls-settings__group-tabs" role="tablist" aria-label="Keyboard binding groups">
-        <button type="button" role="tab" id="controls-driving-tab" aria-controls="controls-driving-panel">Driving</button>
-        <button type="button" role="tab" id="controls-shortcuts-tab" aria-controls="controls-shortcuts-panel">Camera, lights &amp; shortcuts</button>
-      </div>
-      <section id="controls-driving-panel" role="tabpanel" aria-labelledby="controls-driving-tab">
-        <div class="controls-settings__binding-heading"><h4>Driving bindings</h4><span>Click a binding to change it · Esc to cancel</span></div>
-        <div class="binding-list" data-keyboard-group="driving"></div>
-        <p class="help-text">Accelerate + brake: brakestand below 2.5 mph; all-wheel braking at higher speeds.</p>
-      </section>
-      <section id="controls-shortcuts-panel" role="tabpanel" aria-labelledby="controls-shortcuts-tab">
-        <div class="controls-settings__binding-heading"><h4>Camera, lights &amp; shortcuts</h4><span>Click a binding to change it · Esc to cancel</span></div>
-        <div class="binding-list" data-keyboard-group="shortcuts"></div>
-        <div class="controls-settings__shortcuts-help">
-          <p class="help-text">Hold headlights for 1 second to toggle fog lights.</p>
-          <p class="help-text">Hold high beams for 1 second to toggle them on or off.</p>
-        </div>
-      </section>
-    </section>
-    <section id="controls-controller-panel" role="tabpanel" aria-labelledby="controls-controller-tab" hidden>
-      <div class="input-diagram">
-        <svg class="gamepad-diagram" viewBox="0 0 760 200" role="img" aria-label="Xbox controller diagram with current control bindings">
-          <g class="gamepad-diagram__connectors" aria-hidden="true"></g>
-          <g class="gamepad-diagram__shell">
-            <path d="M248 52 Q258 25 284 28 Q380 12 476 28 Q502 25 512 52 Q530 102 538 151 Q542 181 523 186 Q507 190 491 165 L464 132 Q442 120 417 128 Q380 138 343 128 Q318 120 296 132 L269 165 Q253 190 237 186 Q218 181 222 151 Q230 102 248 52Z"/>
-            <path d="M276 31 L279 12 Q294 4 311 12 L315 30 M445 30 L449 12 Q466 4 481 12 L484 31"/>
-          </g>
-          <g class="gamepad-diagram__stick"><circle cx="294" cy="72" r="22" data-pad="10"/><circle cx="407" cy="102" r="22" data-pad="11"/></g>
-          <g class="gamepad-diagram__dpad">
-            <path d="M326 78 H342 V90 H354 V106 H342 V118 H326 V106 H314 V90 H326Z"/>
-            <rect x="326" y="78" width="16" height="12" data-pad="12"/><rect x="326" y="106" width="16" height="12" data-pad="13"/>
-            <rect x="314" y="90" width="12" height="16" data-pad="14"/><rect x="342" y="90" width="12" height="16" data-pad="15"/>
-          </g>
-          <g class="gamepad-diagram__buttons">
-            <circle cx="468" cy="55" r="12" data-pad="3"/><circle cx="489" cy="76" r="12" data-pad="1"/><circle cx="447" cy="76" r="12" data-pad="2"/><circle cx="468" cy="97" r="12" data-pad="0"/>
-            <text x="468" y="59" data-pad="3">Y</text><text x="489" y="80" data-pad="1">B</text><text x="447" y="80" data-pad="2">X</text><text x="468" y="101" data-pad="0">A</text>
-          </g>
-          <g class="gamepad-diagram__callouts">
-            <text class="is-left" x="154" y="21" data-action-callout="brake">Brake</text><text x="606" y="21" data-action-callout="accelerate">Accelerate</text>
-            <text class="is-left" x="154" y="58" data-action-callout="highBeams">High beams</text><text x="606" y="58" data-action-callout="handbrake">Handbrake</text>
-            <text class="is-left" x="154" y="103">Steer</text><text x="606" y="86" data-action-callout="driveMode">Grip / Drift</text>
-            <text x="606" y="114" data-action-callout="map">Map</text><text x="606" y="169" data-action-callout="headlights">Headlights</text>
-            <text class="is-left" x="154" y="145" data-action-callout="reset">Reset</text><text x="606" y="145" data-action-callout="camera">Camera</text>
-            <text class="is-center" x="380" y="194" data-action-callout="lookBehind">Look behind</text>
-          </g>
-          <g class="gamepad-diagram__labels">
-            <text x="298" y="18" data-pad="6">LT</text><text x="463" y="18" data-pad="7">RT</text><text x="296" y="32" data-pad="4">LB</text><text x="464" y="32" data-pad="5">RB</text>
-            <text x="358" y="61" data-pad="8">View</text><text x="398" y="61" data-pad="9">Menu</text>
-          </g>
-        </svg>
-      </div>
-      <div class="tabs tabs-underlined controls-settings__group-tabs" role="tablist" aria-label="Controller binding context">
-        <button type="button" role="tab" id="controls-controller-driving-tab" aria-controls="controls-controller-driving-panel">Driving</button>
-        <button type="button" role="tab" id="controls-controller-map-tab" aria-controls="controls-controller-map-panel">Map view</button>
-      </div>
-      <section id="controls-controller-driving-panel" role="tabpanel" aria-labelledby="controls-controller-driving-tab">
-        <div class="controls-settings__binding-heading"><h4>Button bindings</h4><span>Click a binding, then press a controller button</span></div>
-        <div class="binding-list" data-controller-bindings></div>
-        <p class="help-text">Right stick adjusts the camera; hold left or right for turn signals. Click the right stick to look behind.</p>
-      </section>
-      <section id="controls-controller-map-panel" role="tabpanel" aria-labelledby="controls-controller-map-tab" hidden>
-        <p class="help-text">Assign map controls independently. Driving controls remain active; turn-signal holds and look-behind are inactive in map view.</p>
-        <div class="controls-settings__axes" data-map-axes></div>
-        <div class="binding-list" data-map-return></div>
-      </section>
-    </section>`;
-  container.append(status);
-  host.replaceChildren(container);
+  const controlsStatus = host.querySelector<HTMLElement>('.controls-settings__status');
+  if (!controlsStatus) throw new Error('Missing controls settings status');
+  const container = host;
+  const status = controlsStatus;
 
   const keyboardBindings = container.querySelector<HTMLElement>('[data-keyboard-group="driving"]')!;
   const shortcutBindings = container.querySelector<HTMLElement>(
@@ -152,19 +68,9 @@ export function bindControlsSettings(reportError: (error: Error) => void): void 
   const mapPanel = container.querySelector<HTMLElement>('#controls-controller-map-panel')!;
   renderKeyboardDiagram(keyboardDiagram);
 
-  let deviceStatus = document.getElementById('controller-status');
-  if (!deviceStatus) {
-    deviceStatus = document.createElement('p');
-    deviceStatus.className = 'controls-settings__device-status';
-    deviceStatus.setAttribute('role', 'status');
-    deviceStatus.setAttribute('aria-live', 'polite');
-    container
-      .querySelector('#controls-controller-panel')!
-      .insertBefore(
-        deviceStatus,
-        container.querySelector('#controls-controller-panel .controls-settings__group-tabs'),
-      );
-  }
+  const controllerStatus = container.querySelector<HTMLElement>('#controller-status');
+  if (!controllerStatus) throw new Error('Missing controller status');
+  const deviceStatus = controllerStatus;
   const deviceTabs = new Tabs(container);
   const keyboardTabs = new Tabs(container.querySelector<HTMLElement>('#controls-keyboard-panel')!);
   const controllerTabs = new Tabs(
@@ -363,13 +269,24 @@ export function bindControlsSettings(reportError: (error: Error) => void): void 
       const action = callout.dataset.actionCallout as ControllerAction;
       callout.textContent = `${controllerDiagramLabels[action] ?? action}: ${formatControllerButton(inputBindings.get().controller.buttons[action])}`;
     }
+    const aCallout = gamepadDiagram.querySelector<SVGTextElement>('[data-button-callout="0"]')!;
+    const aAction = controllerActions.find(
+      ({ id }) => inputBindings.get().controller.buttons[id] === 0,
+    );
+    aCallout.textContent = `A: ${aAction?.label ?? 'Unbound'}`;
+    renderKeyboardDiagram(keyboardDiagram);
+    pressedKeys.reapply();
+    renderGamepadLabel();
+  }
+
+  function renderGamepadConnectors() {
+    const { buttons } = inputBindings.get().controller;
     const connectors = gamepadDiagram.querySelector('.gamepad-diagram__connectors')!;
     connectors.replaceChildren();
     for (const callout of gamepadDiagram.querySelectorAll<SVGTextElement>(
-      '[data-action-callout]',
+      '.gamepad-diagram__callouts:not([hidden]) [data-action-callout]',
     )) {
-      const action = callout.dataset.actionCallout as ControllerAction;
-      const button = inputBindings.get().controller.buttons[action];
+      const button = buttons[callout.dataset.actionCallout as ControllerAction];
       const target = gamepadDiagram.querySelector<SVGElement>(`[data-pad="${button}"]`);
       if (!target) continue;
       const x = Number(target.getAttribute('cx') ?? target.getAttribute('x'));
@@ -377,6 +294,8 @@ export function bindControlsSettings(reportError: (error: Error) => void): void 
       const labelX = Number(callout.getAttribute('x'));
       const labelY = Number(callout.getAttribute('y'));
       const center = callout.classList.contains('is-center');
+      const top = callout.classList.contains('is-top');
+      const bottom = callout.classList.contains('is-bottom');
       const left = callout.classList.contains('is-left');
       const startX = labelX + (center ? 0 : left ? 8 : -8);
       const startY = labelY - (center ? 12 : 4);
@@ -384,24 +303,44 @@ export function bindControlsSettings(reportError: (error: Error) => void): void 
       const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
       path.setAttribute(
         'd',
-        center
-          ? `M${startX} ${startY} V${y + 36} L${x} ${y}`
-          : `M${startX} ${startY} H${elbowX} L${x} ${y}`,
+        top
+          ? `M${labelX} ${labelY + 8} V0 H${x} V${y - 7}`
+          : bottom
+            ? `M${startX} ${startY} L${x} ${y + 64} V${y + 14}`
+            : center
+              ? `M${startX} ${startY} V${y + 36} L${x} ${y}`
+              : `M${startX} ${startY} H${elbowX} L${x} ${y}`,
       );
       connectors.append(path);
     }
-    const steering = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    steering.setAttribute('d', 'M162 99 H202 L270 72');
-    connectors.append(steering);
-    renderKeyboardDiagram(keyboardDiagram);
-    pressedKeys.reapply();
-    renderGamepadLabel();
+    if (mapPanel.hidden) {
+      const steering = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      steering.setAttribute('d', 'M162 99 H202 L294 72');
+      connectors.append(steering);
+    }
   }
 
   function renderGamepadLabel() {
     const { buttons, axes } = inputBindings.get().controller;
     const stick = (action: AxisAction) =>
       axisOptions.find((option) => option.index === axes[action].index)!.label;
+    gamepadDiagram
+      .querySelector('[data-driving-callouts]')!
+      .toggleAttribute('hidden', !mapPanel.hidden);
+    gamepadDiagram.querySelector('[data-map-callouts]')!.toggleAttribute('hidden', mapPanel.hidden);
+    for (const slot of gamepadDiagram.querySelectorAll<SVGGElement>('[data-map-axis]')) {
+      const index = Number(slot.dataset.mapAxis);
+      const labels = axisRows
+        .filter(([action]) => axes[action].index === index)
+        .map(([action, label]) => `${label}${axes[action].inverted ? ' (inverted)' : ''}`);
+      slot.toggleAttribute('hidden', labels.length === 0);
+      slot.querySelector('text')!.textContent =
+        `${index % 2 === 0 ? 'Horizontal' : 'Vertical'}: ${labels.join(' / ')}`;
+    }
+    gamepadDiagram.querySelector<SVGTextElement>(
+      '[data-map-callouts] [data-action-callout="map"]',
+    )!.textContent = `Return to driving: ${formatControllerButton(buttons.map)}`;
+    renderGamepadConnectors();
     const summary = mapPanel.hidden
       ? [
           `Steer: ${stick('steering')}`,
