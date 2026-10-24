@@ -121,7 +121,7 @@ The keyboard and controller diagrams illuminate physical inputs while the Contro
 panel is open. Settings keeps the same viewport-constrained size across categories;
 long panels scroll internally rather than resizing the dialog.
 
-The course library groups **Built-in courses**, **Racetracks**, and **Saved courses** in
+The course library groups **Built-in courses**, **Racetracks**, **Roads**, and **Saved courses** in
 one list. Selecting an entry previews it without changing the race; **Load course** applies
 the selection and resets the race. The selected course's details include local records
 by direction and access to saved-run replays. An unsaved random or custom course appears
@@ -436,6 +436,8 @@ manually. The oxc VS Code extension reads the same config for format-on-save.
 
 `npm run import-track -- src/trackImports/*.json` converts recorded-lap track JSON
 into course files in `src/tracks/`, which appear automatically in the course picker.
+Imported point-to-point routes (`closed: false`) appear under **Roads** with a
+**Road** badge; closed circuits remain under **Racetracks**.
 `npm run import-road -- <slug> "<road name>" "<location query>"` first
 looks up the freeform location with OpenStreetMap's geocoding API, then queries Overpass for
 the named road within the returned bounding box. It writes a compatible source
@@ -1226,7 +1228,7 @@ Saved layouts also retain their generator type and seed; custom courses include
 the exact generation parameters used, independent of later slider changes.
 Saved courses are
 local to this browser; their `?course=saved-…` links require the same local data.
-The picker groups **Built-in courses**, **Racetracks**, and **Saved courses** in a
+The picker groups **Built-in courses**, **Racetracks**, **Roads**, and **Saved courses** in a
 scrollable list of outline thumbnails, names and lap lengths (meters for courses
 under 1 km, otherwise kilometers). The current course is marked independently
 of the preview selection. Selecting a course updates the larger 3-D preview;

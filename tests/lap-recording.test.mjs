@@ -353,3 +353,41 @@ test('summarizes the record and saved runs separately for each course direction'
     ],
   );
 });
+
+test('deletes saved laps, replays, and record laps in both course directions', async () => {
+  const storage = new MemoryStorage();
+  const course = {
+    id: 'saved-test',
+    name: 'Test course',
+    width: 10,
+    points: [
+      [0, 0],
+      [10, 0],
+      [5, 5],
+    ],
+  };
+  const otherCourse = { ...course, id: 'saved-other' };
+  const run = sampleRun();
+  const forward = recording.replayStorageKey(course);
+  const reverse = recording.replayStorageKey({ ...course, reverse: true });
+  const other = recording.replayStorageKey(otherCourse);
+  await recording.saveRun(forward, run, { driver: 'human' }, storage);
+  await recording.saveRun(reverse, run, { driver: 'human' }, storage);
+  await recording.saveRun(other, run, { driver: 'human' }, storage);
+  await recording.saveRecordLap(forward, run.extractLap(0), storage);
+  await recording.saveRecordLap(reverse, run.extractLap(0), storage);
+
+  recording.deleteCourseRecords(course, storage);
+
+  assert.deepEqual(
+    recording.courseDirectionRecords(course, storage).map(({ record, runs }) => ({
+      record,
+      runs,
+    })),
+    [
+      { record: null, runs: [] },
+      { record: null, runs: [] },
+    ],
+  );
+  assert.equal(recording.listSavedRuns(other, storage).length, 1);
+});

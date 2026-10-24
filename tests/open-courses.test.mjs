@@ -38,6 +38,20 @@ after(async () => {
   await server?.close();
 });
 
+test('imported point-to-point roads are separate from racetracks and remain available', async () => {
+  const { courses, roads, racetracks } = await server.ssrLoadModule('/src/courses.ts');
+  assert.ok(roads.length > 0);
+  for (const road of roads) {
+    assert.equal(road.closed, false);
+    assert.ok(courses.includes(road));
+    assert.ok(!racetracks.some(({ id }) => id === road.id));
+  }
+  for (const track of racetracks) {
+    assert.notEqual(track.closed, false);
+    assert.ok(courses.includes(track));
+  }
+});
+
 test('open routes retain endpoints, reverse direction, and do not close previews', () => {
   const route = courseRoute(definition);
   assert.ok(route.getLength() > Math.hypot(100, 100) && route.getLength() < 200);

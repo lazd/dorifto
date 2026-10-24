@@ -2,7 +2,7 @@ import { isDriveMode, type DriveMode } from './drive-modes';
 import { bindBotDialog } from './bot-dialog';
 import { createDrivingTuning } from './drift-tuning';
 import { redlineRpm } from './drivetrain';
-import { courseRoute, generateCourse, racetracks, type CourseDefinition } from './courses';
+import { courseRoute, generateCourse, racetracks, roads, type CourseDefinition } from './courses';
 import { coursePreviewSvg } from './course-preview';
 import { CoursePreviewRenderer } from './course-preview-3d';
 import {
@@ -592,6 +592,7 @@ export interface CoursePickerActions {
 const courseGroups = [
   { id: 'current', label: 'Current layout', badge: 'Unsaved' },
   { id: 'built-in', label: 'Built-in courses', badge: 'Built-in' },
+  { id: 'roads', label: 'Roads', badge: 'Road' },
   { id: 'racetracks', label: 'Racetracks', badge: 'Racetrack' },
   { id: 'saved', label: 'Saved courses', badge: 'Saved' },
 ] as const;
@@ -600,8 +601,9 @@ const isUnsavedCourse = ({ id }: { id: string }) => id === 'random' || id === 'c
 
 function courseGroup(course: CourseDefinition) {
   if (isUnsavedCourse(course)) return courseGroups[0];
-  if (course.id.startsWith('saved-')) return courseGroups[3];
-  return racetracks.some(({ id }) => id === course.id) ? courseGroups[2] : courseGroups[1];
+  if (course.id.startsWith('saved-')) return courseGroups[4];
+  if (roads.some(({ id }) => id === course.id)) return courseGroups[2];
+  return racetracks.some(({ id }) => id === course.id) ? courseGroups[3] : courseGroups[1];
 }
 
 const courseDistances = new WeakMap<CourseDefinition, string>();
