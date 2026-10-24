@@ -5,7 +5,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { fetchTerrainRaster } from './import-terrain.mjs';
+import { fetchTerrainDetail, fetchTerrainRaster } from './import-terrain.mjs';
 import { geographicRasterSampler } from '../src/terrain-raster.mjs';
 
 const earthRadius = 6371008.8;
@@ -442,6 +442,7 @@ function parseArguments(argv) {
   const selection = {};
   const metadata = {};
   const terrainOptions = {};
+  const detailOptions = {};
   let outDir = fileURLToPath(new URL('../src/tracks/', import.meta.url));
   for (let i = 0; i < argv.length; i++) {
     const argument = argv[i];
@@ -465,6 +466,8 @@ function parseArguments(argv) {
     else if (argument === '--config-name') metadata.config_name = value();
     else if (argument === '--terrain-resolution') terrainOptions.resolution = Number(value());
     else if (argument === '--terrain-margin') terrainOptions.margin = Number(value());
+    else if (argument === '--terrain-detail-resolution') detailOptions.resolution = Number(value());
+    else if (argument === '--terrain-detail-width') detailOptions.width = Number(value());
     else if (argument === '--terrain') terrainOptions.enabled = true;
     else if (argument === '--help' || argument === '-h') return { help: true };
     else if (argument.startsWith('-')) throw new Error(`Unknown option: ${argument}`);
@@ -493,16 +496,25 @@ function parseArguments(argv) {
     if (terrainOptions[key] !== undefined && !Number.isFinite(terrainOptions[key]))
       throw new Error(`Invalid terrain ${key}`);
   }
-  return { inputs, options, outDir, selection, metadata, terrainOptions };
+  if (
+    detailOptions.resolution !== undefined &&
+    (!Number.isFinite(detailOptions.resolution) || detailOptions.resolution < 1)
+  )
+    throw new Error('--terrain-detail-resolution must be at least 1');
+  if (
+    detailOptions.width !== undefined &&
+    (!Number.isFinite(detailOptions.width) || detailOptions.width < 0)
+  )
+    throw new Error('--terrain-detail-width must be a nonnegative finite number');
+  return { inputs, options, outDir, selection, metadata, terrainOptions, detailOptions };
 }
 
 async function main() {
-  const { help, inputs, options, outDir, selection, metadata, terrainOptions } = parseArguments(
-    process.argv.slice(2),
-  );
+  const { help, inputs, options, outDir, selection, metadata, terrainOptions, detailOptions } =
+    parseArguments(process.argv.slice(2));
   if (help || !inputs.length) {
     console.log(
-      'Usage: npm run import-track -- <track.json...> [--start <index> --finish <index>] [--slug <slug>] [--name <name>] [--venue-name <venue>] [--config-name <configuration>] [--terrain] [--terrain-resolution 5] [--terrain-margin 250] [--terrain-transition 3] [--out-dir src/tracks] [--width <m> (roads: 8, circuits: 15)] [--shoulder-width 1.6] [--double-yellow | --no-double-yellow] [--spacing 8]',
+      'Usage: npm run import-track -- <track.json...> [--start <index> --finish <index>] [--slug <slug>] [--name <name>] [--venue-name <venue>] [--config-name <configuration>] [--terrain] [--terrain-resolution 5] [--terrain-margin 250] [--terrain-detail-resolution 1.5] [--terrain-detail-width 40 (0 disables)] [--terrain-transition 3] [--out-dir src/tracks] [--width <m> (roads: 8, circuits: 15)] [--shoulder-width 1.6] [--double-yellow | --no-double-yellow] [--spacing 8]',
     );
     if (!help) process.exitCode = 1;
     return;
@@ -519,6 +531,8 @@ async function main() {
     ) {
       console.log(`🌄 Fetching surrounding terrain for ${data.display_name ?? data.slug}`);
       data.terrain = await fetchTerrainRaster(data, terrainOptions);
+      if (detailOptions.width !== 0)
+        data.terrain.detail = await fetchTerrainDetail(data, detailOptions);
     }
     data = await fetchMissingElevation(
       data,

@@ -9,6 +9,8 @@ export interface HeightfieldData {
   heights: Float32Array;
   minHeight: number;
   maxHeight: number;
+  /** Per-cell flags; 1 splits the cell along its other diagonal (corner 0 to corner 3). */
+  flippedCells?: Uint8Array;
 }
 
 export interface SurfaceSegment {
@@ -105,6 +107,8 @@ export function heightAt(terrain: HeightfieldData, x: number, z: number) {
   const b = heights[i + 1];
   const c = heights[i + columns];
   const d = heights[i + columns + 1];
+  if (terrain.flippedCells?.[iz * (columns - 1) + ix])
+    return u >= v ? a + (b - a) * u + (d - b) * v : a + (c - a) * v + (d - c) * u;
   return u + v <= 1 ? a + (b - a) * u + (c - a) * v : d + (c - d) * (1 - u) + (b - d) * (1 - v);
 }
 
@@ -115,4 +119,16 @@ export function normalAt(terrain: HeightfieldData, x: number, z: number) {
     2 * delta,
     heightAt(terrain, x, z - delta) - heightAt(terrain, x, z + delta),
   ).normalize();
+}
+
+/** Grid-vertex indices of a cell's two triangles, matching `heightAt` and Bullet's default split. */
+export function cellTriangles(terrain: HeightfieldData, x: number, z: number) {
+  const i = z * terrain.columns + x;
+  const a = i;
+  const b = i + 1;
+  const c = i + terrain.columns;
+  const d = c + 1;
+  return terrain.flippedCells?.[z * (terrain.columns - 1) + x]
+    ? [a, c, d, a, d, b]
+    : [a, c, b, b, c, d];
 }

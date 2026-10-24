@@ -515,7 +515,7 @@ monotone cubic interpolation for continuous grades, without wrapping or a seam
 bridge. Raw GPS and cached USGS samples are unchanged. Re-import existing road
 configurations to apply the elevation filter. When elevation
 points are absent or empty, raster-backed imports sample absolute heights locally
-at 10 m intervals using the same bilinear interpolation as the game's terrain,
+at 10 m intervals using the same raster sampler as the game's terrain,
 then apply the road-height smoothing described above. Imports without a raster
 fetch terrain heights from the
 [USGS 3DEP Elevation Point Query Service](https://apps.nationalmap.gov/epqs/)
@@ -550,6 +550,17 @@ Source resolution varies by location: requesting a finer grid does not guarantee
 additional surveyed detail. Oversized requests fail with guidance to select a
 shorter segment or use coarser spacing.
 
+The importer also downloads a high-resolution detail raster (default 1.5 m,
+matching the game's terrain grid) but keeps only pixels within
+`--terrain-detail-width <m>` (default 40 m) of the road centerline, stored as row
+runs. This captures real cut banks and roadside dropoffs from 1 m lidar where
+available, adding roughly 1–2 MB per course instead of a full high-resolution
+raster. Detail fades into the coarse raster over the last quarter of that width.
+Configure spacing with `--terrain-detail-resolution <m>` (minimum 1), or disable
+detail with `--terrain-detail-width 0`. Both rasters are lightly anti-aliased
+(a two-pass binomial blur) and sampled with Catmull-Rom interpolation, removing
+pixel stair-steps that USGS resampling produces along sharp road cuts.
+
 Validated GeoTIFFs are cached in `road-imports/cache/terrain-<hash>.tif`, keyed by
 the service request, including geographic bounds, resolution, and margin.
 Identical imports reuse the cached raster; other segments or resolutions request
@@ -559,13 +570,22 @@ The generated course embeds the geographic raster and elevation datum, so the ga
 does not fetch terrain or depend on the local cache. Terrain follows real hillsides
 and dropoffs outside the smoothed pavement and shoulders. Older courses without a
 raster retain their existing procedural surroundings; re-import to add real terrain.
-Raster-backed terrain begins blending immediately outside the paved shoulder and
+Raster-backed terrain protects a one-grid-diagonal support collar (about 2.1 m)
+outside the paved shoulder so hillside vertices cannot lift triangles crossing
+the pavement edge. This does not widen the asphalt. Terrain blends after that collar and
 returns fully to raster heights within `--terrain-transition <m>` (default 3 m;
-must be positive). Four local smoothing passes soften grid-aligned roadside
+must be positive). Sixteen local smoothing passes, including diagonal neighbors,
+soften grid-aligned roadside
 facets without modifying pavement vertices or distant raster heights. Smoothing
 fades out over a 3 m collar beyond the transition. The preview includes
 this setting in its copied import command.
-Rendering and physics use the same heightfield. Non-raster terrain keeps its existing
+Within 20 m of the pavement, raster terrain splits each 1.5 m grid cell along the
+diagonal that best follows the hillside's contours instead of one fixed diagonal,
+which otherwise turns roadside walls into sawtooth facets. Cells whose flipped
+triangles could reach the pavement keep the default split. Bullet's heightfield
+only supports a fixed diagonal, so flipped cells are sunk below the heightfield and
+covered by a triangle-mesh collider with the rendered triangulation.
+Rendering and physics use the same surface. Non-raster terrain keeps its existing
 wider transition and smoothing. Existing courses retain 1.6 m shoulders unless
 re-imported with `--shoulder-width`.
 

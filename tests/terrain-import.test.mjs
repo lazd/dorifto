@@ -3,9 +3,11 @@ import { mkdtemp, readdir, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
+import AmmoFactory from 'ammojs-typed';
 import { writeArrayBuffer } from 'geotiff';
 import { createServer } from 'vite';
-import { fetchTerrainRaster } from '../scripts/import-terrain.mjs';
+import { fetchTerrainDetail, fetchTerrainRaster } from '../scripts/import-terrain.mjs';
+import { geographicRasterSampler } from '../src/terrain-raster.mjs';
 import {
   convertTrack,
   fetchMissingElevation,
@@ -29,22 +31,26 @@ const source = {
   },
 };
 
+function geotiffResponse(url) {
+  const [width, height] = url.searchParams.get('size').split(',').map(Number);
+  const [west, south, east, north] = url.searchParams.get('bbox').split(',').map(Number);
+  return new Response(
+    writeArrayBuffer(new Uint8Array(width * height).fill(120), {
+      width,
+      height,
+      ModelPixelScale: [(east - west) / width, (north - south) / height, 0],
+      ModelTiepoint: [0, 0, 0, west, north, 0],
+      GeographicTypeGeoKey: 4326,
+    }),
+  );
+}
+
 test('terrain GeoTIFF cache reuses the request and never caches invalid responses', async () => {
   const cacheDir = await mkdtemp(path.join(os.tmpdir(), 'dorifto-terrain-'));
   let requests = 0;
   const fetch = async (url) => {
     requests++;
-    const [width, height] = url.searchParams.get('size').split(',').map(Number);
-    const [west, south, east, north] = url.searchParams.get('bbox').split(',').map(Number);
-    return new Response(
-      writeArrayBuffer(new Uint8Array(width * height).fill(120), {
-        width,
-        height,
-        ModelPixelScale: [(east - west) / width, (north - south) / height, 0],
-        ModelTiepoint: [0, 0, 0, west, north, 0],
-        GeographicTypeGeoKey: 4326,
-      }),
-    );
+    return geotiffResponse(url);
   };
   try {
     const options = { cacheDir, fetch };
@@ -137,16 +143,72 @@ test('terrain sampling preserves geographic orientation, height datum, and rever
       { ...course, shoulderWidth: 0, terrainTransition: 12 },
       false,
     );
+    const edgeDefinition = { ...course, shoulderWidth: 0, elevation: [0], bankingScale: 0 };
+    const protectedEdge = new CourseTerrain(edgeDefinition, false);
     try {
-      const { courseProfileHeight } = await server.ssrLoadModule('/src/courses.ts');
+      const { courseProfileHeight, courseRoute } = await server.ssrLoadModule('/src/courses.ts');
+      const route = courseRoute(edgeDefinition);
+      for (let step = 1; step < 400; step++) {
+        const fraction = step / 400;
+        const point = route.getPointAt(fraction);
+        const tangent = route.getTangentAt(fraction).normalize();
+        for (const side of [-1, 1]) {
+          const offset = (side * course.width) / 2;
+          const height = protectedEdge.heightAt(
+            point.x + tangent.z * offset,
+            point.z - tangent.x * offset,
+          );
+          assert.equal(height, 0, 'hillside vertices must not lift interpolated pavement edges');
+        }
+      }
+      const { createPhysicsResources, createPhysicsWorld } =
+        await server.ssrLoadModule('/src/physics-world.ts');
+      const Ammo = await AmmoFactory.call({});
+      const data = narrow.physicsData();
+      const physics = createPhysicsWorld(Ammo, createPhysicsResources(Ammo), data);
+      const from = new Ammo.btVector3();
+      const to = new Ammo.btVector3();
+      let flipped = 0;
+      for (let z = 0; z < narrow.rows - 1; z++) {
+        for (let x = 0; x < narrow.columns - 1; x++) {
+          const cell = z * (narrow.columns - 1) + x;
+          const neighbor = data.flippedCells[cell - 1] || data.flippedCells[cell + 1];
+          if (!data.flippedCells[cell] && !neighbor) continue;
+          flipped += data.flippedCells[cell];
+          for (const [u, v] of [
+            [0.7, 0.2],
+            [0.2, 0.7],
+            [0.6, 0.6],
+            [0.3, 0.3],
+          ]) {
+            const px = narrow.minX + (x + u) * narrow.spacing;
+            const pz = narrow.minZ + (z + v) * narrow.spacing;
+            from.setValue(px, narrow.maxHeight + 5, pz);
+            to.setValue(px, narrow.minHeight - 5, pz);
+            const ray = new Ammo.ClosestRayResultCallback(from, to);
+            physics.world.rayTest(from, to, ray);
+            assert.ok(ray.hasHit());
+            assert.ok(
+              Math.abs(ray.get_m_hitPointWorld().y() - narrow.heightAt(px, pz)) < 0.02,
+              'collision follows the rendered triangulation',
+            );
+            Ammo.destroy(ray);
+          }
+        }
+      }
+      assert.ok(flipped > 0, 'roadside cells follow wall contours');
+      Ammo.destroy(from);
+      Ammo.destroy(to);
+      physics.dispose();
       const raw = new Float32Array(narrow.heights.length);
+      const support = narrow.spacing * Math.SQRT2;
       let samples = 0;
       for (let z = 0; z < narrow.rows; z++) {
         for (let x = 0; x < narrow.columns; x++) {
           const px = narrow.minX + x * narrow.spacing;
           const pz = narrow.minZ + z * narrow.spacing;
           const near = narrow.nearest(px, pz);
-          const t = Math.max(0, Math.min(1, (near.distance - course.width / 2) / 3));
+          const t = Math.max(0, Math.min(1, (near.distance - course.width / 2 - support) / 3));
           const blend = t * t * (3 - 2 * t);
           const road =
             courseProfileHeight(course.elevation, near.fraction, false) + near.bank * near.across;
@@ -154,7 +216,10 @@ test('terrain sampling preserves geographic orientation, height datum, and rever
           raw[i] = road + (sample(px, pz) - road) * blend;
           if (near.distance <= course.width / 2)
             assert.equal(narrow.heights[i], raw[i], 'smoothing must not modify pavement vertices');
-          if (near.distance < course.width / 2 + 6 || near.distance > course.width / 2 + 8)
+          if (
+            near.distance < course.width / 2 + support + 6 ||
+            near.distance > course.width / 2 + support + 8
+          )
             continue;
           assert.ok(Math.abs(narrow.heights[z * narrow.columns + x] - sample(px, pz)) < 1e-4);
           samples++;
@@ -163,17 +228,39 @@ test('terrain sampling preserves geographic orientation, height datum, and rever
       assert.ok(samples > 0, 'raster heights beyond the blend smoothing collar remain unchanged');
       let before = 0;
       let after = 0;
+      let wallBefore = 0;
+      let wallAfter = 0;
       for (let z = 1; z < narrow.rows - 1; z++) {
         for (let x = 1; x < narrow.columns - 1; x++) {
           const i = z * narrow.columns + x;
-          for (const step of [1, narrow.columns]) {
-            before += (raw[i - step] - 2 * raw[i] + raw[i + step]) ** 2;
-            after +=
+          const distance = narrow.nearest(
+            narrow.minX + x * narrow.spacing,
+            narrow.minZ + z * narrow.spacing,
+          ).distance;
+          const lowerWall =
+            distance > course.width / 2 + support &&
+            distance < course.width / 2 + support + narrow.spacing * 2;
+          for (const step of [1, narrow.columns, narrow.columns - 1, narrow.columns + 1]) {
+            const rawCurvature = (raw[i - step] - 2 * raw[i] + raw[i + step]) ** 2;
+            const curvature =
               (narrow.heights[i - step] - 2 * narrow.heights[i] + narrow.heights[i + step]) ** 2;
+            before += rawCurvature;
+            after += curvature;
+            if (lowerWall) {
+              wallBefore += rawCurvature;
+              wallAfter += curvature;
+            }
           }
         }
       }
-      assert.ok(after < before, `roadside curvature energy must decrease: ${before} -> ${after}`);
+      assert.ok(
+        after < before * 0.75,
+        `roadside curvature energy must decrease by at least 25%: ${before} -> ${after}`,
+      );
+      assert.ok(
+        wallAfter < wallBefore * 0.75,
+        `lower wall roughness must decrease by at least 25%: ${wallBefore} -> ${wallAfter}`,
+      );
       assert.ok(
         narrow.heights.some((height, i) => Math.abs(height - wide.heights[i]) > 0.1),
         'shoulder width changes the protected pavement area',
@@ -183,7 +270,7 @@ test('terrain sampling preserves geographic orientation, height datum, and rever
         'terrain transition changes the roadside blend',
       );
     } finally {
-      for (const terrain of [narrow, wide, gradual]) {
+      for (const terrain of [narrow, wide, gradual, protectedEdge]) {
         for (const mesh of [terrain.mesh, terrain.grass]) {
           mesh.geometry.dispose();
           mesh.material.dispose();
@@ -198,4 +285,66 @@ test('terrain sampling preserves geographic orientation, height datum, and rever
   } finally {
     await server.close();
   }
+});
+
+test('terrain detail keeps only a corridor of high-resolution pixels along the road', async () => {
+  const cacheDir = await mkdtemp(path.join(os.tmpdir(), 'dorifto-terrain-'));
+  try {
+    const detail = await fetchTerrainDetail(source, {
+      cacheDir,
+      resolution: 2,
+      width: 5,
+      fetch: async (url) => geotiffResponse(url),
+    });
+    const stored = detail.runs.reduce((sum, run) => sum + run.length - 2, 0);
+    assert.ok(stored > 0 && stored < (detail.columns * detail.rows) / 2);
+    assert.ok(detail.runs.every(([, , ...heights]) => heights.every((height) => height === 120)));
+    const northwest = detail.runs.find(([row]) => row === 0);
+    assert.ok(!northwest || northwest[1] > 0, 'pixels far from the road are dropped');
+  } finally {
+    await rm(cacheDir, { recursive: true, force: true });
+  }
+});
+
+test('raster sampler anti-aliases pixel stair-steps and keeps slopes continuous', () => {
+  const bounds = { columns: 8, rows: 8, west: 0, east: 8, south: 0, north: 8 };
+  const checkerboard = geographicRasterSampler({
+    ...bounds,
+    heights: Array.from({ length: 64 }, (_, i) => ((i % 8) + Math.floor(i / 8)) % 2),
+  });
+  assert.ok(Math.abs(checkerboard(4.5, 4.5) - 0.5) < 1e-6, 'pixel staircase is removed');
+  const sample = geographicRasterSampler({
+    ...bounds,
+    heights: Array.from({ length: 64 }, (_, i) => (i % 8) ** 2),
+  });
+  const step = 1e-3;
+  const before = (sample(4, 3.5) - sample(4, 3.5 - step)) / step;
+  const after = (sample(4, 3.5 + step) - sample(4, 3.5)) / step;
+  assert.ok(Math.abs(after - before) < 0.01, 'no slope crease at the cell boundary');
+});
+
+test('raster detail fades into coarse terrain with distance from the road', () => {
+  const bounds = { columns: 8, rows: 8, west: 0, east: 8, south: 0, north: 8 };
+  const sample = geographicRasterSampler({
+    ...bounds,
+    heights: Array(64).fill(0),
+    detail: {
+      ...bounds,
+      resolution: 1,
+      width: 20,
+      runs: Array.from({ length: 8 }, (_, row) => [row, 0, ...Array(8).fill(10)]),
+    },
+  });
+  assert.equal(sample(4, 4), 10);
+  assert.ok(sample(4, 4, 17.5) > 0 && sample(4, 4, 17.5) < 10);
+  assert.equal(sample(4, 4, 20), 0);
+  assert.throws(
+    () =>
+      geographicRasterSampler({
+        ...bounds,
+        heights: Array(64).fill(0),
+        detail: { ...bounds, width: 20, runs: [[0, 7, 1, 1]] },
+      }),
+    /Invalid terrain detail/,
+  );
 });

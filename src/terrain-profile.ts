@@ -23,9 +23,9 @@ export function terrainRasterSampler(raster: TerrainRaster) {
   )
     throw new Error('Invalid terrain elevation raster');
   const metersPerDegree = (6371008.8 * Math.PI) / 180;
-  return (x: number, z: number) => {
+  return (x: number, z: number, roadDistance?: number) => {
     const lon = raster.originLon - x / raster.metersPerLongitude;
     const lat = raster.originLat + z / metersPerDegree;
-    return sample(lat, lon) - raster.elevationOffset;
+    return sample(lat, lon, roadDistance) - raster.elevationOffset;
   };
 }

@@ -3,7 +3,13 @@ import { courseProfileHeight, courseRoute, courseShoulderWidth } from './courses
 import type { CourseDefinition } from './courses';
 import { surfaceMaterial } from './surfaces';
 import { terrainBaseHeight, terrainRasterSampler } from './terrain-profile';
-import { TerrainSurface, heightAt, normalAt, type TerrainQueryData } from './terrain-query';
+import {
+  TerrainSurface,
+  cellTriangles,
+  heightAt,
+  normalAt,
+  type TerrainQueryData,
+} from './terrain-query';
 
 type Point = { x: number; z: number };
 
@@ -18,6 +24,7 @@ export class CourseTerrain {
   readonly grass: THREE.InstancedMesh;
   readonly minHeight: number;
   readonly maxHeight: number;
+  readonly flippedCells?: Uint8Array;
   private readonly segments;
   private readonly surface: TerrainSurface;
   private readonly halfWidth: number;
@@ -102,6 +109,14 @@ export class CourseTerrain {
     const vegetation: number[] = [];
     const roadDistances = new Float32Array(this.heights.length);
     const smoothingWeights = new Float32Array(this.heights.length);
+    // Every triangle touching pavement must have all its vertices on the road profile.
+    const supportWidth = rasterHeight ? this.spacing * Math.SQRT2 : 0;
+    const blendStart = rasterHeight
+      ? this.halfWidth + supportWidth
+      : Math.min(this.halfWidth + 3, 48);
+    const blendEnd = rasterHeight
+      ? blendStart + (definition.terrainTransition ?? 3)
+      : Math.min(this.halfWidth + 48, 50);
     let min = Infinity;
     let max = -Infinity;
     for (let z = 0; z < this.rows; z++) {
@@ -112,10 +127,6 @@ export class CourseTerrain {
         const base = terrainBaseHeight(px, pz);
         const hills =
           12 + 9 * Math.sin(px / 48 + 0.6) * Math.cos(pz / 61) + 5 * Math.sin((px - pz) / 83);
-        const blendStart = rasterHeight ? this.halfWidth : Math.min(this.halfWidth + 3, 48);
-        const blendEnd = rasterHeight
-          ? this.halfWidth + (definition.terrainTransition ?? 3)
-          : Math.min(this.halfWidth + 48, 50);
         const blend = THREE.MathUtils.smoothstep(near.distance, blendStart, blendEnd);
         // Elevation follows the centerline, not the hillside's cross-slope:
         // positive turns lower the inside (+across) and raise the outside.
@@ -127,7 +138,7 @@ export class CourseTerrain {
           near.bank * near.across * bankingScale;
         // Imported tracks settle into ground interpolated from nearby course heights.
         const ground = rasterHeight
-          ? rasterHeight(px, pz)
+          ? rasterHeight(px, pz, near.distance)
           : surroundings
             ? surroundings(px, pz) + 0.35 * (hills - 12)
             : base + hills;
@@ -141,11 +152,7 @@ export class CourseTerrain {
             : near.distance - this.halfWidth;
         this.heights[i] = height;
         smoothingWeights[i] = rasterHeight
-          ? THREE.MathUtils.smoothstep(
-              near.distance,
-              this.halfWidth,
-              this.halfWidth + this.spacing,
-            ) *
+          ? THREE.MathUtils.smoothstep(near.distance, blendStart, blendStart + this.spacing / 2) *
             (1 - THREE.MathUtils.smoothstep(near.distance, blendEnd, blendEnd + this.spacing * 2))
           : THREE.MathUtils.smoothstep(near.distance, this.halfWidth + 3, this.halfWidth + 18);
         min = Math.min(min, height);
@@ -158,19 +165,26 @@ export class CourseTerrain {
     }
     // Raster smoothing is confined to the roadside blend; preserve pavement and distant survey heights.
     const smoothed = new Float32Array(this.heights.length);
-    const smoothingPasses = rasterHeight ? 4 : 12;
+    const smoothingPasses = rasterHeight ? 16 : 12;
     for (let pass = 0; pass < smoothingPasses && !definition.flat; pass++) {
       smoothed.set(this.heights);
       for (let z = 1; z < this.rows - 1; z++) {
         for (let x = 1; x < this.columns - 1; x++) {
           const i = z * this.columns + x;
-          const average =
-            (this.heights[i] * 4 +
-              this.heights[i - 1] +
-              this.heights[i + 1] +
-              this.heights[i - this.columns] +
-              this.heights[i + this.columns]) /
-            8;
+          const neighbors =
+            this.heights[i - 1] +
+            this.heights[i + 1] +
+            this.heights[i - this.columns] +
+            this.heights[i + this.columns];
+          const average = rasterHeight
+            ? (this.heights[i] * 4 +
+                neighbors * 2 +
+                this.heights[i - this.columns - 1] +
+                this.heights[i - this.columns + 1] +
+                this.heights[i + this.columns - 1] +
+                this.heights[i + this.columns + 1]) /
+              16
+            : (this.heights[i] * 4 + neighbors) / 8;
           smoothed[i] = THREE.MathUtils.lerp(this.heights[i], average, smoothingWeights[i]);
         }
       }
@@ -197,6 +211,15 @@ export class CourseTerrain {
       const slope = Math.atan(Math.hypot(dx, dz));
       vegetation.push(roadDistances[i], slope);
     }
+    if (rasterHeight && !definition.flat)
+      this.flippedCells = flipCellsAlongContours(
+        this.heights,
+        roadDistances,
+        this.columns,
+        this.rows,
+        this.spacing,
+        supportWidth,
+      );
     // Bullet needs a nonzero vertical range even for an entirely flat heightfield.
     this.minHeight = min === max ? min - 0.01 : min;
     this.maxHeight = min === max ? max + 0.01 : max;
@@ -209,19 +232,17 @@ export class CourseTerrain {
       );
       return;
     }
-    const indices: number[] = [];
+    const indices = new Uint32Array((this.columns - 1) * (this.rows - 1) * 6);
     for (let z = 0; z < this.rows - 1; z++) {
-      for (let x = 0; x < this.columns - 1; x++) {
-        const i = z * this.columns + x;
-        indices.push(i, i + this.columns, i + 1, i + 1, i + this.columns, i + this.columns + 1);
-      }
+      for (let x = 0; x < this.columns - 1; x++)
+        indices.set(cellTriangles(this, x, z), (z * (this.columns - 1) + x) * 6);
     }
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
     geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
     geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
     geometry.setAttribute('vegetation', new THREE.Float32BufferAttribute(vegetation, 2));
-    geometry.setIndex(indices);
+    geometry.setIndex(new THREE.BufferAttribute(indices, 1));
     geometry.computeVertexNormals();
     const material = surfaceMaterial('gravel');
     const grassMaterial = surfaceMaterial('grass');
@@ -425,6 +446,7 @@ export class CourseTerrain {
       heights,
       minHeight,
       maxHeight,
+      flippedCells,
       segments,
       halfWidth,
       padRadius,
@@ -438,6 +460,7 @@ export class CourseTerrain {
       heights,
       minHeight,
       maxHeight,
+      flippedCells,
       segments,
       halfWidth,
       padRadius,
@@ -547,4 +570,43 @@ function profileSurroundings(samples: { x: number; z: number; height: number }[]
     const bottom = THREE.MathUtils.lerp(grid[i + columns], grid[i + columns + 1], gx - ix);
     return THREE.MathUtils.lerp(top, bottom, gz - iz);
   };
+}
+
+const contourCorridor = 20;
+
+/**
+ * A fixed diagonal turns roadside walls crossing it into sawtooth facets. Near the road,
+ * split each cell along the diagonal whose corners differ least, following the wall's
+ * contours. Vertices within `support` of the pavement lie exactly on the road profile; a
+ * flipped triangle using any other vertex must stay clear of the pavement.
+ */
+function flipCellsAlongContours(
+  heights: Float32Array,
+  roadDistances: Float32Array,
+  columns: number,
+  rows: number,
+  spacing: number,
+  support: number,
+) {
+  const flipped = new Uint8Array((columns - 1) * (rows - 1));
+  // Every point of a grid triangle lies within half a cell diagonal of one of its vertices.
+  const clearance = (spacing * Math.SQRT2) / 2;
+  const safe = (...corners: number[]) => {
+    const distances = corners.map((i) => roadDistances[i]);
+    return Math.max(...distances) <= support || Math.min(...distances) > clearance;
+  };
+  for (let z = 0; z < rows - 1; z++) {
+    for (let x = 0; x < columns - 1; x++) {
+      const a = z * columns + x;
+      const b = a + 1;
+      const c = a + columns;
+      const d = c + 1;
+      const near = Math.min(roadDistances[a], roadDistances[b], roadDistances[c], roadDistances[d]);
+      const far = Math.max(roadDistances[a], roadDistances[b], roadDistances[c], roadDistances[d]);
+      if (far <= support || near > contourCorridor) continue;
+      if (Math.abs(heights[b] - heights[c]) <= Math.abs(heights[a] - heights[d])) continue;
+      if (safe(a, c, d) && safe(a, d, b)) flipped[z * (columns - 1) + x] = 1;
+    }
+  }
+  return flipped;
 }
