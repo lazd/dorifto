@@ -8,6 +8,7 @@ const daylight = {
   noon: {
     sky: '#78b5ec',
     horizon: '#b6d7ee',
+    haze: '#a9bdc9',
     ground: '#656052',
     cloudLight: '#fffaf0',
     cloudShade: '#849bb8',
@@ -22,6 +23,7 @@ const daylight = {
   sunset: {
     sky: '#182b45',
     horizon: '#f5a04c',
+    haze: '#a79589',
     ground: '#493b38',
     cloudLight: '#fa603d',
     cloudShade: '#29394f',
@@ -37,6 +39,7 @@ const daylight = {
   night: {
     sky: '#030914',
     horizon: '#101d35',
+    haze: '#151c29',
     ground: '#080b13',
     cloudLight: '#33415c',
     cloudShade: '#111b30',
@@ -53,6 +56,7 @@ const daylight = {
   {
     sky: string;
     horizon: string;
+    haze: string;
     ground: string;
     ambient: string;
     cloudLight: string;
@@ -72,9 +76,9 @@ export function createLighting(
   renderer: THREE.WebGLRenderer,
   camera: THREE.PerspectiveCamera,
 ) {
-  const fogNear = 220;
-  const fogFar = 650;
-  const fog = new THREE.Fog(0x78b5ec, fogNear, fogFar);
+  const fogNear = 800;
+  const fogFar = 3000;
+  const fog = new THREE.Fog(daylight.noon.haze, fogNear, fogFar);
   scene.fog = fog;
   const pmrem = new THREE.PMREMGenerator(renderer);
   const environment = new RoomEnvironment();
@@ -249,7 +253,7 @@ export function createLighting(
     const preset = daylight[time];
     scene.background = skies[time].sky;
     scene.environment = skies[time].environment;
-    fog.color.set(preset.horizon);
+    fog.color.set(preset.haze);
     ambient.color.set(preset.ambient);
     ambient.groundColor.set(preset.ground);
     ambient.intensity = preset.ambientIntensity;

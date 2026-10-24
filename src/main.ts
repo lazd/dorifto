@@ -284,7 +284,7 @@ async function start() {
   renderer.domElement.setAttribute('aria-label', '3D driving playground');
 
   const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 1500);
+  const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 3000);
   camera.layers.enable(1);
   const lighting = createLighting(scene, renderer, camera);
   const requestedTime = readOption('time', configurationState.getState().timeOfDay, isTimeOfDay);

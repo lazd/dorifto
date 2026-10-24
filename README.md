@@ -1036,6 +1036,8 @@ the original muted blue clouds. Neither uses the dramatic sunset treatment.
 Cloud patterns are deterministic, wrap seamlessly around the horizon, and
 add no per-frame cloud rendering passes.
 Sky, fog, ambient illumination, reflections, and exposure change together.
+Distance haze fades in from 800 m to 3 km, using muted time-of-day colors
+separate from the sky horizon so distant slopes retain their shading.
 At sunset and night, reflective materials use the visible sky, so the car
 reflects the actual clouds and sky colors. Noon retains the original neutral
 studio reflections and paint settings. All three skies and their reflection maps
@@ -1155,7 +1157,7 @@ outside it is textured dirt/gravel. Both receive shadows and headlights.
 The terrain also casts shadows; decorative grass tufts only receive them.
 The sun uses three cascaded 2048×2048 shadow maps following the camera, with
 splits at 30 m, 180 m, and 1500 m and blended transitions. This keeps nearby car
-shadows detailed while extending terrain shadows beyond the normal fog distance.
+shadows detailed while extending terrain shadows into the distance haze.
 Mirrors reuse the main view's shadow maps. Cascades add two sun shadow passes
 and use roughly three times the sun shadow-map memory of a single map.
 Each wheel checks its physics contact against the course corridor: dirt/gravel has
