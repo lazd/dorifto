@@ -7,6 +7,10 @@ const maneuverLabels = {
   chasing: 'CHASE',
   attacking: 'ATTACK',
   returning: 'RETURN',
+  grip: 'GRIP',
+  initiation: 'INIT',
+  drift: 'DRIFT',
+  termination: 'EXIT',
 } satisfies Record<BotThinking['maneuver'], string>;
 const plateColumns = 'BRAKE STOP'.length;
 type PlateMesh = THREE.Mesh<THREE.BufferGeometry, THREE.Material | THREE.Material[]>;

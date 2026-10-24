@@ -8,11 +8,12 @@ import {
   createPhysicsResources,
   type PhysicsCar,
   type PhysicsConfiguration,
+  type PhysicsControls,
 } from './vehicle-physics';
 import {
   createDrivingMap,
   createRaceBot,
-  raceBotTunings,
+  botEdgeMargin,
   type RaceBotOptions,
   type RaceExperience,
   type VehicleState,
@@ -28,11 +29,48 @@ export interface TrainingRun {
   metrics: ReturnType<typeof createRaceBot>['metrics'];
 }
 
+export type TrainingGeometry = Pick<
+  PhysicsCar,
+  'centers' | 'radii' | 'widths' | 'collisionVertices'
+>;
+
+/** A solo headless car on the course's actual terrain, without cones or traffic. */
+export function createTrainingVehicle(
+  Ammo: typeof AmmoFactory,
+  definition: CourseDefinition,
+  terrain: CourseTerrain,
+  geometry: TrainingGeometry,
+  configuration: PhysicsConfiguration,
+  controls: PhysicsControls,
+) {
+  const car: PhysicsCar = {
+    ...geometry,
+    chassis: new THREE.Object3D(),
+    wheels: Array.from({ length: 4 }, () => new THREE.Object3D()),
+    hubs: Array.from({ length: 4 }, () => new THREE.Object3D()),
+    setBraking() {},
+    setReversing() {},
+    setHazards() {},
+  };
+  const laps = new LapTimer(definition);
+  const physics = createVehiclePhysics({
+    Ammo,
+    resources: createPhysicsResources(Ammo),
+    car,
+    course: { terrain, isAsphalt: (position) => terrain.isAsphalt(position) },
+    spawn: courseSpawn(definition),
+    controls,
+    laps,
+    configurationState: { getState: () => configuration },
+  });
+  return { physics, laps };
+}
+
 export function trainRaceBot(
   Ammo: typeof AmmoFactory,
   definition: CourseDefinition,
   terrain: CourseTerrain,
-  geometry: Pick<PhysicsCar, 'centers' | 'radii' | 'widths' | 'collisionVertices'>,
+  geometry: TrainingGeometry,
   configuration: PhysicsConfiguration,
   options: RaceBotOptions,
   runs: number,
@@ -53,29 +91,21 @@ export function trainRaceBot(
     throw new Error('Training runs must be an integer from 1 to 100');
   if (!Number.isFinite(maxSeconds) || maxSeconds <= 0) throw new Error('Invalid training timeout');
   const dimensions = vehicleDimensions(geometry);
-  const { edgeMargin } = raceBotTunings[options.preset ?? 'grip-fast'];
-  const map = createDrivingMap(definition, terrain, dimensions.halfWidth, edgeMargin);
+  const map = createDrivingMap(
+    definition,
+    terrain,
+    dimensions.halfWidth,
+    botEdgeMargin(options.preset),
+  );
   const bot = createRaceBot(map, configuration, dimensions, options, saved);
-  const car: PhysicsCar = {
-    ...geometry,
-    chassis: new THREE.Object3D(),
-    wheels: Array.from({ length: 4 }, () => new THREE.Object3D()),
-    hubs: Array.from({ length: 4 }, () => new THREE.Object3D()),
-    setBraking() {},
-    setReversing() {},
-    setHazards() {},
-  };
-  const laps = new LapTimer(definition);
-  const physics = createVehiclePhysics({
+  const { physics, laps } = createTrainingVehicle(
     Ammo,
-    resources: createPhysicsResources(Ammo),
-    car,
-    course: { terrain, isAsphalt: (position) => terrain.isAsphalt(position) },
-    spawn: courseSpawn(definition),
-    controls: bot.controls,
-    laps,
-    configurationState: { getState: () => configuration },
-  });
+    definition,
+    terrain,
+    geometry,
+    configuration,
+    bot.controls,
+  );
   const results: TrainingRun[] = [];
   try {
     for (let run = 1; run <= runs; run++) {

@@ -5,6 +5,13 @@ import { optimizeRacingLine } from './racing-line';
 import { defaultTuningPresets } from './configuration-state';
 import { vehicleSettings } from './vehicle-settings';
 import raceBotTuningsJson from './race-bot-tunings.json';
+import {
+  createDriftBot,
+  driftBotPresets,
+  driftBotTunings,
+  isDriftBotPreset,
+  type DriftBotPreset,
+} from './drift-bot';
 import type {
   PhysicsConfiguration,
   PhysicsControls,
@@ -24,7 +31,10 @@ export function raceGridSpawn(definition: CourseDefinition, slot: number) {
 
 export const raceBotPresets = ['grip-default', 'grip-fast'] as const;
 export type RaceBotPreset = (typeof raceBotPresets)[number];
-export interface RaceBotTuning {
+/** Every built-in setup a bot can drive; drift presets get the drift driver. */
+export const botPresets = [...raceBotPresets, ...driftBotPresets] as const;
+export type BotPreset = RaceBotPreset | DriftBotPreset;
+export type RaceBotTuning = {
   /** Cornering limit on asphalt, m/s² per unit of tire grip. */
   corneringGrip: number;
   /** Straight-line braking limit, m/s². */
@@ -43,7 +53,7 @@ export interface RaceBotTuning {
   tractionSlip: number;
   /** Steering correction (rad) per rad/s of yaw rate beyond the racing line's curvature. */
   yawDamping: number;
-}
+};
 /**
  * Driver model constants per car setup, bundled from `race-bot-tunings.json`.
  * `npm run train:bot` searches them for lap time and `npm run apply:bot` updates the JSON.
@@ -57,7 +67,16 @@ export type VehicleState = ReturnType<ReturnType<typeof createVehiclePhysics>['r
 
 export interface BotThinking {
   phase: 'settling' | 'launching' | 'driving';
-  maneuver: 'racing-line' | 'chasing' | 'attacking' | 'returning';
+  /** Race maneuvers, or the drift bot's grip, initiation, drift and termination modes. */
+  maneuver:
+    | 'racing-line'
+    | 'chasing'
+    | 'attacking'
+    | 'returning'
+    | 'grip'
+    | 'initiation'
+    | 'drift'
+    | 'termination';
   /** One-based race position, or null when driving without race standings. */
   racePosition: number | null;
   conditions: {
@@ -75,7 +94,7 @@ export interface RaceBotOptions {
   /** Extra 25% pedal request during inside attacks; enabled when omitted. */
   attackThrottleBoost?: boolean;
   /** Built-in car setup the bot drives; defaults to Grip / Fast. */
-  preset?: RaceBotPreset;
+  preset?: BotPreset;
 }
 
 export const defaultRaceBotOptions: RaceBotOptions = {
@@ -86,23 +105,34 @@ export const defaultRaceBotOptions: RaceBotOptions = {
   preset: 'grip-default',
 };
 
+/** The configuration with a built-in preset applied in that preset's drive mode. */
 export function raceBotConfiguration(
   configuration: PhysicsConfiguration,
-  id: RaceBotPreset = 'grip-fast',
+  id: BotPreset = 'grip-fast',
 ): PhysicsConfiguration {
   const preset = defaultTuningPresets().find((preset) => preset.id === id);
-  if (!preset || preset.mode !== 'grip') throw new Error(`Missing built-in ${id} preset`);
+  if (!preset) throw new Error(`Missing built-in ${id} preset`);
   return {
     ...configuration,
-    driveMode: 'grip',
-    profiles: { ...configuration.profiles, grip: { ...preset.tuning } },
+    driveMode: preset.mode,
+    profiles: { ...configuration.profiles, [preset.mode]: { ...preset.tuning } },
   };
+}
+
+/** Road edge margin for a preset's driving map; the drift bot follows the centerline. */
+export function botEdgeMargin(preset: BotPreset = 'grip-fast') {
+  return isDriftBotPreset(preset) ? undefined : raceBotTunings[preset].edgeMargin;
+}
+
+/** The driver constants a preset's bot uses. */
+export function botTuning(preset: BotPreset = 'grip-fast'): Record<string, number> {
+  return isDriftBotPreset(preset) ? driftBotTunings[preset] : raceBotTunings[preset];
 }
 
 /** Identifies a bot driver in saved runs; the hash changes whenever its preset's values do. */
 export function raceBotDriverName({ preset = 'grip-fast', skill }: RaceBotOptions) {
   let hash = 0;
-  for (const char of JSON.stringify(raceBotTunings[preset]))
+  for (const char of JSON.stringify(botTuning(preset)))
     hash = (Math.imul(hash, 31) + char.charCodeAt(0)) | 0;
   const id = (hash >>> 0).toString(36).slice(-4);
   return `bot v${raceBotVersion} ${preset} ${id} skill ${skill}`;
@@ -157,7 +187,7 @@ export function readRaceBots(parameters: URLSearchParams): RaceBotOptions[] {
     'bot-preset',
     'preset',
     count,
-    (value) => value as RaceBotPreset,
+    (value) => value as BotPreset,
   );
   return skills.map((skill, index) => ({
     skill,
@@ -216,8 +246,8 @@ export function validateRaceBotOptions(options: RaceBotOptions) {
   if (typeof options.learning !== 'boolean') throw new Error('Invalid race bot learning option');
   if (options.attackThrottleBoost !== undefined && typeof options.attackThrottleBoost !== 'boolean')
     throw new Error('Invalid race bot attack throttle boost option');
-  if (options.preset !== undefined && !raceBotPresets.includes(options.preset))
-    throw new Error(`Race bot preset must be one of ${raceBotPresets.join(', ')}`);
+  if (options.preset !== undefined && !botPresets.includes(options.preset))
+    throw new Error(`Race bot preset must be one of ${botPresets.join(', ')}`);
 }
 
 export function createDrivingMap(
@@ -286,7 +316,9 @@ export function createRaceBot(
   saved?: RaceExperience,
 ) {
   validateRaceBotOptions(options);
-  const driver = raceBotTunings[options.preset ?? 'grip-fast'];
+  const preset = options.preset ?? 'grip-fast';
+  if (isDriftBotPreset(preset)) throw new Error(`${preset} is driven by the drift bot`);
+  const driver = raceBotTunings[preset];
   const { samples, spacing } = map;
   const count = samples.length;
   const sectorCount = Math.ceil(map.length / 25);
@@ -678,3 +710,16 @@ export function createRaceBot(
     },
   };
 }
+
+/** The race driver for grip presets, or the drift driver for drift presets. */
+export function createBot(
+  map: DrivingMap,
+  configuration: PhysicsConfiguration,
+  dimensions: Parameters<typeof createRaceBot>[2],
+  options: RaceBotOptions,
+) {
+  return isDriftBotPreset(options.preset)
+    ? createDriftBot(map, configuration, dimensions, options)
+    : createRaceBot(map, configuration, dimensions, options);
+}
+export type Bot = ReturnType<typeof createBot>;

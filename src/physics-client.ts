@@ -119,7 +119,19 @@ export function createPhysicsClient({
   const position = new THREE.Vector3();
   const quaternion = new THREE.Quaternion();
   let telemetry: PhysicsTelemetry = {
-    motion: { x: 0, y: 0, z: 0, heading: 0, vx: 0, vz: 0, speed: 0, slipAngle: 0, yawRate: 0 },
+    motion: {
+      x: 0,
+      y: 0,
+      z: 0,
+      heading: 0,
+      vx: 0,
+      vz: 0,
+      speed: 0,
+      slipAngle: 0,
+      yawRate: 0,
+      steering: 0,
+      rearWheelSpeed: 0,
+    },
     tires: [],
     engine: {
       rpm: idleRpm,

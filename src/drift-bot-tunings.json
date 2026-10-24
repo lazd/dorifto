@@ -1,0 +1,18 @@
+{
+  "drift-default": {
+    "rearSlipRatio": 0.5,
+    "speedSlipGain": 0.05,
+    "slipGain": 3,
+    "slipIntegral": 4,
+    "yawGain": 6,
+    "lookaheadTime": 0.6,
+    "previewTime": 1.2,
+    "driftCurvature": 0.012,
+    "driftGrip": 9,
+    "brakingLimit": 6,
+    "exitThrottle": 0.15,
+    "driftAngle": 0.6,
+    "angleGain": 1,
+    "handbrakeSlip": 0.2
+  }
+}

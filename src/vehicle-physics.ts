@@ -811,6 +811,10 @@ export function createVehiclePhysics({
         speed: Math.hypot(linear.x(), linear.z()),
         slipAngle: Math.atan2(across, Math.max(Math.abs(along), 0.5)),
         yawRate: angular.y(),
+        /** Front wheel angle after steering smoothing and rate limits, rad. */
+        steering,
+        /** Mean rear tire surface speed, m/s; exceeds forward speed under wheelspin. */
+        rearWheelSpeed: ((tireSpeeds[2] + tireSpeeds[3]) / 2) * drivenWheelRadius,
       };
     },
     get engine() {

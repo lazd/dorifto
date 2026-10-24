@@ -442,9 +442,9 @@ function summarize(runs) {
   };
 }
 
-function mutate(tuning, steps) {
+export function mutate(tuning, steps, ranges = bounds) {
   const next = { ...tuning };
-  for (const [key, [low, high]] of Object.entries(bounds)) {
+  for (const [key, [low, high]] of Object.entries(ranges)) {
     const gaussian =
       Math.sqrt(-2 * Math.log(1 - Math.random())) * Math.cos(2 * Math.PI * Math.random());
     next[key] = Math.min(high, Math.max(low, tuning[key] + gaussian * steps[key]));

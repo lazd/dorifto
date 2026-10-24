@@ -5,7 +5,7 @@ import type { LapTimer } from './laps';
 import { frameStride, type RunRecording, type ReplayTireState } from './lap-recording';
 import type { TerrainQueryData } from './terrain-query';
 import type { PhysicsCar, PhysicsConfiguration, PhysicsControls } from './vehicle-physics';
-import type { RaceBotOptions, VehicleState, createRaceBot } from './race-bot';
+import type { Bot, RaceBotOptions, VehicleState } from './race-bot';
 import type { RaceStanding } from './race-standings';
 
 export const physicsStep = 1 / 120;
@@ -188,8 +188,8 @@ export interface PhysicsSnapshot {
   standings?: RaceStanding[];
   bots: {
     laps: LapState;
-    metrics: ReturnType<typeof createRaceBot>['metrics'];
-    thinking: ReturnType<typeof createRaceBot>['thinking'];
+    metrics: Bot['metrics'];
+    thinking: Bot['thinking'];
     engine: DrivetrainState;
     tireSounds: ReplayTireState[];
     wheelContacts: boolean[];

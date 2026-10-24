@@ -50,7 +50,7 @@ import { createLeaderboard } from './leaderboard';
 import { createPhysicsClient } from './physics-client';
 import {
   raceBotDriverName,
-  raceBotTunings,
+  botTuning,
   readBotsOnly,
   readRaceBots,
   writeRaceBots,
@@ -218,7 +218,7 @@ async function start() {
     return recordedBot
       ? {
           driver: raceBotDriverName(recordedBot),
-          botTuning: { ...raceBotTunings[recordedBot.preset ?? 'grip-fast'] },
+          botTuning: { ...botTuning(recordedBot.preset) },
         }
       : { driver: 'human' };
   };
