@@ -2,7 +2,14 @@ import { isDriveMode, type DriveMode } from './drive-modes';
 import { bindBotDialog } from './bot-dialog';
 import { createDrivingTuning } from './drift-tuning';
 import { redlineRpm } from './drivetrain';
-import { courseRoute, generateCourse, racetracks, roads, type CourseDefinition } from './courses';
+import {
+  courseRoute,
+  generateCourse,
+  loadCourseDefinition,
+  racetracks,
+  roads,
+  type CourseDefinition,
+} from './courses';
 import { coursePreviewSvg } from './course-preview';
 import { CoursePreviewRenderer } from './course-preview-3d';
 import {
@@ -961,16 +968,19 @@ export function bindCoursePicker(
     previewContainer.setAttribute('aria-busy', 'true');
     // Let the status paint first: building a racetrack heightfield takes a moment.
     requestAnimationFrame(() =>
-      setTimeout(() => {
+      setTimeout(async () => {
         if (token !== previewToken || !picker.open) return;
         try {
-          preview3d.render(course, previewColors(), `3-D terrain preview of ${course.name}`);
+          const definition = await loadCourseDefinition(course);
+          if (token !== previewToken || !picker.open) return;
+          preview3d.render(definition, previewColors(), `3-D terrain preview of ${course.name}`);
         } catch (error) {
           console.error('Unable to show 3-D course preview:', error);
+          if (token !== previewToken || !picker.open) return;
           preview3d.dispose();
           previewError(`Unable to show 3-D preview: ${errorText(error)}`);
         } finally {
-          previewContainer.removeAttribute('aria-busy');
+          if (token === previewToken) previewContainer.removeAttribute('aria-busy');
         }
       }, 0),
     );
@@ -1039,6 +1049,7 @@ export function bindCoursePicker(
               ? actions.getCourseWeights()
               : undefined;
         if (weights) validateCourseWeights(weights);
+        picker.close();
         selected = await actions.changeCourse(
           id,
           generation?.seed ??
@@ -1047,7 +1058,6 @@ export function bindCoursePicker(
           direction,
         );
         syncCourseName();
-        picker.close();
       } catch (error) {
         actions.reportError(error);
         pickerError(errorText(error));

@@ -128,6 +128,16 @@ by direction and access to saved-run replays. An unsaved random or custom course
 in a **Current layout** group, marked Unsaved, while it is active. Saved courses have a
 **⋯** menu for renaming and confirmed deletion.
 
+Imported maps keep only course details and outlines in the initial bundle. Full terrain is
+loaded on demand for a selected 3-D preview or driving session, with shared in-flight requests
+and an in-memory cache. Map assets use content-hashed URLs and the browser's HTTP cache:
+unchanged maps can be reused across visits, while updated maps get a new URL on the next build.
+Failed downloads are reported and can be retried. Headless tools load map data directly from disk.
+Map downloads show byte-based progress during startup and course changes, including when
+the server compresses the map response. Loading a course closes the picker immediately;
+the main loading overlay shows download progress, then hides the bar and displays
+**Building map…** before terrain building begins.
+
 Dialog presentation uses shared design tokens and native HTML primitives in
 [`src/dialogs.css`](src/dialogs.css): button variants (`button-quiet`, `button-secondary`,
 `button-primary`), accessible tabs, radio-based segmented controls, checkbox switches,

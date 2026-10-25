@@ -6,6 +6,7 @@ import { createCourse } from './course';
 import {
   courses,
   courseSpawn,
+  loadCourseDefinition,
   generateCourse,
   readCourseReverse,
   type CourseDefinition,
@@ -274,7 +275,17 @@ async function start() {
         : availableCourses.find((course) => course.id === (requestedCourse ?? 'hillside'));
   if (!definition) throw new Error(`Unknown course: ${requestedCourse}`);
   // Download the car while the sky, lighting, and course are built.
-  const carLoad = loadCar((fraction) => showLoading('Loading models…', 0.2 * fraction));
+  let modelProgress = 0;
+  let mapProgress = 0;
+  const showAssetProgress = () =>
+    showLoading(
+      mapProgress < 1 ? `Loading map: ${definition.name}…` : 'Loading models…',
+      0.1 * (modelProgress + mapProgress),
+    );
+  const carLoad = loadCar((fraction) => {
+    modelProgress = fraction;
+    showAssetProgress();
+  });
   const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
   renderer.setSize(innerWidth, innerHeight);
@@ -292,8 +303,17 @@ async function start() {
   const requestedTime = readOption('time', configurationState.getState().timeOfDay, isTimeOfDay);
   configurationState.update({ timeOfDay: requestedTime });
   lighting.apply(requestedTime);
-  const initialDefinition = { ...definition, reverse: requestedReverse };
-  const [car] = await Promise.all([carLoad, loadTerrainSurfaces()]);
+  const [car, loadedDefinition] = await Promise.all([
+    carLoad,
+    loadCourseDefinition(definition, (fraction) => {
+      mapProgress = fraction;
+      showAssetProgress();
+    }),
+    loadTerrainSurfaces(),
+  ]);
+  const initialDefinition = { ...loadedDefinition, reverse: requestedReverse };
+  gameState.update({ status: { visible: true, error: false, message: 'Building map…' } });
+  await new Promise<void>((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
   const initialCourse = createCourse(scene, initialDefinition, car.width);
   showLoading('Starting physics…', 0.2);
   // The picker may change while the model is loading.
@@ -472,7 +492,7 @@ async function start() {
     }
   }
 
-  let activeDefinition = definition;
+  let activeDefinition = loadedDefinition;
   let { course, terrain, spawn, laps, physics, drivingCamera } = await createCourseSession(
     initialDefinition,
     initialCourse,
@@ -861,10 +881,14 @@ async function start() {
     controls.clear();
     audio.reset();
     clearLapRecording();
-    gameState.update({ status: { visible: true, error: false, message: 'Building course…' } });
+    showLoading('Loading map…', 0);
     try {
       await new Promise<void>((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
-      const nextDefinition = build();
+      const nextDefinition = await loadCourseDefinition(build(), (fraction) =>
+        showLoading('Loading map…', fraction),
+      );
+      gameState.update({ status: { visible: true, error: false, message: 'Building map…' } });
+      await new Promise<void>((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
       const next = await createCourseSession({ ...nextDefinition, reverse });
       minimap.setCourse(nextDefinition);
       const previousPhysics = physics;

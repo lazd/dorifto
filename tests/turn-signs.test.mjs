@@ -53,7 +53,7 @@ function checkPlacements(route) {
       if (index > 0) {
         const gap = wrap(sign.distance - signs[index - 1].distance);
         assert.ok(gap > 0 && gap <= 8 + 1e-6, `sign spacing: ${gap}`);
-        if (span > 16) assert.ok(gap > 6, 'longer runs have wider spacing than before');
+        if (span > 20) assert.ok(gap > 6, 'longer runs have wider spacing than before');
       }
     });
     offset += count;

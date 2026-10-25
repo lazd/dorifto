@@ -11,7 +11,7 @@ let courses;
 let courseRoute;
 let courseProfileHeight;
 const sonoma = JSON.parse(
-  await readFile(new URL('../src/trackImports/sonoma-raceway.json', import.meta.url), 'utf8'),
+  await readFile(new URL('../track-imports/sonoma-raceway.json', import.meta.url), 'utf8'),
 );
 
 before(async () => {
@@ -54,19 +54,33 @@ test('conversion without a supplied profile remains flat until elevation is fetc
   assert.throws(() => convertTrack({ ...sonoma, featured_lap: null }), /featured_lap/);
 });
 
-test('supplied elevation is preserved without fetching or reading a cache', async () => {
-  const fetch = () => assert.fail('Supplied elevation must not trigger a request');
-  assert.equal(await fetchMissingElevation(sonoma, { fetch }), sonoma);
-  await assert.rejects(
-    fetchMissingElevation(
-      {
-        ...sonoma,
-        elevation: { points: [{ dist_frac: 0, altitude_m: null }] },
-      },
-      { fetch },
-    ),
-    /supplied elevation profile is invalid/,
+test('supplied elevation is refreshed and cached for offline reuse', async (t) => {
+  const cacheDir = await mkdtemp(path.join(tmpdir(), 'dorifto-elevation-'));
+  t.after(() => rm(cacheDir, { recursive: true }));
+  const data = {
+    ...sonoma,
+    featured_lap: { points: sonoma.featured_lap.points.slice(0, 8) },
+  };
+  let requests = 0;
+  const enriched = await fetchMissingElevation(data, {
+    cacheDir,
+    fetch: async () => Response.json({ value: 100 + ++requests }),
+  });
+  assert.ok(requests > 0, 'Supplied elevation must not bypass fetching on a cache miss');
+  assert.equal(data.elevation, sonoma.elevation);
+  assert.equal(enriched.elevation.source, 'USGS 3DEP');
+  assert.equal(enriched.elevation.points.length, requests);
+  assert.notDeepEqual(enriched.elevation, data.elevation);
+  const cached = JSON.parse(
+    await readFile(path.join(cacheDir, `${encodeURIComponent(data.slug)}.json`), 'utf8'),
   );
+  assert.deepEqual(cached, enriched.elevation);
+
+  const offline = await fetchMissingElevation(data, {
+    cacheDir,
+    fetch: () => assert.fail('Cached elevation must work offline'),
+  });
+  assert.deepEqual(offline.elevation, cached);
 });
 
 test('missing elevation is fetched in meters, cached, and converted with attribution', async (t) => {
@@ -230,6 +244,9 @@ test('imports bridge endpoint height mismatches without a grade discontinuity', 
 
 test('all imported track profiles have gradual elevation changes across the lap seam', () => {
   for (const course of courses.filter(({ elevation }) => elevation?.length > 100)) {
+    if (!course.closed) {
+      continue;
+    }
     const heights = course.elevation;
     const spacing = courseRoute(course).getLength() / heights.length;
     for (let i = 0; i < heights.length; i++) {
@@ -308,7 +325,7 @@ test('generated track files are listed as courses with imported metadata', async
   for (const id of ['sonoma-raceway', 'thunderhill-east']) {
     const course = courses.find((candidate) => candidate.id === id);
     const source = JSON.parse(
-      await readFile(new URL(`../src/trackImports/${id}.json`, import.meta.url), 'utf8'),
+      await readFile(new URL(`../track-imports/${id}.json`, import.meta.url), 'utf8'),
     );
     assert.ok(course, id);
     assert.equal(course.name, source.display_name);
