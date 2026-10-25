@@ -730,6 +730,7 @@ async function refreshSaved() {
     copy.append(title, meta);
     item.append(svg, copy);
     item.onclick = () => {
+      if (item.getAttribute('aria-selected') === 'true') return;
       void selectMap(saved.id);
     };
     item.onkeydown = (event) => {
@@ -748,6 +749,7 @@ async function refreshSaved() {
             ? savedMaps.length - 1
             : (i + (event.key === 'ArrowDown' ? 1 : -1) + savedMaps.length) % savedMaps.length;
       const next = savedMaps[index];
+      if (index === i) return;
       void selectMap(next.course.id);
       element('saved').querySelectorAll<HTMLButtonElement>('.track-option')[index].focus();
     };
@@ -832,7 +834,7 @@ async function selectMap(id: string) {
     updatePreviewInfo();
   } catch (error) {
     if (version !== previewVersion || view !== 'library') return;
-    previewStatus.textContent = 'Preview unavailable. Try selecting this track again.';
+    previewStatus.textContent = 'Preview unavailable. Reload the page and try again.';
     report(error);
   }
 }

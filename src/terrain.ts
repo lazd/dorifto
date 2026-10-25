@@ -11,6 +11,7 @@ import {
   triangleHeight,
   vertexPosition,
   type TerrainQueryData,
+  type HeightfieldData,
 } from './terrain-query';
 
 type Point = { x: number; z: number };
@@ -772,78 +773,92 @@ export class CourseTerrain {
     };
   }
 
-  // Split paint and pavement at the heightfield's triangle edges, avoiding
-  // terrain poking through a ribbon that spans differently triangulated cells.
   projectGeometry(source: THREE.BufferGeometry, lift: number) {
-    const positions: number[] = [];
-    const uv: number[] = [];
-    const attribute = source.getAttribute('position');
-    const index = source.getIndex();
-    // Optional per-vertex scalar (e.g. distance across a road ribbon), interpolated onto clipped pieces.
-    const sourceLateral = source.getAttribute('lateral');
-    const lateral: number[] = [];
-    function clip(polygon: Point[], a: Point, b: Point) {
-      const side = (p: Point) => (b.x - a.x) * (p.z - a.z) - (b.z - a.z) * (p.x - a.x);
-      const result: Point[] = [];
-      for (let i = 0; i < polygon.length; i++) {
-        const p = polygon[i];
-        const q = polygon[(i + 1) % polygon.length];
-        const dp = side(p);
-        const dq = side(q);
-        if (dp >= 0) result.push(p);
-        if (dp < 0 !== dq < 0) {
-          const t = dp / (dp - dq);
-          result.push({ x: p.x + t * (q.x - p.x), z: p.z + t * (q.z - p.z) });
-        }
+    return projectTerrainGeometry(this, source, lift);
+  }
+}
+
+// Split surface overlays at terrain triangle edges so the terrain cannot pierce them.
+export function projectTerrainGeometry(
+  terrain: HeightfieldData,
+  source: THREE.BufferGeometry,
+  lift: number,
+) {
+  const positions: number[] = [];
+  const uv: number[] = [];
+  const attribute = source.getAttribute('position');
+  const index = source.getIndex();
+  // Optional per-vertex scalar (e.g. distance across a road ribbon), interpolated onto clipped pieces.
+  const sourceLateral = source.getAttribute('lateral');
+  const lateral: number[] = [];
+  function clip(polygon: Point[], a: Point, b: Point) {
+    const side = (p: Point) => (b.x - a.x) * (p.z - a.z) - (b.z - a.z) * (p.x - a.x);
+    const result: Point[] = [];
+    for (let i = 0; i < polygon.length; i++) {
+      const p = polygon[i];
+      const q = polygon[(i + 1) % polygon.length];
+      const dp = side(p);
+      const dq = side(q);
+      if (dp >= 0) result.push(p);
+      if (dp < 0 !== dq < 0) {
+        const t = dp / (dp - dq);
+        result.push({ x: p.x + t * (q.x - p.x), z: p.z + t * (q.z - p.z) });
       }
-      return result;
     }
-    for (let i = 0; i < (index?.count ?? attribute.count); i += 3) {
-      const vertices = [0, 1, 2].map((j) => (index ? index.getX(i + j) : i + j));
-      const triangle = vertices.map((v) => ({ x: attribute.getX(v), z: attribute.getZ(v) }));
-      const [a, b, c] = triangle;
-      const area = (b.x - a.x) * (c.z - a.z) - (c.x - a.x) * (b.z - a.z);
-      const lateralAt = (p: Point) => {
-        if (!sourceLateral || !area) return 0;
-        const wb = ((p.x - a.x) * (c.z - a.z) - (c.x - a.x) * (p.z - a.z)) / area;
-        const wc = ((b.x - a.x) * (p.z - a.z) - (p.x - a.x) * (b.z - a.z)) / area;
-        const [la, lb, lc] = vertices.map((v) => sourceLateral.getX(v));
-        return la + (lb - la) * wb + (lc - la) * wc;
-      };
-      const minX = Math.floor((Math.min(...triangle.map((p) => p.x)) - this.minX) / this.spacing);
-      const maxX = Math.floor((Math.max(...triangle.map((p) => p.x)) - this.minX) / this.spacing);
-      const minZ = Math.floor((Math.min(...triangle.map((p) => p.z)) - this.minZ) / this.spacing);
-      const maxZ = Math.floor((Math.max(...triangle.map((p) => p.z)) - this.minZ) / this.spacing);
-      // Warped cells can reach into the neighbors of the triangle's bounding cells.
-      const pad = this.warpedCells ? 1 : 0;
-      for (let z = Math.max(minZ - pad, 0); z <= Math.min(maxZ + pad, this.rows - 2); z++) {
-        for (let x = Math.max(minX - pad, 0); x <= Math.min(maxX + pad, this.columns - 2); x++) {
-          const corners = cellTriangles(this, x, z);
-          for (let t = 0; t < corners.length; t += 3) {
-            const cell = [corners[t], corners[t + 2], corners[t + 1]];
-            const points = cell.map((i) => vertexPosition(this, i));
-            let polygon = triangle;
-            for (let edge = 0; edge < 3 && polygon.length; edge++)
-              polygon = clip(polygon, points[edge], points[(edge + 1) % 3]);
-            for (let j = 1; j < polygon.length - 1; j++) {
-              for (const p of [polygon[0], polygon[j], polygon[j + 1]]) {
-                positions.push(p.x, triangleHeight(this, cell, p.x, p.z)! + lift, p.z);
-                uv.push(p.x / 5, p.z / 5);
-                if (sourceLateral) lateral.push(lateralAt(p));
-              }
+    return result;
+  }
+  for (let i = 0; i < (index?.count ?? attribute.count); i += 3) {
+    const vertices = [0, 1, 2].map((j) => (index ? index.getX(i + j) : i + j));
+    const triangle = vertices.map((v) => ({ x: attribute.getX(v), z: attribute.getZ(v) }));
+    const [a, b, c] = triangle;
+    const area = (b.x - a.x) * (c.z - a.z) - (c.x - a.x) * (b.z - a.z);
+    const lateralAt = (p: Point) => {
+      if (!sourceLateral || !area) return 0;
+      const wb = ((p.x - a.x) * (c.z - a.z) - (c.x - a.x) * (p.z - a.z)) / area;
+      const wc = ((b.x - a.x) * (p.z - a.z) - (p.x - a.x) * (b.z - a.z)) / area;
+      const [la, lb, lc] = vertices.map((v) => sourceLateral.getX(v));
+      return la + (lb - la) * wb + (lc - la) * wc;
+    };
+    const minX = Math.floor(
+      (Math.min(...triangle.map((p) => p.x)) - terrain.minX) / terrain.spacing,
+    );
+    const maxX = Math.floor(
+      (Math.max(...triangle.map((p) => p.x)) - terrain.minX) / terrain.spacing,
+    );
+    const minZ = Math.floor(
+      (Math.min(...triangle.map((p) => p.z)) - terrain.minZ) / terrain.spacing,
+    );
+    const maxZ = Math.floor(
+      (Math.max(...triangle.map((p) => p.z)) - terrain.minZ) / terrain.spacing,
+    );
+    // Warped cells can reach into the neighbors of the triangle's bounding cells.
+    const pad = terrain.warpedCells ? 1 : 0;
+    for (let z = Math.max(minZ - pad, 0); z <= Math.min(maxZ + pad, terrain.rows - 2); z++) {
+      for (let x = Math.max(minX - pad, 0); x <= Math.min(maxX + pad, terrain.columns - 2); x++) {
+        const corners = cellTriangles(terrain, x, z);
+        for (let t = 0; t < corners.length; t += 3) {
+          const cell = [corners[t], corners[t + 2], corners[t + 1]];
+          const points = cell.map((i) => vertexPosition(terrain, i));
+          let polygon = triangle;
+          for (let edge = 0; edge < 3 && polygon.length; edge++)
+            polygon = clip(polygon, points[edge], points[(edge + 1) % 3]);
+          for (let j = 1; j < polygon.length - 1; j++) {
+            for (const p of [polygon[0], polygon[j], polygon[j + 1]]) {
+              positions.push(p.x, triangleHeight(terrain, cell, p.x, p.z)! + lift, p.z);
+              uv.push(p.x / 5, p.z / 5);
+              if (sourceLateral) lateral.push(lateralAt(p));
             }
           }
         }
       }
     }
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-    geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
-    if (sourceLateral)
-      geometry.setAttribute('lateral', new THREE.Float32BufferAttribute(lateral, 1));
-    geometry.computeVertexNormals();
-    return geometry;
   }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  if (sourceLateral) geometry.setAttribute('lateral', new THREE.Float32BufferAttribute(lateral, 1));
+  geometry.computeVertexNormals();
+  return geometry;
 }
 
 /**

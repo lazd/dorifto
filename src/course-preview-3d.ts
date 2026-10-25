@@ -6,7 +6,7 @@ import {
   courseShoulderWidth,
   type CourseDefinition,
 } from './courses';
-import { CourseTerrain } from './terrain';
+import { CourseTerrain, projectTerrainGeometry } from './terrain';
 
 export interface CoursePreviewColors {
   ground: string;
@@ -149,23 +149,47 @@ export function createCoursePreviewModel(
     bounds.expandByScalar(terrainMargin);
     const minX = Math.max(bounds.min.x, terrain.minX);
     const minZ = Math.max(bounds.min.y, terrain.minZ);
-    const maxX = Math.min(bounds.max.x, terrain.minX + (terrain.columns - 1) * terrain.spacing);
-    const maxZ = Math.min(bounds.max.y, terrain.minZ + (terrain.rows - 1) * terrain.spacing);
+    let maxX = Math.min(bounds.max.x, terrain.minX + (terrain.columns - 1) * terrain.spacing);
+    let maxZ = Math.min(bounds.max.y, terrain.minZ + (terrain.rows - 1) * terrain.spacing);
     const cell = Math.max(maxX - minX, maxZ - minZ) / cells;
-    const columns = Math.ceil((maxX - minX) / cell) + 1;
-    const rows = Math.ceil((maxZ - minZ) / cell) + 1;
+    const columns = Math.floor((maxX - minX) / cell) + 1;
+    const rows = Math.floor((maxZ - minZ) / cell) + 1;
+    maxX = minX + (columns - 1) * cell;
+    maxZ = minZ + (rows - 1) * cell;
     const positions: number[] = [];
     const indices: number[] = [];
+    const heights = new Float32Array(columns * rows);
     for (let row = 0; row < rows; row++)
       for (let column = 0; column < columns; column++) {
         const x = Math.min(minX + column * cell, maxX);
         const z = Math.min(minZ + row * cell, maxZ);
         positions.push(x, height(x, z), z);
+        heights[row * columns + column] = positions[positions.length - 2];
         if (row && column) {
           const i = row * columns + column;
           indices.push(i - columns - 1, i - 1, i - columns, i - columns, i - 1, i);
         }
       }
+    const previewTerrain = {
+      minX,
+      minZ,
+      columns,
+      rows,
+      spacing: cell,
+      heights,
+      minHeight: terrain.minHeight,
+      maxHeight: terrain.maxHeight,
+    };
+    for (const object of group.children) {
+      if (!(object instanceof THREE.Mesh)) continue;
+      const source = object.geometry;
+      object.geometry = projectTerrainGeometry(
+        previewTerrain,
+        source,
+        object === group.children[0] ? roadLift : roadLift * 2,
+      );
+      source.dispose();
+    }
     // Outward-facing walls and a downward-facing cap close the terrain into a solid block.
     const base = terrain.minHeight - Math.max(4, (maxX - minX) * 0.02);
     const edge = [

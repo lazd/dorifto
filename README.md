@@ -59,7 +59,9 @@ direct browser requests to OpenFreeMap and USGS, so an internet connection is ne
   The map uses the game's dark teal/mint design tokens. When a build completes,
   an interactive 3D terrain and road preview replaces the map. Terrain is a closed
   block with outward-facing side walls and a flat underside; ambient fill lighting
-  keeps all sides visible. Drag to orbit, right-drag/Shift-drag to pan, and scroll
+  keeps all sides visible. Road and marking geometry is split along the preview
+  terrain's triangles so the terrain cannot clip through those surfaces.
+  Drag to orbit, right-drag/Shift-drag to pan, and scroll
   to zoom. Touch supports one-finger orbit
   and two-finger pan/zoom; arrow keys pan when the preview is focused.
   Generation hides the editor and expands the map to fill the viewport under a

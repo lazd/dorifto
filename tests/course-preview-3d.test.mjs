@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { createServer } from 'vite';
 import { ObjectLoader, Raycaster, Vector3 } from 'three';
+import { readFile } from 'node:fs/promises';
 
 let server;
 let createCoursePreviewModel;
@@ -24,10 +25,14 @@ after(async () => {
 
 const colors = { ground: '#2a3f43', road: '#9aaeb4', start: '#e9f0f1' };
 
-test('3-D previews drape the road on the game heightfield and dispose every resource', () => {
+test('3-D previews keep overlays above rendered terrain and dispose every resource', async () => {
+  const imported = JSON.parse(
+    await readFile(new URL('../src/tracks/newtown-road-202-58.json', import.meta.url), 'utf8'),
+  );
   for (const definition of [
     courses.find(({ id }) => id === 'hillside'),
     courses.find(({ padRadius }) => padRadius),
+    { ...imported, terrainTransition: 2 },
   ]) {
     const terrain = new CourseTerrain(definition, false);
     const doubleYellow = definition.padRadius === undefined;
@@ -37,25 +42,27 @@ test('3-D previews drape the road on the game heightfield and dispose every reso
     const centerLine = group.getObjectByName('double-yellow-center-line');
     assert.equal(!!centerLine, doubleYellow);
     if (centerLine) {
-      const linePositions = centerLine.geometry.getAttribute('position');
-      for (let i = 0; i < linePositions.count; i += 37)
-        assert.ok(
-          Math.abs(
-            linePositions.getY(i) -
-              terrain.heightAt(linePositions.getX(i), linePositions.getZ(i)) -
-              0.3,
-          ) < 1e-4,
-          'center lines follow the terrain above the road',
-        );
       assert.equal(centerLine.material.color.getHex(), 0xffd32a);
     }
-    const position = road.geometry.getAttribute('position');
-    for (let i = 0; i < position.count; i += 37)
-      assert.ok(
-        Math.abs(position.getY(i) - terrain.heightAt(position.getX(i), position.getZ(i)) - 0.15) <
-          1e-4,
-        definition.id,
-      );
+    ground.updateMatrixWorld(true);
+    for (const overlay of [road, centerLine].filter(Boolean)) {
+      const position = overlay.geometry.getAttribute('position');
+      const ray = new Raycaster();
+      const stride = Math.max(3, Math.floor(position.count / 300) * 3);
+      for (let i = 0; i < position.count; i += stride) {
+        const center = new Vector3();
+        for (let j = 0; j < 3; j++) center.add(new Vector3().fromBufferAttribute(position, i + j));
+        center.divideScalar(3);
+        ray.set(new Vector3(center.x, terrain.maxHeight + 100, center.z), new Vector3(0, -1, 0));
+        const hit = ray.intersectObject(ground)[0];
+        assert.ok(hit, 'terrain exists under every sampled overlay triangle');
+        const lift = overlay === road ? 0.15 : 0.3;
+        assert.ok(
+          Math.abs(center.y - hit.point.y - lift) < 1e-3,
+          `${definition.id}: overlay triangle interior stays above the rendered terrain`,
+        );
+      }
+    }
     assert.ok(ground.geometry.getIndex().count > 0);
     const vertices = ground.geometry.getAttribute('position');
     const triangles = ground.geometry.getIndex();
@@ -127,12 +134,13 @@ test('3-D previews drape the road on the game heightfield and dispose every reso
     restored.geometry.dispose();
     restored.material.dispose();
     const disposed = [];
+    const resourceCount = group.children.length * 2;
     group.traverse(({ geometry, material }) => {
       geometry?.addEventListener('dispose', () => disposed.push(geometry));
       material?.addEventListener('dispose', () => disposed.push(material));
     });
     dispose();
     assert.equal(group.children.length, 0);
-    assert.equal(disposed.length, doubleYellow ? 8 : 6);
+    assert.equal(disposed.length, resourceCount);
   }
 });

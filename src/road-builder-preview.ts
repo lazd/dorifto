@@ -6,7 +6,10 @@ export type PreviewModel = ReturnType<THREE.Object3D['toJSON']>;
 
 /** Renders only when the camera or viewport changes, never in an idle animation loop. */
 export class RoadBuilderPreview {
-  private readonly renderer = new THREE.WebGLRenderer({ antialias: true });
+  private readonly renderer = new THREE.WebGLRenderer({
+    antialias: true,
+    logarithmicDepthBuffer: true,
+  });
   private readonly scene = new THREE.Scene();
   private readonly camera = new THREE.PerspectiveCamera(40, 1, 0.1, 100000);
   private readonly controls: OrbitControls;
@@ -33,7 +36,6 @@ export class RoadBuilderPreview {
     const sphere = new THREE.Box3().setFromObject(this.model).getBoundingSphere(new THREE.Sphere());
     this.center = sphere.center;
     this.radius = Math.max(1, sphere.radius);
-    this.camera.far = this.radius * 30;
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
     this.renderer.domElement.setAttribute('aria-label', label);
     this.renderer.domElement.setAttribute('role', 'img');
@@ -55,6 +57,10 @@ export class RoadBuilderPreview {
     if (this.frame) return;
     this.frame = requestAnimationFrame(() => {
       this.frame = 0;
+      const distance = this.camera.position.distanceTo(this.center);
+      this.camera.near = Math.max(0.1, distance - this.radius * 1.1);
+      this.camera.far = Math.max(this.camera.near + 1, distance + this.radius * 1.1);
+      this.camera.updateProjectionMatrix();
       this.renderer.render(this.scene, this.camera);
     });
   };
