@@ -164,6 +164,20 @@ function bindDialog(trigger: string, selector: string, onOpen?: () => void) {
     notifyUIVisibility();
     (returnFocus.closest('[hidden]') ? element('#minimap') : returnFocus).focus();
   });
+  bindDialogBackdrop(dialog, close);
+  dialog.addEventListener('click', (event) => {
+    for (const disclosure of dialog.querySelectorAll<HTMLDetailsElement>(
+      'details.action-disclosure[open]',
+    )) {
+      if (event.target instanceof Node && !disclosure.contains(event.target)) {
+        disclosure.open = false;
+      }
+    }
+  });
+  return open;
+}
+
+export function bindDialogBackdrop(dialog: HTMLDialogElement, close: () => void) {
   const outside = (event: MouseEvent) => {
     const bounds = dialog.getBoundingClientRect();
     return (
@@ -179,17 +193,9 @@ function bindDialog(trigger: string, selector: string, onOpen?: () => void) {
     pressedOutside = outside(event);
   });
   dialog.addEventListener('click', (event) => {
-    for (const disclosure of dialog.querySelectorAll<HTMLDetailsElement>(
-      'details.action-disclosure[open]',
-    )) {
-      if (event.target instanceof Node && !disclosure.contains(event.target)) {
-        disclosure.open = false;
-      }
-    }
     if (pressedOutside && outside(event)) close();
     pressedOutside = false;
   });
-  return open;
 }
 
 export function formatHudSpeed(speed: number, unit: ConfigurationState['speedUnit']) {
@@ -762,6 +768,8 @@ export function bindCoursePicker(
   const items = new Map<string, HTMLButtonElement>();
   let preview = selected;
   let previewToken = 0;
+  let previewTimer: ReturnType<typeof setTimeout> | undefined;
+  let stopPreviewSpinner: (() => void) | undefined;
   let changing = false;
   let draft: { course?: CourseDefinition; name: string } | undefined;
   let creating = false;
@@ -1047,12 +1055,16 @@ export function bindCoursePicker(
 
   function stopPreview() {
     ++previewToken;
+    clearTimeout(previewTimer);
+    previewTimer = undefined;
     previewWorker?.terminate();
     previewWorker = undefined;
     preview3d?.dispose();
     preview3d = undefined;
     showing3d = false;
     previewLoading = false;
+    stopPreviewSpinner?.();
+    stopPreviewSpinner = undefined;
     previewContainer.removeAttribute('aria-busy');
     previewToggle.textContent = '3D';
     previewToggle.setAttribute('aria-label', 'Show 3D course preview');
@@ -1068,6 +1080,8 @@ export function bindCoursePicker(
   }
 
   function showPreview3d(show: boolean) {
+    stopPreviewSpinner?.();
+    stopPreviewSpinner = undefined;
     showing3d = show;
     const canvas = previewContainer.querySelector('canvas');
     const svg = previewContainer.querySelector('svg');
@@ -1077,17 +1091,17 @@ export function bindCoursePicker(
     previewToggle.setAttribute('aria-label', `Show ${show ? '2D' : '3D'} course preview`);
   }
 
-  previewToggle.addEventListener('click', async () => {
-    if (changing || previewLoading) return;
-    if (preview3d) {
-      showPreview3d(!showing3d);
-      return;
-    }
+  async function buildPreview3d() {
+    if (!picker.open || previewLoading || preview3d) return;
+    clearTimeout(previewTimer);
+    previewTimer = undefined;
     const course = preview;
     const token = ++previewToken;
     previewError('');
     previewLoading = true;
-    previewToggle.textContent = 'Building…';
+    previewToggle.textContent = '3D';
+    previewToggle.setAttribute('aria-label', 'Building 3D course preview');
+    stopPreviewSpinner = startTextSpinner(previewToggle);
     previewContainer.setAttribute('aria-busy', 'true');
     syncBusy();
     const fail = (error: unknown) => {
@@ -1138,9 +1152,20 @@ export function bindCoursePicker(
     } catch (error) {
       fail(error);
     }
+  }
+
+  previewToggle.addEventListener('click', () => {
+    if (changing || previewLoading) return;
+    if (preview3d) showPreview3d(!showing3d);
+    else void buildPreview3d();
   });
 
   function previewCourse(course: CourseDefinition, isDraft = false) {
+    const group = groupForCourse(course).id;
+    if (course.id !== preview.id && (group === 'racetracks' || group === 'built-in')) {
+      raceMode.value = defaultRaceOptions.mode;
+      raceLaps.value = String(defaultRaceOptions.laps);
+    }
     draftSelected = isDraft;
     preview = course;
     syncListSelection();
@@ -1159,6 +1184,10 @@ export function bindCoursePicker(
     renderRecords(course);
     render2d(course);
     syncBusy();
+    previewTimer = setTimeout(() => {
+      previewTimer = undefined;
+      void buildPreview3d();
+    }, 100);
   }
 
   function syncCourseName() {
@@ -1177,7 +1206,7 @@ export function bindCoursePicker(
     savedConfirm.disabled = savedCancel.disabled = savedNameInput.disabled = changing;
     pickerButton.disabled = generationFields.disabled = changing;
     loadButton.disabled = changing || creating;
-    loadButton.textContent = draftSelected && !creating ? 'Save & load course' : 'Load course';
+    loadButton.textContent = draftSelected && !creating ? 'Save & start race →' : 'Start race →';
     generator.setAttribute('aria-busy', String(changing || roadBuilding));
     for (const control of generator.querySelectorAll<
       HTMLButtonElement | HTMLInputElement | HTMLFieldSetElement
@@ -1423,7 +1452,6 @@ export function bindCoursePicker(
       creationMode() === 'random' || draftName.value.trim() ? '' : 'Enter a course name',
     );
     if (!generatorForm.reportValidity() || !draft?.course) return;
-    let savedPreview: CourseDefinition | undefined;
     await exclusive(async () => {
       try {
         if (!draft?.course) return;
@@ -1445,13 +1473,11 @@ export function bindCoursePicker(
           await savePreviewCourse(draftName.value.trim());
         }
         generator.close();
-        savedPreview = preview;
       } catch (error) {
         actions.reportError(error);
         creationError(`Unable to save course: ${errorText(error)}`);
       }
     });
-    if (savedPreview === preview && picker.open) previewToggle.click();
   });
   roadCancel.addEventListener('click', () => {
     if (!changing && !roadBuilding) generator.close();
@@ -1526,7 +1552,6 @@ export function bindCoursePicker(
     ) {
       const id = event.data.id;
       roadBuilding = false;
-      let savedPreview: CourseDefinition | undefined;
       await exclusive(async () => {
         try {
           const refreshed = await refreshPickerCourses();
@@ -1538,13 +1563,11 @@ export function bindCoursePicker(
           renderList();
           previewCourse(saved);
           generator.close();
-          savedPreview = saved;
         } catch (error) {
           actions.reportError(error);
           creationError(`Unable to open saved course: ${errorText(error)}`);
         }
       });
-      if (savedPreview === preview && picker.open) previewToggle.click();
     }
   });
   directions.forEach((input) =>
@@ -1977,7 +2000,9 @@ export function bindGameUI(
   };
   const refreshCourseWeights = bindCourseWeights(getCourseWeights, setCourseWeights);
   element('#course-generator').addEventListener('refresh-weights', refreshCourseWeights);
-  bindDialog('#minimap', '#course-picker-dialog', refreshCourseWeights);
+  const openRaceSetup = bindDialog('#minimap', '#course-picker-dialog', refreshCourseWeights);
+  const raceSetup = element('#race-setup');
+  raceSetup.addEventListener('click', () => openRaceSetup(raceSetup));
 
   function select<Value extends string>(
     selector: string,

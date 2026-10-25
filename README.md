@@ -109,14 +109,15 @@ road editor directly (without its library), **Random course** generates a 2D pre
 with a large **Regenerate** button and an automatic name (no name field), and **Custom course** puts generation controls beside a
 2D preview that updates when settings change. All modes save to the shared OPFS
 library and select the saved course in the chooser without restarting the race;
-choose **Load course** when ready. Real-road generation still runs entirely in
+choose **Start race →** when ready. Real-road generation still runs entirely in
 the browser, including elevation fetching and terrain generation.
 When naming a new real-road course, press **Enter** to focus the location search and
 search for that name immediately.
-Embedded creation skips the unused 3D preview build. Course previews in the chooser
-automatically build and show 3D after saving a created or edited course. Otherwise they
-start in 2D; use the lower-left **3D** button to build an interactive terrain preview
-on demand in a Web Worker, or **2D** to return to the map. Switching courses or closing
+Embedded creation skips the unused 3D preview build. Course previews in Race setup
+start in 2D, then automatically begin building an interactive 3D terrain preview in a
+Web Worker 100 ms after the details appear, including after creating or editing a course.
+The completed preview appears automatically; use **2D** to return to the map or **3D**
+to switch back. Switching courses or closing
 the chooser cancels pending preview generation and releases the preview.
 Toggling between 2D and 3D reuses the built preview and preserves its camera position.
 Saved courses have an **Edit course** action in the chooser. Real roads reopen in
@@ -138,7 +139,9 @@ the Grip / Default (`grip-default`) preset, and the cabin camera.
 ## Bot drivers
 
 Open **Bot setup** beside **Tuning** in the toolbar to choose **Race solo**, **Race with bots**,
-or **Spectate bots**. Solo hides bot configuration; the other modes share an editable starting
+or **Spectate bots**. **Race setup** beside it opens the same dialog as the map;
+choose a course and race rules, then select **Start race →**.
+Solo hides bot configuration; the other modes share an editable starting
 grid and require at least one bot. Switching to Solo keeps your configured lineup for the
 current page session. **Cancel** discards edits; the primary action starts the selected mode.
 The roster and editor scroll independently while the mode cards and actions remain visible.
@@ -406,6 +409,8 @@ The course chooser offers three race modes, independent of Grip/Drift handling:
 - **Anything Goes**: off-track driving never invalidates a lap.
 
 Closed courses default to **3 laps**, editable before loading; open courses have one attempt.
+Selecting a different racetrack or built-in course resets race setup to **Track Limits**
+and **3 laps**; both remain editable before starting.
 The URL retains `race-mode=track-limits|mustard|anything-goes` and `race-laps`.
 Every forward finish crossing ends the current attempt, even if invalid. Invalid attempts
 consume race distance but earn no completed lap credit; a car with any invalid attempts
@@ -443,6 +448,8 @@ The standings table appears first and shows every driver, race time or gap, and 
 DSQ, or DNF status. Standings remain live as other cars finish, then become final.
 Click the race standings panel or its **Standings** link during a race to view live results
 without retiring. Close the dialog to return to driving.
+Clicking its backdrop or pressing Escape also closes it. The restart action reads **Restart Race**
+while the race is live and **Race Again** once the race ends.
 If another dialog is open when your run finishes, automatic results are skipped;
 you can still open them from the standings panel afterward.
 Select a standings row to see that driver's best lap, record comparison, statistics,

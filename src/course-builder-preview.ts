@@ -42,6 +42,7 @@ export class CourseBuilderPreview {
     this.renderer.domElement.tabIndex = 0;
     container.append(this.renderer.domElement);
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
+    this.controls.cursorStyle = 'grab';
     this.controls.minDistance = 2;
     this.controls.maxDistance = this.radius * 10;
     this.controls.maxPolarAngle = Math.PI / 2 - 0.02;

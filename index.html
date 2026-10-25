@@ -35,7 +35,7 @@
         id="minimap"
         class="minimap"
         type="button"
-        aria-label="Choose course"
+        aria-label="Race setup"
         aria-controls="course-picker-dialog"
         aria-haspopup="dialog"
         disabled
@@ -208,7 +208,7 @@
         </button>
       </form>
       <header class="dialog-header">
-        <h2 id="course-picker-title" tabindex="-1" autofocus>Choose course</h2>
+        <h2 id="course-picker-title" tabindex="-1" autofocus>Race setup</h2>
       </header>
       <div class="master-detail dialog-body">
         <div class="selection-library">
@@ -313,7 +313,7 @@
       <p id="course-picker-error" role="alert"></p>
       <div class="dialog-footer">
         <div class="dialog-actions">
-          <button id="course-load" class="button button-primary" type="button">Load course</button>
+          <button id="course-load" class="button button-primary" type="button">Start race →</button>
         </div>
       </div>
     </dialog>
@@ -382,7 +382,7 @@
             Replay race
           </button>
           <button id="run-results-restart" class="button button-primary" type="button" autofocus>
-            Race again →
+            Race Again →
           </button>
         </div>
       </div>
@@ -511,6 +511,15 @@
           aria-controls="bots-dialog"
         >
           Bot setup
+        </button>
+        <button
+          id="race-setup"
+          class="button button-secondary button-translucent toolbar-button"
+          type="button"
+          aria-haspopup="dialog"
+          aria-controls="course-picker-dialog"
+        >
+          Race setup
         </button>
       </div>
     </header>

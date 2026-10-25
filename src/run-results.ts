@@ -2,7 +2,7 @@ import { RunRecording } from './lap-recording';
 import { formatLapTime } from './laps';
 import { raceModes, validForMode, type RaceOptions, type LapValidity } from './race-rules';
 import type { RaceStanding } from './race-standings';
-import { element } from './ui';
+import { bindDialogBackdrop, element } from './ui';
 import './run-results.css';
 
 function textNode(tag: string, text: string, className?: string) {
@@ -132,6 +132,7 @@ export function createRunResults(actions: {
     dialog.close();
     notify();
   };
+  bindDialogBackdrop(dialog, close);
   element('#run-results-restart').addEventListener('click', actions.restart);
   element('#run-results-close').addEventListener('click', close);
   element('#run-results-replay').addEventListener('click', () => {
@@ -142,8 +143,7 @@ export function createRunResults(actions: {
   });
   dialog.addEventListener('cancel', (event) => {
     event.preventDefault();
-    if (run && !run.finished && !run.retired) close();
-    else actions.restart();
+    close();
   });
   return {
     get open() {
@@ -166,6 +166,7 @@ export function createRunResults(actions: {
         return;
       previousStandings = standings;
       previousFinished = finished;
+      setText(element('#run-results-restart'), finished ? 'Race Again →' : 'Restart Race →');
       setText(element('#run-results-title'), raceOutcome(runCompleted, runQualified, standings));
       const body = element('#run-results-standings');
       if (entrants !== previousRoster) {
@@ -230,6 +231,10 @@ export function createRunResults(actions: {
     ) {
       run = recording;
       record = recordLap;
+      setText(
+        element('#run-results-restart'),
+        recording.finished || recording.retired ? 'Race Again →' : 'Restart Race →',
+      );
       const valid = recording.lapValidity.filter((lap) => validForMode(lap, options.mode)).length;
       runCompleted = completed;
       runQualified = valid >= options.laps;

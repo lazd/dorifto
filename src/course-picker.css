@@ -250,10 +250,16 @@
   right: var(--space-4);
 }
 
-.course-preview-toggle {
+.course-preview-toggle,
+.course-preview-toggle.text-spinner {
   position: absolute;
   bottom: var(--space-4);
   left: var(--space-4);
+}
+
+.course-preview-toggle .text-spinner-frame {
+  font-size: 1.375em;
+  color: var(--color-muted);
 }
 
 .course-preview-hero:has(.action-disclosure:not([hidden])) .course-preview-caption {
