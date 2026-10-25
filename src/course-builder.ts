@@ -12,10 +12,10 @@ import {
   closeRoadLoop,
   cleanRoadRoute,
 } from './road-selection';
-import { RoadBuilderPreview } from './road-builder-preview';
-import { roadBuilderTheme } from './road-builder-map';
-import { createLocationSearch } from './road-builder-search';
-import { listRoadMaps, openRoadMaps, storeRoadMap } from './road-builder-storage';
+import { CourseBuilderPreview } from './course-builder-preview';
+import { courseBuilderTheme } from './course-builder-map';
+import { createLocationSearch } from './course-builder-search';
+import { listRoadMaps, openRoadMaps, storeRoadMap } from './course-builder-storage';
 import {
   readRoadMap,
   restoreRoadDraft,
@@ -23,18 +23,18 @@ import {
   roadBuildSteps,
   type RoadBuildStep,
   type RoadMap,
-} from './road-builder-data';
+} from './course-builder-data';
 import type { GPSPoint } from './track-conversion.mjs';
 import { courseShoulderWidth } from './courses';
 import { coursePreviewSvg } from './course-preview';
 import { defaultTerrainTransition } from './terrain';
 import { startTextSpinner } from './text-spinner';
-import type { BuildRequest, BuildResponse } from './road-builder-worker';
-import './road-builder.css';
+import type { BuildRequest, BuildResponse } from './course-builder-worker';
+import './course-builder.css';
 
 function element<T extends HTMLElement>(id: string) {
   const result = document.getElementById(id);
-  if (!result) throw new Error(`Missing road builder element: ${id}`);
+  if (!result) throw new Error(`Missing course builder element: ${id}`);
   return result as T;
 }
 
@@ -78,10 +78,10 @@ let editingCourse: RoadMap | undefined;
 let previewWorker: Worker | undefined;
 let previewVersion = 0;
 const markers: maplibregl.Marker[] = [];
-const theme = roadBuilderTheme();
+const theme = courseBuilderTheme();
 const mapContainer = element('map');
 const inspection = element('inspection');
-let preview: RoadBuilderPreview | undefined;
+let preview: CourseBuilderPreview | undefined;
 
 function notify(message: string, error = false) {
   clearTimeout(guidanceTimer);
@@ -98,7 +98,7 @@ function guide() {
         ? 'Looks good! Your map is saved. Press Play to download it and go race!'
         : 'Your map could not be saved on this device. Press Play to download it.'
       : closingSection
-        ? 'Loop closed! Press Save to save your track.'
+        ? 'Loop closed! Press Save to save your course.'
         : sections.length >= 3
           ? 'Add more waypoints or click the start position to create a loop'
           : sections.length
@@ -107,7 +107,7 @@ function guide() {
               ? 'Click to set a start position'
               : hasLocated
                 ? 'Zoom in and click to set a start position'
-                : 'Search for a place to start your track',
+                : 'Search for a place to start your course',
   );
 }
 
@@ -617,7 +617,7 @@ element<HTMLFormElement>('build-form').onsubmit = (event) => {
   invalidateCourse();
   hideHover();
   try {
-    worker = new Worker(new URL('./road-builder-worker.ts', import.meta.url), { type: 'module' });
+    worker = new Worker(new URL('./course-builder-worker.ts', import.meta.url), { type: 'module' });
   } catch (error) {
     report(error);
     return;
@@ -659,7 +659,7 @@ element<HTMLFormElement>('build-form').onsubmit = (event) => {
               item.tabIndex = active ? 0 : -1;
             }
           } else showPreview();
-          preview = new RoadBuilderPreview(
+          preview = new CourseBuilderPreview(
             element('preview'),
             response.model,
             { ...theme.preview, background: theme.palette.surface },
@@ -703,7 +703,7 @@ element<HTMLFormElement>('build-form').onsubmit = (event) => {
     if (existingCourse && (key === 'terrain' || key === 'corridor')) continue;
     const item = document.createElement('li');
     item.dataset.step = key;
-    item.textContent = existingCourse && key === 'course' ? 'Updating track settings' : label;
+    item.textContent = existingCourse && key === 'course' ? 'Updating course settings' : label;
     buildSteps.append(item);
   }
   buildProgress('starting');
@@ -720,7 +720,7 @@ element<HTMLFormElement>('build-form').onsubmit = (event) => {
       sections,
       closingSection,
       resolution:
-        existingCourse?.roadBuilder?.resolution ?? existingCourse?.terrain?.resolution ?? 5,
+        existingCourse?.courseBuilder?.resolution ?? existingCourse?.terrain?.resolution ?? 5,
     }),
     terrainTransition: Number(transitionInput.value),
     doubleYellow: centerLineInput.checked,
@@ -756,7 +756,7 @@ async function refreshSaved() {
       loaded.push({ course: readRoadMap(await (await handle.getFile()).text()), handle });
     } catch (error) {
       const item = document.createElement('p');
-      item.textContent = `Unreadable track: ${handle.name}`;
+      item.textContent = `Unreadable course: ${handle.name}`;
       list.append(item);
       report(error);
     }
@@ -808,12 +808,12 @@ async function refreshSaved() {
       void selectMap(next.course.id);
       element('saved').querySelectorAll<HTMLButtonElement>('.selection-item')[index].focus();
     };
-    item.title = `${saved.name}. Press Delete to remove this track.`;
+    item.title = `${saved.name}. Press Delete to remove this course.`;
     list.append(item);
   });
   element('library-message').textContent = items.length
     ? ''
-    : 'No tracks yet. Create your first track.';
+    : 'No courses yet. Create your first course.';
 }
 
 function stopLibraryPreview() {
@@ -848,7 +848,7 @@ async function selectMap(id: string) {
     const json = await selected.handle.getFile();
     if (version !== previewVersion || view !== 'library') return;
     courseJSON = json;
-    const active = new Worker(new URL('./road-builder-worker.ts', import.meta.url), {
+    const active = new Worker(new URL('./course-builder-worker.ts', import.meta.url), {
       type: 'module',
     });
     previewWorker = active;
@@ -856,7 +856,8 @@ async function selectMap(id: string) {
       if (version !== previewVersion) return;
       active.terminate();
       previewWorker = undefined;
-      previewStatus.textContent = 'Preview unavailable. You can still edit or download this track.';
+      previewStatus.textContent =
+        'Preview unavailable. You can still edit or download this course.';
       report(error);
     };
     active.onmessage = (event: MessageEvent<BuildResponse>) => {
@@ -869,7 +870,7 @@ async function selectMap(id: string) {
       active.terminate();
       previewWorker = undefined;
       try {
-        preview = new RoadBuilderPreview(
+        preview = new CourseBuilderPreview(
           element('preview'),
           event.data.model,
           { ...theme.preview, background: theme.palette.surface },
@@ -948,7 +949,7 @@ function editSavedCourse() {
   }
 }
 
-element<HTMLButtonElement>('new-track').onclick = () => {
+element<HTMLButtonElement>('new-course').onclick = () => {
   stopLibraryPreview();
   editingId = undefined;
   editingFilename = undefined;
@@ -957,7 +958,7 @@ element<HTMLButtonElement>('new-track').onclick = () => {
   editingCourse = undefined;
   sections = [];
   closingSection = undefined;
-  nameInput.value = 'New track';
+  nameInput.value = 'New course';
   widthInput.value = widthInput.defaultValue;
   shoulderInput.value = shoulderInput.defaultValue;
   centerLineInput.checked = true;
@@ -997,7 +998,7 @@ for (const input of [nameInput, widthInput, shoulderInput, transitionInput, cent
   input.addEventListener('input', () => {
     if (course) {
       invalidateCourse();
-      confirmAction('Settings changed. Save again to update the track.');
+      confirmAction('Settings changed. Save again to update the course.');
     }
     updateControls();
   });

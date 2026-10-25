@@ -4,28 +4,28 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#101b20" />
-    <title>Track Builder</title>
+    <title>Course builder</title>
   </head>
   <body>
     <main class="builder" data-view="library">
       <aside class="panel">
-        <header><h1>Track Builder</h1></header>
+        <header><h1>Course builder</h1></header>
         <section id="library-panel" class="panel-body">
-          <button id="new-track" class="button button-create">+ New track</button>
+          <button id="new-course" class="button button-create">+ New course</button>
           <div
             id="saved"
-            class="selection-list track-list"
+            class="selection-list course-list"
             role="listbox"
-            aria-label="Tracks"
+            aria-label="Courses"
           ></div>
-          <p id="library-message" role="status">Loading tracks...</p>
+          <p id="library-message" role="status">Loading courses...</p>
         </section>
         <section id="editor-panel" class="panel-body" hidden>
           <input
             id="name"
-            class="track-name"
-            aria-label="Track name"
-            value="New track"
+            class="course-name"
+            aria-label="Course name"
+            value="New course"
             maxlength="100"
             required
             form="build-form"
@@ -102,11 +102,11 @@
             ><button id="play" class="button button-primary" disabled>Play</button>
           </div>
         </section>
-        <p id="empty-library" class="viewport-message">Create a track to get started.</p>
+        <p id="empty-library" class="viewport-message">Create a course to get started.</p>
       </section>
     </main>
     <dialog id="build-dialog" aria-labelledby="build-title">
-      <h2 id="build-title">Building your track...</h2>
+      <h2 id="build-title">Building your course...</h2>
       <ol id="build-steps" aria-live="polite"></ol>
       <footer class="dialog-footer">
         <div class="dialog-actions">
@@ -114,6 +114,6 @@
         </div>
       </footer>
     </dialog>
-    <script type="module" src="/src/road-builder.ts"></script>
+    <script type="module" src="/src/course-builder.ts"></script>
   </body>
 </html>

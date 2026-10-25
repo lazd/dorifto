@@ -48,6 +48,9 @@ body {
   overflow-y: auto;
   padding-bottom: var(--space-5);
 }
+#library-panel {
+  padding-inline: var(--space-3);
+}
 button:not(.button, .selection-item),
 input,
 select {
@@ -85,7 +88,7 @@ button:disabled {
 #library-message:empty {
   display: none;
 }
-.track-name {
+.course-name {
   width: 100%;
   font-size: var(--text-title);
   font-weight: 700;
@@ -95,10 +98,10 @@ button:disabled {
   margin-inline: calc(-1 * var(--space-2));
   letter-spacing: var(--tracking-tight);
 }
-.track-name:hover {
+.course-name:hover {
   border-color: var(--color-border);
 }
-.track-name:focus {
+.course-name:focus {
   background: var(--color-surface);
   border-color: var(--color-accent);
 }

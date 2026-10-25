@@ -121,11 +121,15 @@ test('failed writes preserve legacy storage and surface errors; builder JSON is 
   await assert.rejects(saved.migrateSavedCourses(dir, storage), /Quota exceeded/);
   assert.equal(removed, false);
   const builderDir = directory();
-  const road = { ...course, id: 'road-builder-map', roadBuilder: { sections: [], resolution: 5 } };
+  const road = {
+    ...course,
+    id: 'course-builder-map',
+    courseBuilder: { sections: [], resolution: 5 },
+  };
   builderDir.files.set('builder.json', JSON.stringify(road));
   assert.equal((await saved.loadSavedCourses(builderDir))[0].id, road.id);
   await saved.renameSavedCourse(builderDir, road.id, 'Renamed road');
-  assert.deepEqual((await saved.loadSavedCourses(builderDir))[0].roadBuilder, road.roadBuilder);
+  assert.deepEqual((await saved.loadSavedCourses(builderDir))[0].courseBuilder, road.courseBuilder);
   builderDir.files.set('broken.json', '{');
   await assert.rejects(saved.loadSavedCourses(builderDir), /broken.json/);
 });

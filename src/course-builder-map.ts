@@ -2,7 +2,7 @@ import type { StyleSpecification } from 'maplibre-gl';
 import type { CoursePreviewColors } from './course-preview-3d';
 import { roadClasses } from './road-selection';
 
-export function roadBuilderTheme() {
+export function courseBuilderTheme() {
   const style = getComputedStyle(document.documentElement);
   const color = (token: string) => {
     const value = style.getPropertyValue(`--color-${token}`).trim();

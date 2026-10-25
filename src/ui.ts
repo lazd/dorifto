@@ -711,7 +711,7 @@ export function bindCoursePicker(
         const members = listed.filter((course) => groupForCourse(course) === group);
         if (!members.length && group.id === 'current') return [];
         const section = document.createElement('section');
-        section.className = 'selection-group track-list';
+        section.className = 'selection-group course-list';
         section.setAttribute('role', 'group');
         section.setAttribute('aria-labelledby', `courses-${group.id}-heading`);
         const heading = document.createElement('h3');

@@ -14,11 +14,11 @@ before(async () => {
     appType: 'custom',
   });
   selection = await server.ssrLoadModule('/src/road-selection.ts');
-  ({ createLocationSearch } = await server.ssrLoadModule('/src/road-builder-search.ts'));
-  builderData = await server.ssrLoadModule('/src/road-builder-data.ts');
+  ({ createLocationSearch } = await server.ssrLoadModule('/src/course-builder-search.ts'));
+  builderData = await server.ssrLoadModule('/src/course-builder-data.ts');
 });
 
-test('saved tracks restore geographic routes and retain exact editable waypoints', async () => {
+test('saved courses restore geographic routes and retain exact editable waypoints', async () => {
   const json = await readFile(
     new URL('../src/tracks/newtown-road-202-58.json', import.meta.url),
     'utf8',
@@ -41,7 +41,7 @@ test('saved tracks restore geographic routes and retain exact editable waypoints
       ) < 1e-6,
     );
   }
-  const editable = { ...course, roadBuilder: draft };
+  const editable = { ...course, courseBuilder: draft };
   const restored = builderData.restoreRoadDraft(builderData.readRoadMap(JSON.stringify(editable)));
   assert.deepEqual(restored.sections, draft.sections);
   assert.equal(restored.closingSection, draft.closingSection);
@@ -52,7 +52,7 @@ test('saved tracks restore geographic routes and retain exact editable waypoints
   assert.deepEqual(closed.closingSection.at(-1), closed.sections[0][0]);
   assert.match(builderData.roadMapMeta(course), /km · Open route/);
   assert.ok(builderData.roadMapThumbnail(course).split(' ').length >= course.points.length);
-  assert.throws(() => builderData.readRoadMap('{"name":"bad"}'), /Invalid saved track/);
+  assert.throws(() => builderData.readRoadMap('{"name":"bad"}'), /Invalid saved course/);
   assert.throws(
     () => builderData.restoreRoadDraft({ ...course, terrain: undefined }),
     /geographic source/,

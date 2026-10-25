@@ -8,7 +8,7 @@ export const roadBuildSteps = {
   corridor: 'Downloading high-resolution road corridor',
   course: 'Sampling road elevation and building the course',
   preview: 'Building the 3D terrain preview',
-  saving: 'Saving the track on this device',
+  saving: 'Saving the course on this device',
 } as const;
 
 export type RoadBuildStep = keyof typeof roadBuildSteps;
@@ -20,7 +20,7 @@ export interface RoadDraft {
 }
 
 export interface RoadMap extends CourseDefinition {
-  roadBuilder?: RoadDraft;
+  courseBuilder?: RoadDraft;
 }
 
 export function readRoadMap(json: string): RoadMap {
@@ -37,13 +37,13 @@ export function readRoadMap(json: string): RoadMap {
       (point) => !Array.isArray(point) || point.length !== 2 || !point.every(Number.isFinite),
     )
   )
-    throw new Error('Invalid saved track');
+    throw new Error('Invalid saved course');
   return value;
 }
 
 export function restoreRoadDraft(course: RoadMap): RoadDraft {
-  if (course.roadBuilder) {
-    const draft = structuredClone(course.roadBuilder);
+  if (course.courseBuilder) {
+    const draft = structuredClone(course.courseBuilder);
     const parts = [...draft.sections, ...(draft.closingSection ? [draft.closingSection] : [])];
     if (
       !draft.sections.length ||
@@ -59,7 +59,7 @@ export function restoreRoadDraft(course: RoadMap): RoadDraft {
           ),
       )
     )
-      throw new Error('Saved track has invalid editable waypoints');
+      throw new Error('Saved course has invalid editable waypoints');
     return draft;
   }
   const terrain = course.terrain;
@@ -68,7 +68,7 @@ export function restoreRoadDraft(course: RoadMap): RoadDraft {
     ![terrain.originLat, terrain.originLon, terrain.metersPerLongitude].every(Number.isFinite) ||
     terrain.metersPerLongitude <= 0
   )
-    throw new Error('This track has no geographic source for editing.');
+    throw new Error('This course has no geographic source for editing.');
   const points = course.points.map(([x, z]) => ({
     lat: terrain.originLat + z / ((6371008.8 * Math.PI) / 180),
     lon: terrain.originLon - x / terrain.metersPerLongitude,

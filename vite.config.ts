@@ -60,7 +60,7 @@ export default defineConfig({
     rollupOptions: {
       input: {
         game: fileURLToPath(new URL('./index.html', import.meta.url)),
-        roadBuilder: fileURLToPath(new URL('./road-builder.html', import.meta.url)),
+        courseBuilder: fileURLToPath(new URL('./course-builder.html', import.meta.url)),
       },
     },
   },

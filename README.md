@@ -4,18 +4,18 @@ A small Three.js + Ammo.js driving playground built with TypeScript and Vite.
 Ammo.js is installed through the `ammojs-typed` npm distribution and runs in a
 dedicated Web Worker; there are no runtime CDN dependencies.
 
-## Browser road builder
+## Browser course builder
 
-Open **[road-builder.html](./road-builder.html)** with `npm run dev`, or deploy
+Open **[course-builder.html](./course-builder.html)** with `npm run dev`, or deploy
 the output of `npm run build` to any static HTTPS host. There is no backend,
 API proxy, Overpass request, or server-side import step. The builder does make
 direct browser requests to OpenFreeMap and USGS, so an internet connection is needed.
 
-- The library opens first, with route thumbnails and the first saved track selected
+- The library opens first, with route thumbnails and the first saved course selected
   in an interactive 3D preview. Choose **Edit** to restore its route, name, and settings,
-  or **+ New track** to start a new one. **Cancel** returns to the library without
-  changing the saved track. **Save** stays disabled until the route, name, or settings
-  differ from the opened track, and disables again if all changes are reverted.
+  or **+ New course** to start a new one. **Cancel** returns to the library without
+  changing the saved course. **Save** stays disabled until the route, name, or settings
+  differ from the opened course, and disables again if all changes are reverted.
   **Play** currently downloads the selected course JSON.
 - Search using the floating bar over the map, enter latitude/longitude, or pan the OpenStreetMap
   map. Place searches go directly to Nominatim on submission (no autocomplete),
@@ -68,9 +68,9 @@ direct browser requests to OpenFreeMap and USGS, so an internet connection is ne
   modal showing every build step from the start, including automatic saving.
   Pending steps are muted; completed steps receive monochrome checkmarks. **Cancel**
   (or Escape) returns to the unchanged route.
-  **Save** builds and saves the track, then returns directly to the track manager
-  with that track highlighted and its 3D preview shown. New tracks are added to the
-  list; edited tracks update their existing entry. **Edit** reopens the track,
+  **Save** builds and saves the course, then returns directly to the course manager
+  with that course highlighted and its 3D preview shown. New courses are added to the
+  list; edited courses update their existing entry. **Edit** reopens the course,
   and **Play** currently downloads its JSON; game launch from OPFS is not yet wired.
   Editing the route or build settings
   discards the stale preview. Rendering is on demand, not an idle animation loop.
@@ -91,7 +91,7 @@ direct browser requests to OpenFreeMap and USGS, so an internet connection is ne
   the existing road geometry, elevation profile, and terrain without downloading
   or converting them again; only the preview is regenerated. Changing route points
   runs the full import pipeline.
-  To delete a saved track, focus its library row and press
+  To delete a saved course, focus its library row and press
   Delete, then confirm. OPFS requires a
   supported browser on HTTPS/localhost; it is origin-specific, quota-limited,
   and can be cleared by the browser. Download backups for portability.
@@ -1391,7 +1391,7 @@ The draft can be edited and regenerated without changing the current race.
 Closing the library discards an unsaved draft. An unsaved active course from a URL can
 also be named and saved with **Save layout…**.
 The exact course layout is stored only in OPFS (`dorifto-road-maps/`), alongside
-Track Builder maps,
+Course builder maps,
 added to and selected in the **Choose course** picker, including after reloading.
 Saved layouts also retain their generator type and seed; custom courses include
 the exact generation parameters used, independent of later slider changes.

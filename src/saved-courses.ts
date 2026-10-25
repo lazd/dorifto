@@ -1,7 +1,7 @@
 import type { CourseDefinition } from './courses';
 import { courseGenerationFields, defaultCourseWeights } from './course-generation';
-import { listRoadMaps, storeRoadMap } from './road-builder-storage';
-import { readRoadMap } from './road-builder-data';
+import { listRoadMaps, storeRoadMap } from './course-builder-storage';
+import { readRoadMap } from './course-builder-data';
 
 export const savedCoursesStorageKey = 'dorifto:courses';
 

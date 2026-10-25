@@ -5,7 +5,7 @@ import type { CoursePreviewColors } from './course-preview-3d';
 export type PreviewModel = ReturnType<THREE.Object3D['toJSON']>;
 
 /** Renders only when the camera or viewport changes, never in an idle animation loop. */
-export class RoadBuilderPreview {
+export class CourseBuilderPreview {
   private readonly renderer = new THREE.WebGLRenderer({
     antialias: true,
     logarithmicDepthBuffer: true,

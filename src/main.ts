@@ -43,7 +43,7 @@ import {
   renameSavedCourse,
   saveCourse,
 } from './saved-courses';
-import { openRoadMaps } from './road-builder-storage';
+import { openRoadMaps } from './course-builder-storage';
 import { bindGameUI, bindGameActions, bindCoursePicker, bindLapRecorder, element } from './ui';
 import { createDrivingCamera } from './camera';
 import { createLighting } from './lighting';

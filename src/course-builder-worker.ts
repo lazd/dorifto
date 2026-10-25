@@ -9,8 +9,8 @@ import { validateImportRoute } from './road-selection';
 import type { CourseDefinition } from './courses';
 import { createCoursePreviewModel } from './course-preview-3d';
 import type { CoursePreviewColors } from './course-preview-3d';
-import type { PreviewModel } from './road-builder-preview';
-import type { RoadMap, RoadDraft, RoadBuildStep } from './road-builder-data';
+import type { PreviewModel } from './course-builder-preview';
+import type { RoadMap, RoadDraft, RoadBuildStep } from './course-builder-data';
 
 export interface BuildRequest {
   points: GPSPoint[];
@@ -97,7 +97,7 @@ async function build(request: BuildRequest) {
     course.attribution =
       'OpenStreetMap contributors (ODbL): https://www.openstreetmap.org/copyright; vector tiles by OpenFreeMap; elevation: USGS 3DEP';
   }
-  course.roadBuilder = request.draft;
+  course.courseBuilder = request.draft;
   const json = new Blob([JSON.stringify(course)], { type: 'application/json' });
   progress('preview');
   const preview = createCoursePreviewModel(course, request.colors, 512);
