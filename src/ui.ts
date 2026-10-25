@@ -578,6 +578,8 @@ function bindTuningPresets(
 }
 
 export interface CoursePickerActions {
+  isSavedCourse: (id: string) => boolean;
+  refreshCourses: () => Promise<readonly CourseDefinition[]>;
   changeCourse: (
     id: string,
     seed?: number,
@@ -585,8 +587,8 @@ export interface CoursePickerActions {
     reverse?: boolean,
   ) => Promise<CourseDefinition>;
   changeDirection: (reverse: boolean) => Promise<void>;
-  saveCourse: (name: string, definition?: CourseDefinition) => CourseDefinition;
-  renameCourse: (id: string, name: string) => CourseDefinition;
+  saveCourse: (name: string, definition?: CourseDefinition) => Promise<CourseDefinition>;
+  renameCourse: (id: string, name: string) => Promise<CourseDefinition>;
   /** Deleting the active course loads a fallback; returns the active course afterwards. */
   deleteCourse: (id: string) => Promise<CourseDefinition>;
   /** Plays a saved run of the active course and direction, resetting the race. */
@@ -597,20 +599,20 @@ export interface CoursePickerActions {
 }
 
 const courseGroups = [
+  { id: 'stored', label: 'Your tracks', badge: 'Saved' },
   { id: 'current', label: 'Current layout', badge: 'Unsaved' },
-  { id: 'built-in', label: 'Built-in courses', badge: 'Built-in' },
   { id: 'roads', label: 'Roads', badge: 'Road' },
   { id: 'racetracks', label: 'Racetracks', badge: 'Racetrack' },
-  { id: 'saved', label: 'Saved courses', badge: 'Saved' },
+  { id: 'built-in', label: 'Built-in courses', badge: 'Built-in' },
 ] as const;
 
 const isUnsavedCourse = ({ id }: { id: string }) => id === 'random' || id === 'custom';
 
-function courseGroup(course: CourseDefinition) {
-  if (isUnsavedCourse(course)) return courseGroups[0];
-  if (course.id.startsWith('saved-')) return courseGroups[4];
+function courseGroup(course: CourseDefinition, saved: boolean) {
+  if (isUnsavedCourse(course)) return courseGroups[1];
+  if (saved) return courseGroups[0];
   if (roads.some(({ id }) => id === course.id)) return courseGroups[2];
-  return racetracks.some(({ id }) => id === course.id) ? courseGroups[3] : courseGroups[1];
+  return racetracks.some(({ id }) => id === course.id) ? courseGroups[3] : courseGroups[4];
 }
 
 const courseDistances = new WeakMap<CourseDefinition, string>();
@@ -640,6 +642,8 @@ export function bindCoursePicker(
   store: Store<ConfigurationState>,
   actions: CoursePickerActions,
 ) {
+  const groupForCourse = (course: CourseDefinition) =>
+    courseGroup(course, actions.isSavedCourse(course.id));
   const courses = [...options];
   const pickerButton = element<HTMLButtonElement>('#minimap');
   const picker = element<HTMLDialogElement>('#course-picker-dialog');
@@ -702,7 +706,7 @@ export function bindCoursePicker(
     let savedSection: HTMLElement | undefined;
     list.replaceChildren(
       ...courseGroups.flatMap((group) => {
-        const members = listed.filter((course) => courseGroup(course) === group);
+        const members = listed.filter((course) => groupForCourse(course) === group);
         if (!members.length && group.id === 'current') return [];
         const section = document.createElement('section');
         section.className = 'selection-group';
@@ -716,8 +720,8 @@ export function bindCoursePicker(
           textElement('span', '', `${members.length}`),
         );
         section.append(heading);
-        if (group.id === 'saved') savedSection = section;
-        if (!members.length && group.id === 'saved' && !draft)
+        if (group.id === 'stored') savedSection = section;
+        if (!members.length && group.id === 'stored' && !draft)
           section.append(textElement('p', 'help-text', 'Create a course to save your own layout.'));
         for (const course of members) {
           const item = document.createElement('button');
@@ -993,10 +997,11 @@ export function bindCoursePicker(
     showOverview();
     previewError('');
     previewName(course.name);
-    previewGroup(courseGroup(course).badge);
-    previewDistance(`${courseDistance(course)} per lap`);
+    previewGroup(groupForCourse(course).badge);
+    element('#course-preview-group').hidden = groupForCourse(course).id === 'stored';
+    previewDistance(`${courseDistance(course)}${course.closed === false ? '' : ' per lap'}`);
     courseActions.open = false;
-    courseActions.hidden = courseGroup(course).id !== 'saved';
+    courseActions.hidden = groupForCourse(course).id !== 'stored';
     savePreview.hidden = !isUnsavedCourse(course);
     editDraft.hidden = !isDraft;
     renderRecords(course);
@@ -1085,8 +1090,8 @@ export function bindCoursePicker(
     draftName.select();
   }
 
-  function savePreviewCourse(name: string) {
-    const saved = actions.saveCourse(name, preview);
+  async function savePreviewCourse(name: string) {
+    const saved = await actions.saveCourse(name, preview);
     courses.push(saved);
     if (selected === preview) {
       selected = saved;
@@ -1278,28 +1283,32 @@ export function bindCoursePicker(
       return;
     }
     if (kind === 'save') {
-      try {
-        savePreviewCourse(savedNameInput.value);
-        savedDialog.close();
-      } catch (error) {
-        savedError(errorText(error));
-      }
+      await exclusive('Saving course…', async () => {
+        try {
+          await savePreviewCourse(savedNameInput.value);
+          savedDialog.close();
+        } catch (error) {
+          savedError(errorText(error));
+        }
+      });
       return;
     }
     if (kind === 'rename') {
-      try {
-        const renamed = actions.renameCourse(course.id, savedNameInput.value);
-        courses[courses.indexOf(course)] = renamed;
-        if (selected.id === renamed.id) {
-          selected = renamed;
-          syncCourseName();
+      await exclusive('Renaming course…', async () => {
+        try {
+          const renamed = await actions.renameCourse(course.id, savedNameInput.value);
+          courses[courses.indexOf(course)] = renamed;
+          if (selected.id === renamed.id) {
+            selected = renamed;
+            syncCourseName();
+          }
+          renderList();
+          if (preview === course) previewCourse(renamed);
+          savedDialog.close();
+        } catch (error) {
+          savedError(errorText(error));
         }
-        renderList();
-        if (preview === course) previewCourse(renamed);
-        savedDialog.close();
-      } catch (error) {
-        savedError(errorText(error));
-      }
+      });
       return;
     }
     const busy = await exclusive('Deleting course…', async () => {
@@ -1359,17 +1368,22 @@ export function bindCoursePicker(
     showOverview();
     records.querySelector<HTMLButtonElement>('button')?.focus();
   });
-  loadButton.addEventListener('click', () => {
+  loadButton.addEventListener('click', async () => {
     if (changing || creating) return;
     try {
-      if (draftSelected) savePreviewCourse(draft?.name ?? '');
+      if (draftSelected) {
+        const saved = await exclusive('Saving course…', async () => {
+          await savePreviewCourse(draft?.name ?? '');
+        });
+        if (!saved) return;
+      }
       void selectCourse(preview.id, isUnsavedCourse(preview) ? preview.generation : undefined);
     } catch (error) {
       pickerError(`Unable to save course: ${errorText(error)}`);
     }
   });
   element('#course-picker-cancel').addEventListener('click', () => picker.close());
-  picker.addEventListener('dialog-open', () => {
+  picker.addEventListener('dialog-open', async () => {
     pickerError('');
     direction = store.getState().courseReverse;
     directions.forEach((input) => {
@@ -1382,6 +1396,17 @@ export function bindCoursePicker(
     draftName.setCustomValidity('');
     renderList();
     previewCourse(selected);
+    await exclusive('Loading saved tracks…', async () => {
+      try {
+        const refreshed = await actions.refreshCourses();
+        if (!picker.open) return;
+        courses.splice(0, courses.length, ...refreshed);
+        renderList();
+        previewCourse(courses.find(({ id }) => id === selected.id) ?? selected);
+      } catch (error) {
+        pickerError(`Unable to load saved tracks: ${errorText(error)}`);
+      }
+    });
   });
   picker.addEventListener('close', () => {
     ++previewToken;

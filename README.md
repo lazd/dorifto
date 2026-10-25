@@ -96,8 +96,10 @@ direct browser requests to OpenFreeMap and USGS, so an internet connection is ne
   supported browser on HTTPS/localhost; it is origin-specific, quota-limited,
   and can be cleared by the browser. Download backups for portability.
 
-This is a standalone prototype: OPFS maps are **not yet connected to the game's
-course library**. Downloaded files use the game's `CourseDefinition` format,
+Builder maps appear at the top of the game's course chooser under **Your tracks**
+when both apps use the same origin. The chooser refreshes OPFS tracks whenever it
+opens. The builder's **Play** button still downloads JSON rather than launching
+the game. Downloaded files use the game's `CourseDefinition` format,
 including terrain and attribution; they can be added to `src/tracks/` and built
 like other imported courses. OpenStreetMap-derived data retains
 [OSM attribution and ODbL licensing](https://www.openstreetmap.org/copyright).
@@ -219,7 +221,8 @@ The keyboard and controller diagrams illuminate physical inputs while the Contro
 panel is open. Settings keeps the same viewport-constrained size across categories;
 long panels scroll internally rather than resizing the dialog.
 
-The course library groups **Built-in courses**, **Racetracks**, **Roads**, and **Saved courses** in
+The course library groups **Your tracks**, **Current layout** (when active), **Roads**,
+**Racetracks**, and **Built-in courses**, in that order, in
 one list. Selecting an entry previews it without changing the race; **Load course** applies
 the selection and resets the race. The selected course's details include local records
 by direction and access to saved-run replays. An unsaved random or custom course appears
@@ -1380,20 +1383,27 @@ Banking varies deterministically with the seed, favoring moderate banking around
 Choose **Create course** in the library. An editable temporary name is filled in
 automatically (New course, New course 2, etc., avoiding existing saved names).
 You can keep it or enter your own name; empty names cannot be generated or saved.
-A temporary **New course** entry at the bottom of **Saved courses** becomes selected
+A temporary **New course** entry at the bottom of **Your tracks** becomes selected
 instead of the current layout.
 Choose Random or Custom, adjust the settings, then **Generate preview**.
 The draft can be edited and regenerated without changing the current race.
 **Save layout…** saves without loading; **Save & load course** saves and starts the new layout.
 Closing the library discards an unsaved draft. An unsaved active course from a URL can
 also be named and saved with **Save layout…**.
-The exact course layout is stored in localStorage,
+The exact course layout is stored only in OPFS (`dorifto-road-maps/`), alongside
+Track Builder maps,
 added to and selected in the **Choose course** picker, including after reloading.
 Saved layouts also retain their generator type and seed; custom courses include
 the exact generation parameters used, independent of later slider changes.
 Saved courses are
 local to this browser; their `?course=saved-…` links require the same local data.
-The picker groups **Built-in courses**, **Racetracks**, **Roads**, and **Saved courses** in a
+Existing layouts in `dorifto:courses` are migrated from localStorage on startup,
+preserving IDs and record associations. The old key is removed only after every
+layout is safely stored; a failed migration preserves the original data and reports
+an error. New custom/random layouts are never written to localStorage.
+OPFS requires HTTPS/localhost and is scoped to the browser and origin.
+The picker groups **Your tracks**, **Current layout** (when active), **Roads**,
+**Racetracks**, and **Built-in courses** in a
 scrollable list of outline thumbnails, names and lap lengths (meters for courses
 under 1 km, otherwise kilometers). The current course is marked independently
 of the preview selection. Selecting a course updates its details and 2-D preview;
@@ -1402,7 +1412,7 @@ building the larger 3-D preview is temporarily disabled.
 errors remain visible in the dialog. While an unsaved random or custom course is
 active, a **Current layout** group lists it (marked Unsaved) so its records and
 replays stay reachable; loading it rebuilds the same seed. The group disappears once
-the layout is saved or another course loads. The Saved courses group explains how to save
+the layout is saved or another course loads. The Your tracks group explains how to save
 a course when empty. A saved course's action disclosure offers rename and confirmed
 deletion.
 Replay rows offer **Watch** and confirmed **Delete** actions. Right-click a row to

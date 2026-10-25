@@ -3,235 +3,129 @@ import { after, before, test } from 'node:test';
 import { createServer } from 'vite';
 
 let server;
-let loadSavedCourses;
-let saveCourse;
-let deleteSavedCourse;
-let renameSavedCourse;
-let replayStorageKey;
-let savedCoursesStorageKey;
+let saved;
 let generateCourse;
 let generateCustomCourse;
 let defaultCourseWeights;
-
 before(async () => {
   server = await createServer({
     server: { middlewareMode: true, hmr: false, ws: false, watch: null },
     appType: 'custom',
   });
-  ({ loadSavedCourses, saveCourse, deleteSavedCourse, renameSavedCourse, savedCoursesStorageKey } =
-    await server.ssrLoadModule('/src/saved-courses.ts'));
-  ({ replayStorageKey } = await server.ssrLoadModule('/src/lap-recording.ts'));
+  saved = await server.ssrLoadModule('/src/saved-courses.ts');
   ({ generateCourse } = await server.ssrLoadModule('/src/courses.ts'));
   ({ generateCustomCourse, defaultCourseWeights } = await server.ssrLoadModule(
     '/src/course-generation.ts',
   ));
 });
+after(async () => server?.close());
 
-after(async () => {
-  await server?.close();
-});
-
-function memoryStorage() {
-  const values = new Map();
+function directory() {
+  const files = new Map();
   return {
-    getItem(key) {
-      return values.get(key) ?? null;
+    files,
+    async *values() {
+      for (const [name] of files) yield await this.getFileHandle(name);
     },
-    setItem(key, value) {
-      values.set(key, value);
+    async getFileHandle(name, options) {
+      if (!files.has(name)) {
+        if (!options?.create) throw Error('Missing file');
+        files.set(name, '');
+      }
+      return {
+        name,
+        kind: 'file',
+        async getFile() {
+          return new Blob([files.get(name)]);
+        },
+        async createWritable() {
+          let pending;
+          return {
+            async write(blob) {
+              pending = await blob.text();
+            },
+            async close() {
+              files.set(name, pending);
+            },
+            async abort() {},
+          };
+        },
+      };
+    },
+    async removeEntry(name) {
+      files.delete(name);
     },
   };
 }
 
-test('saves named random and custom layouts and restores exact geometry and options', () => {
-  const storage = memoryStorage();
-  assert.deepEqual(loadSavedCourses(storage), []);
+test('OPFS saves generated layouts, renames stable files, and deletes only selected tracks', async () => {
+  const dir = directory();
   const random = generateCourse(42);
   const custom = generateCustomCourse(42, defaultCourseWeights);
-  const savedRandom = saveCourse(storage, random, '  My random track  ');
-  const savedCustom = saveCourse(storage, custom, 'My custom track');
-  assert.equal(savedRandom.name, 'My random track');
-  assert.match(savedRandom.id, /^saved-/);
-  assert.notEqual(savedRandom.id, savedCustom.id);
-  assert.deepEqual(
-    loadSavedCourses(storage),
-    JSON.parse(JSON.stringify([savedRandom, savedCustom])),
-  );
-  assert.deepEqual(savedRandom.points, random.points);
-  assert.deepEqual(savedCustom.points, custom.points);
-  assert.deepEqual(savedRandom.generation, { type: 'random', seed: 42 });
-  assert.deepEqual(savedCustom.generation, {
-    type: 'custom',
-    seed: 42,
-    weights: defaultCourseWeights,
-  });
-  const restored = loadSavedCourses(storage);
-  assert.deepEqual(restored[0].generation, savedRandom.generation);
-  assert.deepEqual(restored[1].generation, savedCustom.generation);
-  assert.deepEqual(generateCourse(restored[0].generation.seed).points, random.points);
-  assert.deepEqual(
-    generateCustomCourse(restored[1].generation.seed, restored[1].generation.weights).points,
-    custom.points,
-  );
-  assert.deepEqual({ ...savedRandom, id: random.id, name: random.name }, random);
-  assert.deepEqual({ ...savedCustom, id: custom.id, name: custom.name }, custom);
-  assert.equal(random.id, 'random', 'saving does not modify the active definition');
-});
-
-test('rejects empty names, non-generated courses, corrupt storage and duplicate IDs', () => {
-  const storage = memoryStorage();
-  const course = {
-    id: 'random',
-    name: 'Random',
-    width: 10,
-    points: [
-      [0, 0],
-      [100, 0],
-      [0, 100],
-    ],
-  };
-  assert.throws(() => saveCourse(storage, course, '  '), /Enter a course name/);
-  assert.throws(
-    () => saveCourse(storage, { ...course, id: 'autocross' }, 'Name'),
+  const first = await saved.saveCourse(dir, random, ' Random ');
+  const second = await saved.saveCourse(dir, custom, 'Custom');
+  assert.equal(first.name, 'Random');
+  assert.deepEqual(first.points, random.points);
+  assert.deepEqual(second.generation.weights, defaultCourseWeights);
+  const filenames = [...dir.files.keys()];
+  const renamed = await saved.renameSavedCourse(dir, first.id, 'New name');
+  assert.equal(renamed.id, first.id);
+  assert.deepEqual([...dir.files.keys()], filenames);
+  assert.equal((await saved.loadSavedCourses(dir)).find((c) => c.id === first.id).name, 'New name');
+  await saved.deleteSavedCourse(dir, first.id);
+  assert.deepEqual(await saved.loadSavedCourses(dir), JSON.parse(JSON.stringify([second])));
+  await assert.rejects(saved.deleteSavedCourse(dir, 'missing'), /not found/);
+  await assert.rejects(saved.saveCourse(dir, random, ' '), /Enter a course name/);
+  await assert.rejects(
+    saved.saveCourse(dir, { ...random, id: 'hillside' }, 'Name'),
     /Only generated/,
   );
-  storage.setItem(savedCoursesStorageKey, '{');
-  assert.throws(() => loadSavedCourses(storage), /not valid JSON/);
-  storage.setItem(
-    savedCoursesStorageKey,
-    JSON.stringify([{ ...course, id: 'saved-test', points: [[null, 0]] }]),
-  );
-  assert.throws(() => loadSavedCourses(storage), /invalid format/);
-  const saved = { ...course, id: 'saved-test' };
-  storage.setItem(savedCoursesStorageKey, JSON.stringify([saved, saved]));
-  assert.throws(() => loadSavedCourses(storage), /duplicate IDs/);
 });
 
-test('storage failures are surfaced rather than reporting a successful save', () => {
-  const storage = memoryStorage();
-  storage.setItem = () => {
-    throw new Error('Storage full');
+test('legacy localStorage tracks migrate once, preserve IDs and upgrade old custom metadata', async () => {
+  const dir = directory();
+  const course = generateCustomCourse(42, defaultCourseWeights);
+  const { banking, ...weights } = course.generation.weights;
+  const legacy = { ...course, id: 'saved-legacy', generation: { ...course.generation, weights } };
+  let text = JSON.stringify([legacy]);
+  const storage = {
+    getItem: () => text,
+    removeItem: () => {
+      text = null;
+    },
   };
-  assert.throws(
-    () =>
-      saveCourse(
-        storage,
-        {
-          id: 'custom',
-          name: 'Custom',
-          width: 10,
-          points: [
-            [0, 0],
-            [100, 0],
-            [0, 100],
-          ],
-        },
-        'Name',
-      ),
-    /Storage full/,
-  );
-  assert.deepEqual(loadSavedCourses(storage), []);
-});
-
-test('custom generation parameters are captured independently of later slider changes', () => {
-  const weights = { ...defaultCourseWeights };
-  const course = generateCustomCourse(42, weights);
-  weights.elevation = 0;
-  const storage = memoryStorage();
-  saveCourse(storage, course, 'Custom');
-  assert.deepEqual(loadSavedCourses(storage)[0].generation.weights, defaultCourseWeights);
-});
-
-test('retains zero elevation and banking and upgrades older custom preferences without changing terrain', () => {
-  const storage = memoryStorage();
-  const flat = generateCustomCourse(42, { ...defaultCourseWeights, elevation: 0, banking: 0 });
-  const saved = saveCourse(storage, flat, 'Flat');
-  assert.deepEqual(loadSavedCourses(storage), JSON.parse(JSON.stringify([saved])));
-  const { banking, ...legacyWeights } = defaultCourseWeights;
-  const legacy = {
-    ...saved,
-    flat: false,
-    elevationScale: 0.5,
-    generation: { ...saved.generation, weights: legacyWeights },
-  };
-  delete legacy.bankingScale;
-  storage.setItem(savedCoursesStorageKey, JSON.stringify([legacy]));
-  const [restored] = loadSavedCourses(storage);
-  assert.deepEqual(restored.generation.weights, defaultCourseWeights);
-  assert.equal(restored.bankingScale, undefined);
-  assert.equal(restored.elevationScale, legacy.elevationScale);
+  await saved.migrateSavedCourses(dir, storage);
+  assert.equal(text, null);
+  const [restored] = await saved.loadSavedCourses(dir);
+  assert.equal(restored.id, legacy.id);
   assert.deepEqual(restored.points, JSON.parse(JSON.stringify(legacy.points)));
-  for (const bankingScale of [-1, '1', null]) {
-    storage.setItem(savedCoursesStorageKey, JSON.stringify([{ ...saved, bankingScale }]));
-    assert.throws(() => loadSavedCourses(storage), /invalid format/);
-  }
+  assert.deepEqual(restored.generation.weights, defaultCourseWeights);
+  text = JSON.stringify([legacy]);
+  await saved.migrateSavedCourses(dir, storage);
+  assert.equal(dir.files.size, 1);
 });
 
-test('rejects invalid generation metadata but accepts older courses without it', () => {
-  const storage = memoryStorage();
-  const course = {
-    id: 'saved-test',
-    name: 'Test',
-    width: 10,
-    points: [
-      [0, 0],
-      [100, 0],
-      [0, 100],
-    ],
+test('failed writes preserve legacy storage and surface errors; builder JSON is accepted', async () => {
+  const dir = directory();
+  const course = { ...generateCourse(42), id: 'saved-legacy' };
+  let removed = false;
+  const storage = {
+    getItem: () => JSON.stringify([course]),
+    removeItem: () => {
+      removed = true;
+    },
   };
-  for (const generation of [
-    { type: 'random', seed: -1 },
-    { type: 'random', seed: 0x100000000 },
-    { type: 'custom', seed: 42, weights: {} },
-    { type: 'custom', seed: 42, weights: { ...defaultCourseWeights, elevation: 2 } },
-  ]) {
-    storage.setItem(savedCoursesStorageKey, JSON.stringify([{ ...course, generation }]));
-    assert.throws(() => loadSavedCourses(storage), /invalid format/);
-  }
-  storage.setItem(savedCoursesStorageKey, JSON.stringify([course]));
-  assert.deepEqual(loadSavedCourses(storage), [course]);
-});
-
-test('deletes only the requested saved course and rejects built-in or missing courses', () => {
-  const storage = memoryStorage();
-  const course = {
-    id: 'random',
-    name: 'Random',
-    width: 10,
-    points: [
-      [0, 0],
-      [100, 0],
-      [0, 100],
-    ],
+  dir.getFileHandle = async () => {
+    throw Error('Quota exceeded');
   };
-  const first = saveCourse(storage, course, 'First');
-  const second = saveCourse(storage, course, 'Second');
-  assert.throws(() => deleteSavedCourse(storage, 'autocross'), /Saved course not found/);
-  deleteSavedCourse(storage, first.id);
-  assert.deepEqual(loadSavedCourses(storage), [second]);
-  assert.throws(() => deleteSavedCourse(storage, first.id), /Saved course not found/);
-  storage.setItem = () => {
-    throw new Error('Storage blocked');
-  };
-  assert.throws(() => deleteSavedCourse(storage, second.id), /Storage blocked/);
-  assert.deepEqual(loadSavedCourses(storage), [second]);
-});
-
-test('renames a saved course in place without changing its record keys', () => {
-  const storage = memoryStorage();
-  const first = saveCourse(storage, generateCourse(7), 'First');
-  const second = saveCourse(storage, generateCourse(8), 'Second');
-  assert.throws(() => renameSavedCourse(storage, first.id, '  '), /Enter a course name/);
-  assert.throws(
-    () => renameSavedCourse(storage, 'saved-missing', 'Name'),
-    /Saved course not found/,
-  );
-  const renamed = renameSavedCourse(storage, first.id, '  Evening loop ');
-  assert.equal(renamed.name, 'Evening loop');
-  assert.deepEqual(loadSavedCourses(storage), [renamed, second]);
-  for (const reverse of [false, true])
-    assert.equal(
-      replayStorageKey({ ...renamed, reverse }),
-      replayStorageKey({ ...first, reverse }),
-    );
+  await assert.rejects(saved.migrateSavedCourses(dir, storage), /Quota exceeded/);
+  assert.equal(removed, false);
+  const builderDir = directory();
+  const road = { ...course, id: 'road-builder-map', roadBuilder: { sections: [], resolution: 5 } };
+  builderDir.files.set('builder.json', JSON.stringify(road));
+  assert.equal((await saved.loadSavedCourses(builderDir))[0].id, road.id);
+  await saved.renameSavedCourse(builderDir, road.id, 'Renamed road');
+  assert.deepEqual((await saved.loadSavedCourses(builderDir))[0].roadBuilder, road.roadBuilder);
+  builderDir.files.set('broken.json', '{');
+  await assert.rejects(saved.loadSavedCourses(builderDir), /broken.json/);
 });

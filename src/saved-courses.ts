@@ -1,5 +1,7 @@
 import type { CourseDefinition } from './courses';
 import { courseGenerationFields, defaultCourseWeights } from './course-generation';
+import { listRoadMaps, storeRoadMap } from './road-builder-storage';
+import { readRoadMap } from './road-builder-data';
 
 export const savedCoursesStorageKey = 'dorifto:courses';
 
@@ -36,14 +38,13 @@ function isCourse(value: unknown): value is CourseDefinition {
   const course = value as Record<string, unknown>;
   return (
     typeof course.id === 'string' &&
-    course.id.startsWith('saved-') &&
     typeof course.name === 'string' &&
     course.name.trim().length > 0 &&
     typeof course.width === 'number' &&
     Number.isFinite(course.width) &&
     course.width > 0 &&
     Array.isArray(course.points) &&
-    course.points.length >= 3 &&
+    course.points.length >= 2 &&
     course.points.every(
       (point: unknown) =>
         Array.isArray(point) &&
@@ -75,7 +76,7 @@ function isCourse(value: unknown): value is CourseDefinition {
   );
 }
 
-export function loadSavedCourses(storage: Pick<Storage, 'getItem'>): CourseDefinition[] {
+function loadLegacyCourses(storage: Pick<Storage, 'getItem'>): CourseDefinition[] {
   const text = storage.getItem(savedCoursesStorageKey);
   if (text === null) return [];
   let parsed: unknown;
@@ -104,8 +105,37 @@ export function loadSavedCourses(storage: Pick<Storage, 'getItem'>): CourseDefin
   );
 }
 
-export function saveCourse(
-  storage: Pick<Storage, 'getItem' | 'setItem'>,
+export async function loadSavedCourses(directory: FileSystemDirectoryHandle) {
+  const courses: CourseDefinition[] = [];
+  for (const handle of await listRoadMaps(directory)) {
+    try {
+      const course = readRoadMap(await (await handle.getFile()).text());
+      if (!isCourse(course)) throw new Error('Saved track has an invalid format');
+      courses.push(course);
+    } catch (error) {
+      throw new Error(`Unable to read saved track "${handle.name}"`, { cause: error });
+    }
+  }
+  if (new Set(courses.map(({ id }) => id)).size !== courses.length)
+    throw new Error('Saved courses contain duplicate IDs');
+  return courses;
+}
+
+export async function migrateSavedCourses(
+  directory: FileSystemDirectoryHandle,
+  storage: Pick<Storage, 'getItem' | 'removeItem'>,
+) {
+  const legacy = loadLegacyCourses(storage);
+  const existing = await loadSavedCourses(directory);
+  for (const course of legacy) {
+    if (!existing.some(({ id }) => id === course.id))
+      await storeRoadMap(directory, course, new Blob([JSON.stringify(course)]));
+  }
+  storage.removeItem(savedCoursesStorageKey);
+}
+
+export async function saveCourse(
+  directory: FileSystemDirectoryHandle,
   definition: CourseDefinition,
   name: string,
 ) {
@@ -113,39 +143,37 @@ export function saveCourse(
     throw new Error('Only generated courses can be saved');
   const trimmed = name.trim();
   if (!trimmed) throw new Error('Enter a course name');
-  const courses = loadSavedCourses(storage);
   const saved: CourseDefinition = {
     ...definition,
     id: `saved-${crypto.randomUUID()}`,
     name: trimmed,
   };
-  storage.setItem(savedCoursesStorageKey, JSON.stringify([...courses, saved]));
+  await storeRoadMap(directory, saved, new Blob([JSON.stringify(saved)]));
   return saved;
 }
 
-export function deleteSavedCourse(storage: Pick<Storage, 'getItem' | 'setItem'>, id: string) {
-  const courses = loadSavedCourses(storage);
-  if (!courses.some((course) => course.id === id)) throw new Error('Saved course not found');
-  storage.setItem(
-    savedCoursesStorageKey,
-    JSON.stringify(courses.filter((course) => course.id !== id)),
-  );
+async function findSavedCourse(directory: FileSystemDirectoryHandle, id: string) {
+  for (const handle of await listRoadMaps(directory)) {
+    const course = readRoadMap(await (await handle.getFile()).text());
+    if (course.id === id) return { handle, course };
+  }
+  throw new Error('Saved course not found');
 }
 
-export function renameSavedCourse(
-  storage: Pick<Storage, 'getItem' | 'setItem'>,
+export async function deleteSavedCourse(directory: FileSystemDirectoryHandle, id: string) {
+  const { handle } = await findSavedCourse(directory, id);
+  await directory.removeEntry(handle.name);
+}
+
+export async function renameSavedCourse(
+  directory: FileSystemDirectoryHandle,
   id: string,
   name: string,
 ) {
   const trimmed = name.trim();
   if (!trimmed) throw new Error('Enter a course name');
-  const courses = loadSavedCourses(storage);
-  const course = courses.find((saved) => saved.id === id);
-  if (!course) throw new Error('Saved course not found');
+  const { handle, course } = await findSavedCourse(directory, id);
   const renamed = { ...course, name: trimmed };
-  storage.setItem(
-    savedCoursesStorageKey,
-    JSON.stringify(courses.map((saved) => (saved.id === id ? renamed : saved))),
-  );
+  await storeRoadMap(directory, renamed, new Blob([JSON.stringify(renamed)]), handle.name);
   return renamed;
 }

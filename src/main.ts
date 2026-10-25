@@ -39,9 +39,11 @@ import { loadTuningPresets } from './tuning-presets';
 import {
   deleteSavedCourse,
   loadSavedCourses,
+  migrateSavedCourses,
   renameSavedCourse,
   saveCourse,
 } from './saved-courses';
+import { openRoadMaps } from './road-builder-storage';
 import { bindGameUI, bindGameActions, bindCoursePicker, bindLapRecorder, element } from './ui';
 import { createDrivingCamera } from './camera';
 import { createLighting } from './lighting';
@@ -233,7 +235,14 @@ async function start() {
       driveMode: botDriveMode(botOptions[0]?.preset),
       ...(!courseUrl.searchParams.has('camera') ? { cameraStyle: 'fpv' as const } : {}),
     });
-  const availableCourses = [...courses, ...loadSavedCourses(localStorage)];
+  const trackDirectory = await openRoadMaps();
+  await migrateSavedCourses(trackDirectory, localStorage);
+  let storedCourses = await loadSavedCourses(trackDirectory);
+  const combinedCourses = () => [
+    ...storedCourses,
+    ...courses.filter((course) => !storedCourses.some(({ id }) => id === course.id)),
+  ];
+  const availableCourses = combinedCourses();
   const courseId = courseUrl.searchParams.get('course');
   const requestedCourse =
     courseId === null ||
@@ -977,6 +986,12 @@ async function start() {
   }
 
   bindCoursePicker(availableCourses, definition, configurationState, {
+    isSavedCourse: (id) => storedCourses.some((course) => course.id === id),
+    refreshCourses: async () => {
+      storedCourses = await loadSavedCourses(trackDirectory);
+      availableCourses.splice(0, availableCourses.length, ...combinedCourses());
+      return availableCourses;
+    },
     changeCourse,
     changeDirection: changeCourseDirection,
     reportError: (error) => {
@@ -989,8 +1004,9 @@ async function start() {
         },
       });
     },
-    saveCourse: (name, definition = activeDefinition) => {
-      const saved = saveCourse(localStorage, definition, name);
+    saveCourse: async (name, definition = activeDefinition) => {
+      const saved = await saveCourse(trackDirectory, definition, name);
+      storedCourses.push(saved);
       availableCourses.push(saved);
       if (definition !== activeDefinition) return saved;
       activeDefinition = saved;
@@ -1013,8 +1029,9 @@ async function start() {
       return saved;
     },
     // Records are keyed by the stable saved ID, so renaming keeps them.
-    renameCourse: (id, name) => {
-      const renamed = renameSavedCourse(localStorage, id, name);
+    renameCourse: async (id, name) => {
+      const renamed = await renameSavedCourse(trackDirectory, id, name);
+      storedCourses[storedCourses.findIndex((course) => course.id === id)] = renamed;
       availableCourses[availableCourses.findIndex((course) => course.id === id)] = renamed;
       if (activeDefinition.id === id) {
         activeDefinition = renamed;
@@ -1023,13 +1040,16 @@ async function start() {
       return renamed;
     },
     deleteCourse: async (id) => {
-      const savedCourse = loadSavedCourses(localStorage).find((course) => course.id === id);
+      const savedCourse = (await loadSavedCourses(trackDirectory)).find(
+        (course) => course.id === id,
+      );
       if (!savedCourse) throw new Error('Only saved courses can be deleted');
       if (changingCourse) throw new Error('Wait for the current course change to finish');
       const active = activeDefinition.id === id;
       const fallback = active ? await changeCourse(courses[0].id) : activeDefinition;
       try {
-        deleteSavedCourse(localStorage, id);
+        await deleteSavedCourse(trackDirectory, id);
+        storedCourses = storedCourses.filter((course) => course.id !== id);
       } catch (error) {
         if (active) await changeCourse(id);
         throw error;

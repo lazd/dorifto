@@ -194,7 +194,14 @@
   --course-preview-light: var(--color-text);
   --course-preview-shade: var(--color-sunken);
   position: relative;
+  height: clamp(8rem, 25dvh, 15rem);
   aspect-ratio: 1;
+  max-width: 100%;
+  margin-inline: auto;
+  background: color-mix(in srgb, var(--color-surface) 65%, var(--color-sunken));
+  border: var(--line) solid color-mix(in srgb, var(--color-surface) 65%, var(--color-border));
+  border-radius: var(--radius-md);
+  overflow: hidden;
   transition: opacity 0.2s;
 }
 
@@ -242,6 +249,10 @@ dialog .course-preview-heading h3 {
   margin: var(--space-5) 0 0;
   padding: 0;
   list-style: none;
+}
+
+.course-direction + .record-list {
+  margin-top: 0;
 }
 
 .record-row {
