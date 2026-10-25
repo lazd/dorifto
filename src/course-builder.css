@@ -288,7 +288,7 @@ input.switch::before {
   border-radius: 0 var(--radius-pill) var(--radius-pill) 0;
   padding: calc(var(--space-4) - var(--space-1) / 2) var(--space-5);
   padding-left: calc(var(--space-4) + var(--space-1));
-  background: color-mix(in srgb, var(--color-selected) 65%, var(--color-accent));
+  background: var(--color-action-fill);
   font-weight: 600;
 }
 .viewport-search button:hover:not(:disabled) {

@@ -160,6 +160,11 @@ export interface PhysicsTelemetry {
 }
 
 export interface PhysicsRecord {
+  time?: number;
+  elapsed?: number;
+  active?: boolean;
+  raceFinished?: boolean;
+  field?: PhysicsRecord[];
   laps: LapState;
   sample?: Float32Array;
   speed?: number;
@@ -170,6 +175,7 @@ export interface PhysicsRecord {
 }
 
 export interface ReplayData {
+  field?: ReplayData[];
   data: Float32Array;
   count: number;
   firstTime: number;
@@ -182,6 +188,7 @@ export function replayData(recording: RunRecording): ReplayData {
     count: recording.count,
     firstTime: recording.firstTime,
     interval: recording.interval,
+    ...(recording.field.length ? { field: recording.field.map(replayData) } : {}),
   };
 }
 

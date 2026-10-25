@@ -426,15 +426,29 @@ On centerline courses, the Track Limits column is named **Mayo**: **Avoided** fo
 untouched white lines, **Tasted** in white for a tire touching either white stripe,
 or **Exceeded** in red using the unchanged Track Limits calculation. White-line
 touches remain valid and are retained with new saved laps and records.
-The standings table shows every driver, race time or gap, and Racing, Finished,
+The standings table appears first and shows every driver, race time or gap, and Racing, Finished,
 DSQ, or DNF status. Standings remain live as other cars finish, then become final.
+Click the race standings panel or **Race results** during a race to view live results
+without retiring. Close the dialog to return to driving.
+If another dialog is open when your run finishes, automatic results are skipped;
+you can still open them from the standings panel afterward.
+Select a standings row to see that driver's best lap, record comparison, statistics,
+and **Laps** table below it. The selected row is highlighted; driver buttons also
+support keyboard selection. Drivers still racing update live, while finished
+drivers' statistics freeze at the finish.
 The header badge shows 🏆 Won for the first classified finisher, 🏁 Finished for
 other classified finishes, 🔴 DNF for a stopped run, or ❌ Disqualified when
 completed attempts do not satisfy the selected mode's validity requirements.
 Resetting before the finish retires your car (DNF) without stopping the other drivers.
 The simulation and engine audio keep running behind the dialog even after everyone
 finishes; driving inputs remain disabled. The minimap displays 🏁 at the finish.
-Results automatically save the run and offer run and record replay.
+Results offer **Replay race** and record replay. New race replays record the entire
+field on a shared timeline, including cars that finish after you, with each driver's
+lap validity and statistics. The race is saved after the last entrant finishes, or
+up to the point you restart, leave, or choose replay. Playback restores the recorded
+bot roster, poses every car from its own samples, and advances the shared physics
+world once per step; bots do not run live AI during playback. Older saved runs and
+record-lap replays still play as single-car recordings.
 New saved runs retain these statistics, including individual lap statistics;
 new track records retain the statistics for their record lap rather than the
 entire run. Existing records are not retroactively populated.

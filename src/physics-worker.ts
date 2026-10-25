@@ -23,6 +23,8 @@ self.onmessage = ({ data }: MessageEvent<PhysicsRequest>) => {
       const transfers: Transferable[] = [snapshot.buffer];
       for (const record of snapshot.records) {
         if (record.sample) transfers.push(record.sample.buffer);
+        for (const entrant of record.field ?? [])
+          if (entrant.sample) transfers.push(entrant.sample.buffer);
       }
       respond(snapshot, transfers);
     } catch (error) {

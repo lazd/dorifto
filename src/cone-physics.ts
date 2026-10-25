@@ -11,11 +11,13 @@ interface ConePhysicsOptions {
   course: { cones: THREE.Object3D[]; cornerCones: THREE.Object3D[] };
   audio: Pick<VehicleAudio, 'hitCone'>;
   onHit?(id: number): void;
+  vehicles?: ReadonlySet<number>;
+  onVehicleHit?(pointer: number, id: number): void;
 }
 
 export function createConePhysics(
   context: PhysicsPluginContext,
-  { course, audio, onHit }: ConePhysicsOptions,
+  { course, audio, onHit, vehicles, onVehicleHit }: ConePhysicsOptions,
 ) {
   const { Ammo, world, dispatcher, vehicleBody, createRigidBody, setBodyEnabled } = context;
   const { cones } = course;
@@ -147,7 +149,11 @@ export function createConePhysics(
             ? ids.get(second)
             : second === vehiclePointer
               ? ids.get(first)
-              : undefined;
+              : vehicles?.has(first)
+                ? ids.get(second)
+                : vehicles?.has(second)
+                  ? ids.get(first)
+                  : undefined;
         if (cone === undefined || !isActive(cone)) continue;
         let impulse = 0;
         let touching = false;
@@ -159,6 +165,9 @@ export function createConePhysics(
           }
         }
         if (touching) {
+          const pointer = ids.has(first) ? second : first;
+          onVehicleHit?.(pointer, cone);
+          if (pointer !== vehiclePointer) continue;
           context.laps.hitCone(cone);
           onHit?.(cone);
           if (impulse >= 0.5 && !soundCooldowns.has(cone)) {

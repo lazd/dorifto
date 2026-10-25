@@ -153,6 +153,89 @@ test('records persist statistics for the extracted lap rather than the whole run
   assert.deepEqual(record.extractLap(0).statistics, expected);
 });
 
+test('full-field recordings preserve each driver, timeline, statistics, and export payload', async () => {
+  const storage = new MemoryStorage();
+  const run = sampleRun();
+  const opponent = sampleRun();
+  opponent.data[0] += 50;
+  opponent.statistics.maxSpeed = 42;
+  opponent.finished = true;
+  run.field.push(opponent);
+  run.race = {
+    botsOnly: false,
+    bots: [{ skill: 0.8, aggression: 0.4, learning: false }],
+    entrants: [
+      { name: 'You', color: '#fff' },
+      { name: 'Bot', color: '#0ff' },
+    ],
+  };
+  const saved = await recording.saveRun('field', run, { driver: 'human' }, storage);
+  const loaded = await recording.loadRun('field', saved.id, storage);
+  assert.deepEqual(loaded.race, run.race);
+  assert.equal(loaded.field.length, 1);
+  for (const [actual, expected] of [
+    [loaded, run],
+    [loaded.field[0], opponent],
+  ]) {
+    assert.equal(actual.count, expected.count);
+    assert.equal(actual.firstTime, expected.firstTime);
+    assert.deepEqual(actual.lapTimes, expected.lapTimes);
+    assert.deepEqual(actual.lapValidity, expected.lapValidity);
+    assert.equal(actual.statistics.maxSpeed, expected.statistics.maxSpeed);
+    const frame = recording.createReplayFrame();
+    actual.read(actual.firstTime, frame);
+    assert.ok(Math.abs(frame.position.x - expected.data[0]) < 1e-5);
+  }
+  assert.equal(loaded.field[0].finished, true);
+  const exported = JSON.parse(recording.exportRun('field', saved.id, storage));
+  const importedStorage = new MemoryStorage();
+  for (const [key, value] of Object.entries(exported)) importedStorage.setItem(key, value);
+  const imported = await recording.loadRun('field', saved.id, importedStorage);
+  assert.equal(imported.field[0].count, opponent.count);
+  assert.equal(loaded.extractLap(0).field.length, 0, 'record laps stay single-driver replays');
+});
+
+test('recording freezes terminal driver statistics while retaining full-race pose samples', async () => {
+  const { emptyLapState } = await server.ssrLoadModule('/src/physics-messages.ts');
+  const run = new recording.RunRecording();
+  const lap = { ...emptyLapState(), lap: 1, elapsedTime: 1, current: 1 };
+  run.recordStep({ time: 1, laps: lap, active: true, speed: 10, timeInFirst: 1 });
+  assert.equal(run.statistics.time, 1);
+  lap.finished = true;
+  lap.completed = 1;
+  lap.lapStartedAt = 2;
+  lap.elapsedTime = 2;
+  lap.lastAttempt = { time: 2, cones: 0, valid: true, trackLimits: true, mustard: null };
+  run.recordStep({ time: 2, laps: lap, active: true, speed: 20, timeInFirst: 2 });
+  assert.equal(run.lapTimes.length, 1);
+  assert.equal(run.partialLap, undefined);
+  const stats = { ...run.statistics };
+  const frame = sampleRun().data.slice(0, recording.frameStride);
+  run.recordStep({ time: 3, laps: lap, active: false, speed: 100, timeInFirst: 3, sample: frame });
+  run.recordStep({ time: 3 + run.interval, laps: lap, active: false, sample: frame });
+  assert.deepEqual(run.statistics, stats);
+  assert.equal(run.count, 2);
+  assert.equal(run.finished, true);
+  assert.equal(
+    run.timingAt(3).lap,
+    1,
+    'the HUD does not invent another lap while other cars finish',
+  );
+  assert.equal(run.timingAt(3).current, 2);
+  assert.equal(run.replayLapAt(3).next, null);
+});
+
+test('a driver joining an already-running field only accumulates active tick time', async () => {
+  const { emptyLapState } = await server.ssrLoadModule('/src/physics-messages.ts');
+  const run = new recording.RunRecording();
+  const laps = { ...emptyLapState(), elapsedTime: 20 };
+  run.recordStep({ laps, time: 20, elapsed: 0, active: false });
+  laps.elapsedTime += 0.01;
+  run.recordStep({ laps, time: 20.01, elapsed: 0.01, active: true, speed: 10 });
+  assert.equal(run.statistics.time, 0.01);
+  assert.equal(run.statistics.distance, 0.1);
+});
+
 test('interpolates recorded frames between samples', () => {
   const run = sampleRun();
   const out = recording.createReplayFrame();

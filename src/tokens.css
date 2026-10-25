@@ -15,6 +15,7 @@
   --color-muted: #9aaeb4;
   --color-accent: #9ee8d5;
   --color-selected: #2a3f43;
+  --color-action-fill: color-mix(in srgb, var(--color-selected) 65%, var(--color-accent));
   --color-danger: #f3aaa5;
   --color-warning: #f3cf75;
   --color-highlight: #fff;

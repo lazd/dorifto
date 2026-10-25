@@ -790,11 +790,34 @@ dialog .dialog-close {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 8px;
-  border-radius: 999px;
+  border: var(--line) solid var(--color-border);
+  border-radius: var(--radius-pill);
   background: #10191fdd;
   font-size: 12px;
   font-variant-numeric: tabular-nums;
+}
+#lap-replay-controls button {
+  align-self: stretch;
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  background: var(--color-action-fill);
+  font-weight: 600;
+}
+#lap-replay-controls button:first-child {
+  border-right: var(--line) solid var(--color-border);
+  border-radius: var(--radius-pill) 0 0 var(--radius-pill);
+}
+#lap-replay-controls button:last-child {
+  border-left: var(--line) solid var(--color-border);
+  border-radius: 0 var(--radius-pill) var(--radius-pill) 0;
+}
+#lap-replay-controls button:hover:not(:disabled) {
+  background: var(--color-accent);
+  color: var(--color-sunken);
+}
+#lap-replay-controls button:focus-visible {
+  outline: calc(2 * var(--line)) solid var(--color-accent);
+  outline-offset: var(--line);
 }
 .loading #lap-replay-controls {
   display: none;

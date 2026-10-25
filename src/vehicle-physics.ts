@@ -654,7 +654,7 @@ export function createVehiclePhysics({
    * Replays recorded motion through the live world: the chassis body is placed at `from` and given
    * the velocity that carries it to `to`, so cones and signs react as they did when it was driven.
    */
-  function stepReplay(from: ChassisPose, to: ChassisPose, dt: number) {
+  function prepareReplay(from: ChassisPose, to: ChassisPose, dt: number) {
     replayFrom.copy(centerOfMass).applyQuaternion(from.quaternion).add(from.position);
     replayTo.copy(centerOfMass).applyQuaternion(to.quaternion).add(to.position);
     vector.setValue(replayFrom.x, replayFrom.y, replayFrom.z);
@@ -681,10 +681,17 @@ export function createVehiclePhysics({
     body.clearForces();
     world.updateSingleAabb(body);
     for (const plugin of plugins) plugin.beforeStep?.(dt);
-    world.stepSimulation(dt, 0);
+  }
+
+  function finishReplay(dt: number) {
     for (const plugin of plugins) plugin.afterStep?.(dt);
   }
 
+  function stepReplay(from: ChassisPose, to: ChassisPose, dt: number) {
+    prepareReplay(from, to, dt);
+    world.stepSimulation(dt, 0);
+    finishReplay(dt);
+  }
   function captureReplayVisuals() {
     for (const plugin of plugins) plugin.captureVisuals?.(false);
   }
@@ -763,6 +770,8 @@ export function createVehiclePhysics({
     beforeStep,
     afterStep,
     stepReplay,
+    prepareReplay,
+    finishReplay,
     captureReplayVisuals,
     interpolateReplay,
     reset,

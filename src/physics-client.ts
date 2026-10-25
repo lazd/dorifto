@@ -7,7 +7,7 @@ import type { VehicleAudio, OpponentSoundState } from './audio';
 import { createTireEffects } from './tire-effects';
 import type { ConfigurationState } from './configuration-state';
 import type { Store } from './store';
-import type { RunRecording } from './lap-recording';
+import { applyCarPose, createReplayFrame, type RunRecording } from './lap-recording';
 import { idleRpm } from './drivetrain';
 import { botColor, botName, createBotCar } from './bot-car';
 import { createBotPlate } from './bot-plate';
@@ -171,6 +171,10 @@ export function createPhysicsClient({
   let currentTickTime = 0;
   const requestTimes: number[] = [];
   let replayTime: number | null = null;
+  let replayFieldCount = 0;
+  const fieldFrames = botCars.map(() => createReplayFrame());
+  const fieldBefore = createReplayFrame();
+  const fieldAfter = createReplayFrame();
   let records: PhysicsRecord[] = [];
   const recycled: ArrayBuffer[] = [];
   let resolveReady: () => void;
@@ -213,9 +217,9 @@ export function createPhysicsClient({
   }
 
   function accept(snapshot: PhysicsSnapshot, endTime: number) {
-    for (const bot of botCars) {
+    for (const [index, bot] of botCars.entries()) {
       for (const object of [bot.chassis, ...bot.wheels, ...bot.hubs])
-        object.visible = snapshot.replayTime === null;
+        object.visible = snapshot.replayTime === null || index < replayFieldCount;
     }
     previous.set(current);
     const data = new Float32Array(snapshot.buffer);
@@ -340,7 +344,8 @@ export function createPhysicsClient({
     markerCars.forEach((_car, index) => {
       const car = markerCars[botForModel(index)];
       const marker = botMarkers[index];
-      marker.visible = car.chassis.visible && replayTime === null && !resetting;
+      marker.visible =
+        car.chassis.visible && (replayTime === null || replayFieldCount > 0) && !resetting;
       marker.position.copy(car.chassis.position);
       marker.forward.set(0, 0, 1).applyQuaternion(car.chassis.quaternion);
     });
@@ -521,8 +526,60 @@ export function createPhysicsClient({
     startReplay(recording: RunRecording, time: number) {
       invalidate();
       replayTime = time;
+      replayFieldCount = recording.field.length;
+      if (botsOnly) {
+        car.setPaintColor(botColors[0]);
+        car.setUnderglowColor(botColors[0]);
+        observedPlate?.setColor(botColors[0]);
+      }
       const data = replayData(recording);
-      send({ type: 'replay', recording: data, time, input: input() }, [data.data.buffer]);
+      send({ type: 'replay', recording: data, time, input: input() }, [
+        data.data.buffer,
+        ...(data.field ?? []).map((entrant) => entrant.data.buffer),
+      ]);
+    },
+    applyReplayField(recording: RunRecording, time: number) {
+      botCars.forEach((bot, index) => {
+        const source = recording.field[index];
+        for (const object of [bot.chassis, ...bot.wheels, ...bot.hubs])
+          object.visible = Boolean(source);
+        if (!source) return;
+        const frame = fieldFrames[index];
+        source.read(time, frame);
+        applyCarPose(frame, bot.chassis, bot.wheels, bot.hubs);
+        bot.setBraking(frame.braking);
+        bot.setReversing(frame.reversing);
+        bot.setThinking(null);
+        const state = botTelemetry[index + botOffset];
+        if (state) {
+          const h = source.interval / 2;
+          source.read(time - h, fieldBefore);
+          source.read(time + h, fieldAfter);
+          fieldAfter.position
+            .sub(fieldBefore.position)
+            .divideScalar(2 * h)
+            .toArray(state.velocity);
+          fieldAfter.position.toArray(state.previousVelocity);
+          state.wheelContacts = frame.contacts;
+          state.tireSounds = frame.tires;
+          state.burnout = Number(frame.burnout);
+          Object.assign(state.engine, {
+            rpm: frame.rpm,
+            gear: frame.gear,
+            throttle: frame.throttle,
+            load: frame.load,
+            boost: frame.boost,
+            shifting: frame.shifting,
+            limiterCut: frame.limiterCut,
+          });
+          markerCars.forEach((model, index) => {
+            const marker = botMarkers[index];
+            marker.visible = model.chassis.visible;
+            marker.position.copy(model.chassis.position);
+            marker.forward.set(0, 0, 1).applyQuaternion(model.chassis.quaternion);
+          });
+        }
+      });
     },
     captureVisuals(_snap = true) {
       renderTime = currentTickTime = sentTime;

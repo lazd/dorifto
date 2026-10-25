@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { browserStorage, flushBrowserStorage } from './browser-storage';
 import type { CourseDefinition } from './courses';
+import type { RaceBotOptions } from './race-bot';
+import type { PhysicsRecord } from './physics-messages';
 import { validForMode, recordStorageKey, type RaceMode, type LapValidity } from './race-rules';
 
 /** Physics steps between recorded samples (120 Hz physics → 30 Hz samples). */
@@ -196,6 +198,12 @@ export interface RunStatistics {
   timeInFirst?: number;
 }
 
+export interface RecordedRace {
+  bots: RaceBotOptions[];
+  botsOnly: boolean;
+  entrants: { name: string; color: string }[];
+}
+
 export function bestRunTime(run: RunSummary, mode: RaceMode = run.mode ?? 'track-limits') {
   let best: number | null = null;
   run.laps.forEach((time, index) => {
@@ -223,6 +231,12 @@ export function describeRun({ createdAt, laps }: Pick<RunSummary, 'createdAt' | 
 
 /** A continuous run from launch. Times are seconds from the first recorded sample. */
 export class RunRecording {
+  race?: RecordedRace;
+  readonly field: RunRecording[] = [];
+  finished = false;
+  retired = false;
+  private clockOffset: number | null = null;
+  private lastElapsed = 0;
   partialLap?: RunSummary['partialLap'];
   mode: RaceMode = 'track-limits';
   readonly lapValidity: LapValidity[] = [];
@@ -282,6 +296,53 @@ export class RunRecording {
   /** Whether the car has crossed the start/finish line, i.e. the run is a real lap attempt. */
   get started() {
     return this.lapStarts.length > 0;
+  }
+
+  recordStep(record: PhysicsRecord) {
+    const {
+      laps,
+      sample,
+      speed = 0,
+      driftTime = 0,
+      conesHit = 0,
+      carContacts = 0,
+      timeInFirst = 0,
+    } = record;
+    if (!this.finished && !this.retired && record.active !== false) {
+      this.clockOffset ??= (record.time ?? laps.elapsedTime) - laps.elapsedTime;
+      if (!this.started && laps.lap) this.lapStarts.push(laps.lapStartedAt + this.clockOffset);
+      const elapsed = Math.max(0, record.elapsed ?? laps.elapsedTime - this.lastElapsed);
+      if (elapsed > 0)
+        this.updateStatistics(elapsed, speed, { driftTime, conesHit, carContacts, timeInFirst });
+      if (laps.completed > this.lapTimes.length && laps.lastAttempt) {
+        const attempt = laps.lastAttempt;
+        this.completeLap(
+          laps.lapStartedAt + this.clockOffset,
+          attempt.time,
+          attempt.cones,
+          attempt,
+        );
+      }
+      this.lastElapsed = laps.elapsedTime;
+      this.finished = laps.finished;
+      this.retired = laps.retired;
+      this.partialLap =
+        !laps.finished && laps.lap > 0
+          ? {
+              time: laps.current,
+              trackLimits: laps.trackLimits,
+              mayoTouched: laps.mayoTouched,
+              mustard: laps.mustard,
+              mustardTouched: laps.mustardTouched,
+              mustardCrossed: laps.mustardCrossed,
+            }
+          : undefined;
+    }
+    if (laps.retired) this.retired = true;
+    if (sample) {
+      if (!this.count && record.time !== undefined) this.firstTime = record.time;
+      this.pushSample(sample);
+    }
   }
 
   updateStatistics(
@@ -358,7 +419,10 @@ export class RunRecording {
       time,
       fastest: time !== null && this.bestLap !== null && time === this.lapTimes[this.bestLap],
       previous: index > 0 ? this.lapStarts[index - 1] : null,
-      next: this.lapStarts[index + 1] ?? null,
+      next:
+        this.finished && index + 1 >= this.lapTimes.length
+          ? null
+          : (this.lapStarts[index + 1] ?? null),
     };
   }
 
@@ -392,6 +456,8 @@ export class RunRecording {
 
   /** Lap timing as the HUD would have shown it at time `t`. */
   timingAt(t: number) {
+    if (this.retired && this.partialLap && this.started)
+      t = Math.min(t, this.lapStarts[this.lapStarts.length - 1] + this.partialLap.time);
     let lap = 0;
     while (lap < this.lapStarts.length && this.lapStarts[lap] <= t) lap++;
     const completed = this.lapTimes.flatMap((time, index) =>
@@ -399,9 +465,10 @@ export class RunRecording {
         ? [{ time, cones: this.lapCones[index] }]
         : [],
     );
+    const finished = this.finished && t >= (this.lapStarts[this.lapTimes.length] ?? Infinity);
     return {
-      lap,
-      current: lap ? t - this.lapStarts[lap - 1] : 0,
+      lap: finished ? Math.max(1, lap - 1) : lap,
+      current: finished ? (this.lapTimes.at(-1) ?? 0) : lap ? t - this.lapStarts[lap - 1] : 0,
       last: completed.at(-1)?.time ?? null,
       best: completed.length ? Math.min(...completed.map(({ time }) => time)) : null,
       lastCones: completed.at(-1)?.cones ?? null,
@@ -731,6 +798,79 @@ interface StoredRun extends RunSummary {
   firstTime: number;
   interval: number;
   lapStarts: number[];
+  count?: number;
+  race?: RecordedRace;
+  field?: StoredEntrant[];
+  finished?: boolean;
+  retired?: boolean;
+}
+
+interface StoredEntrant {
+  firstTime: number;
+  interval: number;
+  count: number;
+  lapStarts: number[];
+  laps: number[];
+  cones: number[];
+  mode?: RaceMode;
+  validity?: LapValidity[];
+  statistics?: RunStatistics;
+  lapStatistics?: (RunStatistics | null)[];
+  partialLap?: RunSummary['partialLap'];
+  finished?: boolean;
+  retired?: boolean;
+}
+
+function recordingMetadata(recording: RunRecording): StoredEntrant {
+  return {
+    firstTime: recording.firstTime,
+    interval: recording.interval,
+    count: recording.count,
+    lapStarts: [...recording.lapStarts],
+    laps: [...recording.lapTimes],
+    cones: [...recording.lapCones],
+    mode: recording.mode,
+    validity: [...recording.lapValidity],
+    statistics: { ...recording.statistics },
+    lapStatistics: [...recording.lapStatistics],
+    partialLap: recording.partialLap,
+    finished: recording.finished,
+    retired: recording.retired,
+  };
+}
+
+function restoreRecording(stored: Omit<StoredEntrant, 'count'>, data: Float32Array, count: number) {
+  const recording = new RunRecording(stored.firstTime, stored.interval, data, count);
+  recording.lapStarts.push(...stored.lapStarts);
+  recording.lapTimes.push(...stored.laps);
+  recording.lapCones.push(...stored.cones);
+  recording.mode = stored.mode ?? 'track-limits';
+  recording.lapValidity.push(
+    ...(stored.validity ?? stored.laps.map(() => ({ trackLimits: true, mustard: null }))),
+  );
+  const {
+    maxSpeed = 0,
+    distance = 0,
+    time = 0,
+    driftTime,
+    conesHit,
+    carContacts,
+    timeInFirst,
+  } = stored.statistics ?? {};
+  recording.statistics = {
+    maxSpeed,
+    distance,
+    time,
+    driftTime,
+    conesHit,
+    carContacts,
+    timeInFirst,
+  };
+  recording.lapStatistics.push(...(stored.lapStatistics ?? []));
+  recording.partialLap = stored.partialLap;
+  recording.finished = stored.finished ?? false;
+  recording.retired = stored.retired ?? false;
+  return recording;
 }
 
 function readIndex(storage: Storage, key: string): StoredRun[] {
@@ -794,10 +934,20 @@ export async function saveRun(
     firstTime: recording.firstTime,
     interval: recording.interval,
     lapStarts: [...recording.lapStarts],
+    count: recording.count,
+    race: recording.race,
+    field: recording.field.length ? recording.field.map(recordingMetadata) : undefined,
+    finished: recording.finished,
+    retired: recording.retired,
   };
-  const payload = toBase64(
-    await transform(encodeFrames(recording), new CompressionStream('deflate')),
-  );
+  const frames = [recording, ...recording.field].map(encodeFrames);
+  const bytes = new Uint8Array(frames.reduce((sum, frame) => sum + frame.length, 0));
+  let offset = 0;
+  for (const frame of frames) {
+    bytes.set(frame, offset);
+    offset += frame.length;
+  }
+  const payload = toBase64(await transform(bytes, new CompressionStream('deflate')));
   const dataKey = `${storagePrefix}:${key}:${id}`;
   storage.setItem(dataKey, payload);
   try {
@@ -842,37 +992,20 @@ export async function loadRun(key: string, id: string, storage: Storage = browse
   const run = readIndex(storage, key).find((run) => run.id === id);
   const payload = storage.getItem(`${storagePrefix}:${key}:${id}`);
   if (!run || payload === null) throw new Error('Saved laps not found');
-  const { data, count } = decodeFrames(
-    await transform(fromBase64(payload), new DecompressionStream('deflate')),
-  );
-  const recording = new RunRecording(run.firstTime, run.interval, data, count);
-  recording.lapStarts.splice(0, recording.lapStarts.length, ...run.lapStarts);
-  recording.lapTimes.push(...run.laps);
-  recording.lapCones.push(...run.cones);
-  recording.mode = run.mode ?? 'track-limits';
-  recording.lapValidity.push(
-    ...(run.validity ?? run.laps.map(() => ({ trackLimits: true, mustard: null }))),
-  );
-  const {
-    maxSpeed = 0,
-    distance = 0,
-    time = 0,
-    driftTime,
-    conesHit,
-    carContacts,
-    timeInFirst,
-  } = run.statistics ?? {};
-  recording.statistics = {
-    maxSpeed,
-    distance,
-    time,
-    driftTime,
-    conesHit,
-    carContacts,
-    timeInFirst,
-  };
-  recording.lapStatistics.push(...(run.lapStatistics ?? []));
-  recording.partialLap = run.partialLap;
+  const bytes = await transform(fromBase64(payload), new DecompressionStream('deflate'));
+  const rootBytes = run.count === undefined ? bytes.length : run.count * frameBytes;
+  const { data, count } = decodeFrames(bytes.subarray(0, rootBytes));
+  const recording = restoreRecording(run, data, count);
+  recording.race = run.race;
+  let offset = rootBytes;
+  for (const entrant of run.field ?? []) {
+    const end = offset + entrant.count * frameBytes;
+    if (end > bytes.length) throw new Error('Corrupt race recording');
+    const frames = decodeFrames(bytes.subarray(offset, end));
+    recording.field.push(restoreRecording(entrant, frames.data, frames.count));
+    offset = end;
+  }
+  if (offset !== bytes.length) throw new Error('Corrupt race recording');
   return recording;
 }
 

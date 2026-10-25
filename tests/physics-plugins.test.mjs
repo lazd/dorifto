@@ -383,10 +383,56 @@ test('retiring a run preserves simulation and engine updates while other cars ke
   assert.ok(snapshot.bots[0].laps.elapsedTime > botElapsed, 'other cars continue racing');
   assert.ok(snapshot.telemetry.engine.rpm > 0, 'engine keeps running');
   assert.ok(snapshot.duration > 0, 'the world continues stepping');
-  assert.equal(snapshot.records.length, 0, 'retired runs stop generating recording data');
+  assert.ok(snapshot.records.length > 0, 'race recording continues for the remaining field');
+  assert.ok(snapshot.records.every((record) => !record.active && record.field[0].active));
   assert.equal(standings.find(({ entrant }) => entrant === 0).retired, true);
   snapshot = simulation.handle({ type: 'reset', revision: 1, input: setup.input });
   assert.equal(snapshot.laps.retired, false);
+});
+
+test('full-field replay poses every car from its recording and advances the world once', (t) => {
+  const setup = workerFixture();
+  setup.simulation.dispose();
+  setup.data.bots = [{ skill: 0.8, aggression: 0.4, learning: false }];
+  const simulation = createPhysicsSimulation(Ammo, setup.data);
+  t.after(() => simulation.dispose());
+  const recording = new RunRecording();
+  const opponent = new RunRecording();
+  const frame = createReplayFrame();
+  for (let i = 0; i < 3; i++) {
+    frame.position.set(i, 2, 0);
+    recording.push(frame);
+    frame.position.set(10 + i * 2, 2, 0);
+    opponent.push(frame);
+  }
+  recording.field.push(opponent);
+  simulation.handle({
+    type: 'replay',
+    revision: 1,
+    recording: replayData(recording),
+    time: 0,
+    input: setup.input,
+  });
+  const snapshot = simulation.handle({
+    type: 'advance',
+    revision: 1,
+    dt: physicsStep * 4,
+    input: setup.input,
+    recycled: [],
+  });
+  assert.ok(Math.abs(snapshot.replayTime - recording.interval) < 1e-9);
+  const poses = new Float32Array(snapshot.buffer);
+  const position = (objectIndex) => {
+    for (let i = 0; i < snapshot.count; i++) {
+      const offset = i * snapshotStride;
+      if (poses[offset] === objectIndex) return poses[offset + 1 + poseStride];
+    }
+    assert.fail(`missing replay object ${objectIndex}`);
+  };
+  assert.ok(Math.abs(position(0) - 1) < 1e-5);
+  assert.ok(Math.abs(position(vehiclePoseCount) - 12) < 1e-5);
+  assert.equal(snapshot.records.length, 0);
+  assert.equal(snapshot.bots[0].metrics.elapsed, 0, 'recorded bots do not run live AI');
 });
 
 test('bots-only mode has no player vehicle and follows bot telemetry through reversal and reset', (t) => {
