@@ -21,11 +21,14 @@ import {
   restoreRoadDraft,
   roadMapMeta,
   roadMapThumbnail,
+  roadBuildSteps,
+  type RoadBuildStep,
   type RoadMap,
 } from './road-builder-data';
 import type { GPSPoint } from './track-conversion.mjs';
 import { courseShoulderWidth } from './courses';
 import { defaultTerrainTransition } from './terrain';
+import { startTextSpinner } from './text-spinner';
 import type { BuildRequest, BuildResponse } from './road-builder-worker';
 import './road-builder.css';
 
@@ -70,6 +73,8 @@ let selectedId: string | undefined;
 let editingId: string | undefined;
 let editingFilename: string | undefined;
 let editingSnapshot: string | undefined;
+let editingRouteSnapshot: string | undefined;
+let editingCourse: RoadMap | undefined;
 let previewWorker: Worker | undefined;
 let previewVersion = 0;
 const markers: maplibregl.Marker[] = [];
@@ -202,6 +207,10 @@ map.getCanvas().addEventListener('mouseleave', () => {
   hideHover();
 });
 
+function routeSnapshot() {
+  return JSON.stringify({ sections, closingSection });
+}
+
 function editorSnapshot() {
   return JSON.stringify({
     sections,
@@ -218,7 +227,7 @@ function updateControls() {
   const points = routePoints();
   const length = routeLength(points);
   element('distance').textContent =
-    `${(length / 1000).toFixed(2)} km${closingSection ? ' · Closed loop' : ''}`;
+    `${(length / 1000).toFixed(1)}km / ${maximumRoadLength / 1000}km (max)${closingSection ? ' · Closed loop' : ''}`;
   clearButton.disabled = !!worker || !sections.length;
   buildButton.disabled =
     !!worker ||
@@ -306,11 +315,26 @@ function updateWaypoints() {
     icon.textContent = badge;
     const text = document.createElement('span');
     text.textContent = label;
-    item.append(icon, text);
+    const locate = document.createElement('button');
+    locate.type = 'button';
+    locate.className = 'waypoint-locate';
+    locate.setAttribute('aria-label', `Show ${label.toLowerCase()} on map`);
+    locate.append(icon, text);
+    locate.onclick = () => {
+      const point = index === undefined ? sections[0][0] : sections[index].at(-1)!;
+      map.easeTo({
+        center: [point.lon, point.lat],
+        zoom: Math.max(map.getZoom(), 16),
+      });
+    };
+    item.append(locate);
     if (index !== undefined) {
       const remove = document.createElement('button');
       remove.type = 'button';
-      remove.textContent = '×';
+      const closeIcon = document.createElement('span');
+      closeIcon.className = 'close-icon';
+      closeIcon.setAttribute('aria-hidden', 'true');
+      remove.append(closeIcon);
       remove.setAttribute('aria-label', `Delete ${label.toLowerCase()}`);
       remove.onclick = () => deleteWaypoint(index);
       item.append(remove);
@@ -334,7 +358,10 @@ function updateWaypoints() {
     add('Start/Finish', 'S');
     const reopen = document.createElement('button');
     reopen.type = 'button';
-    reopen.textContent = '×';
+    const closeIcon = document.createElement('span');
+    closeIcon.className = 'close-icon';
+    closeIcon.setAttribute('aria-hidden', 'true');
+    reopen.append(closeIcon);
     reopen.setAttribute('aria-label', 'Reopen loop');
     reopen.onclick = () => {
       closingSection = undefined;
@@ -508,7 +535,7 @@ locationForm.onsubmit = async (event) => {
   searching = true;
   const version = searchVersion;
   locationButton.disabled = true;
-  locationButton.textContent = 'Searching...';
+  const stopSpinner = startTextSpinner(locationButton);
   locationForm.setAttribute('aria-busy', 'true');
   notify('Searching for location...');
   try {
@@ -528,7 +555,7 @@ locationForm.onsubmit = async (event) => {
   } finally {
     searching = false;
     locationButton.disabled = false;
-    locationButton.textContent = 'Go';
+    stopSpinner();
     locationForm.removeAttribute('aria-busy');
   }
 };
@@ -557,10 +584,19 @@ buildDialog.oncancel = (event) => {
   cancelBuild();
 };
 
-function buildProgress(message: string) {
-  const step = document.createElement('li');
-  step.textContent = message;
-  buildSteps.append(step);
+function buildProgress(active: RoadBuildStep | 'complete') {
+  let pending = false;
+  for (const item of buildSteps.querySelectorAll<HTMLLIElement>('li')) {
+    const current = item.dataset.step === active;
+    if (current) pending = true;
+    item.dataset.state = current ? 'active' : pending ? 'pending' : 'complete';
+    if (current) item.setAttribute('aria-current', 'step');
+    else item.removeAttribute('aria-current');
+    item.setAttribute(
+      'aria-label',
+      `${item.textContent}: ${item.dataset.state === 'complete' ? 'completed' : item.dataset.state === 'active' ? 'in progress' : 'pending'}`,
+    );
+  }
 }
 
 element<HTMLFormElement>('build-form').onsubmit = (event) => {
@@ -570,6 +606,8 @@ element<HTMLFormElement>('build-form').onsubmit = (event) => {
     return;
   }
   if (buildButton.disabled) return;
+  const existingCourse =
+    editingCourse && editingRouteSnapshot === routeSnapshot() ? editingCourse : undefined;
   try {
     validateImportRoute(routePoints(), !!closingSection);
   } catch (error) {
@@ -588,7 +626,7 @@ element<HTMLFormElement>('build-form').onsubmit = (event) => {
   worker.onmessage = async (message: MessageEvent<BuildResponse>) => {
     if (worker !== activeWorker) return;
     const response = message.data;
-    if (response.type === 'progress') buildProgress(response.message);
+    if (response.type === 'progress') buildProgress(response.step);
     else {
       if (response.type === 'error') {
         finishBuild();
@@ -599,10 +637,11 @@ element<HTMLFormElement>('build-form').onsubmit = (event) => {
           course = response.course;
           courseJSON = response.json;
           saveController = new AbortController();
-          buildProgress(`Saving ${response.course.name} on this device...`);
+          buildProgress('saving');
           const saveError = await saveCourse(response.course, response.json, saveController.signal);
           if (worker !== activeWorker) return;
           courseSaved = !saveError;
+          if (courseSaved) buildProgress('complete');
           if (courseSaved) {
             editingId = response.course.id;
             selectedId = response.course.id;
@@ -660,7 +699,14 @@ element<HTMLFormElement>('build-form').onsubmit = (event) => {
   };
   setView('generating');
   buildSteps.replaceChildren();
-  buildProgress('Starting the course builder...');
+  for (const [key, label] of Object.entries(roadBuildSteps)) {
+    if (existingCourse && (key === 'terrain' || key === 'corridor')) continue;
+    const item = document.createElement('li');
+    item.dataset.step = key;
+    item.textContent = existingCourse && key === 'course' ? 'Updating track settings' : label;
+    buildSteps.append(item);
+  }
+  buildProgress('starting');
   map.resize();
   buildDialog.showModal();
   worker.postMessage({
@@ -669,7 +715,13 @@ element<HTMLFormElement>('build-form').onsubmit = (event) => {
     width: Number(widthInput.value),
     shoulderWidth: Number(shoulderInput.value),
     id: editingId,
-    draft: structuredClone({ sections, closingSection, resolution: 5 }),
+    existingCourse,
+    draft: structuredClone({
+      sections,
+      closingSection,
+      resolution:
+        existingCourse?.roadBuilder?.resolution ?? existingCourse?.terrain?.resolution ?? 5,
+    }),
     terrainTransition: Number(transitionInput.value),
     doubleYellow: centerLineInput.checked,
     colors: theme.preview,
@@ -881,6 +933,8 @@ function editSavedCourse() {
     centerLineInput.checked = !!saved.doubleYellow;
     transitionInput.value = String(saved.terrainTransition ?? defaultTerrainTransition);
     editingSnapshot = editorSnapshot();
+    editingRouteSnapshot = routeSnapshot();
+    editingCourse = saved;
     seedDraftGraph();
     updateRoute();
     const bounds = new maplibregl.LngLatBounds();
@@ -896,6 +950,8 @@ element<HTMLButtonElement>('new-track').onclick = () => {
   editingId = undefined;
   editingFilename = undefined;
   editingSnapshot = undefined;
+  editingRouteSnapshot = undefined;
+  editingCourse = undefined;
   sections = [];
   closingSection = undefined;
   nameInput.value = 'New track';

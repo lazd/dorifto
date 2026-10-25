@@ -25,7 +25,7 @@
             required
             form="build-form"
           />
-          <output id="distance">0.00 / 8.00 km</output>
+          <output id="distance">0.0km / 8km (max)</output>
           <div class="section-heading">
             <h2>Waypoints</h2>
             <button id="clear" disabled>Clear</button>
@@ -101,9 +101,13 @@
       </section>
     </main>
     <dialog id="build-dialog" aria-labelledby="build-title">
-      <h2 id="build-title">Building your course</h2>
-      <ol id="build-steps" aria-live="polite" aria-relevant="additions"></ol>
-      <button id="cancel-build">Cancel</button>
+      <h2 id="build-title">Building your track...</h2>
+      <ol id="build-steps" aria-live="polite"></ol>
+      <footer class="dialog-footer">
+        <div class="dialog-actions">
+          <button id="cancel-build" class="button button-secondary">Cancel</button>
+        </div>
+      </footer>
     </dialog>
     <script type="module" src="/src/road-builder.ts"></script>
   </body>

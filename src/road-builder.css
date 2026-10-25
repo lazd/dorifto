@@ -32,7 +32,7 @@ body {
 }
 .panel > header {
   flex: none;
-  padding-bottom: var(--space-5);
+  padding-bottom: var(--space-3);
   padding-inline: var(--space-4);
 }
 .panel h1 {
@@ -80,6 +80,7 @@ button:disabled {
 .new-track {
   width: 100%;
   height: calc(var(--control-height) + var(--space-1));
+  margin-top: var(--space-2);
   margin-bottom: var(--space-5);
   border: var(--line) dashed var(--color-muted);
   background: transparent;
@@ -195,9 +196,6 @@ output {
 #waypoints li + li {
   border-top: var(--line) solid var(--color-border);
 }
-#waypoints li > span:nth-child(2) {
-  flex: 1;
-}
 .waypoint-badge {
   display: grid;
   place-items: center;
@@ -209,7 +207,7 @@ output {
   font-size: var(--text-caption);
   font-weight: 700;
 }
-#waypoints button {
+#waypoints li > button:not(.waypoint-locate) {
   width: calc(var(--space-5) + var(--space-1));
   height: calc(var(--space-5) + var(--space-1));
   padding: 0;
@@ -218,9 +216,23 @@ output {
   color: var(--color-muted);
   font-size: var(--text-subtitle);
 }
-#waypoints button:hover {
+#waypoints li > button:not(.waypoint-locate):hover {
   color: var(--color-danger);
   background: var(--color-surface);
+}
+#waypoints .waypoint-locate {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex: 1;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  border-radius: var(--radius-pill);
+}
+#waypoints .waypoint-locate:hover {
+  color: var(--color-accent);
 }
 .waypoint-empty {
   color: var(--color-muted);
@@ -233,6 +245,8 @@ output {
 .advanced summary {
   color: var(--color-muted);
   cursor: pointer;
+
+  border-radius: var(--radius-pill);
 }
 .field {
   display: flex;
@@ -298,7 +312,7 @@ input.switch::before {
   transform: translateX(-50%);
   width: min(480px, calc(100% - 112px));
   display: flex;
-  border: var(--space-1) solid var(--color-muted);
+  border: 2px solid var(--color-muted);
   border-radius: var(--radius-pill);
   background: var(--color-surface);
   overflow: hidden;
@@ -326,6 +340,9 @@ input.switch::before {
 }
 .viewport-search:focus-within {
   border-color: var(--color-accent);
+}
+.viewport-search input:focus-visible {
+  outline: none;
 }
 .viewport-search :focus-visible {
   outline-offset: calc(-1 * var(--space-1));
@@ -398,14 +415,33 @@ input.switch::before {
   display: none;
 }
 #build-steps {
-  padding-left: var(--space-5);
+  padding: 0;
+  list-style: none;
 }
 #build-steps li {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
   color: var(--color-muted);
   margin-block: var(--space-2);
 }
-#build-steps li:last-child {
-  color: var(--color-accent);
+#build-steps li::before {
+  content: '';
+  width: 1em;
+  flex: none;
+}
+#build-steps li[data-state='complete']::before {
+  content: '\2713';
+}
+#build-steps li[data-state='active'],
+#build-steps li[data-state='complete'] {
+  color: var(--color-text);
+}
+#build-steps li[data-state='active'] {
+  font-weight: 600;
+}
+#build-dialog .dialog-footer {
+  justify-content: flex-end;
 }
 .maplibregl-ctrl-group,
 .maplibregl-ctrl-attrib,

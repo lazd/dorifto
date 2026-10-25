@@ -65,7 +65,8 @@ direct browser requests to OpenFreeMap and USGS, so an internet connection is ne
   to zoom. Touch supports one-finger orbit
   and two-finger pan/zoom; arrow keys pan when the preview is focused.
   Generation hides the editor and expands the map to fill the viewport under a
-  modal listing the active build steps, including automatic saving. **Cancel**
+  modal showing every build step from the start, including automatic saving.
+  Pending steps are muted; completed steps receive monochrome checkmarks. **Cancel**
   (or Escape) returns to the unchanged route.
   **Save** builds and saves the track, then returns directly to the track manager
   with that track highlighted and its 3D preview shown. New tracks are added to the
@@ -86,7 +87,11 @@ direct browser requests to OpenFreeMap and USGS, so an internet connection is ne
   can be edited using their existing road geometry, divided into approximate
   waypoints. Maps without geographic metadata report an editing error.
   Rebuilding an edited map preserves its ID and replaces its original OPFS file,
-  even when renamed. To delete a saved track, focus its library row and press
+  even when renamed. If only the name or basic parameters change, saving reuses
+  the existing road geometry, elevation profile, and terrain without downloading
+  or converting them again; only the preview is regenerated. Changing route points
+  runs the full import pipeline.
+  To delete a saved track, focus its library row and press
   Delete, then confirm. OPFS requires a
   supported browser on HTTPS/localhost; it is origin-specific, quota-limited,
   and can be cleared by the browser. Download backups for portability.

@@ -2,6 +2,17 @@ import { courseRoute, type CourseDefinition } from './courses';
 import { routeLength } from './road-selection';
 import type { GPSPoint } from './track-conversion.mjs';
 
+export const roadBuildSteps = {
+  starting: 'Starting the course builder',
+  terrain: 'Downloading USGS terrain elevation',
+  corridor: 'Downloading high-resolution road corridor',
+  course: 'Sampling road elevation and building the course',
+  preview: 'Building the 3D terrain preview',
+  saving: 'Saving the track on this device',
+} as const;
+
+export type RoadBuildStep = keyof typeof roadBuildSteps;
+
 export interface RoadDraft {
   sections: GPSPoint[][];
   closingSection?: GPSPoint[];

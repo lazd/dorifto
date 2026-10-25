@@ -1,0 +1,20 @@
+.text-spinner {
+  position: relative;
+}
+.text-spinner:disabled {
+  opacity: 1;
+}
+.text-spinner-label {
+  opacity: 0;
+}
+.text-spinner-frame {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-family: monospace;
+  font-size: 2.75em;
+  line-height: 1;
+  color: var(--color-text);
+  transform: rotate(90deg);
+}

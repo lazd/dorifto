@@ -10,7 +10,7 @@ import type { CourseDefinition } from './courses';
 import { createCoursePreviewModel } from './course-preview-3d';
 import type { CoursePreviewColors } from './course-preview-3d';
 import type { PreviewModel } from './road-builder-preview';
-import type { RoadMap, RoadDraft } from './road-builder-data';
+import type { RoadMap, RoadDraft, RoadBuildStep } from './road-builder-data';
 
 export interface BuildRequest {
   points: GPSPoint[];
@@ -18,6 +18,7 @@ export interface BuildRequest {
   width: number;
   shoulderWidth: number;
   id?: string;
+  existingCourse?: RoadMap;
   draft: RoadDraft;
   terrainTransition: number;
   doubleYellow: boolean;
@@ -26,13 +27,13 @@ export interface BuildRequest {
 }
 
 export type BuildResponse =
-  | { type: 'progress'; message: string }
+  | { type: 'progress'; step: RoadBuildStep }
   | { type: 'complete'; course: RoadMap; json: Blob; model: PreviewModel }
   | { type: 'preview'; model: PreviewModel }
   | { type: 'error'; message: string };
 
-function progress(message: string) {
-  self.postMessage({ type: 'progress', message } satisfies BuildResponse);
+function progress(step: RoadBuildStep) {
+  self.postMessage({ type: 'progress', step } satisfies BuildResponse);
 }
 
 async function build(request: BuildRequest) {
@@ -52,40 +53,53 @@ async function build(request: BuildRequest) {
     throw new Error('Enter a shoulder width between 0 and 10 m');
   if (!Number.isFinite(request.terrainTransition) || request.terrainTransition < 1)
     throw new Error('Enter a terrain transition of at least 1 m');
-  const data: TrackSource = {
-    slug: request.id ?? `road-${crypto.randomUUID()}`,
-    display_name: request.name.trim(),
-    closed: request.closed,
-    featured_lap: { points: request.points },
-  };
-  if (request.closed && request.points.length < 9) {
-    const subdivisions = Math.ceil(8 / (request.points.length - 1));
-    data.featured_lap.points = request.points.flatMap((point, i, points) => {
-      const next = points[i + 1];
-      if (!next) return [point];
-      return Array.from({ length: subdivisions }, (_, step) => ({
-        lat: point.lat + ((next.lat - point.lat) * step) / subdivisions,
-        lon: point.lon + ((next.lon - point.lon) * step) / subdivisions,
-      }));
+  let course: RoadMap;
+  if (request.existingCourse) {
+    progress('course');
+    course = {
+      ...request.existingCourse,
+      name: request.name.trim(),
+      width: request.width,
+      shoulderWidth: request.shoulderWidth,
+      terrainTransition: request.terrainTransition,
+      doubleYellow: request.doubleYellow,
+    };
+  } else {
+    const data: TrackSource = {
+      slug: request.id ?? `road-${crypto.randomUUID()}`,
+      display_name: request.name.trim(),
+      closed: request.closed,
+      featured_lap: { points: request.points },
+    };
+    if (request.closed && request.points.length < 9) {
+      const subdivisions = Math.ceil(8 / (request.points.length - 1));
+      data.featured_lap.points = request.points.flatMap((point, i, points) => {
+        const next = points[i + 1];
+        if (!next) return [point];
+        return Array.from({ length: subdivisions }, (_, step) => ({
+          lat: point.lat + ((next.lat - point.lat) * step) / subdivisions,
+          lon: point.lon + ((next.lon - point.lon) * step) / subdivisions,
+        }));
+      });
+    }
+    progress('terrain');
+    data.terrain = await fetchTerrainRaster(data, { resolution: 5 });
+    progress('corridor');
+    data.terrain.detail = await fetchTerrainDetail(data);
+    progress('course');
+    data.elevation = terrainElevationProfile(data);
+    course = convertTrack(data, {
+      width: request.width,
+      shoulderWidth: request.shoulderWidth,
+      terrainTransition: request.terrainTransition,
+      doubleYellow: request.doubleYellow,
     });
+    course.attribution =
+      'OpenStreetMap contributors (ODbL): https://www.openstreetmap.org/copyright; vector tiles by OpenFreeMap; elevation: USGS 3DEP';
   }
-  progress('Downloading USGS terrain elevation...');
-  data.terrain = await fetchTerrainRaster(data, { resolution: 5 });
-  progress('Downloading high-resolution road corridor...');
-  data.terrain.detail = await fetchTerrainDetail(data);
-  progress('Sampling road elevation and building the course...');
-  data.elevation = terrainElevationProfile(data);
-  const course: RoadMap = convertTrack(data, {
-    width: request.width,
-    shoulderWidth: request.shoulderWidth,
-    terrainTransition: request.terrainTransition,
-    doubleYellow: request.doubleYellow,
-  });
   course.roadBuilder = request.draft;
-  course.attribution =
-    'OpenStreetMap contributors (ODbL): https://www.openstreetmap.org/copyright; vector tiles by OpenFreeMap; elevation: USGS 3DEP';
   const json = new Blob([JSON.stringify(course)], { type: 'application/json' });
-  progress('Building the 3D terrain preview...');
+  progress('preview');
   const preview = createCoursePreviewModel(course, request.colors, 512);
   try {
     self.postMessage({

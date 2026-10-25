@@ -116,8 +116,10 @@ export function bindBotDialog(
         const remove = makeElement<HTMLButtonElement>(
           'button',
           'button button-quiet selection-item-remove',
-          '×',
         );
+        const closeIcon = makeElement<HTMLSpanElement>('span', 'close-icon');
+        closeIcon.setAttribute('aria-hidden', 'true');
+        remove.append(closeIcon);
         const preset = bot.preset ?? defaultRaceBotOptions.preset!;
 
         main.type = 'button';

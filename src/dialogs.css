@@ -1,5 +1,15 @@
 @import './tokens.css';
 
+.close-icon {
+  position: relative;
+  top: -0.15em;
+  pointer-events: none;
+}
+
+.close-icon::before {
+  content: '\00d7';
+}
+
 dialog {
   width: min(35rem, calc(100vw - var(--space-6)));
   max-height: calc(100dvh - var(--space-6));
