@@ -6,10 +6,10 @@
     <meta name="theme-color" content="#10191f" />
     <meta name="referrer" content="no-referrer" />
     <title>Dorifto — Z32 Playground</title>
-    <script type="module" crossorigin src="./assets/game-DxRLVDLr.js"></script>
-    <link rel="modulepreload" crossorigin href="./assets/text-spinner-CEzgsNtS.js">
-    <link rel="stylesheet" crossorigin href="./assets/text-spinner-DO3y67q4.css">
-    <link rel="stylesheet" crossorigin href="./assets/game-Bo4L5mxm.css">
+    <script type="module" crossorigin src="./assets/game-BedA95eO.js"></script>
+    <link rel="modulepreload" crossorigin href="./assets/download-DflzG2V0.js">
+    <link rel="stylesheet" crossorigin href="./assets/download-DO3y67q4.css">
+    <link rel="stylesheet" crossorigin href="./assets/game-CeLiADsb.css">
   </head>
   <body hidden>
     <div id="app"></div>
@@ -237,13 +237,24 @@
           <section id="course-overview" aria-labelledby="course-preview-name">
             <div class="course-preview-hero">
               <div id="course-preview-visual" class="course-preview-visual"></div>
+              <button
+                id="course-preview-toggle"
+                class="button button-quiet course-preview-toggle"
+                type="button"
+                aria-label="Show 3D course preview"
+              >
+                3D
+              </button>
               <div class="course-preview-caption">
                 <h3 id="course-preview-name"></h3>
                 <p id="course-preview-distance" class="help-text"></p>
               </div>
-              <details id="course-actions" class="action-disclosure" hidden>
-                <summary class="button button-quiet" aria-label="Saved course actions">⋯</summary>
+              <details id="course-actions" class="action-disclosure">
+                <summary class="button button-quiet" aria-label="Course actions">⋯</summary>
                 <div class="action-menu">
+                  <button id="course-download" class="button button-quiet" type="button">
+                    Download
+                  </button>
                   <button id="course-edit" class="button button-quiet" type="button" hidden>
                     Edit course
                   </button>
