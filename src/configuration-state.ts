@@ -26,6 +26,10 @@ export function isMinimapOrientation(
   return value === 'north-up' || value === 'heading-up';
 }
 
+export function isSpeedUnit(value: string): value is ConfigurationState['speedUnit'] {
+  return value === 'mph' || value === 'kmh';
+}
+
 export function isMirrorResolution(value: string): value is ConfigurationState['mirrorResolution'] {
   return value === 'off' || value === 'low' || value === 'medium' || value === 'high';
 }
@@ -64,10 +68,12 @@ export interface ConfigurationState {
   cabinHeadMotion: boolean;
   mirrorResolution: 'off' | 'low' | 'medium' | 'high';
   minimapOrientation: 'north-up' | 'heading-up';
+  speedUnit: 'mph' | 'kmh';
   timeOfDay: 'noon' | 'sunset' | 'night';
   courseReverse: boolean;
   coneMode: 'all' | 'corners' | 'off';
   showGrass: boolean;
+  showKerbs: boolean;
   showRoadEdgeDirt: boolean;
   lapGateMode: LapGateMode;
   turnSignMode: TurnSignMode;
@@ -88,12 +94,14 @@ export function createConfigurationState(storage?: Storage) {
     cameraStyle: 'cabin',
     timeOfDay: 'sunset',
     minimapOrientation: 'heading-up',
+    speedUnit: 'mph',
     cabinHeadMotion: true,
     mirrorResolution: 'low',
     courseReverse: false,
     coneMode: 'corners',
     showGrass: true,
-    showRoadEdgeDirt: false,
+    showKerbs: true,
+    showRoadEdgeDirt: true,
     lapGateMode: 'off',
     turnSignMode: 'several',
     ghostMode: 'fastest',

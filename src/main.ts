@@ -39,6 +39,7 @@ import {
   isGhostMode,
   isLapGateMode,
   isMinimapOrientation,
+  isSpeedUnit,
   isTimeOfDay,
   readMirrorResolution,
   type ConfigurationState,
@@ -200,6 +201,7 @@ async function start() {
     selectedTuningPresets,
     cameraStyle: requestedCamera,
     minimapOrientation: requestedMinimap,
+    speedUnit: readOption('speed-unit', configurationState.getState().speedUnit, isSpeedUnit),
     cabinHeadMotion: readToggle('head-motion'),
     mirrorResolution: readParams(
       ['mirror-resolution', 'low-res-mirrors'],
@@ -208,12 +210,8 @@ async function start() {
     ),
     coneMode: requestedConeMode,
     showGrass: readToggle('grass'),
-    showRoadEdgeDirt:
-      readOption(
-        'road-edge-dirt',
-        'off',
-        (value): value is 'on' | 'off' => value === 'on' || value === 'off',
-      ) === 'on',
+    showKerbs: readToggle('kerbs'),
+    showRoadEdgeDirt: readToggle('road-edge-dirt'),
     lapGateMode: readOption('lap-gates', 'off', isLapGateMode),
     ghostMode: requestedGhost,
     turnSignMode: readParams(
@@ -242,6 +240,7 @@ async function start() {
       : { driver: 'human' };
   };
   let recordedBot = botsOnly ? botOptions[0] : null;
+  const botProfileNames = new Map(defaultTuningPresets().map(({ id, name }) => [id, name]));
   let recordedDriver = recordedDriverFor(botOptions, botsOnly);
   if (botsOnly)
     configurationState.update({
@@ -386,6 +385,7 @@ async function start() {
     ['timeOfDay'],
   );
 
+  configurationState.subscribe(({ speedUnit }) => car.setSpeedUnit(speedUnit), ['speedUnit']);
   scene.add(car.chassis, ...car.wheels, ...car.hubs, car.underglow);
   const ghost = createGhostCar(scene, car);
   const controls = new DrivingControls();
@@ -468,6 +468,7 @@ async function start() {
       course.setTurnSignMode(turnSignMode);
       course.setLapGates(lapGateMode);
       course.terrain.grass.visible = showGrass;
+      course.setKerbs(configurationState.getState().showKerbs);
       course.setRoadEdgeDirt(configurationState.getState().showRoadEdgeDirt);
       physics = createPhysicsClient({
         race,
@@ -512,6 +513,7 @@ async function start() {
       course.setTurnSignMode(latest.turnSignMode);
       course.setLapGates(latest.lapGateMode);
       course.terrain.grass.visible = latest.showGrass;
+      course.setKerbs(latest.showKerbs);
       course.setRoadEdgeDirt(latest.showRoadEdgeDirt);
       const laps = physics.laps;
       const drivingCamera = createDrivingCamera(
@@ -554,6 +556,7 @@ async function start() {
     },
     ['turnSignMode'],
   );
+  configurationState.subscribe(({ showKerbs }) => course.setKerbs(showKerbs), ['showKerbs']);
   configurationState.subscribe(
     ({ showRoadEdgeDirt }) => course.setRoadEdgeDirt(showRoadEdgeDirt),
     ['showRoadEdgeDirt'],
@@ -595,11 +598,7 @@ async function start() {
   };
   let recordLoad = 0;
   const results = createRunResults({ restart: reset, replay: startReplay });
-  element('#race-results').addEventListener('click', () => showResults(false, true));
-  element('#race-panel').addEventListener('click', (event) => {
-    if (event.target instanceof Element && !event.target.closest('.hud-panel-footer'))
-      showResults(false, true);
-  });
+  element('#race-panel').addEventListener('click', () => showResults(false, true));
   const playbackFrame = createReplayFrame();
   const ghostFrame = createReplayFrame();
   const replayBefore = createReplayFrame();
@@ -1429,6 +1428,25 @@ async function start() {
     );
     const spawnBrakeHeld = !replaying && physics.spawnBrakeHeld;
     const cameraState = configurationState.getState();
+    const observedBot = botsOnly && !replaying ? botOptions[physics.observedBot] : null;
+    const observedMode = observedBot ? botDriveMode(observedBot.preset) : null;
+    const observedProfile = observedBot
+      ? botProfileNames.get(observedBot.preset ?? 'grip-fast')
+      : null;
+    if (observedBot && !observedProfile)
+      throw new Error(`Missing observed bot tuning profile: ${observedBot.preset}`);
+    const previousDriver = gameState.getState().observedDriver;
+    if (
+      previousDriver?.driveMode !== (observedMode ?? undefined) ||
+      previousDriver?.profile !== (observedProfile ?? undefined)
+    ) {
+      gameState.update({
+        observedDriver:
+          observedMode && observedProfile
+            ? { driveMode: observedMode, profile: observedProfile }
+            : null,
+      });
+    }
     drivingCamera.update(
       dt,
       replayVelocity3d ?? physics.linearVelocity,

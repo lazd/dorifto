@@ -55,6 +55,9 @@
   --illustration-line: #c0c8bc;
   --illustration-cone: #e6a46a;
   --illustration-grass: #7c9f76;
+  --illustration-kerb: #cf7066;
+  --illustration-dirt: #967655;
+  --illustration-pebble: #c6aa84;
   position: relative;
   aspect-ratio: 16 / 9;
   overflow: hidden;
@@ -67,14 +70,6 @@
   width: 100%;
   height: 100%;
   display: block;
-}
-
-.setting-illustration > span {
-  position: absolute;
-  right: var(--space-2);
-  bottom: var(--space-1);
-  font-size: var(--text-xs);
-  color: var(--color-muted);
 }
 
 .illustration-road {
@@ -92,6 +87,27 @@
 
 .illustration-cone {
   fill: var(--illustration-cone);
+}
+
+.illustration-kerb {
+  fill: none;
+  stroke: var(--illustration-line);
+  stroke-width: 8;
+}
+
+.illustration-kerb-stripes {
+  stroke: var(--illustration-kerb);
+  stroke-dasharray: 9 9;
+}
+
+.illustration-dirt {
+  fill: none;
+  stroke: var(--illustration-dirt);
+  stroke-width: 58;
+}
+
+.illustration-pebble {
+  fill: var(--illustration-pebble);
 }
 
 .illustration-mark {

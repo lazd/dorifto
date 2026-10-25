@@ -137,7 +137,7 @@ the Grip / Default (`grip-default`) preset, and the cabin camera.
 
 ## Bot drivers
 
-Open **Bot setup** in the race standings panel to choose **Race solo**, **Race with bots**,
+Open **Bot setup** beside **Tuning** in the toolbar to choose **Race solo**, **Race with bots**,
 or **Spectate bots**. Solo hides bot configuration; the other modes share an editable starting
 grid and require at least one bot. Switching to Solo keeps your configured lineup for the
 current page session. **Cancel** discards edits; the primary action starts the selected mode.
@@ -282,7 +282,7 @@ with the same `--control-height` as other buttons. Settings and Tuning share the
 regular `toolbar-button` style.
 Use `button-compact` for content-height buttons with tighter horizontal padding,
 and `button-translucent` for a semi-transparent surface on any button.
-HUD and track examples are labeled illustrations, ready to be replaced with
+HUD and track examples are SVG illustrations, ready to be replaced with
 cropped in-game screenshots.
 
 **Cones** can be shown everywhere (`?cones=all`), limited to corners
@@ -291,8 +291,10 @@ from physics;
 **Grass tufts** off (`?grass=off`) hides the decorative blades. Both help
 performance on long imported tracks, which carry hundreds of cones.
 **Road-edge dirt** off (`?road-edge-dirt=off`) hides the decorative dirt and pebble
-strips along the pavement without changing grip or collisions. It defaults to off
-and can be toggled live in Settings.
+strips along the pavement without changing grip or collisions. It defaults to on
+and can be toggled live in Settings > Track.
+**Kerbs** off (`?kerbs=off`) hides the red/white inside-corner kerbs. They default
+to on and can be toggled live in Settings > Track without changing grip or collisions.
 **Settings > Video > Mirror resolution** defaults to **Low** (512×256,
 `?mirror-resolution=low`). **Medium** (1024×512, `?mirror-resolution=medium`)
 gives nearby cabin mirrors more detail without using full-screen render targets.
@@ -368,8 +370,19 @@ elements.
 
 The HUD uses a compact segmented circular 0–8,000 RPM tachometer with amber high-RPM
 segments, a redline tied to the drivetrain, and a red limiter indication.
-A seven-segment LED-style MPH speedometer sits in the center with a gear readout
-below it. Driving-state messages (brakes held, sliding, burnout, etc.) are not shown.
+A seven-segment LED-style speedometer sits in the center with a gear readout
+in the same segmented style without a visible gear label. The player's drive mode
+and tuning profile appear together below it on one line in chase view (e.g. **Grip • Fast**). Custom
+profiles display **Custom**; long profile names are truncated to fit the gauge.
+While spectating bots, these labels follow the observed bot's profile and drive
+mode instead of the player's tuning selection.
+**Settings > HUD & aids > Speed units** selects **MPH** (default, `?speed-unit=mph`)
+or **km/h** (`?speed-unit=kmh`), updating the HUD number and unit label live.
+The cabin speedometer follows the same setting: its face switches between MPH
+and km/h, with the needle calibrated to the selected 0–180 scale's nonuniform
+printed markings rather than a fixed degrees-per-unit sweep. Result
+statistics remain in km/h.
+Driving-state messages (brakes held, sliding, burnout, etc.) are not shown.
 A persistent minimap shows the current lap number on the left
 (`--` before crossing the start line) and the current lap time on the right
 with the current run's best time labeled **RECORD** directly underneath, including in cabin view.
@@ -428,7 +441,7 @@ or **Exceeded** in red using the unchanged Track Limits calculation. White-line
 touches remain valid and are retained with new saved laps and records.
 The standings table appears first and shows every driver, race time or gap, and Racing, Finished,
 DSQ, or DNF status. Standings remain live as other cars finish, then become final.
-Click the race standings panel or **Race results** during a race to view live results
+Click the race standings panel or its **Standings** link during a race to view live results
 without retiring. Close the dialog to return to driving.
 If another dialog is open when your run finishes, automatic results are skipped;
 you can still open them from the standings panel afterward.

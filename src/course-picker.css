@@ -311,7 +311,7 @@ dialog .course-preview-heading h3 {
 }
 
 #course-overview > p {
-  margin: var(--space-2) 0 0;
+  margin: var(--space-1) 0 var(--space-3);
   text-align: center;
 }
 

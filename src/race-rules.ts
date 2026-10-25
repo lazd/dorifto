@@ -1,7 +1,7 @@
 export const raceModes = {
   'track-limits': {
     name: 'Track Limits',
-    description: 'Your lap is invalid only when all 4 tires are completely beyond the white lines.',
+    description: 'Your lap is invalid if all 4 tires go beyond the white lines.',
   },
   mustard: {
     name: "Don't Cross the Mustard",

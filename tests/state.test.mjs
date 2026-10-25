@@ -29,6 +29,9 @@ test('configuration and game snapshots and notifications are completely independ
   assert.equal(initialConfiguration.driveMode, 'grip');
   assert.equal(initialConfiguration.selectedTuningPresets.grip, 'grip-default');
   assert.equal(initialConfiguration.cameraStyle, 'cabin');
+  assert.equal(initialConfiguration.showKerbs, true);
+  assert.equal(initialConfiguration.showRoadEdgeDirt, true);
+  assert.equal(initialConfiguration.speedUnit, 'mph');
   let configurationUpdates = 0;
   let gameUpdates = 0;
   configuration.subscribe(() => {
@@ -89,6 +92,9 @@ test('each configuration subscription runs only when its settings actually chang
     coneMode: 'off',
     muted: true,
     cameraStyle: 'fpv',
+    showKerbs: false,
+    showRoadEdgeDirt: false,
+    speedUnit: 'kmh',
   };
   for (const [key, value] of Object.entries(changes)) {
     configuration.update({ [key]: value });

@@ -2,6 +2,7 @@ import { isDriveMode, type DriveMode } from './drive-modes';
 import { bindBotDialog } from './bot-dialog';
 import { createDrivingTuning } from './drift-tuning';
 import { redlineRpm } from './drivetrain';
+import { speedInUnit } from './speed-units';
 import {
   courseRoute,
   generateCourse,
@@ -33,6 +34,7 @@ import {
   isLapGateMode,
   isMinimapOrientation,
   isMirrorResolution,
+  isSpeedUnit,
   isTimeOfDay,
   type ConfigurationState,
   type LapGateMode,
@@ -190,6 +192,10 @@ function bindDialog(trigger: string, selector: string, onOpen?: () => void) {
   return open;
 }
 
+export function formatHudSpeed(speed: number, unit: ConfigurationState['speedUnit']) {
+  return String(Math.round(speedInUnit(speed, unit)));
+}
+
 function bindTachometer() {
   const tach = element('#tachometer');
   const dial = tach.querySelector<SVGSVGElement>('.tach-dial')!;
@@ -214,39 +220,11 @@ function bindTachometer() {
     ).join('');
   const segments = [...dial.querySelectorAll('.tach-segment')];
 
-  const led = document.querySelector<SVGSVGElement>('#speed-led')!;
-  const shapes = [
-    '7,2 29,2 33,6 29,10 7,10 3,6',
-    '30,11 34,7 34,27 30,31 26,27 26,15',
-    '30,33 34,37 34,57 30,61 26,57 26,37',
-    '7,54 29,54 33,58 29,62 7,62 3,58',
-    '2,37 6,33 10,37 10,57 6,61 2,57',
-    '2,7 6,11 10,15 10,27 6,31 2,27',
-    '7,28 29,28 33,32 29,36 7,36 3,32',
-  ];
-  const digits = [
-    'abcdef',
-    'bc',
-    'abdeg',
-    'abcdg',
-    'bcfg',
-    'acdfg',
-    'acdefg',
-    'abc',
-    'abcdefg',
-    'abcdfg',
-  ];
-  led.innerHTML = Array.from(
-    { length: 3 },
-    (_, index) =>
-      `<g transform="translate(${index * 44} 0)">${shapes.map((points) => `<polygon points="${points}"/>`).join('')}</g>`,
-  ).join('');
-  const ledDigits = [...led.querySelectorAll('g')].map((group) => [...group.children]);
-  let previousSpeed = '';
+  const displaySpeed = bindSegmentedReadout('#speed-led', 3);
   let previousRpm = -1;
   let previousSegments = -1;
   let previousLimiter = false;
-  return (rpm: number, mph: string, limiter: boolean) => {
+  return (rpm: number, speed: string, limiter: boolean) => {
     const count = Math.round(Math.max(0, Math.min(1, rpm / maxRpm)) * segmentCount);
     if (count !== previousSegments) {
       segments.forEach((segment, index) => segment.classList.toggle('lit', index < count));
@@ -261,15 +239,56 @@ function bindTachometer() {
       tach.classList.toggle('limiter', limiter);
       previousLimiter = limiter;
     }
-    if (mph !== previousSpeed) {
-      const display = mph.padStart(3, ' ').slice(-3);
+    displaySpeed(speed);
+  };
+}
+
+function bindSegmentedReadout(selector: string, columns: number) {
+  const led = document.querySelector<SVGSVGElement>(selector);
+  if (!led) throw new Error(`Missing segmented readout: ${selector}`);
+  const shapes = [
+    '7,2 29,2 33,6 29,10 7,10 3,6',
+    '30,11 34,7 34,27 30,31 26,27 26,15',
+    '30,33 34,37 34,57 30,61 26,57 26,37',
+    '7,54 29,54 33,58 29,62 7,62 3,58',
+    '2,37 6,33 10,37 10,57 6,61 2,57',
+    '2,7 6,11 10,15 10,27 6,31 2,27',
+    '7,28 29,28 33,32 29,36 7,36 3,32',
+  ];
+  const digits: Record<string, string> = {
+    '0': 'abcdef',
+    '1': 'bc',
+    '2': 'abdeg',
+    '3': 'abcdg',
+    '4': 'bcfg',
+    '5': 'acdfg',
+    '6': 'acdefg',
+    '7': 'abc',
+    '8': 'abcdefg',
+    '9': 'abcdfg',
+    N: 'ceg',
+    R: 'eg',
+    ' ': '',
+  };
+  led.innerHTML = Array.from(
+    { length: columns },
+    (_, index) =>
+      `<g transform="translate(${index * 44} 0)">${shapes.map((points) => `<polygon points="${points}"/>`).join('')}</g>`,
+  ).join('');
+  const ledDigits = [...led.querySelectorAll('g')].map((group) => [...group.children]);
+  let previous = '';
+  return (value: string) => {
+    if (value !== previous) {
+      const display = value.padStart(columns, ' ').slice(-columns);
       ledDigits.forEach((segments, index) => {
-        const active = display[index] === ' ' ? '' : digits[Number(display[index])];
+        const active = digits[display[index]];
+        if (active === undefined)
+          throw new Error(`Unsupported segmented character: ${display[index]}`);
         segments.forEach((segment, part) =>
           segment.classList.toggle('lit', active.includes('abcdefg'[part])),
         );
       });
-      previousSpeed = mph;
+      previous = value;
     }
   };
 }
@@ -359,7 +378,6 @@ function bindTuningPresets(
   reportError: (error: unknown) => void,
 ) {
   const title = bindText('#tuning-preset-title');
-  const tuningLabel = bindText('#tuning-label');
   const presetError = element<HTMLElement>('#tuning-profile-error');
   const presetsSelect = element<HTMLSelectElement>('#tuning-preset');
   const editInput = element<HTMLInputElement>('#tuning-preset-edit-name');
@@ -571,11 +589,6 @@ function bindTuningPresets(
       const selectedPresetId = state.selectedTuningPresets[state.driveMode] ?? '';
       presetsSelect.value = selectedPresetId;
       const selectedPreset = modePresets.find(({ id }) => id === selectedPresetId);
-      tuningLabel(`${modeName} · ${selectedPreset?.name ?? 'Custom'}`);
-      element('#tuning').setAttribute(
-        'aria-label',
-        `Tuning: ${modeName} · ${selectedPreset?.name ?? 'Custom'}`,
-      );
       remove.disabled = !selectedPreset || selectedPreset.readonly === true;
       edit.disabled = !selectedPreset || selectedPreset.readonly === true;
     },
@@ -1897,7 +1910,42 @@ export function bindGameUI(
   bindCourseHud();
   const speed = bindText('#speed');
   const gear = bindText('#gear');
+  const displayGear = bindSegmentedReadout('#gear-led', 1);
   const tachometer = bindTachometer();
+  const speedUnitLabel = bindText('#speed-unit-label');
+  const driveModeLabel = bindText('#tach-drive-mode');
+  const tuningProfileLabel = bindText('#tach-tuning-profile');
+  const tuningProfile = element('#tach-tuning-profile');
+  function updateDriverProfile() {
+    const state = configuration.getState();
+    const observed = game.getState().observedDriver;
+    driveModeLabel((observed?.driveMode ?? state.driveMode) === 'grip' ? 'Grip' : 'Drift');
+    const preset = state.tuningPresets.find(
+      ({ id }) => id === state.selectedTuningPresets[state.driveMode],
+    );
+    const name = observed?.profile ?? preset?.name ?? 'Custom';
+    tuningProfileLabel(name);
+    tuningProfile.title = name;
+  }
+  configuration.subscribe(updateDriverProfile, [
+    'driveMode',
+    'selectedTuningPresets',
+    'tuningPresets',
+  ]);
+  game.subscribe(updateDriverProfile, ['observedDriver']);
+  function updateSpeed() {
+    const t = game.getState().telemetry;
+    const displayedSpeed = formatHudSpeed(t.speed, configuration.getState().speedUnit);
+    speed(displayedSpeed);
+    tachometer(t.rpm, displayedSpeed, t.limiter);
+  }
+  configuration.subscribe(
+    ({ speedUnit }) => {
+      speedUnitLabel(speedUnit === 'kmh' ? 'km/h' : 'MPH');
+      updateSpeed();
+    },
+    ['speedUnit'],
+  );
   const lap = bindText('#lap-number');
   const current = bindText('#lap-current');
   const currentLap = element('#lap-current');
@@ -2020,6 +2068,14 @@ export function bindGameUI(
     (minimapOrientation) => ({ minimapOrientation }),
     isMinimapOrientation,
   );
+  select<ConfigurationState['speedUnit']>(
+    '#speed-unit',
+    'speed-unit',
+    'speedUnit',
+    (state) => state.speedUnit,
+    (speedUnit) => ({ speedUnit }),
+    isSpeedUnit,
+  );
   const isToggle = (value: string): value is 'on' | 'off' => value === 'on' || value === 'off';
   select<ConfigurationState['mirrorResolution']>(
     '#mirror-resolution',
@@ -2068,6 +2124,14 @@ export function bindGameUI(
     'showGrass',
     (state) => (state.showGrass ? 'on' : 'off'),
     (value) => ({ showGrass: value === 'on' }),
+    isToggle,
+  );
+  select<'on' | 'off'>(
+    '#show-kerbs',
+    'kerbs',
+    'showKerbs',
+    (state) => (state.showKerbs ? 'on' : 'off'),
+    (value) => ({ showKerbs: value === 'on' }),
     isToggle,
   );
   select<'on' | 'off'>(
@@ -2120,10 +2184,10 @@ export function bindGameUI(
   game.subscribe(
     (state) => {
       const t = state.telemetry;
-      const mph = String(Math.round(Math.abs(t.speed) / 0.44704));
-      speed(mph);
-      tachometer(t.rpm, mph, t.limiter);
-      gear(t.gear < 0 ? 'R' : t.gear === 0 ? 'N' : String(t.gear));
+      updateSpeed();
+      const displayedGear = t.gear < 0 ? 'R' : t.gear === 0 ? 'N' : String(t.gear);
+      gear(displayedGear);
+      displayGear(displayedGear);
       lap(t.finished ? '🏁' : t.lap ? String(t.lap) : '--');
       current(formatLapTime(t.lap ? t.current : null));
       if (currentLap.classList.contains('is-invalid') !== t.invalid) {

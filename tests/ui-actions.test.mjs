@@ -10,6 +10,8 @@ let createHudVisibilityCycle;
 let setHudElementHidden;
 let createGameState;
 let createConfigurationState;
+let formatHudSpeed;
+let speedometerDegrees;
 
 before(async () => {
   server = await createServer({
@@ -22,13 +24,30 @@ before(async () => {
     bindLapRecorder,
     createHudVisibilityCycle,
     setHudElementHidden,
+    formatHudSpeed,
   } = await server.ssrLoadModule('/src/ui.ts'));
   ({ createGameState } = await server.ssrLoadModule('/src/game-state.ts'));
   ({ createConfigurationState } = await server.ssrLoadModule('/src/configuration-state.ts'));
+  ({ speedometerDegrees } = await server.ssrLoadModule('/src/car.ts'));
 });
 
 after(async () => {
   await server?.close();
+});
+
+test('HUD speed converts meters per second to the selected units, including reverse', () => {
+  assert.equal(formatHudSpeed(0, 'mph'), '0');
+  assert.equal(formatHudSpeed(26.8224, 'mph'), '60');
+  assert.equal(formatHudSpeed(26.8224, 'kmh'), '97');
+  assert.equal(formatHudSpeed(-26.8224, 'kmh'), '97');
+});
+
+test('analog speed follows the nonuniform dial markings in either unit', () => {
+  assert.ok(Math.abs(speedometerDegrees(60 / 3.6, 'kmh') - 65.47) < 0.01);
+  assert.ok(Math.abs(speedometerDegrees(26.8224, 'mph') - 65.47) < 0.01);
+  assert.ok(Math.abs(speedometerDegrees(50 / 3.6, 'kmh') - (41.24 + 65.47) / 2) < 0.01);
+  assert.equal(speedometerDegrees(100, 'kmh'), speedometerDegrees(180 / 3.6, 'kmh'));
+  assert.equal(speedometerDegrees(-26.8224, 'mph'), speedometerDegrees(26.8224, 'mph'));
 });
 
 test('HUD cycle uses hidden and preserves independent camera and recorder visibility', (t) => {

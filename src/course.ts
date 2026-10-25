@@ -349,7 +349,7 @@ function buildCourse(scene: THREE.Group, definition: CourseDefinition, carWidth:
     scene.remove(curb);
     curb.geometry.dispose();
   }
-  curbPositions.forEach((positions, i) => {
+  const kerbMeshes = curbPositions.map((positions, i) => {
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
     geometry.computeVertexNormals();
@@ -365,6 +365,7 @@ function buildCourse(scene: THREE.Group, definition: CourseDefinition, carWidth:
     curbs.name = 'inside-corner-curbs';
     curbs.receiveShadow = true;
     scene.add(curbs);
+    return curbs;
   });
   // Dirt washes in from beyond the pavement or kerbs, whichever reaches further. It always
   // covers the pavement edge and drifts up to just past the edge line.
@@ -387,6 +388,9 @@ function buildCourse(scene: THREE.Group, definition: CourseDefinition, carWidth:
     cornerCones,
     turnSignGroups,
     terrain,
+    setKerbs(visible: boolean) {
+      for (const mesh of kerbMeshes) mesh.visible = visible;
+    },
     setRoadEdgeDirt(visible: boolean) {
       for (const mesh of dirtMeshes) mesh.visible = visible;
     },

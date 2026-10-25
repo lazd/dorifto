@@ -4,6 +4,7 @@ import { Reflector } from 'three/addons/objects/Reflector.js';
 import { normalizeCarModel, carPhysicsGeometry, carCorner } from './car-geometry';
 import { idleRpm, redlineRpm } from './drivetrain';
 import type { ConfigurationState } from './configuration-state';
+import { speedInUnit } from './speed-units';
 import { createUnderglow, type GroundHeight } from './ground-glow';
 import { clockText, createSegmentedDisplay, mapDisplaySurface } from './segmented-display';
 
@@ -23,7 +24,15 @@ const CABIN_LIGHTING = {
 } satisfies Record<ConfigurationState['timeOfDay'], { color: number; intensity: number }>;
 const GAUGE_LIGHT_INTENSITY = 0.8;
 // Needle sweeps measured from the instrument-cluster texture.
-const SPEEDO_DEG_PER_KMH = 1.338;
+// Angles to the printed 0–180 labels, measured through the gauge mesh's UV mapping.
+const speedometerAngles = [
+  -2.05, 18.57, 41.24, 65.47, 90.16, 121.05, 154.55, 183.05, 213.81, 243.07,
+];
+export function speedometerDegrees(speedMps: number, unit: ConfigurationState['speedUnit']) {
+  const step = THREE.MathUtils.clamp(speedInUnit(speedMps, unit), 0, 180) / 20;
+  const index = Math.min(Math.floor(step), speedometerAngles.length - 2);
+  return THREE.MathUtils.lerp(speedometerAngles[index], speedometerAngles[index + 1], step - index);
+}
 const TACH_DEG_PER_RPM = 0.02759;
 const BOOST_DEG_PER_MMHG = 0.0523;
 const OIL_DEG_PER_KG_CM2 = 8.25;
@@ -255,6 +264,28 @@ export async function loadCar(onProgress?: (fraction: number) => void) {
     0xffe2b8,
   );
   const gaugeFaces = emissive(/^gaugeface[12]_Gauges_0$/, 0xd7f5df, true);
+  const metricGaugeMap = gaugeFaces[0].map;
+  if (!metricGaugeMap) throw new Error('Missing instrument-cluster texture.');
+  const gaugeImage = metricGaugeMap.image;
+  if (!(gaugeImage instanceof HTMLImageElement || gaugeImage instanceof ImageBitmap))
+    throw new Error('Unsupported instrument-cluster texture image.');
+  const imperialGaugeCanvas = document.createElement('canvas');
+  imperialGaugeCanvas.width = gaugeImage.width;
+  imperialGaugeCanvas.height = gaugeImage.height;
+  const gaugeContext = imperialGaugeCanvas.getContext('2d');
+  if (!gaugeContext) throw new Error('Unable to create imperial speedometer texture.');
+  gaugeContext.drawImage(gaugeImage, 0, 0);
+  gaugeContext.scale(gaugeImage.width / 512, gaugeImage.height / 512);
+  // Replace only the atlas's unit label; retain the original 0–180 markings and other dials.
+  gaugeContext.fillStyle = '#000000';
+  gaugeContext.fillRect(109, 84, 38, 16);
+  gaugeContext.fillStyle = '#e6e9d5';
+  gaugeContext.font = 'bold 12px Arial';
+  gaugeContext.textAlign = 'center';
+  gaugeContext.fillText('MPH', 127, 95);
+  const imperialGaugeMap = metricGaugeMap.clone();
+  imperialGaugeMap.source = new THREE.TextureSource(imperialGaugeCanvas);
+  imperialGaugeMap.needsUpdate = true;
   const odometer = emissive(/^Odo_Odometer_0$/, 0xd7f5df, true);
   const gaugeNeedles = emissive(/_Gaugered_0$/, 0xff3820);
 
@@ -929,9 +960,27 @@ export async function loadCar(onProgress?: (fraction: number) => void) {
     rotateSteeringWheel(roadWheelAngle * STEERING_RATIO);
   }
   let oilPressure = 2;
+  let speedUnit: ConfigurationState['speedUnit'] = 'kmh';
+  let gaugeSpeedKmh = 0;
+  function updateSpeedNeedle() {
+    rotateSpeedNeedle(
+      -THREE.MathUtils.degToRad(speedometerDegrees(gaugeSpeedKmh / 3.6, speedUnit)),
+    );
+  }
+  function setSpeedUnit(unit: ConfigurationState['speedUnit']) {
+    if (speedUnit === unit) return;
+    speedUnit = unit;
+    const map = unit === 'mph' ? imperialGaugeMap : metricGaugeMap;
+    for (const material of gaugeFaces) {
+      material.map = map;
+      material.emissiveMap = map;
+    }
+    updateSpeedNeedle();
+  }
   function setGauges(speedKmh: number, rpm: number, boostMmHg: number, dt: number) {
     const degrees = THREE.MathUtils.degToRad;
-    rotateSpeedNeedle(-degrees(SPEEDO_DEG_PER_KMH * THREE.MathUtils.clamp(speedKmh, 0, 190)));
+    gaugeSpeedKmh = speedKmh;
+    updateSpeedNeedle();
     rotateRpmNeedle(-degrees(TACH_DEG_PER_RPM * THREE.MathUtils.clamp(rpm, 0, 9200)));
     rotateBoostNeedle(degrees(BOOST_DEG_PER_MMHG * THREE.MathUtils.clamp(boostMmHg, -760, 760)));
     const targetOilPressure = THREE.MathUtils.mapLinear(
@@ -1040,6 +1089,7 @@ export async function loadCar(onProgress?: (fraction: number) => void) {
     },
     setSteering,
     setGauges,
+    setSpeedUnit,
     setDashLight,
     aimMirrors,
   };

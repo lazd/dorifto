@@ -1,5 +1,6 @@
 import { idleRpm } from './drivetrain';
 import { createStore } from './store';
+import type { DriveMode } from './drive-modes';
 
 export interface SavedRunOption {
   id: string;
@@ -7,6 +8,7 @@ export interface SavedRunOption {
 }
 
 export interface GameState {
+  observedDriver: Readonly<{ driveMode: DriveMode; profile: string }> | null;
   /** off: nothing to show; ready: saved laps can be replayed; recording: run in progress; replay: watching. */
   lapRecorder: Readonly<{
     mode: 'off' | 'ready' | 'recording' | 'replay';
@@ -57,6 +59,7 @@ export interface GameState {
 
 export function createGameState() {
   return createStore<GameState>({
+    observedDriver: null,
     lapRecorder: { mode: 'off', runs: [], selectedRun: null, replayLap: null },
     focused: true,
     controllerStatus: '',
