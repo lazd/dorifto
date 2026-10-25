@@ -159,8 +159,10 @@ function buildCourse(scene: THREE.Group, definition: CourseDefinition, carWidth:
     }
   }
 
-  const white = new THREE.MeshBasicMaterial({ color: 0xe1e6df, side: THREE.DoubleSide });
-  const dark = new THREE.MeshBasicMaterial({ color: 0x20282b, side: THREE.DoubleSide });
+  const paint = (color: number) =>
+    new THREE.MeshStandardMaterial({ color, roughness: 0.75, side: THREE.DoubleSide });
+  const white = paint(0xe1e6df);
+  const dark = paint(0x20282b);
   const segments = Math.ceil(length / 0.5);
   function ribbon(
     offset: number,
@@ -232,7 +234,7 @@ function buildCourse(scene: THREE.Group, definition: CourseDefinition, carWidth:
     );
   for (const side of [-1, 1]) ribbon((side * definition.width) / 2, courseLineWidth, 0.016, white);
   if (definition.doubleYellow) {
-    const yellow = new THREE.MeshBasicMaterial({ color: 0xffd32a, side: THREE.DoubleSide });
+    const yellow = paint(0xffd32a);
     for (const side of [-1, 1]) {
       const line = ribbon(side * courseLineWidth, courseLineWidth, 0.016, yellow);
       line.name = 'double-yellow-center-line';
@@ -248,7 +250,7 @@ function buildCourse(scene: THREE.Group, definition: CourseDefinition, carWidth:
     across.set(startTangent.z, 0, -startTangent.x).normalize();
     for (let row = 0; row < 2; row++) {
       for (let column = 0; column < columns; column++) {
-        const tile = new THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>(
+        const tile = new THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>(
           new THREE.PlaneGeometry(tileWidth, 0.5),
           (row + column) % 2 ? dark : white,
         );
@@ -265,6 +267,7 @@ function buildCourse(scene: THREE.Group, definition: CourseDefinition, carWidth:
         geometry.dispose();
         tile.position.set(0, 0, 0);
         tile.rotation.set(0, 0, 0);
+        tile.receiveShadow = true;
         scene.add(tile);
       }
     }
@@ -350,16 +353,18 @@ function buildCourse(scene: THREE.Group, definition: CourseDefinition, carWidth:
     curbs.receiveShadow = true;
     scene.add(curbs);
   });
-  // Dirt washes in from beyond the pavement or kerbs, whichever reaches further, with drifts
-  // long enough to cross the edge line.
-  const dirtEdge =
-    definition.width / 2 + Math.max(definition.shoulderWidth ?? courseShoulderWidth, 0.8);
-  const dirtReach = dirtEdge - definition.width / 2 + 0.35;
-  const dirt = definition.padRadius === undefined && roadDirtMaterial(dirtEdge, dirtReach);
+  // Dirt washes in from beyond the pavement or kerbs, whichever reaches further. It always
+  // covers the pavement edge and drifts up to just past the edge line.
+  const shoulder = definition.shoulderWidth ?? courseShoulderWidth;
+  const dirtEdge = definition.width / 2 + Math.max(shoulder, 0.8);
+  const dirtMin = dirtEdge - definition.width / 2 - shoulder;
+  const dirtMax = dirtEdge - definition.width / 2 + 0.35;
+  const dirt = definition.padRadius === undefined && roadDirtMaterial(dirtEdge, dirtMin, dirtMax);
   if (dirt)
     for (const side of [-1, 1]) {
-      const stripWidth = dirtReach + 1.4;
-      const strip = ribbon(side * (dirtEdge + 0.6 - stripWidth / 2), stripWidth, 0.03, dirt);
+      // From 0.6 m outside the dirt edge (feather) to past the farthest scattered pebbles.
+      const stripWidth = dirtMax + 1.8;
+      const strip = ribbon(side * (dirtEdge + 0.6 - stripWidth / 2), stripWidth, 0.04, dirt);
       strip.name = 'road-edge-dirt';
       strip.renderOrder = 1;
     }

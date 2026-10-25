@@ -6,6 +6,12 @@ const terrainMaps = new Map<TerrainSurface, THREE.Texture[]>();
 
 /** Value noise and the roadside dirt tint shared by the terrain and asphalt shaders. */
 export const terrainNoiseGlsl = `
+  // Sine-free hash: stays random at large world coordinates where fract(sin()) degenerates.
+  vec4 terrainHash(vec2 p) {
+    vec4 p4 = fract(vec4(p.xyxy) * vec4(0.1031, 0.103, 0.0973, 0.1099));
+    p4 += dot(p4, p4.wzxy + 33.33);
+    return fract((p4.xxyz + p4.yzzw) * p4.zywx);
+  }
   float terrainNoise(vec2 p) {
     vec2 cell = floor(p);
     vec2 f = fract(p);
@@ -45,12 +51,13 @@ export async function loadTerrainSurfaces() {
 }
 
 /**
- * Transparent overlay of dirt washed inward from `outerEdge` (distance from the centerline)
- * in drifts reaching up to `maxReach`, with loose grains beyond. Its geometry carries a signed
- * `lateral` distance from the road centerline; it draws above lines, kerbs, and gates.
+ * Transparent overlay of dirt washed inward from `outerEdge` (distance from the centerline).
+ * Its ragged edge always reaches at least `minReach` inward (past the pavement edge) and drifts
+ * up to `maxReach`, with crumbs clinging to it and pebbles scattered beyond. Its geometry carries
+ * a signed `lateral` distance from the road centerline; it draws above lines, kerbs, and gates.
  * Undefined without scanned soil (headless builds).
  */
-export function roadDirtMaterial(outerEdge: number, maxReach: number) {
+export function roadDirtMaterial(outerEdge: number, minReach: number, maxReach: number) {
   const soil = terrainMaps.get('gravel')?.[0];
   if (!soil) return undefined;
   const map = soil.clone();
@@ -60,8 +67,16 @@ export function roadDirtMaterial(outerEdge: number, maxReach: number) {
     roughness: 1,
     transparent: true,
     depthWrite: false,
+    // Pull toward the camera so paint and kerbs below never poke through at grazing angles.
+    polygonOffset: true,
+    polygonOffsetFactor: -2,
+    polygonOffsetUnits: -4,
   });
-  material.defines = { DIRT_EDGE: outerEdge.toFixed(3), DIRT_REACH: maxReach.toFixed(3) };
+  material.defines = {
+    DIRT_EDGE: outerEdge.toFixed(3),
+    DIRT_MIN: minReach.toFixed(3),
+    DIRT_MAX: maxReach.toFixed(3),
+  };
   material.onBeforeCompile = (shader) => {
     shader.vertexShader = shader.vertexShader
       .replace(
@@ -82,15 +97,39 @@ export function roadDirtMaterial(outerEdge: number, maxReach: number) {
         float edgeDistance = DIRT_EDGE - abs(vLateral);
         float drift = terrainNoise(roadWorld * 0.7) * 0.65 +
           terrainNoise(roadWorld * 3.1 + vec2(4.7, 1.3)) * 0.35;
-        float reach = 0.15 + drift * DIRT_REACH;
-        float grains = step(0.82, terrainNoise(roadWorld * 23.0)) *
-          (1.0 - smoothstep(reach, reach + 0.5, edgeDistance));
-        float cover = max(1.0 - smoothstep(reach - 0.12, reach + 0.04, edgeDistance),
-          grains * 0.8);
+        // Ragged at several scales so the edge never reads as a smooth curve.
+        float ragged = (terrainNoise(roadWorld * 7.0) - 0.5) * 0.12 +
+          (terrainNoise(roadWorld * 23.0 + vec2(9.2, 3.4)) - 0.5) * 0.06;
+        float reach = DIRT_MIN + 0.15 + drift * drift * (DIRT_MAX - DIRT_MIN - 0.15) + ragged;
+        float aa = fwidth(edgeDistance);
+        float cover = 1.0 - smoothstep(reach - aa - 0.03, reach + aa, edgeDistance);
+        float beyond = edgeDistance - reach;
+        // Crumbs cling to the edge, thinning out within ~30 cm.
+        float crumbNoise = terrainNoise(roadWorld * 30.0) * 0.6 +
+          terrainNoise(roadWorld * 70.0 + vec2(2.3, 8.1)) * 0.4;
+        float crumbThreshold = 0.52 + smoothstep(0.0, 0.3, beyond) * 0.48;
+        float crumbWidth = fwidth(crumbNoise) + 0.01;
+        float clumps = smoothstep(crumbThreshold - crumbWidth, crumbThreshold + crumbWidth,
+          crumbNoise);
+        // Pebbles: at most one jittered stone per 12 cm cell, scattered up to ~1 m beyond the edge.
+        float scatter = 1.0 - smoothstep(-0.1, 1.0, beyond);
+        vec2 pebbleCell = floor(roadWorld * 8.0);
+        vec4 ph = terrainHash(pebbleCell);
+        vec2 pebbleOffset = (fract(roadWorld * 8.0) - 0.5 - (ph.xy - 0.5) * 0.5) / 8.0;
+        float pebbleRadius = mix(0.008, 0.032, ph.z * ph.z) *
+          (0.75 + 0.5 * terrainNoise(roadWorld * 160.0));
+        float pebbleWidth = fwidth(roadWorld.x) * 0.7;
+        float pebble = step(ph.w, 0.5 * scatter * scatter) *
+          (1.0 - smoothstep(pebbleRadius - pebbleWidth, pebbleRadius + pebbleWidth,
+            length(pebbleOffset)));
+        cover = max(cover, max(pebble, clumps));
         // Fade out past the edge so the overlay blends into the terrain's own dirt.
         cover *= 1.0 - smoothstep(0.0, 0.6, -edgeDistance);
         if (cover < 0.01) discard;
-        diffuseColor.rgb *= roadDirt(texture2D(map, vMapUv).rgb);
+        vec3 dirt = roadDirt(texture2D(map, vMapUv).rgb);
+        vec3 stone = mix(vec3(0.2, 0.17, 0.14), vec3(0.42, 0.36, 0.29), ph.w * 2.0) *
+          (0.8 + 0.4 * terrainNoise(roadWorld * 90.0));
+        diffuseColor.rgb *= mix(dirt, stone, pebble * 0.85);
         diffuseColor.a *= cover;`,
       );
   };
