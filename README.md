@@ -600,7 +600,8 @@ sharp crease.
 Pavement and paint are clipped against the same triangles. Bullet's heightfield
 only supports a fixed diagonal at grid positions, so flipped and snapped cells are
 sunk below the heightfield and covered by a triangle-mesh collider with the rendered
-triangulation.
+triangulation. Terrain contacts use the smoothed surface normal rather than the
+triangle's, so cars scrape along walls instead of snagging on internal triangle edges.
 Rendering and physics use the same surface. Non-raster terrain keeps its existing
 wider transition and smoothing. Existing courses retain 1.6 m shoulders unless
 re-imported with `--shoulder-width`.

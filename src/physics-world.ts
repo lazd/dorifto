@@ -1,5 +1,11 @@
 import type AmmoFactory from 'ammojs-typed';
-import { cellTriangles, vertexHeight, vertexPosition, type HeightfieldData } from './terrain-query';
+import {
+  cellTriangles,
+  normalAt,
+  vertexHeight,
+  vertexPosition,
+  type HeightfieldData,
+} from './terrain-query';
 
 export function createPhysicsResources(Ammo: typeof AmmoFactory) {
   const buffers: { pointer: number; capacity: number; used: boolean }[] = [];
@@ -25,6 +31,46 @@ export function createPhysicsResources(Ammo: typeof AmmoFactory) {
       };
     },
   };
+}
+
+const customMaterialCallback = 8;
+const terrainBodies = new Map<number, HeightfieldData>();
+const contactCallbacks = new WeakMap<typeof AmmoFactory, number>();
+
+/**
+ * Bodies sliding along terrain catch on internal triangle edges, whose contact normals can point
+ * back against travel and stop a car dead. Like Bullet's btAdjustInternalEdgeContacts, replace
+ * every terrain contact normal with the smoothed surface normal so terrain only ever pushes out.
+ */
+function terrainContactCallback(Ammo: typeof AmmoFactory) {
+  let callback = contactCallbacks.get(Ammo);
+  if (callback === undefined) {
+    // Emscripten's addFunction is present at runtime but missing from the typings.
+    const { addFunction } = Ammo as unknown as {
+      addFunction(callback: (...args: number[]) => number, signature: string): number;
+    };
+    callback = addFunction(
+      (point: number, wrapA: number, _partA: number, _indexA: number, wrapB: number) => {
+        const objectOf = (wrap: number) =>
+          Ammo.getPointer(
+            Ammo.wrapPointer(wrap, Ammo.btCollisionObjectWrapper).getCollisionObject(),
+          );
+        const terrainB = terrainBodies.get(objectOf(wrapB));
+        const terrain = terrainB ?? terrainBodies.get(objectOf(wrapA));
+        if (!terrain) return 0;
+        const contact = Ammo.wrapPointer(point, Ammo.btManifoldPoint);
+        const position = contact.getPositionWorldOnB();
+        const normal = normalAt(terrain, position.x(), position.z());
+        // The normal on B points toward A.
+        if (!terrainB) normal.negate();
+        contact.get_m_normalWorldOnB().setValue(normal.x, normal.y, normal.z);
+        return 0;
+      },
+      'iiiiiiii',
+    );
+    contactCallbacks.set(Ammo, callback);
+  }
+  return callback;
 }
 
 export function createPhysicsWorld(
@@ -71,6 +117,12 @@ export function createPhysicsWorld(
   world.addRigidBody(ground);
   Ammo.destroy(info);
   if (contours) world.addRigidBody(contours.body);
+  world.setContactAddedCallback(terrainContactCallback(Ammo));
+  const terrainBodyList = contours ? [ground, contours.body] : [ground];
+  for (const body of terrainBodyList) {
+    body.setCollisionFlags(body.getCollisionFlags() | customMaterialCallback);
+    terrainBodies.set(Ammo.getPointer(body), terrain);
+  }
   Ammo.destroy(transform);
   Ammo.destroy(vector);
   let disposed = false;
@@ -84,6 +136,7 @@ export function createPhysicsWorld(
     dispose() {
       if (disposed) return;
       disposed = true;
+      for (const body of terrainBodyList) terrainBodies.delete(Ammo.getPointer(body));
       world.removeRigidBody(ground);
       Ammo.destroy(ground);
       Ammo.destroy(motion);
