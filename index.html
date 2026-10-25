@@ -6,10 +6,10 @@
     <meta name="theme-color" content="#10191f" />
     <meta name="referrer" content="no-referrer" />
     <title>Dorifto — Z32 Playground</title>
-    <script type="module" crossorigin src="./assets/game-DKcklglX.js"></script>
-    <link rel="modulepreload" crossorigin href="./assets/course-builder-data-B5DLS8OW.js">
+    <script type="module" crossorigin src="./assets/game-DSuQrVXz.js"></script>
+    <link rel="modulepreload" crossorigin href="./assets/course-builder-data-DPhoFe2z.js">
     <link rel="stylesheet" crossorigin href="./assets/course-builder-data-DO3y67q4.css">
-    <link rel="stylesheet" crossorigin href="./assets/game-CIw4KLax.css">
+    <link rel="stylesheet" crossorigin href="./assets/game-Cvl5kDsA.css">
   </head>
   <body hidden>
     <div id="app"></div>
@@ -59,29 +59,17 @@
           </span>
         </span>
       </button>
-      <section id="race-panel" class="hud-panel" aria-labelledby="race-panel-title">
+      <section id="race-panel" class="hud-panel" aria-labelledby="race-results">
+        <button
+          id="race-results"
+          class="button-link"
+          type="button"
+          aria-haspopup="dialog"
+          aria-controls="run-results"
+        >
+          Standings
+        </button>
         <ol id="leaderboard" class="leaderboard" aria-label="Live race standings" hidden></ol>
-        <div class="hud-panel-footer">
-          <button
-            id="race-results"
-            class="button button-quiet button-compact panel-action"
-            type="button"
-            aria-haspopup="dialog"
-            aria-controls="run-results"
-          >
-            Race results <span aria-hidden="true">›</span>
-          </button>
-          <button
-            id="bots"
-            class="button button-quiet button-compact panel-action"
-            type="button"
-            aria-haspopup="dialog"
-            aria-controls="bots-dialog"
-            aria-label="Bot setup"
-          >
-            Bot setup <span aria-hidden="true">›</span>
-          </button>
-        </div>
       </section>
     </aside>
     <div class="lap-recorder hide-when-loading">
@@ -117,12 +105,22 @@
         <div class="tach-label">RPM × 1000</div>
         <div class="speed-display">
           <span id="speed" class="visually-hidden">0</span>
-          <svg id="speed-led" viewBox="0 0 124 64" aria-hidden="true"></svg>
+          <svg
+            id="speed-led"
+            class="segmented-readout"
+            viewBox="0 0 124 64"
+            aria-hidden="true"
+          ></svg>
         </div>
-        <span class="speed-unit">MPH</span>
+        <span id="speed-unit-label" class="speed-unit">MPH</span>
         <div class="gear-display">
-          <strong id="gear">1</strong>
-          <div class="gear-label">GEAR</div>
+          <span class="visually-hidden">Gear</span>
+          <span id="gear" class="visually-hidden">1</span>
+          <svg id="gear-led" class="segmented-readout" viewBox="0 0 36 64" aria-hidden="true"></svg>
+        </div>
+        <div class="tach-profile" aria-label="Player drive mode and tuning profile">
+          <span id="tach-drive-mode"></span>
+          <span id="tach-tuning-profile"></span>
         </div>
       </div>
     </aside>
@@ -507,7 +505,16 @@
           aria-controls="drift-tuning"
           aria-label="Tuning"
         >
-          <span id="tuning-label">Grip · Default</span>
+          Tuning
+        </button>
+        <button
+          id="bots"
+          class="button button-secondary button-translucent toolbar-button"
+          type="button"
+          aria-haspopup="dialog"
+          aria-controls="bots-dialog"
+        >
+          Bot setup
         </button>
       </div>
     </header>
@@ -974,6 +981,18 @@
             <div class="illustrated-settings">
               <section class="illustrated-setting">
                 <div class="field">
+                  <label for="speed-unit">Speed units</label>
+                  <p id="speed-unit-description">
+                    Choose the units for the HUD and cabin speedometers.
+                  </p>
+                  <select id="speed-unit" aria-describedby="speed-unit-description">
+                    <option value="mph">MPH</option>
+                    <option value="kmh">km/h</option>
+                  </select>
+                </div>
+              </section>
+              <section class="illustrated-setting">
+                <div class="field">
                   <label for="minimap-orientation">Minimap orientation</label>
                   <p id="minimap-description">
                     Rotate the map with your heading or keep north at the top.
@@ -993,9 +1012,12 @@
                       class="illustration-map"
                       d="M65 40 Q30 40 35 75 T80 108 L152 82 Q180 70 163 43 T125 44 Q105 65 88 48Z"
                     />
-                    <path class="illustration-position" d="M96 83 L107 104 L96 99 L85 104Z" />
+                    <path
+                      class="illustration-position"
+                      d="M0-12 L11 9 L0 4 L-11 9Z"
+                      transform="translate(116 95) rotate(70.15)"
+                    />
                   </svg>
-                  <span aria-hidden="true">Illustration</span>
                 </div>
               </section>
               <section class="illustrated-setting">
@@ -1025,7 +1047,6 @@
                       <path class="illustration-window" d="M-6-8 H6 V4 H-6Z" />
                     </g>
                   </svg>
-                  <span aria-hidden="true">Illustration</span>
                 </div>
               </section>
               <section class="illustrated-setting">
@@ -1054,7 +1075,6 @@
                       <path d="M154 48 V22 H187 V33" />
                     </g>
                   </svg>
-                  <span aria-hidden="true">Illustration</span>
                 </div>
               </section>
             </div>
@@ -1109,7 +1129,6 @@
                       <path class="illustration-mark" d="M-3-6 H3" />
                     </g>
                   </svg>
-                  <span aria-hidden="true">Illustration</span>
                 </div>
               </section>
               <section class="illustrated-setting">
@@ -1147,7 +1166,34 @@
                       <path class="illustration-mark" d="M-3-31 L2-27 L-3-23" />
                     </g>
                   </svg>
-                  <span aria-hidden="true">Illustration</span>
+                </div>
+              </section>
+              <section class="illustrated-setting">
+                <div class="field">
+                  <label for="show-kerbs">Kerbs</label>
+                  <p id="kerbs-description">Show red and white kerbs on the inside of bends.</p>
+                  <input
+                    class="switch"
+                    role="switch"
+                    id="show-kerbs"
+                    type="checkbox"
+                    aria-describedby="kerbs-description"
+                  />
+                </div>
+                <div
+                  class="setting-illustration"
+                  role="img"
+                  aria-label="Illustration of red and white kerbs on the inside of the upper bend"
+                >
+                  <svg viewBox="0 0 224 126" aria-hidden="true">
+                    <path class="illustration-road" d="M40 126 Q68 85 112 78 T190 26" />
+                    <path class="illustration-line" d="M40 126 Q68 85 112 78 T190 26" />
+                    <path class="illustration-kerb" d="M108 54 Q142 49 171 12" />
+                    <path
+                      class="illustration-kerb illustration-kerb-stripes"
+                      d="M108 54 Q142 49 171 12"
+                    />
+                  </svg>
                 </div>
               </section>
               <section class="illustrated-setting">
@@ -1163,6 +1209,29 @@
                     type="checkbox"
                     aria-describedby="road-edge-dirt-description"
                   />
+                </div>
+                <div
+                  class="setting-illustration"
+                  role="img"
+                  aria-label="Illustration of sandy dirt and scattered pebbles along the road edge"
+                >
+                  <svg viewBox="0 0 224 126" aria-hidden="true">
+                    <path class="illustration-dirt" d="M40 126 Q68 85 112 78 T190 26" />
+                    <path class="illustration-road" d="M40 126 Q68 85 112 78 T190 26" />
+                    <path class="illustration-line" d="M40 126 Q68 85 112 78 T190 26" />
+                    <g class="illustration-pebble">
+                      <ellipse cx="34" cy="88" rx="3" ry="2" transform="rotate(-25 34 88)" />
+                      <ellipse cx="56" cy="63" rx="2" ry="1.5" />
+                      <ellipse cx="84" cy="52" rx="3" ry="2" transform="rotate(20 84 52)" />
+                      <ellipse cx="76" cy="114" rx="2.5" ry="2" />
+                      <ellipse cx="108" cy="103" rx="2" ry="1.5" />
+                      <ellipse cx="144" cy="101" rx="3.5" ry="2" />
+                      <ellipse cx="169" cy="84" rx="2" ry="1.5" />
+                      <ellipse cx="187" cy="68" rx="3" ry="2" transform="rotate(-35 187 68)" />
+                      <ellipse cx="158" cy="31" rx="2.5" ry="1.5" />
+                      <ellipse cx="206" cy="44" rx="2" ry="1.5" />
+                    </g>
+                  </svg>
                 </div>
               </section>
               <section class="illustrated-setting">
@@ -1191,7 +1260,6 @@
                       />
                     </g>
                   </svg>
-                  <span aria-hidden="true">Illustration</span>
                 </div>
               </section>
             </div>
