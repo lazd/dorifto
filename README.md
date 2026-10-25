@@ -111,7 +111,10 @@ with a large **Regenerate** button and an automatic name (no name field), and **
 library and select the saved course in the chooser without restarting the race;
 choose **Load course** when ready. Real-road generation still runs entirely in
 the browser, including elevation fetching and terrain generation.
+When naming a new real-road course, press **Enter** to focus the location search and
+search for that name immediately.
 Embedded creation skips the unused 3D preview build. Course previews in the chooser
+automatically build and show 3D after saving a created or edited course. Otherwise they
 start in 2D; use the lower-left **3D** button to build an interactive terrain preview
 on demand in a Web Worker, or **2D** to return to the map. Switching courses or closing
 the chooser cancels pending preview generation and releases the preview.
@@ -267,7 +270,7 @@ Failed downloads are reported and can be retried. Headless tools load map data d
 Map downloads show byte-based progress during startup and course changes, including when
 the server compresses the map response. Loading a course closes the picker immediately;
 the main loading overlay shows download progress, then hides the bar and displays
-**Building map…** before terrain building begins.
+**Loading map…** before terrain building begins.
 
 Dialog presentation uses shared design tokens and native HTML primitives in
 [`src/dialogs.css`](src/dialogs.css): button variants (`button-quiet`, `button-secondary`,

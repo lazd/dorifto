@@ -325,7 +325,7 @@ async function start() {
     loadTerrainSurfaces(),
   ]);
   const initialDefinition = { ...loadedDefinition, reverse: requestedReverse };
-  gameState.update({ status: { visible: true, error: false, message: 'Building map…' } });
+  gameState.update({ status: { visible: true, error: false, message: 'Loading map…' } });
   await new Promise<void>((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
   const initialCourse = createCourse(scene, initialDefinition, car.width);
   showLoading('Starting physics…', 0.2);
@@ -906,7 +906,7 @@ async function start() {
       const nextDefinition = await loadCourseDefinition(build(), (fraction) =>
         showLoading('Loading map…', fraction),
       );
-      gameState.update({ status: { visible: true, error: false, message: 'Building map…' } });
+      gameState.update({ status: { visible: true, error: false, message: 'Loading map…' } });
       await new Promise<void>((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
       const next = await createCourseSession({ ...nextDefinition, reverse });
       minimap.setCourse(nextDefinition);

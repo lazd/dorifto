@@ -1364,6 +1364,7 @@ export function bindCoursePicker(
       creationMode() === 'random' || draftName.value.trim() ? '' : 'Enter a course name',
     );
     if (!generatorForm.reportValidity() || !draft?.course) return;
+    let savedPreview: CourseDefinition | undefined;
     await exclusive(async () => {
       try {
         if (!draft?.course) return;
@@ -1385,11 +1386,13 @@ export function bindCoursePicker(
           await savePreviewCourse(draftName.value.trim());
         }
         generator.close();
+        savedPreview = preview;
       } catch (error) {
         actions.reportError(error);
         creationError(`Unable to save course: ${errorText(error)}`);
       }
     });
+    if (savedPreview === preview && picker.open) previewToggle.click();
   });
   roadCancel.addEventListener('click', () => {
     if (!changing && !roadBuilding) generator.close();
@@ -1464,6 +1467,7 @@ export function bindCoursePicker(
     ) {
       const id = event.data.id;
       roadBuilding = false;
+      let savedPreview: CourseDefinition | undefined;
       await exclusive(async () => {
         try {
           const refreshed = await refreshPickerCourses();
@@ -1475,11 +1479,13 @@ export function bindCoursePicker(
           renderList();
           previewCourse(saved);
           generator.close();
+          savedPreview = saved;
         } catch (error) {
           actions.reportError(error);
           creationError(`Unable to open saved course: ${errorText(error)}`);
         }
       });
+      if (savedPreview === preview && picker.open) previewToggle.click();
     }
   });
   directions.forEach((input) =>

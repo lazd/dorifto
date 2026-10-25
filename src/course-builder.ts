@@ -74,6 +74,16 @@ nameInput.addEventListener('blur', () => {
   nameCopiedToSearch = true;
   if (!locationInput.value.trim()) locationInput.value = name;
 });
+nameInput.addEventListener('keydown', (event) => {
+  if (event.key !== 'Enter' || event.isComposing || editingId) return;
+  event.preventDefault();
+  const name = nameInput.value.trim();
+  if (!name || name === nameInput.defaultValue) return;
+  nameCopiedToSearch = true;
+  locationInput.value = name;
+  locationInput.focus();
+  locationForm.requestSubmit();
+});
 const locationButton = element<HTMLButtonElement>('location-submit');
 locationButton.addEventListener('mousedown', (event) => event.preventDefault());
 let searching = false;
