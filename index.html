@@ -214,6 +214,9 @@
       </header>
       <div class="master-detail dialog-body">
         <div class="selection-library">
+          <p id="course-picker-loading" class="course-picker-loading" role="status" hidden>
+            Loading courses…
+          </p>
           <div
             id="course-list"
             class="selection-list"
@@ -228,22 +231,17 @@
         </div>
         <div class="detail-panel course-detail">
           <section id="course-overview" aria-labelledby="course-preview-name">
-            <div id="course-preview-visual" class="course-preview-visual"></div>
-            <p id="course-preview-error" role="alert"></p>
-            <div class="course-preview-heading">
-              <h3 id="course-preview-name"></h3>
-              <span id="course-preview-group" class="badge"></span>
-              <button id="course-save-preview" class="button button-quiet" type="button" hidden>
-                Save layout…
-              </button>
-              <button id="course-edit-draft" class="button button-quiet" type="button" hidden>
-                Edit
-              </button>
+            <div class="course-preview-hero">
+              <div id="course-preview-visual" class="course-preview-visual"></div>
+              <div class="course-preview-caption">
+                <h3 id="course-preview-name"></h3>
+                <p id="course-preview-distance" class="help-text"></p>
+              </div>
               <details id="course-actions" class="action-disclosure" hidden>
                 <summary class="button button-quiet" aria-label="Saved course actions">⋯</summary>
                 <div class="action-menu">
-                  <button id="course-rename" class="button button-quiet" type="button">
-                    Rename course
+                  <button id="course-edit" class="button button-quiet" type="button" hidden>
+                    Edit course
                   </button>
                   <button id="course-delete" class="button button-quiet danger" type="button">
                     Delete course
@@ -251,7 +249,15 @@
                 </div>
               </details>
             </div>
-            <p id="course-preview-distance" class="help-text"></p>
+            <p id="course-preview-error" role="alert"></p>
+            <div class="course-preview-heading">
+              <button id="course-save-preview" class="button button-quiet" type="button" hidden>
+                Save layout…
+              </button>
+              <button id="course-edit-draft" class="button button-quiet" type="button" hidden>
+                Edit
+              </button>
+            </div>
             <div class="course-direction">
               <div>
                 <strong>Direction</strong>
@@ -272,54 +278,6 @@
             </div>
             <ul id="course-records" class="record-list"></ul>
           </section>
-          <section
-            id="course-generator"
-            class="creation-panel"
-            aria-labelledby="course-generator-title"
-            hidden
-          >
-            <h3 id="course-generator-title">Create course</h3>
-            <p class="help-text">Preview a new layout before changing your race.</p>
-            <form id="course-generator-form" class="creation-form">
-              <div class="field">
-                <label for="course-draft-name">Course name</label>
-                <input
-                  id="course-draft-name"
-                  name="name"
-                  type="text"
-                  maxlength="80"
-                  required
-                  placeholder="Name your course"
-                />
-              </div>
-              <fieldset class="segmented-control" aria-label="Generation type">
-                <label
-                  ><input type="radio" name="generation" value="random" checked /><span
-                    >Random</span
-                  ></label
-                >
-                <label
-                  ><input type="radio" name="generation" value="custom" /><span>Custom</span></label
-                >
-              </fieldset>
-              <div class="creation-settings">
-                <p id="course-random-help" class="help-text">
-                  Generate a balanced layout with a mix of corners and elevation.
-                </p>
-                <fieldset id="custom-course-sliders" class="parameter-grid" hidden>
-                  <legend class="visually-hidden">Generation preferences</legend>
-                </fieldset>
-              </div>
-              <div class="creation-actions">
-                <button id="custom-course-reset" class="button button-quiet" type="button" hidden>
-                  Reset defaults
-                </button>
-                <button id="custom-course-generate" class="button button-secondary" type="submit">
-                  Generate preview
-                </button>
-              </div>
-            </form>
-          </section>
           <section id="course-replays" aria-labelledby="course-replays-title" hidden>
             <button id="course-replays-back" class="button button-quiet" type="button">
               ← Course preview
@@ -332,14 +290,78 @@
       </div>
       <p id="course-picker-error" role="alert"></p>
       <div class="dialog-footer">
-        <p id="course-picker-status" class="dialog-help" role="status">
-          Loading a course resets the race.
-        </p>
         <div class="dialog-actions">
-          <button id="course-picker-cancel" class="button button-secondary" type="button">
+          <button id="course-load" class="button button-primary" type="button">Load course</button>
+        </div>
+      </div>
+    </dialog>
+    <dialog
+      id="course-generator"
+      class="course-creator dialog-layout"
+      aria-labelledby="course-generator-title"
+    >
+      <form method="dialog" class="dialog-close">
+        <button class="button button-quiet" type="submit" aria-label="Close" title="Close">
+          <span class="close-icon" aria-hidden="true"></span>
+        </button>
+      </form>
+      <header class="dialog-header">
+        <h2 id="course-generator-title" tabindex="-1" autofocus>Create course</h2>
+      </header>
+      <fieldset class="radio-cards creation-modes" aria-label="Course type">
+        <label
+          ><input type="radio" name="generation" value="roads" checked />
+          <span><strong>Real roads</strong><small>Build a route on the map</small></span>
+        </label>
+        <label
+          ><input type="radio" name="generation" value="random" />
+          <span><strong>Random course</strong><small>Discover a new layout</small></span>
+        </label>
+        <label
+          ><input type="radio" name="generation" value="custom" />
+          <span><strong>Custom course</strong><small>Shape your own layout</small></span>
+        </label>
+      </fieldset>
+      <div class="creation-content dialog-body">
+        <p id="course-road-loading" class="creation-loading help-text" role="status" hidden>
+          Loading course builder…
+        </p>
+        <iframe id="course-road-editor" title="Real road course editor" hidden></iframe>
+        <form id="course-generator-form" class="creation-form" hidden>
+          <div class="creation-settings">
+            <div class="field">
+              <label for="course-draft-name">Course name</label>
+              <input
+                id="course-draft-name"
+                name="name"
+                type="text"
+                maxlength="80"
+                required
+                placeholder="Name your course"
+              />
+            </div>
+            <fieldset id="custom-course-sliders" class="parameter-grid" hidden>
+              <legend class="visually-hidden">Generation preferences</legend>
+            </fieldset>
+          </div>
+          <div class="creation-inspection">
+            <div id="creation-preview" class="course-preview-visual" aria-live="polite"></div>
+            <p id="creation-distance" class="help-text"></p>
+            <button id="custom-course-generate" class="button button-secondary" type="submit">
+              Regenerate
+            </button>
+          </div>
+        </form>
+      </div>
+      <p id="course-creation-error" role="alert"></p>
+      <div class="dialog-footer">
+        <div class="dialog-actions">
+          <button id="course-road-cancel" class="button button-secondary" type="button" hidden>
             Cancel
           </button>
-          <button id="course-load" class="button button-primary" type="button">Load course</button>
+          <button id="course-creation-save" class="button button-primary" type="button" hidden>
+            Save course
+          </button>
         </div>
       </div>
     </dialog>

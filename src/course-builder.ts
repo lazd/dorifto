@@ -32,6 +32,20 @@ import { startTextSpinner } from './text-spinner';
 import type { BuildRequest, BuildResponse } from './course-builder-worker';
 import './course-builder.css';
 
+const embedded =
+  window.parent !== window && new URLSearchParams(location.search).get('embedded') === '1';
+function notifyParent(
+  message:
+    | { type: 'course-builder:ready' }
+    | { type: 'course-builder:controls'; canSave: boolean }
+    | { type: 'course-builder:busy'; busy: boolean }
+    | { type: 'course-builder:saved'; id: string }
+    | { type: 'course-builder:cancel' },
+) {
+  if (embedded) window.parent.postMessage(message, location.origin);
+}
+if (embedded) document.documentElement.classList.add('embedded-builder');
+
 function element<T extends HTMLElement>(id: string) {
   const result = document.getElementById(id);
   if (!result) throw new Error(`Missing course builder element: ${id}`);
@@ -52,6 +66,7 @@ const clearButton = element<HTMLButtonElement>('clear');
 const locationForm = element<HTMLFormElement>('location-form');
 const locationInput = element<HTMLInputElement>('location');
 const locationButton = element<HTMLButtonElement>('location-submit');
+locationButton.addEventListener('mousedown', (event) => event.preventDefault());
 let searching = false;
 let searchVersion = 0;
 let mapReady = false;
@@ -77,6 +92,7 @@ let editingRouteSnapshot: string | undefined;
 let editingCourse: RoadMap | undefined;
 let previewWorker: Worker | undefined;
 let previewVersion = 0;
+let stopPreviewSpinner: (() => void) | undefined;
 const markers: maplibregl.Marker[] = [];
 const theme = courseBuilderTheme();
 const mapContainer = element('map');
@@ -234,6 +250,7 @@ function updateControls() {
     length < minimumRoadLength ||
     length > maximumRoadLength ||
     (editingSnapshot !== undefined && editingSnapshot === editorSnapshot());
+  notifyParent({ type: 'course-builder:controls', canSave: !buildButton.disabled });
   for (const input of [nameInput, widthInput, shoulderInput, transitionInput, centerLineInput])
     input.disabled = !!worker;
 }
@@ -566,6 +583,7 @@ function finishBuild() {
   buildDialog.close();
   status.hidden = false;
   updateControls();
+  notifyParent({ type: 'course-builder:busy', busy: false });
 }
 
 function cancelBuild() {
@@ -648,6 +666,10 @@ element<HTMLFormElement>('build-form').onsubmit = (event) => {
             editingFilename = savedMaps.find((item) => item.course.id === editingId)?.handle.name;
           }
           finishBuild();
+          if (courseSaved && embedded) {
+            notifyParent({ type: 'course-builder:saved', id: response.course.id });
+            return;
+          }
           if (courseSaved) {
             setView('library');
             updatePreviewInfo();
@@ -698,6 +720,7 @@ element<HTMLFormElement>('build-form').onsubmit = (event) => {
     );
   };
   setView('generating');
+  notifyParent({ type: 'course-builder:busy', busy: true });
   buildSteps.replaceChildren();
   for (const [key, label] of Object.entries(roadBuildSteps)) {
     if (existingCourse && (key === 'terrain' || key === 'corridor')) continue;
@@ -817,6 +840,8 @@ async function refreshSaved() {
 }
 
 function stopLibraryPreview() {
+  stopPreviewSpinner?.();
+  stopPreviewSpinner = undefined;
   previewVersion++;
   previewWorker?.terminate();
   previewWorker = undefined;
@@ -844,6 +869,7 @@ async function selectMap(id: string) {
   const previewStatus = element('preview-status');
   previewStatus.textContent = 'Loading preview...';
   previewStatus.hidden = false;
+  stopPreviewSpinner = startTextSpinner(previewStatus);
   try {
     const json = await selected.handle.getFile();
     if (version !== previewVersion || view !== 'library') return;
@@ -856,6 +882,8 @@ async function selectMap(id: string) {
       if (version !== previewVersion) return;
       active.terminate();
       previewWorker = undefined;
+      stopPreviewSpinner?.();
+      stopPreviewSpinner = undefined;
       previewStatus.textContent =
         'Preview unavailable. You can still edit or download this course.';
       report(error);
@@ -876,6 +904,8 @@ async function selectMap(id: string) {
           { ...theme.preview, background: theme.palette.surface },
           `Interactive preview of ${selected.course.name}`,
         );
+        stopPreviewSpinner?.();
+        stopPreviewSpinner = undefined;
         previewStatus.hidden = true;
       } catch (error) {
         fail(error);
@@ -890,6 +920,8 @@ async function selectMap(id: string) {
     updatePreviewInfo();
   } catch (error) {
     if (version !== previewVersion || view !== 'library') return;
+    stopPreviewSpinner?.();
+    stopPreviewSpinner = undefined;
     previewStatus.textContent = 'Preview unavailable. Reload the page and try again.';
     report(error);
   }
@@ -969,7 +1001,8 @@ element<HTMLButtonElement>('new-course').onclick = () => {
   nameInput.focus();
 };
 element<HTMLButtonElement>('cancel-edit').onclick = () => {
-  void showLibrary();
+  if (embedded) notifyParent({ type: 'course-builder:cancel' });
+  else void showLibrary();
 };
 
 async function saveCourse(builtCourse: RoadMap, json: Blob, signal: AbortSignal) {
@@ -984,9 +1017,60 @@ async function saveCourse(builtCourse: RoadMap, json: Blob, signal: AbortSignal)
   }
 }
 
-void showLibrary();
+const embeddedResize = embedded
+  ? new ResizeObserver(() => {
+      if (mapContainer.clientWidth && mapContainer.clientHeight) map.resize();
+    })
+  : undefined;
+embeddedResize?.observe(mapContainer);
+
+async function openEmbeddedEditor() {
+  const id = new URLSearchParams(location.search).get('edit');
+  if (!id) {
+    element<HTMLButtonElement>('new-course').click();
+    return;
+  }
+  try {
+    directory = await openRoadMaps();
+    await refreshSaved();
+    const saved = savedMaps.find((item) => item.course.id === id);
+    if (!saved) throw new Error('Saved course not found');
+    course = saved.course;
+    editSavedCourse();
+  } catch (error) {
+    setView('editor');
+    report(error);
+  }
+}
+
+if (embedded) {
+  window.addEventListener('message', (event: MessageEvent<unknown>) => {
+    if (
+      event.origin !== location.origin ||
+      event.source !== window.parent ||
+      typeof event.data !== 'object' ||
+      event.data === null ||
+      !('type' in event.data)
+    )
+      return;
+    if (event.data.type === 'course-builder:save' && !worker && !buildButton.disabled)
+      element<HTMLFormElement>('build-form').requestSubmit(buildButton);
+  });
+  const mapLoaded = mapReady
+    ? Promise.resolve()
+    : new Promise<void>((resolve) => map.once('load', () => resolve()));
+  void Promise.all([openEmbeddedEditor(), mapLoaded]).then(() => {
+    requestAnimationFrame(() => {
+      notifyParent({ type: 'course-builder:ready' });
+      updateControls();
+    });
+  });
+} else void showLibrary();
 
 window.addEventListener('pagehide', () => {
+  stopPreviewSpinner?.();
+  stopPreviewSpinner = undefined;
+  embeddedResize?.disconnect();
   clearTimeout(guidanceTimer);
   worker?.terminate();
   saveController?.abort();

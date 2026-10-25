@@ -17,9 +17,18 @@
 }
 
 .selection-library {
+  position: relative;
   display: flex;
   flex-direction: column;
   min-height: 0;
+  background: var(--color-sunken);
+}
+
+.course-picker-loading {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  margin: 0;
   background: var(--color-sunken);
 }
 
@@ -42,39 +51,99 @@
   margin: var(--space-1) 0 0;
 }
 
-.creation-panel {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  min-height: 0;
+.course-creator {
+  width: min(80rem, calc(100vw - var(--space-6)));
 }
 
-.creation-panel[hidden],
-.parameter-grid[hidden] {
-  display: none;
+.course-creator .creation-modes {
+  margin-block: var(--space-4);
 }
 
-.creation-panel > h3 {
+.creation-content {
+  position: relative;
+  margin-bottom: var(--space-4);
+  overflow: hidden;
+}
+
+.course-creator .creation-modes[hidden] + .creation-content {
+  margin-top: var(--space-4);
+}
+
+.creation-loading {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
   margin: 0;
 }
 
-.creation-panel > p {
-  margin: var(--space-2) 0 var(--space-4);
+#course-road-editor:not([data-ready]) {
+  visibility: hidden;
+}
+
+#course-road-editor {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: var(--line) solid var(--color-border);
+  border-radius: var(--radius-md);
 }
 
 .creation-form {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-height: 0;
-  gap: var(--space-3);
+  display: grid;
+  grid-template-columns: minmax(16rem, 0.8fr) minmax(0, 1fr);
+  height: 100%;
+  gap: var(--space-5);
 }
 
 .creation-settings {
-  flex: 1;
+  display: grid;
+  align-content: start;
+  gap: var(--space-4);
   min-height: 0;
   overflow-y: auto;
   scrollbar-gutter: stable;
+}
+
+.creation-inspection {
+  display: grid;
+  align-content: stretch;
+  grid-template-rows: minmax(0, 1fr) auto auto;
+  justify-items: center;
+  gap: var(--space-3);
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.creation-inspection .course-preview-visual {
+  height: 100%;
+  width: 100%;
+  aspect-ratio: auto;
+}
+
+.creation-form[data-mode='random'] {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.creation-form[data-mode='random'] .creation-settings {
+  display: none;
+}
+
+.creation-form[data-mode='random'] #custom-course-generate {
+  min-height: calc(var(--control-height) + var(--space-4));
+  width: min(100%, 24rem);
+  font-size: var(--text-lg);
+  font-weight: 600;
+  margin-bottom: var(--space-4);
+}
+
+.creation-inspection p {
+  margin: 0;
+}
+
+.creation-form[data-mode='custom'] .creation-inspection {
+  grid-template-rows: minmax(0, 1fr) auto;
 }
 
 .parameter-grid {
@@ -120,19 +189,12 @@
   font-size: var(--text-xs);
 }
 
-.creation-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-3);
-}
-
-.creation-actions .button-secondary {
-  flex: 1;
-}
-
-.course-detail:has(.creation-panel:not([hidden])) {
-  display: block;
-  overflow: hidden;
+@media (max-width: 40rem) {
+  .creation-form {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+    gap: var(--space-3);
+  }
 }
 
 .course-picker .detail-panel {
@@ -168,8 +230,47 @@
   transition: opacity 0.2s;
 }
 
-.course-preview-heading h3 {
+.course-preview-hero {
+  position: relative;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--color-selected);
+}
+
+.course-preview-hero .course-preview-visual {
+  width: 100%;
+  height: clamp(14rem, 35dvh, 23rem);
+  padding-top: var(--space-5);
+  aspect-ratio: auto;
+}
+
+.course-preview-hero .action-disclosure {
+  position: absolute;
+  top: var(--space-4);
+  right: var(--space-4);
+}
+
+.course-preview-hero:has(.action-disclosure:not([hidden])) .course-preview-caption {
+  padding-right: calc(var(--control-height) + var(--space-4) * 2);
+}
+
+.course-preview-caption {
+  position: absolute;
+  inset: 0 0 auto;
+  padding: var(--space-4);
+  background: linear-gradient(var(--color-selected), transparent);
+  pointer-events: none;
+}
+
+dialog .course-preview-caption h3 {
+  margin: 0;
+  font-size: var(--text-heading);
   overflow-wrap: anywhere;
+}
+
+.course-preview-caption p {
+  margin: var(--space-1) 0 0;
+  color: var(--color-text);
 }
 
 .course-preview-visual[aria-busy='true'] {
@@ -266,16 +367,6 @@ dialog .course-preview-heading h3 {
 @media (max-width: 40rem) {
   .course-picker .master-detail {
     grid-template-rows: minmax(8rem, 0.8fr) minmax(0, 1fr);
-  }
-  .course-detail:has(.creation-panel:not([hidden])) {
-    overflow-y: auto;
-  }
-  .creation-panel {
-    height: auto;
-  }
-  .creation-settings {
-    flex: none;
-    overflow: visible;
   }
   .parameter-grid {
     grid-template-columns: minmax(0, 1fr);

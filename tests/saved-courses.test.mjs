@@ -67,13 +67,24 @@ test('OPFS saves generated layouts, renames stable files, and deletes only selec
   assert.equal(first.name, 'Random');
   assert.deepEqual(first.points, random.points);
   assert.deepEqual(second.generation.weights, defaultCourseWeights);
+  const changed = {
+    ...generateCustomCourse(43, defaultCourseWeights),
+    id: second.id,
+    name: 'Edited',
+  };
+  const originalFiles = [...dir.files.keys()];
+  const updated = await saved.updateSavedCourse(dir, changed);
+  assert.deepEqual([...dir.files.keys()], originalFiles);
+  assert.deepEqual(updated.points, changed.points);
+  assert.equal(updated.id, second.id);
+  assert.equal(updated.name, 'Edited');
   const filenames = [...dir.files.keys()];
   const renamed = await saved.renameSavedCourse(dir, first.id, 'New name');
   assert.equal(renamed.id, first.id);
   assert.deepEqual([...dir.files.keys()], filenames);
   assert.equal((await saved.loadSavedCourses(dir)).find((c) => c.id === first.id).name, 'New name');
   await saved.deleteSavedCourse(dir, first.id);
-  assert.deepEqual(await saved.loadSavedCourses(dir), JSON.parse(JSON.stringify([second])));
+  assert.deepEqual(await saved.loadSavedCourses(dir), JSON.parse(JSON.stringify([updated])));
   await assert.rejects(saved.deleteSavedCourse(dir, 'missing'), /not found/);
   await assert.rejects(saved.saveCourse(dir, random, ' '), /Enter a course name/);
   await assert.rejects(

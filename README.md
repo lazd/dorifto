@@ -98,7 +98,18 @@ direct browser requests to OpenFreeMap and USGS, so an internet connection is ne
 
 Builder maps appear at the top of the game's course chooser under **Your tracks**
 when both apps use the same origin. The chooser refreshes OPFS tracks whenever it
-opens. The builder's **Play** button still downloads JSON rather than launching
+opens. **Create course** opens three mode cards: **Real roads** embeds the same browser
+road editor directly (without its library), **Random course** generates a 2D preview
+with a large **Regenerate** button and an automatic name (no name field), and **Custom course** puts generation controls beside a
+2D preview that updates when settings change. All modes save to the shared OPFS
+library and select the saved course in the chooser without restarting the race;
+choose **Load course** when ready. Real-road generation still runs entirely in
+the browser, including elevation fetching and terrain generation.
+Saved courses have an **Edit course** action in the chooser. Real roads reopen in
+the map editor; generated courses reopen with their original seed and generation
+preferences. Saving edits replaces the existing OPFS file and keeps the course ID.
+Course names are changed in the editor rather than a separate Rename action.
+The standalone builder's **Play** button still downloads JSON rather than launching
 the game. Downloaded files use the game's `CourseDefinition` format,
 including terrain and attribution; they can be added to `src/tracks/` and built
 like other imported courses. OpenStreetMap-derived data retains

@@ -46,6 +46,8 @@ dialog::backdrop {
 
 .dialog-layout > .dialog-footer {
   margin-top: 0;
+  margin-inline: calc(-1 * var(--space-5));
+  padding-inline: var(--space-5);
 }
 
 .dialog-scroll {

@@ -189,8 +189,8 @@
   font-size: var(--text-xs);
 }
 
-.race-mode {
-  padding-block: var(--space-4);
+.bots-dialog .race-mode {
+  margin-block: var(--space-4);
 }
 
 .race-solo {

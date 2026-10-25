@@ -17,22 +17,6 @@ export const courseGenerationFields = [
     description: 'Target lap distance, from 1 to 5 km.',
   },
   {
-    key: 'elevation',
-    label: 'Elevation change',
-    min: 0,
-    max: 1,
-    step: 0.01,
-    description: 'Flat centerline to rolling climbs and descents, independent of banking.',
-  },
-  {
-    key: 'banking',
-    label: 'Turn banking',
-    min: 0,
-    max: 1,
-    step: 0.01,
-    description: 'Unbanked turns to steep banking up to 33°, independent of elevation.',
-  },
-  {
     key: 'straightaways',
     label: 'Straightaways',
     min: 0,
@@ -63,6 +47,22 @@ export const courseGenerationFields = [
     max: 1,
     step: 0.01,
     description: 'More left-right chicanes and esses.',
+  },
+  {
+    key: 'elevation',
+    label: 'Elevation change',
+    min: 0,
+    max: 1,
+    step: 0.01,
+    description: 'Flat centerline to rolling climbs and descents, independent of banking.',
+  },
+  {
+    key: 'banking',
+    label: 'Turn banking',
+    min: 0,
+    max: 1,
+    step: 0.01,
+    description: 'Unbanked turns to steep banking up to 33°, independent of elevation.',
   },
 ] as const;
 
@@ -451,7 +451,7 @@ export function generateCustomCourse(
     const mirror = random() < 0.5 ? -1 : 1;
     const definition: CourseDefinition = {
       id: 'custom',
-      name: `Custom Circuit (${seed})`,
+      name: `Custom Course (${seed})`,
       width,
       generation: { type: 'custom', seed, weights: { ...weights } },
       points: [...points.slice(startIndex), ...points.slice(0, startIndex)].map(([px, pz]) => [

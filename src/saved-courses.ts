@@ -160,6 +160,17 @@ async function findSavedCourse(directory: FileSystemDirectoryHandle, id: string)
   throw new Error('Saved course not found');
 }
 
+export async function updateSavedCourse(
+  directory: FileSystemDirectoryHandle,
+  definition: CourseDefinition,
+) {
+  if (!isCourse(definition)) throw new Error('Course has an invalid format');
+  const { handle } = await findSavedCourse(directory, definition.id);
+  const saved = { ...definition, name: definition.name.trim() };
+  await storeRoadMap(directory, saved, new Blob([JSON.stringify(saved)]), handle.name);
+  return saved;
+}
+
 export async function deleteSavedCourse(directory: FileSystemDirectoryHandle, id: string) {
   const { handle } = await findSavedCourse(directory, id);
   await directory.removeEntry(handle.name);

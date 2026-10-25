@@ -36,6 +36,11 @@ body {
   padding-bottom: var(--space-3);
   padding-inline: var(--space-4);
 }
+.embedded-builder .panel > header,
+.embedded-builder #editor-actions {
+  display: none;
+}
+
 .panel h1 {
   margin: 0;
   font-size: var(--text-xl);
@@ -51,7 +56,7 @@ body {
 #library-panel {
   padding-inline: var(--space-3);
 }
-button:not(.button, .selection-item),
+button:where(:not(.button, .selection-item, .maplibregl-ctrl button)),
 input,
 select {
   font: inherit;
@@ -65,7 +70,7 @@ select {
 button {
   cursor: pointer;
 }
-button:not(.button, .selection-item):hover:not(:disabled) {
+button:where(:not(.button, .selection-item, .maplibregl-ctrl button)):hover:not(:disabled) {
   border-color: var(--color-accent);
 }
 button:disabled {
@@ -282,6 +287,7 @@ input.switch::before {
   border-left: var(--line) solid var(--color-border);
   border-radius: 0 var(--radius-pill) var(--radius-pill) 0;
   padding: calc(var(--space-4) - var(--space-1) / 2) var(--space-5);
+  padding-left: calc(var(--space-4) + var(--space-1));
   background: color-mix(in srgb, var(--color-selected) 65%, var(--color-accent));
   font-weight: 600;
 }
@@ -289,14 +295,15 @@ input.switch::before {
   background: var(--color-accent);
   color: var(--color-sunken);
 }
+.viewport-search button.text-spinner {
+  background: transparent;
+}
 .viewport-search:focus-within {
   border-color: var(--color-accent);
 }
-.viewport-search input:focus-visible {
+.viewport-search input:focus-visible,
+.viewport-search button:focus-visible {
   outline: none;
-}
-.viewport-search :focus-visible {
-  outline-offset: calc(-1 * var(--space-1));
 }
 #status {
   position: absolute;
@@ -416,7 +423,7 @@ input.switch::before {
 .maplibregl-ctrl-group button:focus {
   background-color: var(--color-selected);
 }
-.route-marker {
+button.route-marker {
   min-width: calc(var(--space-5) + var(--space-1));
   height: calc(var(--space-5) + var(--space-1));
   padding: 0 var(--space-1);

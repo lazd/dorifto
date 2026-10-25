@@ -40,7 +40,7 @@ import {
   deleteSavedCourse,
   loadSavedCourses,
   migrateSavedCourses,
-  renameSavedCourse,
+  updateSavedCourse,
   saveCourse,
 } from './saved-courses';
 import { openRoadMaps } from './course-builder-storage';
@@ -1028,12 +1028,12 @@ async function start() {
       history.replaceState(null, '', url);
       return saved;
     },
-    // Records are keyed by the stable saved ID, so renaming keeps them.
-    renameCourse: async (id, name) => {
-      const renamed = await renameSavedCourse(trackDirectory, id, name);
-      storedCourses[storedCourses.findIndex((course) => course.id === id)] = renamed;
-      availableCourses[availableCourses.findIndex((course) => course.id === id)] = renamed;
-      if (activeDefinition.id === id) {
+    updateCourse: async (definition) => {
+      const renamed = await updateSavedCourse(trackDirectory, definition);
+      storedCourses[storedCourses.findIndex((course) => course.id === definition.id)] = renamed;
+      availableCourses[availableCourses.findIndex((course) => course.id === definition.id)] =
+        renamed;
+      if (activeDefinition.id === definition.id) {
         activeDefinition = renamed;
         minimap.setCourse(renamed);
       }
@@ -1072,6 +1072,7 @@ async function start() {
       if (key === storageKey) refreshSavedRuns();
     },
     getCourseWeights: ui.getCourseWeights,
+    setCourseWeights: ui.setCourseWeights,
   });
 
   function cycleCamera() {

@@ -684,6 +684,7 @@ a {
 dialog .dialog-close {
   position: absolute;
   margin: 0;
+  z-index: 2;
 }
 #tuning-preset-title {
   margin: 0;

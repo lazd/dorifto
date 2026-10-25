@@ -12,6 +12,7 @@ import {
 } from './courses';
 import { coursePreviewSvg } from './course-preview';
 import { CoursePreviewRenderer } from './course-preview-3d';
+import { startTextSpinner } from './text-spinner';
 import {
   courseDirectionRecords,
   describeRun,
@@ -588,7 +589,7 @@ export interface CoursePickerActions {
   ) => Promise<CourseDefinition>;
   changeDirection: (reverse: boolean) => Promise<void>;
   saveCourse: (name: string, definition?: CourseDefinition) => Promise<CourseDefinition>;
-  renameCourse: (id: string, name: string) => Promise<CourseDefinition>;
+  updateCourse: (course: CourseDefinition) => Promise<CourseDefinition>;
   /** Deleting the active course loads a fallback; returns the active course afterwards. */
   deleteCourse: (id: string) => Promise<CourseDefinition>;
   /** Plays a saved run of the active course and direction, resetting the race. */
@@ -596,6 +597,7 @@ export interface CoursePickerActions {
   deleteReplay: (course: CourseDefinition, reverse: boolean, runId: string) => void;
   reportError: (error: unknown) => void;
   getCourseWeights: () => CourseGenerationWeights;
+  setCourseWeights: (weights: CourseGenerationWeights) => void;
 }
 
 const courseGroups = [
@@ -650,17 +652,15 @@ export function bindCoursePicker(
   const pickerButton = element<HTMLButtonElement>('#minimap');
   const picker = element<HTMLDialogElement>('#course-picker-dialog');
   const pickerError = bindText('#course-picker-error');
-  const pickerStatus = bindText('#course-picker-status');
   const list = element('#course-list');
   const overview = element('#course-overview');
   const previewContainer = element('#course-preview-visual');
   const previewError = bindText('#course-preview-error');
   const previewName = bindText('#course-preview-name');
-  const previewGroup = bindText('#course-preview-group');
   const previewDistance = bindText('#course-preview-distance');
   const courseActions = element<HTMLDetailsElement>('#course-actions');
   const courseActionsSummary = courseActions.querySelector('summary')!;
-  const renameAction = element<HTMLButtonElement>('#course-rename');
+  const editAction = element<HTMLButtonElement>('#course-edit');
   const deleteAction = element<HTMLButtonElement>('#course-delete');
   const records = element('#course-records');
   const replays = element('#course-replays');
@@ -680,16 +680,33 @@ export function bindCoursePicker(
   const savedCancel = element<HTMLButtonElement>('#saved-course-cancel');
   const savedConfirm = element<HTMLButtonElement>('#saved-course-confirm');
   const courseName = bindText('#course-name');
-  const generator = element('#course-generator');
+  const generator = element<HTMLDialogElement>('#course-generator');
   const generatorForm = element<HTMLFormElement>('#course-generator-form');
   const draftName = element<HTMLInputElement>('#course-draft-name');
   const createButton = element<HTMLButtonElement>('#course-create');
   const savePreview = element<HTMLButtonElement>('#course-save-preview');
   const editDraft = element<HTMLButtonElement>('#course-edit-draft');
   const directions = [...picker.querySelectorAll<HTMLInputElement>('[name="course-direction"]')];
-  const generationTypes = [...picker.querySelectorAll<HTMLInputElement>('[name="generation"]')];
+  const generationTypes = [...generator.querySelectorAll<HTMLInputElement>('[name="generation"]')];
   const generationFields = element<HTMLFieldSetElement>('#custom-course-sliders');
-  const resetGeneration = element<HTMLButtonElement>('#custom-course-reset');
+  const regenerate = element<HTMLButtonElement>('#custom-course-generate');
+  let generationTimer: ReturnType<typeof setTimeout> | undefined;
+  const roadEditor = element<HTMLIFrameElement>('#course-road-editor');
+  const roadLoading = element('#course-road-loading');
+  let stopRoadSpinner: (() => void) | undefined;
+  const pickerLoading = element('#course-picker-loading');
+  let stopPickerSpinner: (() => void) | undefined;
+  let roadLoadingTimer: ReturnType<typeof setTimeout> | undefined;
+  const creationPreview = element('#creation-preview');
+  const creationDistance = bindText('#creation-distance');
+  const creationError = bindText('#course-creation-error');
+  const creationSave = element<HTMLButtonElement>('#course-creation-save');
+  const roadCancel = element<HTMLButtonElement>('#course-road-cancel');
+  let roadCanSave = false;
+  let roadBuilding = false;
+  let generationSeed = 0;
+  let automaticCourseName = true;
+  let editingCourse: CourseDefinition | undefined;
   const enable3dPreview = false;
   const preview3d = new CoursePreviewRenderer(previewContainer);
   const items = new Map<string, HTMLButtonElement>();
@@ -893,11 +910,9 @@ export function bindCoursePicker(
         row.addEventListener('contextmenu', async (event) => {
           event.preventDefault();
           pickerError('');
-          pickerStatus('');
           try {
             const key = replayStorageKey({ ...course, reverse: direction });
             await navigator.clipboard.writeText(exportRun(key, run.id));
-            pickerStatus('Run JSON copied to clipboard.');
           } catch (error) {
             actions.reportError(error);
             pickerError(`Unable to copy run JSON: ${errorText(error)}`);
@@ -947,7 +962,6 @@ export function bindCoursePicker(
 
   function showOverview() {
     replays.hidden = true;
-    generator.hidden = true;
     overview.hidden = false;
     creating = false;
   }
@@ -972,7 +986,7 @@ export function bindCoursePicker(
     if (!enable3dPreview) {
       previewContainer.innerHTML = coursePreviewSvg(course, {
         size: 400,
-        padding: 24,
+        padding: 64,
         title: course.name,
       });
       return;
@@ -1006,13 +1020,12 @@ export function bindCoursePicker(
     showOverview();
     previewError('');
     previewName(course.name);
-    previewGroup(groupForCourse(course).badge);
-    element('#course-preview-group').hidden = groupForCourse(course).id === 'stored';
     previewDistance(
       `${courseDistance(course)}${course.closed === false ? '' : ' per lap'} · ${routeLabel(course)}`,
     );
     courseActions.open = false;
     courseActions.hidden = groupForCourse(course).id !== 'stored';
+    editAction.hidden = groupForCourse(course).id !== 'stored';
     savePreview.hidden = !isUnsavedCourse(course);
     editDraft.hidden = !isDraft;
     renderRecords(course);
@@ -1035,19 +1048,28 @@ export function bindCoursePicker(
     pickerButton.disabled = generationFields.disabled = changing;
     loadButton.disabled = changing || creating;
     loadButton.textContent = draftSelected && !creating ? 'Save & load course' : 'Load course';
+    generator.setAttribute('aria-busy', String(changing || roadBuilding));
+    for (const control of generator.querySelectorAll<
+      HTMLButtonElement | HTMLInputElement | HTMLFieldSetElement
+    >('button, input, fieldset'))
+      control.disabled = changing || roadBuilding;
+    creationSave.disabled =
+      changing ||
+      roadBuilding ||
+      (creationMode() === 'roads'
+        ? !roadCanSave || !roadEditor.hasAttribute('data-ready')
+        : !draft?.course);
   }
 
   /** Runs one course operation at a time; returns false if another is already running. */
-  async function exclusive(status: string, operation: () => Promise<void>) {
+  async function exclusive(operation: () => Promise<void>) {
     if (changing) return false;
     changing = true;
-    pickerStatus(status);
     syncBusy();
     try {
       await operation();
     } finally {
       changing = false;
-      pickerStatus('Loading a course resets the race.');
       syncBusy();
     }
     return true;
@@ -1056,7 +1078,7 @@ export function bindCoursePicker(
   /** Loads a course; `generation` rebuilds a previewed unsaved layout instead of a new one. */
   async function selectCourse(id: string, generation?: CourseDefinition['generation']) {
     pickerError('');
-    await exclusive('Loading course…', async () => {
+    await exclusive(async () => {
       try {
         const weights =
           generation?.type === 'custom'
@@ -1083,22 +1105,126 @@ export function bindCoursePicker(
 
   function showGenerator() {
     if (changing) return;
+    automaticCourseName = true;
+    editingCourse = undefined;
+    element('#course-generator-title').textContent = 'Create course';
+    generator.querySelector<HTMLFieldSetElement>('.creation-modes')!.hidden = false;
+    for (const input of generationTypes) input.closest('label')!.hidden = false;
     if (!draft) {
       const names = new Set(courses.map(({ name }) => name));
       let name = 'New course';
       for (let number = 2; names.has(name); number++) name = `New course ${number}`;
       draft = { name };
     }
-    draftSelected = creating = true;
-    ++previewToken;
-    preview3d.dispose();
-    overview.hidden = replays.hidden = true;
-    generator.hidden = false;
+    creating = true;
     draftName.value = draft.name;
-    pickerError('');
-    renderList();
-    items.get('new-course')?.scrollIntoView({ block: 'nearest' });
-    draftName.select();
+    creationError('');
+    generator.showModal();
+    notifyUIVisibility();
+    updateCreationMode();
+  }
+
+  editAction.addEventListener('click', () => {
+    if (changing) return;
+    courseActions.open = false;
+    editingCourse = preview;
+    draft = { name: preview.name, course: structuredClone(preview) };
+    draftName.value = preview.name;
+    creating = true;
+    creationError('');
+    element('#course-generator-title').textContent = 'Edit course';
+    generator.querySelector<HTMLFieldSetElement>('.creation-modes')!.hidden = true;
+    const mode = preview.generation?.type ?? 'roads';
+    generationSeed = preview.generation?.seed ?? 0;
+    if (preview.generation?.type === 'custom') {
+      actions.setCourseWeights({ ...preview.generation.weights });
+      generator.dispatchEvent(new Event('refresh-weights'));
+    }
+    for (const input of generationTypes) {
+      input.checked = input.value === mode;
+      input.closest('label')!.hidden = input.value !== mode;
+    }
+    generator.showModal();
+    notifyUIVisibility();
+    updateCreationMode();
+  });
+
+  const creationMode = () => generationTypes.find((input) => input.checked)!.value;
+
+  function generateDraft(newSeed = true) {
+    if (!draft || changing || roadBuilding) return;
+    creationError('');
+    try {
+      if (newSeed) generationSeed = crypto.getRandomValues(new Uint32Array(1))[0];
+      const course =
+        creationMode() === 'custom'
+          ? generateCustomCourse(generationSeed, actions.getCourseWeights())
+          : generateCourse(generationSeed);
+      draft.course = {
+        ...course,
+        id: editingCourse?.id ?? course.id,
+        name:
+          (creationMode() === 'random' || automaticCourseName) && !editingCourse
+            ? course.name
+            : draftName.value.trim() || draft.name,
+      };
+      if ((creationMode() === 'random' || automaticCourseName) && !editingCourse) {
+        draft.name = draft.course.name;
+        draftName.value = draft.name;
+      }
+      creationPreview.innerHTML = coursePreviewSvg(draft.course, { size: 400, padding: 24 });
+      creationDistance(`${courseDistance(draft.course)} · ${routeLabel(draft.course)}`);
+    } catch (error) {
+      draft.course = undefined;
+      creationPreview.replaceChildren();
+      creationDistance('');
+      actions.reportError(error);
+      creationError(`Unable to generate preview: ${errorText(error)}`);
+    }
+    syncBusy();
+  }
+
+  function updateCreationMode() {
+    const mode = creationMode();
+    const realRoads = mode === 'roads';
+    generatorForm.dataset.mode = mode;
+    draftName.closest<HTMLElement>('.field')!.hidden = mode === 'random';
+    draftName.required = mode !== 'random';
+    roadEditor.hidden = !realRoads;
+    roadLoading.hidden = !realRoads || roadEditor.hasAttribute('data-ready');
+    generatorForm.hidden = realRoads;
+    creationSave.hidden = false;
+    creationSave.textContent = 'Save course';
+    roadCancel.hidden = !editingCourse;
+    generationFields.hidden = mode !== 'custom';
+    regenerate.hidden = mode !== 'random';
+    clearTimeout(generationTimer);
+    generationTimer = undefined;
+    if (realRoads) {
+      if (!roadEditor.hasAttribute('src')) {
+        roadEditor.removeAttribute('data-ready');
+        stopRoadSpinner = startTextSpinner(roadLoading);
+        roadLoadingTimer = setTimeout(() => {
+          roadLoadingTimer = undefined;
+          roadLoading.hidden = true;
+          stopRoadSpinner?.();
+          stopRoadSpinner = undefined;
+          const error = new Error('Course builder did not start. Close and reopen to try again.');
+          actions.reportError(error);
+          creationError(error.message);
+        }, 30000);
+        const url = new URL('./course-builder.html', location.href);
+        url.searchParams.set('embedded', '1');
+        if (editingCourse) url.searchParams.set('edit', editingCourse.id);
+        roadEditor.src = url.href;
+      }
+    } else {
+      if (editingCourse && draft?.course) {
+        creationPreview.innerHTML = coursePreviewSvg(draft.course, { size: 400, padding: 24 });
+        creationDistance(`${courseDistance(draft.course)} · ${routeLabel(draft.course)}`);
+      } else generateDraft();
+    }
+    syncBusy();
   }
 
   async function savePreviewCourse(name: string) {
@@ -1118,51 +1244,160 @@ export function bindCoursePicker(
   createButton.addEventListener('click', showGenerator);
   editDraft.addEventListener('click', showGenerator);
   draftName.addEventListener('input', () => {
+    automaticCourseName = false;
     draftName.setCustomValidity('');
     if (!draft) return;
     draft.name = draftName.value;
+    if (draft.course) draft.course.name = draft.name;
     const title = items.get('new-course')?.querySelector('.selection-item-title');
     if (title) title.textContent = draft.name.trim() || 'New course';
   });
-  function invalidateDraftPreview() {
-    if (!draft) return;
-    draft.course = undefined;
-    const meta = items.get('new-course')?.querySelector('.selection-item-meta');
-    if (meta) meta.textContent = 'Unsaved';
-  }
-  generatorForm.addEventListener('input', invalidateDraftPreview);
-  resetGeneration.addEventListener('click', invalidateDraftPreview);
-  generationTypes.forEach((input) =>
-    input.addEventListener('change', () => {
-      const custom = input.value === 'custom';
-      generationFields.hidden = resetGeneration.hidden = !custom;
-      element('#course-random-help').hidden = custom;
-    }),
-  );
+  generationFields.addEventListener('input', () => {
+    clearTimeout(generationTimer);
+    generationTimer = setTimeout(() => {
+      generationTimer = undefined;
+      generateDraft(false);
+    }, 120);
+  });
+  generationTypes.forEach((input) => input.addEventListener('change', updateCreationMode));
   generatorForm.addEventListener('submit', (event) => {
     event.preventDefault();
-    draftName.setCustomValidity(draftName.value.trim() ? '' : 'Enter a course name');
-    if (!generatorForm.reportValidity() || !draft) return;
-    draft.name = draftName.value.trim();
-    void exclusive('Generating preview…', async () => {
+    generateDraft();
+  });
+  creationSave.addEventListener('click', async () => {
+    if (creationMode() === 'roads') {
+      if (!creationSave.disabled)
+        roadEditor.contentWindow?.postMessage({ type: 'course-builder:save' }, location.origin);
+      return;
+    }
+    if (generationTimer !== undefined) {
+      clearTimeout(generationTimer);
+      generationTimer = undefined;
+      generateDraft(false);
+    }
+    draftName.setCustomValidity(
+      creationMode() === 'random' || draftName.value.trim() ? '' : 'Enter a course name',
+    );
+    if (!generatorForm.reportValidity() || !draft?.course) return;
+    await exclusive(async () => {
       try {
-        await new Promise<void>((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
-        const seed = crypto.getRandomValues(new Uint32Array(1))[0];
-        const custom = generationTypes.find((input) => input.checked)?.value === 'custom';
-        const course = custom
-          ? generateCustomCourse(seed, actions.getCourseWeights())
-          : generateCourse(seed);
-        const named = { ...course, name: draftName.value.trim() };
-        draft = { name: named.name, course: named };
-        renderList();
-        previewCourse(named, true);
+        if (!draft?.course) return;
+        if (editingCourse) {
+          const saved = await actions.updateCourse({
+            ...draft.course,
+            name: draftName.value.trim(),
+          });
+          courses[courses.findIndex((course) => course.id === saved.id)] = saved;
+          if (selected.id === saved.id) selected = saved;
+          draft = undefined;
+          draftSelected = false;
+          renderList();
+          previewCourse(saved);
+          syncCourseName();
+        } else {
+          preview = draft.course;
+          draftSelected = true;
+          await savePreviewCourse(draftName.value.trim());
+        }
+        generator.close();
       } catch (error) {
-        console.error('Unable to generate course preview:', error);
-        pickerError(`Unable to generate preview: ${errorText(error)}`);
+        actions.reportError(error);
+        creationError(`Unable to save course: ${errorText(error)}`);
       }
-    }).then(() => {
-      if (!creating && picker.open) editDraft.focus();
     });
+  });
+  roadCancel.addEventListener('click', () => {
+    if (!changing && !roadBuilding) generator.close();
+  });
+  generator.addEventListener('cancel', (event) => {
+    if (changing || roadBuilding) event.preventDefault();
+  });
+  generator.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && (changing || roadBuilding)) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  });
+  generator.addEventListener('close', () => {
+    clearTimeout(generationTimer);
+    generationTimer = undefined;
+    roadEditor.removeAttribute('src');
+    roadEditor.removeAttribute('data-ready');
+    roadCanSave = false;
+    roadLoading.hidden = true;
+    stopRoadSpinner?.();
+    stopRoadSpinner = undefined;
+    clearTimeout(roadLoadingTimer);
+    roadLoadingTimer = undefined;
+    roadBuilding = false;
+    creating = false;
+    editingCourse = undefined;
+    if (!draftSelected) draft = undefined;
+    renderList();
+    syncBusy();
+    notifyUIVisibility();
+  });
+  window.addEventListener('message', async (event: MessageEvent<unknown>) => {
+    if (
+      event.origin !== location.origin ||
+      event.source !== roadEditor.contentWindow ||
+      !generator.open ||
+      typeof event.data !== 'object' ||
+      event.data === null ||
+      !('type' in event.data)
+    )
+      return;
+    if (event.data.type === 'course-builder:ready') {
+      clearTimeout(roadLoadingTimer);
+      roadLoadingTimer = undefined;
+      roadEditor.dataset.ready = 'true';
+      roadLoading.hidden = true;
+      stopRoadSpinner?.();
+      stopRoadSpinner = undefined;
+      creationError('');
+      syncBusy();
+    } else if (
+      event.data.type === 'course-builder:controls' &&
+      'canSave' in event.data &&
+      typeof event.data.canSave === 'boolean'
+    ) {
+      roadCanSave = event.data.canSave;
+      syncBusy();
+    } else if (
+      event.data.type === 'course-builder:busy' &&
+      'busy' in event.data &&
+      typeof event.data.busy === 'boolean'
+    ) {
+      roadBuilding = event.data.busy;
+      syncBusy();
+    } else if (event.data.type === 'course-builder:cancel') {
+      if (!roadBuilding) generator.close();
+    } else if (
+      event.data.type === 'course-builder:saved' &&
+      'id' in event.data &&
+      typeof event.data.id === 'string'
+    ) {
+      const id = event.data.id;
+      roadBuilding = false;
+      await exclusive(async () => {
+        pickerLoading.hidden = false;
+        stopPickerSpinner = startTextSpinner(pickerLoading);
+        try {
+          const refreshed = await actions.refreshCourses();
+          const saved = refreshed.find((course) => course.id === id);
+          if (!saved) throw new Error('The saved road course was not found in OPFS.');
+          courses.splice(0, courses.length, ...refreshed);
+          draft = undefined;
+          draftSelected = false;
+          renderList();
+          previewCourse(saved);
+          generator.close();
+        } catch (error) {
+          actions.reportError(error);
+          creationError(`Unable to open saved course: ${errorText(error)}`);
+        }
+      });
+    }
   });
   directions.forEach((input) =>
     input.addEventListener('change', () => {
@@ -1173,7 +1408,7 @@ export function bindCoursePicker(
 
   async function watchRun(course: CourseDefinition, direction: boolean, runId: string) {
     pickerError('');
-    await exclusive('Loading replay…', async () => {
+    await exclusive(async () => {
       try {
         if (course.id !== selected.id) {
           selected = await actions.changeCourse(course.id, undefined, undefined, direction);
@@ -1190,13 +1425,13 @@ export function bindCoursePicker(
   }
 
   let editing: {
-    kind: 'rename' | 'delete' | 'save' | 'delete-replay';
+    kind: 'delete' | 'save' | 'delete-replay';
     course: CourseDefinition;
     returnFocus: HTMLElement;
     replay?: { id: string; direction: boolean; date: string; laps: string };
   } | null = null;
   function editSavedCourse(
-    kind: 'rename' | 'delete' | 'save' | 'delete-replay',
+    kind: 'delete' | 'save' | 'delete-replay',
     course: CourseDefinition,
     returnFocus: HTMLElement,
     replay?: { id: string; direction: boolean; date: string; laps: string },
@@ -1207,13 +1442,7 @@ export function bindCoursePicker(
     const deletingReplay = kind === 'delete-replay';
     const deleting = kind === 'delete' || deletingReplay;
     savedTitle(
-      deletingReplay
-        ? 'Delete replay?'
-        : deleting
-          ? 'Delete saved course?'
-          : kind === 'save'
-            ? 'Save course'
-            : 'Rename course',
+      deletingReplay ? 'Delete replay?' : deleting ? 'Delete saved course?' : 'Save course',
     );
     if (deletingReplay && replay) {
       const request = textElement('p', '', '');
@@ -1240,10 +1469,7 @@ export function bindCoursePicker(
           textElement('p', '', 'It is the current course, so the first built-in course will load.'),
         );
     } else {
-      savedDescription.textContent =
-        kind === 'save'
-          ? 'Name this layout to add it to your saved courses.'
-          : 'Choose a name for this saved course.';
+      savedDescription.textContent = 'Name this layout to add it to your saved courses.';
     }
     savedHelp(
       deletingReplay
@@ -1259,9 +1485,7 @@ export function bindCoursePicker(
       ? 'Delete replay'
       : deleting
         ? 'Delete course'
-        : kind === 'save'
-          ? 'Save course'
-          : 'Save name';
+        : 'Save course';
     savedConfirm.classList.toggle('danger', deleting);
     savedDialog.showModal();
     notifyUIVisibility();
@@ -1294,7 +1518,7 @@ export function bindCoursePicker(
       return;
     }
     if (kind === 'save') {
-      await exclusive('Saving course…', async () => {
+      await exclusive(async () => {
         try {
           await savePreviewCourse(savedNameInput.value);
           savedDialog.close();
@@ -1304,25 +1528,7 @@ export function bindCoursePicker(
       });
       return;
     }
-    if (kind === 'rename') {
-      await exclusive('Renaming course…', async () => {
-        try {
-          const renamed = await actions.renameCourse(course.id, savedNameInput.value);
-          courses[courses.indexOf(course)] = renamed;
-          if (selected.id === renamed.id) {
-            selected = renamed;
-            syncCourseName();
-          }
-          renderList();
-          if (preview === course) previewCourse(renamed);
-          savedDialog.close();
-        } catch (error) {
-          savedError(errorText(error));
-        }
-      });
-      return;
-    }
-    const busy = await exclusive('Deleting course…', async () => {
+    const busy = await exclusive(async () => {
       try {
         selected = await actions.deleteCourse(course.id);
         courses.splice(courses.indexOf(course), 1);
@@ -1365,9 +1571,6 @@ export function bindCoursePicker(
       : fallback
     ).focus();
   });
-  renameAction.addEventListener('click', () =>
-    editSavedCourse('rename', preview, courseActionsSummary),
-  );
   deleteAction.addEventListener('click', () =>
     editSavedCourse('delete', preview, courseActionsSummary),
   );
@@ -1383,7 +1586,7 @@ export function bindCoursePicker(
     if (changing || creating) return;
     try {
       if (draftSelected) {
-        const saved = await exclusive('Saving course…', async () => {
+        const saved = await exclusive(async () => {
           await savePreviewCourse(draft?.name ?? '');
         });
         if (!saved) return;
@@ -1393,7 +1596,6 @@ export function bindCoursePicker(
       pickerError(`Unable to save course: ${errorText(error)}`);
     }
   });
-  element('#course-picker-cancel').addEventListener('click', () => picker.close());
   picker.addEventListener('dialog-open', async () => {
     pickerError('');
     direction = store.getState().courseReverse;
@@ -1407,7 +1609,7 @@ export function bindCoursePicker(
     draftName.setCustomValidity('');
     renderList();
     previewCourse(selected);
-    await exclusive('Loading saved tracks…', async () => {
+    await exclusive(async () => {
       try {
         const refreshed = await actions.refreshCourses();
         if (!picker.open) return;
@@ -1416,10 +1618,17 @@ export function bindCoursePicker(
         previewCourse(courses.find(({ id }) => id === selected.id) ?? selected);
       } catch (error) {
         pickerError(`Unable to load saved tracks: ${errorText(error)}`);
+      } finally {
+        stopPickerSpinner?.();
+        stopPickerSpinner = undefined;
+        pickerLoading.hidden = true;
       }
     });
   });
   picker.addEventListener('close', () => {
+    stopPickerSpinner?.();
+    stopPickerSpinner = undefined;
+    pickerLoading.hidden = true;
     ++previewToken;
     preview3d.dispose();
   });
@@ -1477,10 +1686,6 @@ function bindCourseWeights(
     label.append(title, output, input, hint);
     fieldset.append(label);
   }
-  element('#custom-course-reset').addEventListener('click', () => {
-    setWeights({ ...defaultCourseWeights });
-    refreshWeights();
-  });
   return refreshWeights;
 }
 
@@ -1579,6 +1784,7 @@ export function bindGameUI(
     courseWeights = { ...weights };
   };
   const refreshCourseWeights = bindCourseWeights(getCourseWeights, setCourseWeights);
+  element('#course-generator').addEventListener('refresh-weights', refreshCourseWeights);
   bindDialog('#minimap', '#course-picker-dialog', refreshCourseWeights);
 
   function select<Value extends string>(
