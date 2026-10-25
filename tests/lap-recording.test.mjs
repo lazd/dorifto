@@ -64,6 +64,95 @@ function sampleRun() {
   return run;
 }
 
+test('mode, validity, and statistics survive storage and records remain mode-specific', async () => {
+  const { recordStorageKey } = await server.ssrLoadModule('/src/race-rules.ts');
+  const storage = new MemoryStorage();
+  const run = sampleRun();
+  run.mode = 'anything-goes';
+  run.lapValidity[0] = {
+    trackLimits: true,
+    mayoTouched: true,
+    mustard: true,
+    mustardTouched: true,
+    mustardCrossed: false,
+  };
+  run.lapValidity[1] = {
+    trackLimits: true,
+    mustard: false,
+    mustardTouched: true,
+    mustardCrossed: true,
+  };
+  run.statistics = {
+    maxSpeed: 30,
+    distance: 45,
+    time: 2,
+    driftTime: 0.8,
+    conesHit: 2,
+    carContacts: 1,
+    timeInFirst: 1,
+  };
+  run.partialLap = { time: 0.2, trackLimits: false, mustard: false };
+  assert.equal(run.bestLapForMode('track-limits'), 1);
+  assert.equal(run.bestLapForMode('mustard'), 0);
+  const key = 'eligible-course';
+  const summary = await recording.saveRun(key, run, { driver: 'human' }, storage);
+  const loaded = await recording.loadRun(key, summary.id, storage);
+  assert.equal(loaded.mode, run.mode);
+  assert.deepEqual(loaded.lapValidity, run.lapValidity);
+  assert.deepEqual(loaded.statistics, run.statistics);
+  assert.deepEqual(loaded.partialLap, run.partialLap);
+  assert.equal(recording.bestRunTime(summary, 'mustard'), run.lapTimes[0]);
+  for (const mode of ['track-limits', 'mustard']) {
+    const index = loaded.bestLapForMode(mode);
+    await recording.saveRecordLap(recordStorageKey(key, mode), loaded.extractLap(index), storage);
+  }
+  const trackRecord = await recording.loadRecordLap(recordStorageKey(key, 'track-limits'), storage);
+  const mustardRecord = await recording.loadRecordLap(recordStorageKey(key, 'mustard'), storage);
+  assert.equal(trackRecord.lapTimes[0], run.lapTimes[1]);
+  assert.equal(mustardRecord.lapTimes[0], run.lapTimes[0]);
+  assert.deepEqual(mustardRecord.lapValidity[0], run.lapValidity[0]);
+  run.lapValidity[1].trackLimits = false;
+  assert.equal(run.bestLapForMode('track-limits'), 0, 'invalid faster laps never claim a record');
+  assert.equal(run.bestLap, 1, 'Anything Goes still accepts the unrestricted lap');
+  run.statistics = { maxSpeed: 30, distance: 45, time: 2 };
+  const legacy = await recording.saveRun(key, run, { driver: 'human' }, storage);
+  const legacyRecording = await recording.loadRun(key, legacy.id, storage);
+  for (const stat of ['driftTime', 'conesHit', 'carContacts', 'timeInFirst'])
+    assert.equal(legacyRecording.statistics[stat], undefined, `${stat} was not tracked`);
+});
+
+test('records persist statistics for the extracted lap rather than the whole run', async () => {
+  const storage = new MemoryStorage();
+  const run = new recording.RunRecording();
+  for (let i = 0; i < 90; i++) run.push(frameAt(i * run.interval));
+  run.updateStatistics(1, 40, { driftTime: 0.1, conesHit: 1, carContacts: 1, timeInFirst: 0 });
+  run.lapStarts.push(1);
+  run.updateStatistics(1, 20, { driftTime: 0.6, conesHit: 2, carContacts: 2, timeInFirst: 0.5 });
+  run.completeLap(2, 1, 1);
+  run.updateStatistics(0.8, 10, { driftTime: 0.8, conesHit: 2, carContacts: 3, timeInFirst: 1.3 });
+  run.completeLap(2.8, 0.8, 0);
+  const expected = {
+    maxSpeed: 10,
+    distance: 8,
+    time: 0.8,
+    driftTime: 0.8 - 0.6,
+    conesHit: 0,
+    carContacts: 1,
+    timeInFirst: 0.8,
+  };
+  assert.deepEqual(run.extractLap(1).statistics, expected);
+  assert.equal(run.statistics.maxSpeed, 40, 'launch and previous laps stay in the run total');
+  const saved = await recording.saveRun('stats', run, { driver: 'human' }, storage);
+  const loaded = await recording.loadRun('stats', saved.id, storage);
+  assert.deepEqual(loaded.lapStatistics, run.lapStatistics);
+  const lap = loaded.extractLap(1);
+  await recording.saveRecordLap('stats', lap, storage);
+  lap.statistics.maxSpeed = 99;
+  const record = await recording.loadRecordLap('stats', storage);
+  assert.deepEqual(record.statistics, expected);
+  assert.deepEqual(record.extractLap(0).statistics, expected);
+});
+
 test('interpolates recorded frames between samples', () => {
   const run = sampleRun();
   const out = recording.createReplayFrame();

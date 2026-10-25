@@ -10,11 +10,12 @@ import {
 interface ConePhysicsOptions {
   course: { cones: THREE.Object3D[]; cornerCones: THREE.Object3D[] };
   audio: Pick<VehicleAudio, 'hitCone'>;
+  onHit?(id: number): void;
 }
 
 export function createConePhysics(
   context: PhysicsPluginContext,
-  { course, audio }: ConePhysicsOptions,
+  { course, audio, onHit }: ConePhysicsOptions,
 ) {
   const { Ammo, world, dispatcher, vehicleBody, createRigidBody, setBodyEnabled } = context;
   const { cones } = course;
@@ -159,6 +160,7 @@ export function createConePhysics(
         }
         if (touching) {
           context.laps.hitCone(cone);
+          onHit?.(cone);
           if (impulse >= 0.5 && !soundCooldowns.has(cone)) {
             audio.hitCone(impulse);
             soundCooldowns.set(cone, 0.3);

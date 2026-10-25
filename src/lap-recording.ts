@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { browserStorage, flushBrowserStorage } from './browser-storage';
 import type { CourseDefinition } from './courses';
+import { validForMode, recordStorageKey, type RaceMode, type LapValidity } from './race-rules';
 
 /** Physics steps between recorded samples (120 Hz physics → 30 Hz samples). */
 export const sampleSteps = 4;
@@ -178,6 +179,33 @@ export interface RunSummary {
   driver?: string;
   /** Exact driver constants of a bot run. */
   botTuning?: Record<string, number>;
+  mode?: RaceMode;
+  validity?: LapValidity[];
+  statistics?: RunStatistics;
+  lapStatistics?: (RunStatistics | null)[];
+  partialLap?: LapValidity & { time: number };
+}
+
+export interface RunStatistics {
+  maxSpeed: number;
+  distance: number;
+  time: number;
+  driftTime?: number;
+  conesHit?: number;
+  carContacts?: number;
+  timeInFirst?: number;
+}
+
+export function bestRunTime(run: RunSummary, mode: RaceMode = run.mode ?? 'track-limits') {
+  let best: number | null = null;
+  run.laps.forEach((time, index) => {
+    if (
+      validForMode(run.validity?.[index] ?? { trackLimits: true, mustard: null }, mode) &&
+      (best === null || time < best)
+    )
+      best = time;
+  });
+  return best;
 }
 
 /** Compact, locale-formatted date and lap count shared by replay pickers. */
@@ -195,6 +223,20 @@ export function describeRun({ createdAt, laps }: Pick<RunSummary, 'createdAt' | 
 
 /** A continuous run from launch. Times are seconds from the first recorded sample. */
 export class RunRecording {
+  partialLap?: RunSummary['partialLap'];
+  mode: RaceMode = 'track-limits';
+  readonly lapValidity: LapValidity[] = [];
+  readonly lapStatistics: (RunStatistics | null)[] = [];
+  private currentLapStatistics: RunStatistics | null = null;
+  statistics: RunStatistics = {
+    maxSpeed: 0,
+    distance: 0,
+    time: 0,
+    driftTime: 0,
+    conesHit: 0,
+    carContacts: 0,
+    timeInFirst: 0,
+  };
   data: Float32Array;
   count = 0;
   /** Start/finish crossing times; index 0 is the first crossing. Empty until the car reaches the line. */
@@ -242,17 +284,67 @@ export class RunRecording {
     return this.lapStarts.length > 0;
   }
 
-  completeLap(start: number, time: number, cones: number) {
+  updateStatistics(
+    elapsed: number,
+    speed: number,
+    totals: Required<Pick<RunStatistics, 'driftTime' | 'conesHit' | 'carContacts' | 'timeInFirst'>>,
+  ) {
+    if (this.started) {
+      const lap = (this.currentLapStatistics ??= {
+        maxSpeed: 0,
+        distance: 0,
+        time: 0,
+        driftTime: 0,
+        conesHit: 0,
+        carContacts: 0,
+        timeInFirst: 0,
+      });
+      lap.maxSpeed = Math.max(lap.maxSpeed, speed);
+      lap.distance += speed * elapsed;
+      lap.time += elapsed;
+      for (const key of ['driftTime', 'conesHit', 'carContacts', 'timeInFirst'] as const)
+        lap[key] = (lap[key] ?? 0) + totals[key] - (this.statistics[key] ?? 0);
+    }
+    this.statistics.maxSpeed = Math.max(this.statistics.maxSpeed, speed);
+    this.statistics.distance += speed * elapsed;
+    this.statistics.time += elapsed;
+    Object.assign(this.statistics, totals);
+  }
+
+  completeLap(
+    start: number,
+    time: number,
+    cones: number,
+    validity: LapValidity = { trackLimits: true, mustard: null },
+  ) {
     this.lapStarts.push(start);
     this.lapTimes.push(time);
     this.lapCones.push(cones);
+    const { trackLimits, mayoTouched, mustard, mustardTouched, mustardCrossed } = validity;
+    this.lapValidity.push({
+      trackLimits,
+      ...(mayoTouched !== undefined ? { mayoTouched } : {}),
+      mustard,
+      ...(mustardTouched !== undefined ? { mustardTouched } : {}),
+      ...(mustardCrossed !== undefined ? { mustardCrossed } : {}),
+    });
+    this.lapStatistics.push(this.currentLapStatistics);
+    this.currentLapStatistics = null;
   }
 
   /** Index of the fastest completed lap, or null. */
   get bestLap() {
+    return this.bestLapForMode(this.mode);
+  }
+
+  bestLapForMode(mode: RaceMode) {
     let best: number | null = null;
     this.lapTimes.forEach((time, i) => {
-      if (best === null || time < this.lapTimes[best]) best = i;
+      if (
+        validForMode(this.lapValidity[i] ?? { trackLimits: true, mustard: null }, mode) &&
+        (best === null || time < this.lapTimes[best])
+      )
+        best = i;
     });
     return best;
   }
@@ -288,7 +380,13 @@ export class RunRecording {
       end - first,
     );
     lap.lapStarts.push(0);
-    lap.completeLap(time, time, this.lapCones[index]);
+    lap.mode = this.mode;
+    lap.completeLap(time, time, this.lapCones[index], this.lapValidity[index]);
+    const statistics = this.lapStatistics[index];
+    if (statistics) {
+      lap.statistics = { ...statistics };
+      lap.lapStatistics[0] = { ...statistics };
+    }
     return lap;
   }
 
@@ -296,13 +394,17 @@ export class RunRecording {
   timingAt(t: number) {
     let lap = 0;
     while (lap < this.lapStarts.length && this.lapStarts[lap] <= t) lap++;
-    const completed = this.lapTimes.slice(0, Math.max(lap - 1, 0));
+    const completed = this.lapTimes.flatMap((time, index) =>
+      index < lap - 1 && validForMode(this.lapValidity[index], this.mode)
+        ? [{ time, cones: this.lapCones[index] }]
+        : [],
+    );
     return {
       lap,
       current: lap ? t - this.lapStarts[lap - 1] : 0,
-      last: completed.length ? completed[completed.length - 1] : null,
-      best: completed.length ? Math.min(...completed) : null,
-      lastCones: completed.length ? this.lapCones[completed.length - 1] : null,
+      last: completed.at(-1)?.time ?? null,
+      best: completed.length ? Math.min(...completed.map(({ time }) => time)) : null,
+      lastCones: completed.at(-1)?.cones ?? null,
     };
   }
 
@@ -419,6 +521,9 @@ const storagePrefix = 'dorifto.laps.v1';
 const recordPrefix = 'dorifto.record.v1';
 
 interface StoredRecord {
+  statistics?: RunStatistics;
+  mode?: RaceMode;
+  validity?: LapValidity;
   time: number;
   cones: number;
   firstTime: number;
@@ -454,7 +559,12 @@ export async function loadRecordLap(key: string, storage: Storage = browserStora
   if (!count) throw new Error('Empty record lap');
   const lap = new RunRecording(stored.firstTime, stored.interval, data, count);
   lap.lapStarts.push(0);
-  lap.completeLap(stored.time, stored.time, stored.cones);
+  lap.mode = stored.mode ?? 'track-limits';
+  lap.completeLap(stored.time, stored.time, stored.cones, stored.validity);
+  if (stored.statistics) {
+    lap.statistics = { ...stored.statistics };
+    lap.lapStatistics[0] = { ...stored.statistics };
+  }
   return lap;
 }
 
@@ -472,6 +582,9 @@ export async function saveRecordLap(
   const latest = readRecord(key, storage);
   if (latest && latest.time <= time) return false;
   const record: StoredRecord = {
+    statistics: lap.statistics.time > 0 ? { ...lap.statistics } : undefined,
+    mode: lap.mode,
+    validity: lap.lapValidity[0],
     time,
     cones: lap.lapCones[0],
     firstTime: lap.firstTime,
@@ -511,13 +624,18 @@ export interface CourseDirectionRecords {
 export function courseDirectionRecords(
   definition: CourseDefinition,
   storage: Storage = browserStorage,
+  mode: RaceMode = 'track-limits',
 ): CourseDirectionRecords[] {
   return [false, true].map((reverse) => {
     const key = replayStorageKey({ ...definition, reverse });
     const runs = listSavedRuns(key, storage);
     const record = Math.min(
-      readRecord(key, storage)?.time ?? Infinity,
-      ...runs.flatMap(({ laps }) => laps),
+      readRecord(recordStorageKey(key, mode), storage)?.time ?? Infinity,
+      ...runs.flatMap(({ laps, validity }) =>
+        laps.filter((_, index) =>
+          validForMode(validity?.[index] ?? { trackLimits: true, mustard: null }, mode),
+        ),
+      ),
     );
     return { reverse, record: Number.isFinite(record) ? record : null, runs };
   });
@@ -626,7 +744,7 @@ function readIndex(storage: Storage, key: string): StoredRun[] {
 
 export function listSavedRuns(key: string, storage: Storage = browserStorage): RunSummary[] {
   return readIndex(storage, key).map(
-    ({ id, createdAt, laps, cones, duration, driver, botTuning }) => ({
+    ({
       id,
       createdAt,
       laps,
@@ -634,6 +752,22 @@ export function listSavedRuns(key: string, storage: Storage = browserStorage): R
       duration,
       driver,
       botTuning,
+      mode,
+      validity,
+      statistics,
+      partialLap,
+    }) => ({
+      id,
+      createdAt,
+      laps,
+      cones,
+      duration,
+      driver,
+      botTuning,
+      mode,
+      validity,
+      statistics,
+      partialLap,
     }),
   );
 }
@@ -652,6 +786,11 @@ export async function saveRun(
     cones: [...recording.lapCones],
     duration: recording.duration,
     ...driver,
+    mode: recording.mode,
+    validity: [...recording.lapValidity],
+    statistics: { ...recording.statistics },
+    lapStatistics: recording.lapStatistics,
+    partialLap: recording.partialLap,
     firstTime: recording.firstTime,
     interval: recording.interval,
     lapStarts: [...recording.lapStarts],
@@ -675,6 +814,11 @@ export async function saveRun(
     cones: run.cones,
     duration: run.duration,
     ...driver,
+    mode: run.mode,
+    validity: run.validity,
+    statistics: run.statistics,
+    lapStatistics: run.lapStatistics,
+    partialLap: run.partialLap,
   };
 }
 
@@ -705,6 +849,30 @@ export async function loadRun(key: string, id: string, storage: Storage = browse
   recording.lapStarts.splice(0, recording.lapStarts.length, ...run.lapStarts);
   recording.lapTimes.push(...run.laps);
   recording.lapCones.push(...run.cones);
+  recording.mode = run.mode ?? 'track-limits';
+  recording.lapValidity.push(
+    ...(run.validity ?? run.laps.map(() => ({ trackLimits: true, mustard: null }))),
+  );
+  const {
+    maxSpeed = 0,
+    distance = 0,
+    time = 0,
+    driftTime,
+    conesHit,
+    carContacts,
+    timeInFirst,
+  } = run.statistics ?? {};
+  recording.statistics = {
+    maxSpeed,
+    distance,
+    time,
+    driftTime,
+    conesHit,
+    carContacts,
+    timeInFirst,
+  };
+  recording.lapStatistics.push(...(run.lapStatistics ?? []));
+  recording.partialLap = run.partialLap;
   return recording;
 }
 
@@ -727,6 +895,8 @@ export async function deleteCourseRecords(
       storage.removeItem(`${storagePrefix}:${key}:${run.id}`);
     storage.removeItem(`${storagePrefix}:${key}`);
     storage.removeItem(`${recordPrefix}:${key}`);
+    storage.removeItem(`${recordPrefix}:${recordStorageKey(key, 'mustard')}`);
+    storage.removeItem(`${recordPrefix}:${recordStorageKey(key, 'anything-goes')}`);
   }
   await flushBrowserStorage(storage);
 }

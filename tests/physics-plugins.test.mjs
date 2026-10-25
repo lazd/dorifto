@@ -29,6 +29,7 @@ let RunRecording;
 let createReplayFrame;
 let replayData;
 let createPhysicsClient;
+let createRunStatistics;
 
 before(async () => {
   server = await createServer({
@@ -43,6 +44,7 @@ before(async () => {
   ({ createConfigurationState } = await server.ssrLoadModule('/src/configuration-state.ts'));
   ({ createPhysicsSimulation } = await server.ssrLoadModule('/src/physics-simulation.ts'));
   ({ createPhysicsClient } = await server.ssrLoadModule('/src/physics-client.ts'));
+  ({ createRunStatistics } = await server.ssrLoadModule('/src/run-statistics.ts'));
   ({
     createPhysicsInit,
     physicsStep,
@@ -148,6 +150,12 @@ test('shared vehicles integrate once, collide, and can be independently removed'
   second.physics.setCourseDirection({ position: [0, 7], heading: 0 }, second.laps);
   first.physics.reset();
   second.physics.reset();
+  const opponents = new Set();
+  second.physics.addPlugin((context) => {
+    opponents.add(Ammo.getPointer(context.vehicleBody));
+    return {};
+  });
+  const stats = first.physics.addPlugin((context) => createRunStatistics(context, opponents));
   first.controls.throttle = 1;
   assert.throws(() => first.physics.step(), /Shared vehicles/);
   const advance = (steps) => {
@@ -157,9 +165,11 @@ test('shared vehicles integrate once, collide, and can be independently removed'
       world.step(first.physics.fixedStep);
       first.physics.afterStep();
       if (second.enabled !== false) second.physics.afterStep();
+      stats.update(first.physics.fixedStep, first.physics.readState());
     }
   };
   advance(360);
+  assert.ok(stats.carContacts > 0, 'actual Ammo car collisions must reach run statistics');
   assert.ok(
     first.physics.readState().z < second.physics.readState().z - 3.5,
     'cars must collide rather than passing through each other',
@@ -340,6 +350,43 @@ test('worker snapshots include independently driven bots through reset, reversal
     });
   assert.ok(snapshot.bots[0].metrics.elapsed > 0, 'bots resume after replay reset');
   assert.equal(snapshot.standings.length, 2, 'reset publishes fresh standings on the first step');
+});
+
+test('retiring a run preserves simulation and engine updates while other cars keep racing', (t) => {
+  const setup = workerFixture();
+  setup.simulation.dispose();
+  setup.data.bots = [{ skill: 0.8, aggression: 0.4, learning: false }];
+  const simulation = createPhysicsSimulation(Ammo, setup.data);
+  t.after(() => simulation.dispose());
+  simulation.handle({ type: 'init', revision: 0 });
+  setup.input.controls.throttle = 1;
+  let snapshot;
+  const advance = () =>
+    simulation.handle({
+      type: 'advance',
+      dt: physicsStep * 4,
+      revision: 0,
+      input: setup.input,
+      recycled: [],
+    });
+  for (let i = 0; i < Math.ceil(raceStartDelay / (physicsStep * 4)) + 10; i++) snapshot = advance();
+  snapshot = simulation.handle({ type: 'retire', revision: 0, input: setup.input });
+  const elapsed = snapshot.laps.elapsedTime;
+  const botElapsed = snapshot.bots[0].laps.elapsedTime;
+  let standings;
+  for (let i = 0; i < 10; i++) {
+    snapshot = advance();
+    standings = snapshot.standings ?? standings;
+  }
+  assert.equal(snapshot.laps.retired, true);
+  assert.equal(snapshot.laps.elapsedTime, elapsed, 'retired timing is frozen');
+  assert.ok(snapshot.bots[0].laps.elapsedTime > botElapsed, 'other cars continue racing');
+  assert.ok(snapshot.telemetry.engine.rpm > 0, 'engine keeps running');
+  assert.ok(snapshot.duration > 0, 'the world continues stepping');
+  assert.equal(snapshot.records.length, 0, 'retired runs stop generating recording data');
+  assert.equal(standings.find(({ entrant }) => entrant === 0).retired, true);
+  snapshot = simulation.handle({ type: 'reset', revision: 1, input: setup.input });
+  assert.equal(snapshot.laps.retired, false);
 });
 
 test('bots-only mode has no player vehicle and follows bot telemetry through reversal and reset', (t) => {
@@ -613,6 +660,13 @@ test('worker batches preserve fixed-step timing, transferable poses, and simulat
     assert.equal(batch.buffer, initial.buffer, 'reuse the returned snapshot buffer');
     assert.equal(batch.count, vehiclePoseCount, 'sleeping/disabled props are not resent');
     assert.equal(batch.records.length, 6);
+    for (const record of batch.records) {
+      assert.equal(record.driftTime, 0);
+      assert.equal(record.conesHit, 0);
+      assert.equal(record.carContacts, 0);
+      assert.ok(record.timeInFirst > 0 && record.timeInFirst <= batch.laps.elapsedTime);
+      assert.equal('corneringG' in record, false);
+    }
     assert.ok(Math.abs(batch.laps.elapsedTime - physicsStep * 6) < 1e-10);
     const samples = batch.records.filter(({ sample }) => sample);
     assert.equal(samples.length, 2, 'record every four physics ticks, not every rendered frame');
@@ -927,6 +981,7 @@ test('object plugins receive lifecycle hooks and managed bodies are freed before
 test('cone plugin preserves collision penalties, sound threshold/cooldown, filtering, and resets', () => {
   const { physics, course, hits } = fixture();
   const sounds = [];
+  const runHits = [];
   const bodies = [];
   let vehicleBody;
   let contacts = [];
@@ -960,16 +1015,22 @@ test('cone plugin preserves collision penalties, sound threshold/cooldown, filte
             return body;
           },
         },
-        { course, audio: { hitCone: (impulse) => sounds.push(impulse) } },
+        {
+          course,
+          audio: { hitCone: (impulse) => sounds.push(impulse) },
+          onHit: (id) => runHits.push(id),
+        },
       );
     });
     physics.reset();
     contacts = [{ distance: 0.01, impulse: 10 }];
     plugin.afterStep();
     assert.deepEqual(hits, []);
+    assert.deepEqual(runHits, []);
     contacts = [{ distance: 0, impulse: 0.49 }];
     plugin.afterStep();
     assert.deepEqual(hits, [0]);
+    assert.deepEqual(runHits, [0], 'run hits do not depend on the sound impulse threshold');
     assert.deepEqual(sounds, []);
     contacts = [
       { distance: -0.01, impulse: 0.2 },

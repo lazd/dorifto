@@ -13,6 +13,7 @@ let generateCustomCourse;
 let defaultCourseWeights;
 let DrivingControls;
 let carLightLayers;
+let inputBindings;
 
 before(async () => {
   server = await createServer({
@@ -23,6 +24,7 @@ before(async () => {
     await server.ssrLoadModule('/src/camera.ts'));
   ({ carLightLayers } = await server.ssrLoadModule('/src/car.ts'));
   ({ DrivingControls } = await server.ssrLoadModule('/src/controls.ts'));
+  ({ inputBindings } = await server.ssrLoadModule('/src/input-bindings.ts'));
   ({ courses, courseRoute } = await server.ssrLoadModule('/src/courses.ts'));
   ({ generateCustomCourse, defaultCourseWeights } = await server.ssrLoadModule(
     '/src/course-generation.ts',
@@ -338,6 +340,18 @@ test('gamepad D-pad up controls the lap recorder and left/right request replay l
     assert.equal(controls.recordRequested, false);
     assert.equal(controls.previousLapRequested, false);
     assert.equal(controls.nextLapRequested, false);
+    const reset = inputBindings.get().controller.buttons.reset;
+    pad.buttons[reset] = { pressed: true };
+    controls.poll(false, 0, undefined, true);
+    assert.equal(controls.resetRequested, true, 'reset remains available in results');
+    assert.equal(controls.throttle, 0, 'driving stays blocked in results');
+    controls.poll(false, 0, undefined, true);
+    assert.equal(controls.resetRequested, false, 'holding reset does not immediately restart');
+    pad.buttons[reset] = { pressed: false };
+    controls.poll(false, 0, undefined, true);
+    pad.buttons[reset] = { pressed: true };
+    controls.poll(false, 0, undefined, true);
+    assert.equal(controls.resetRequested, true, 'a second press restarts the race');
   } finally {
     for (const [key, descriptor] of descriptors) {
       if (descriptor) Object.defineProperty(globalThis, key, descriptor);

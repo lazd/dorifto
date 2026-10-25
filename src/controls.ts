@@ -113,7 +113,7 @@ export class DrivingControls {
     this.nextLapRequested = false;
   }
 
-  poll(enabled = true, steeringExpo = 0, dismissError?: () => boolean) {
+  poll(enabled = true, steeringExpo = 0, dismissError?: () => boolean, allowReset = false) {
     const available = typeof navigator.getGamepads === 'function';
     const pads = available ? Array.from(navigator.getGamepads()) : [];
     const pad = pads.find((pad) => pad?.connected && pad.mapping === 'standard');
@@ -134,7 +134,17 @@ export class DrivingControls {
     }
     this.mapViewHeld = mapViewPressed;
     if (!enabled || !this.focused || document.hidden || captureActive) {
+      const resetDown = Boolean(pad?.buttons[bindings.controller.buttons.reset]?.pressed);
+      const reset =
+        allowReset &&
+        this.focused &&
+        !document.hidden &&
+        !captureActive &&
+        resetDown &&
+        !this.resetHeld;
       this.clear();
+      this.resetHeld = resetDown;
+      this.resetRequested = reset;
       return;
     }
     const button = (action: ControllerAction) => pad?.buttons[bindings.controller.buttons[action]];

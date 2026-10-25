@@ -10,6 +10,7 @@ import {
 import { createConePhysics } from './cone-physics';
 import { createTurnSignPhysics } from './turn-sign-physics';
 import { vehicleDimensions } from './car-geometry';
+import { createRunStatistics } from './run-statistics';
 import {
   createDrivingMap,
   createBot,
@@ -60,6 +61,7 @@ function lapState(laps: LapTimer): LapState {
   return {
     lap,
     finished: laps.finished,
+    retired: laps.retired,
     invalid,
     current,
     last,
@@ -68,6 +70,13 @@ function lapState(laps: LapTimer): LapState {
     elapsedTime,
     lapStartedAt,
     conesHit,
+    completed: laps.completed,
+    lastAttempt: laps.lastAttempt,
+    trackLimits: laps.trackLimits,
+    mayoTouched: laps.mayoTouched,
+    mustard: laps.mustard,
+    mustardTouched: laps.mustardTouched,
+    mustardCrossed: laps.mustardCrossed,
   };
 }
 
@@ -117,7 +126,7 @@ export function createPhysicsSimulation(Ammo: typeof AmmoFactory, data: PhysicsI
     data.terrain.halfWidth,
     data.terrain.padRadius,
   );
-  let laps = new LapTimer(data.definition);
+  let laps = new LapTimer(data.definition, data.race);
   const resources = createPhysicsResources(Ammo);
   const course = {
     terrain: {
@@ -173,7 +182,7 @@ export function createPhysicsSimulation(Ammo: typeof AmmoFactory, data: PhysicsI
     const botConfiguration = raceBotConfiguration(configuration, preset);
     const bot = createBot(drivingMap(preset), botConfiguration, dimensions, options);
     const botControls = { ...bot.controls };
-    const botLaps = botsOnly && index === 0 ? laps : new LapTimer(data.definition);
+    const botLaps = botsOnly && index === 0 ? laps : new LapTimer(data.definition, data.race);
     const vehicle = createVehiclePhysics({
       Ammo,
       resources,
@@ -200,7 +209,7 @@ export function createPhysicsSimulation(Ammo: typeof AmmoFactory, data: PhysicsI
   const vehicles = [...(playerPhysics ? [playerPhysics] : []), ...bots.map((bot) => bot.physics)];
   let settlingTime = 0;
   function createStandings() {
-    return vehicles.length > 1
+    return vehicles.length > 0
       ? createRaceStandings(mapDefinition, [
           ...(playerPhysics ? [{ position: car.chassis.position, laps }] : []),
           ...bots.map((bot) => ({ position: bot.car.chassis.position, laps: bot.laps })),
@@ -218,9 +227,22 @@ export function createPhysicsSimulation(Ammo: typeof AmmoFactory, data: PhysicsI
   ];
   const liveVehiclePoseCount = vehiclePoseCount * vehicles.length;
   const impacts: PhysicsSnapshot['impacts'] = [];
+  const opponentPointers = new Set<number>();
+  for (const vehicle of vehicles) {
+    if (vehicle === physics) continue;
+    vehicle.addPlugin((context) => {
+      opponentPointers.add(Ammo.getPointer(context.vehicleBody));
+      return {};
+    });
+  }
+  const statistics = physics.addPlugin((context) => createRunStatistics(context, opponentPointers));
+  let trackingStatistics = false;
   const conePhysics = physics.addPlugin((context) =>
     createConePhysics(context, {
       course: { cones, cornerCones: data.cornerCones.map((index) => cones[index]) },
+      onHit(id) {
+        if (trackingStatistics) statistics.hitCone(id);
+      },
       audio: {
         hitCone(impulse) {
           impacts.push({ type: 'cone', impulse });
@@ -241,6 +263,7 @@ export function createPhysicsSimulation(Ammo: typeof AmmoFactory, data: PhysicsI
   const previousVelocity = new THREE.Vector3();
   let accumulator = 0;
   let recordingSteps = 0;
+  let recordingFinished = false;
   let replay: { recording: RunRecording; time: number } | null = null;
   const replayBefore = createReplayFrame();
   const replayAfter = createReplayFrame();
@@ -271,6 +294,8 @@ export function createPhysicsSimulation(Ammo: typeof AmmoFactory, data: PhysicsI
   function reset() {
     settlingTime = bots.length ? raceStartDelay : 0;
     accumulator = recordingSteps = 0;
+    recordingFinished = false;
+    trackingStatistics = false;
     replay = null;
     impacts.length = 0;
     for (const bot of bots) {
@@ -331,7 +356,7 @@ export function createPhysicsSimulation(Ammo: typeof AmmoFactory, data: PhysicsI
                   raceStandings?.position(stateIndex) ?? null,
                 ),
               );
-              if (bot.laps.finished) {
+              if (bot.laps.finished || bot.laps.retired) {
                 Object.assign(bot.controls, {
                   throttle: 0,
                   brake: 1,
@@ -342,7 +367,18 @@ export function createPhysicsSimulation(Ammo: typeof AmmoFactory, data: PhysicsI
               }
             });
           }
+          if ((laps.finished || laps.retired) && playerPhysics) {
+            Object.assign(controls, {
+              throttle: 0,
+              brake: 1,
+              reverse: 0,
+              steer: 0,
+              handbrake: false,
+            });
+          }
           for (const vehicle of vehicles) vehicle.beforeStep(startHeld);
+          trackingStatistics =
+            !startHeld && !physics.spawnBrakeHeld && !laps.finished && !laps.retired;
           simulationWorld.step(physicsStep);
           for (const vehicle of vehicles) vehicle.afterStep(startHeld);
           capture(false);
@@ -350,8 +386,18 @@ export function createPhysicsSimulation(Ammo: typeof AmmoFactory, data: PhysicsI
             settlingTime = Math.max(0, settlingTime - physicsStep);
             if (settlingTime <= 1e-9) raceStandings?.reset();
           } else standings = raceStandings?.update(physicsStep) ?? standings;
-          if (!physics.spawnBrakeHeld) {
-            const record: PhysicsRecord = { laps: lapState(laps) };
+          if (trackingStatistics)
+            statistics.update(physicsStep, physics.readState(), raceStandings?.position(0) === 1);
+          if (!physics.spawnBrakeHeld && !laps.retired && !recordingFinished) {
+            const velocity = physics.simulationVelocity;
+            const record: PhysicsRecord = {
+              laps: lapState(laps),
+              speed: velocity.length(),
+              driftTime: statistics.driftTime,
+              conesHit: statistics.conesHit,
+              carContacts: statistics.carContacts,
+              timeInFirst: statistics.timeInFirst,
+            };
             if (recordingSteps++ % sampleSteps === 0) {
               captureCarPose(recordFrame, car.chassis, car.hubs, physics.tireAngles);
               Object.assign(recordFrame, physics.engine, request.input.lights, {
@@ -366,16 +412,19 @@ export function createPhysicsSimulation(Ammo: typeof AmmoFactory, data: PhysicsI
               recordFrame.tires = physics.tireSounds;
               record.sample = new Float32Array(frameStride);
               writeFrame(record.sample, 0, recordFrame);
+              if (laps.finished) recordingFinished = true;
             }
             records.push(record);
           }
         }
         accumulator -= physicsStep;
       }
+    } else if (request.type === 'retire') {
+      if (!laps.finished) laps.retired = true;
     } else if (request.type === 'reset') {
       reset();
     } else if (request.type === 'direction') {
-      laps = new LapTimer(request.definition);
+      laps = new LapTimer(request.definition, data.race);
       physics.setCourseDirection(
         raceGridSpawn(request.definition, botsOnly ? 0 : bots.length),
         laps,
@@ -383,7 +432,7 @@ export function createPhysicsSimulation(Ammo: typeof AmmoFactory, data: PhysicsI
       drivingMaps = new Map();
       mapDefinition = request.definition;
       bots.forEach((bot, index) => {
-        bot.laps = botsOnly && index === 0 ? laps : new LapTimer(request.definition);
+        bot.laps = botsOnly && index === 0 ? laps : new LapTimer(request.definition, data.race);
         bot.physics.setCourseDirection(raceGridSpawn(request.definition, index), bot.laps);
         const preset = bot.options.preset ?? 'grip-fast';
         bot.bot = createBot(

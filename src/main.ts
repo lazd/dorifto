@@ -21,6 +21,15 @@ import {
 } from './course-generation';
 import { isDriveMode } from './drive-modes';
 import { formatLapTime } from './laps';
+import {
+  defaultRaceOptions,
+  isRaceMode,
+  raceModes,
+  recordStorageKey,
+  type RaceMode,
+  type RaceOptions,
+} from './race-rules';
+import { createRunResults } from './run-results';
 import { VehicleAudio } from './audio';
 import { CarStereo, isStereoStationSelection } from './stereo';
 import {
@@ -66,6 +75,7 @@ import { readTurnSignMode } from './turn-sign';
 import { createGhostCar } from './ghost-car';
 import {
   RunRecording,
+  bestRunTime,
   applyCarPose,
   createReplayFrame,
   deleteCourseRecords,
@@ -222,7 +232,6 @@ async function start() {
   let botsOnly = readBotsOnly(courseUrl.searchParams);
   let botOptions = readRaceBots(courseUrl.searchParams);
   // Recordings follow the primary car: the player, or the first bot in bots-only mode.
-  const botRunLaps = 3;
   const recordedDriverFor = (bots: RaceBotOptions[], only: boolean) => {
     const recordedBot = only ? bots[0] : null;
     return recordedBot
@@ -325,7 +334,20 @@ async function start() {
     loadTerrainSurfaces(),
   ]);
   const initialDefinition = { ...loadedDefinition, reverse: requestedReverse };
-  gameState.update({ status: { visible: true, error: false, message: 'Loading map…' } });
+  let raceOptions = readParams<RaceOptions>(
+    ['race-mode', 'race-laps'],
+    (params) => {
+      const mode = params.get('race-mode') ?? defaultRaceOptions.mode;
+      const laps = Number(params.get('race-laps') ?? defaultRaceOptions.laps);
+      if (!isRaceMode(mode) || (mode === 'mustard' && !loadedDefinition.doubleYellow))
+        throw new Error('Invalid race mode for this course');
+      if (!Number.isSafeInteger(laps) || laps < 1)
+        throw new Error('Race laps must be a positive whole number');
+      return { mode, laps };
+    },
+    { ...defaultRaceOptions },
+  );
+  showLoading('Loading map…');
   await new Promise<void>((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
   const initialCourse = createCourse(scene, initialDefinition, car.width);
   showLoading('Starting physics…', 0.2);
@@ -435,6 +457,7 @@ async function start() {
     existingCourse?: ReturnType<typeof createCourse>,
     nextBots: RaceBotOptions[] = botOptions,
     nextBotsOnly = botsOnly,
+    race: RaceOptions = raceOptions,
   ) {
     const ownsCourse = existingCourse === undefined;
     const course = existingCourse ?? createCourse(scene, nextDefinition, car.width);
@@ -447,6 +470,7 @@ async function start() {
       course.terrain.grass.visible = showGrass;
       course.setRoadEdgeDirt(configurationState.getState().showRoadEdgeDirt);
       physics = createPhysicsClient({
+        race,
         bots: nextBots,
         botsOnly: nextBotsOnly,
         observedBot: nextBotsOnly
@@ -552,17 +576,25 @@ async function start() {
   const ghostForward = new THREE.Vector3();
   const minimapGhost = { position: ghost.chassis.position, forward: ghostForward };
 
-  // Lap recording: a run is captured from launch, shown once it crosses the start/finish line, and discarded by any reset.
+  // Record from launch; completed and stopped runs are saved by the results dialog.
   let run: RunRecording | null = null;
   let cameraNeedsReset = false;
   let runOrigin = 0;
+  let runLastTime = 0;
   let replay: { recording: RunRecording; time: number } | null = null;
   let storageKey = replayStorageKey({ ...definition, reverse: requestedReverse });
   let savedRuns: RunSummary[] = [];
   let runOptions: readonly SavedRunOption[] = [];
   let selectedRun: string | null = null;
   let recordLap: RunRecording | null = null;
+  let runRecordTime: number | null = null;
+  const modeRecords: Record<RaceMode, RunRecording | null> = {
+    'track-limits': null,
+    mustard: null,
+    'anything-goes': null,
+  };
   let recordLoad = 0;
+  const results = createRunResults({ restart: reset, replay: startReplay });
   const playbackFrame = createReplayFrame();
   const ghostFrame = createReplayFrame();
   const replayBefore = createReplayFrame();
@@ -602,9 +634,11 @@ async function start() {
   function runLabel(run: RunSummary) {
     const { laps: times, driver } = run;
     const { date, laps: count } = describeRun(run);
-    const label = times.length
-      ? `${date} · ${count} · best ${formatLapTime(Math.min(...times))}`
-      : `${date} · partial lap`;
+    const best = bestRunTime(run);
+    const label =
+      (times.length
+        ? `${date} · ${count} · ${best === null ? 'no valid laps' : `best ${formatLapTime(best)}`}`
+        : `${date} · partial lap`) + ` · ${raceModes[run.mode ?? 'track-limits'].name}`;
     return driver?.startsWith('bot') ? `🤖 ${label} · ${driver}` : `🧑🏽‍🔧 ${label}`;
   }
 
@@ -635,10 +669,12 @@ async function start() {
     }, 5000);
   }
 
-  function keepRecord(lap: RunRecording) {
-    if (recordLap && recordLap.lapTimes[0] <= lap.lapTimes[0]) return;
-    recordLap = lap;
-    void saveRecordLap(storageKey, lap).catch((error) =>
+  function keepRecord(lap: RunRecording, mode: RaceMode = raceOptions.mode) {
+    const previous = modeRecords[mode];
+    if (previous && previous.lapTimes[0] <= lap.lapTimes[0]) return;
+    modeRecords[mode] = lap;
+    if (mode === raceOptions.mode) recordLap = lap;
+    void saveRecordLap(recordStorageKey(storageKey, mode), lap).catch((error) =>
       reportLapError('Unable to save record lap:', error),
     );
   }
@@ -647,38 +683,43 @@ async function start() {
     const key = storageKey;
     const generation = ++recordLoad;
     recordLap = null;
+    for (const mode of Object.keys(modeRecords) as RaceMode[]) modeRecords[mode] = null;
     try {
-      let loaded = await loadRecordLap(key);
-      const bestSaved = savedRuns.reduce<RunSummary | null>((best, saved) => {
-        if (!saved.laps.length) return best;
-        return !best || Math.min(...saved.laps) < Math.min(...best.laps) ? saved : best;
-      }, null);
-      if (bestSaved && (!loaded || Math.min(...bestSaved.laps) < loaded.lapTimes[0])) {
-        const saved = await loadRun(key, bestSaved.id);
-        const index = saved.bestLap;
-        if (index !== null) {
-          loaded = saved.extractLap(index);
-          await saveRecordLap(key, loaded);
+      for (const mode of Object.keys(modeRecords) as RaceMode[]) {
+        if (mode === 'mustard' && !activeDefinition.doubleYellow) continue;
+        let loaded = await loadRecordLap(recordStorageKey(key, mode));
+        const bestSaved = savedRuns.reduce<RunSummary | null>((best, saved) => {
+          const time = bestRunTime(saved, mode);
+          if (time === null) return best;
+          return !best || time < bestRunTime(best, mode)! ? saved : best;
+        }, null);
+        if (bestSaved && (!loaded || bestRunTime(bestSaved, mode)! < loaded.lapTimes[0])) {
+          const saved = await loadRun(key, bestSaved.id);
+          const index = saved.bestLapForMode(mode);
+          if (index !== null) loaded = saved.extractLap(index);
         }
+        if (generation !== recordLoad || key !== storageKey) return;
+        if (loaded) keepRecord(loaded, mode);
       }
-      if (generation === recordLoad && key === storageKey && loaded) keepRecord(loaded);
     } catch (error) {
       reportLapError('Unable to load record lap:', error);
     }
   }
 
   function keepRunRecord() {
-    const index = run?.bestLap;
-    if (
-      run &&
-      index !== null &&
-      index !== undefined &&
-      (!recordLap || run.lapTimes[index] < recordLap.lapTimes[0])
-    )
-      keepRecord(run.extractLap(index));
+    if (!run) return;
+    for (const mode of Object.keys(modeRecords) as RaceMode[]) {
+      const index = run.bestLapForMode(mode);
+      if (
+        index !== null &&
+        (!modeRecords[mode] || run.lapTimes[index] < modeRecords[mode]!.lapTimes[0])
+      )
+        keepRecord(run.extractLap(index), mode);
+    }
   }
 
   function clearLapRecording() {
+    results.close();
     keepRunRecord();
     run = null;
     replay = null;
@@ -739,6 +780,43 @@ async function start() {
     clearLapRecording();
   }
 
+  function showResults(completed = false) {
+    if (!run || results.open) return;
+    if (!laps.finished && laps.lap > 0)
+      run.partialLap = {
+        time: laps.current,
+        trackLimits: laps.trackLimits,
+        mayoTouched: laps.mayoTouched,
+        mustard: laps.mustard,
+        mustardTouched: laps.mustardTouched,
+        mustardCrossed: laps.mustardCrossed,
+      };
+    keepRunRecord();
+    storeRun(run);
+    controls.clear();
+    if (!completed) physics.retire();
+    results.show(
+      run,
+      {
+        ...raceOptions,
+        laps: activeDefinition.closed === false ? 1 : raceOptions.laps,
+      },
+      recordLap,
+      completed,
+      activeDefinition.name,
+      runRecordTime,
+    );
+    results.updateStandings(physics.standings, physics.raceEntrants, physics.raceFinished);
+  }
+
+  function requestReset() {
+    for (const record of physics.takeRecords()) {
+      if (!results.open && !replay && !physics.resetting) recordStep(record);
+    }
+    if (results.open || replay || !run || !run.count) reset();
+    else showResults();
+  }
+
   function startReplay(recording: RunRecording, time = 0) {
     reset();
     replay = { recording, time };
@@ -791,33 +869,41 @@ async function start() {
     if (time !== null) startReplay(replay.recording, time);
   }
 
-  function recordStep({ laps: timing, sample }: PhysicsRecord) {
+  function recordStep({
+    laps: timing,
+    sample,
+    speed = 0,
+    driftTime = 0,
+    conesHit = 0,
+    carContacts = 0,
+    timeInFirst = 0,
+  }: PhysicsRecord) {
     if (!run) {
       runOrigin = timing.elapsedTime;
+      runLastTime = Math.max(0, timing.elapsedTime - fixedStep);
       run = new RunRecording();
+      runRecordTime = recordLap?.lapTimes[0] ?? null;
+      run.mode = raceOptions.mode;
     }
-    if (timing.finished && run.lapTimes.length) return;
+    if (timing.finished && timing.completed === run.lapTimes.length) {
+      if (sample && run.duration < run.lapStarts[run.lapStarts.length - 1]) {
+        run.pushSample(sample);
+        keepRunRecord();
+      }
+      return;
+    }
     if (!run.started && timing.lap) {
       run.lapStarts.push(timing.lapStartedAt - runOrigin);
       syncLapRecorder();
     }
-    if (
-      (run.lapStarts.length < timing.lap || (timing.finished && !run.lapTimes.length)) &&
-      timing.last !== null
-    )
-      run.completeLap(timing.lapStartedAt - runOrigin, timing.last, timing.lastCones ?? 0);
-    else if (
-      !timing.finished &&
-      run.started &&
-      run.lapStarts[run.lapStarts.length - 1] !== timing.lapStartedAt - runOrigin
-    )
-      run.lapStarts[run.lapStarts.length - 1] = timing.lapStartedAt - runOrigin;
-    // Bots save each three-lap run and start over, so unattended sessions log repeatable runs.
-    if (recordedBot && run.lapTimes.length >= botRunLaps) {
-      const finished = run;
-      reset();
-      storeRun(finished);
-      return;
+    const elapsed = Math.max(0, timing.elapsedTime - runLastTime);
+    runLastTime = timing.elapsedTime;
+    if (elapsed > 0) {
+      run.updateStatistics(elapsed, speed, { driftTime, conesHit, carContacts, timeInFirst });
+    }
+    if (timing.completed > run.lapTimes.length && timing.lastAttempt) {
+      const attempt = timing.lastAttempt;
+      run.completeLap(timing.lapStartedAt - runOrigin, attempt.time, attempt.cones, attempt);
     }
     if (!sample) return;
     run.pushSample(sample);
@@ -895,6 +981,7 @@ async function start() {
     build: () => CourseDefinition,
     updateUrl: (url: URL) => void,
     reverse: boolean,
+    nextRace: RaceOptions = raceOptions,
   ) {
     changingCourse = true;
     controls.clear();
@@ -906,9 +993,22 @@ async function start() {
       const nextDefinition = await loadCourseDefinition(build(), (fraction) =>
         showLoading('Loading map…', fraction),
       );
-      gameState.update({ status: { visible: true, error: false, message: 'Loading map…' } });
+      showLoading('Loading map…');
       await new Promise<void>((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
-      const next = await createCourseSession({ ...nextDefinition, reverse });
+      const race = {
+        ...nextRace,
+        mode:
+          nextRace.mode === 'mustard' && !nextDefinition.doubleYellow
+            ? ('track-limits' as const)
+            : nextRace.mode,
+      };
+      const next = await createCourseSession(
+        { ...nextDefinition, reverse },
+        undefined,
+        botOptions,
+        botsOnly,
+        race,
+      );
       minimap.setCourse(nextDefinition);
       const previousPhysics = physics;
       const previousCourse = course;
@@ -918,6 +1018,9 @@ async function start() {
       previousCourse.dispose();
       const url = new URL(location.href);
       updateUrl(url);
+      raceOptions = race;
+      url.searchParams.set('race-mode', race.mode);
+      url.searchParams.set('race-laps', String(race.laps));
       if (reverse) url.searchParams.set('reverse', '1');
       else url.searchParams.delete('reverse');
       history.replaceState(null, '', url);
@@ -943,6 +1046,7 @@ async function start() {
     seed?: number,
     weights?: CourseGenerationWeights,
     reverse = configurationState.getState().courseReverse,
+    race: RaceOptions = raceOptions,
   ) {
     const customWeights = weights ?? ui.getCourseWeights();
     return loadCourse(
@@ -964,6 +1068,7 @@ async function start() {
         writeCourseWeights(url.searchParams, id === 'custom' ? customWeights : undefined);
       },
       reverse,
+      race,
     );
   }
 
@@ -1026,10 +1131,13 @@ async function start() {
         reverse: configurationState.getState().courseReverse,
       });
       ++recordLoad;
-      if (recordLap)
-        void saveRecordLap(storageKey, recordLap).catch((error) =>
-          reportLapError('Unable to save record lap:', error),
-        );
+      for (const mode of Object.keys(modeRecords) as RaceMode[]) {
+        const record = modeRecords[mode];
+        if (record)
+          void saveRecordLap(recordStorageKey(storageKey, mode), record).catch((error) =>
+            reportLapError('Unable to save record lap:', error),
+          );
+      }
       refreshSavedRuns();
       const url = new URL(location.href);
       url.searchParams.set('course', saved.id);
@@ -1083,6 +1191,7 @@ async function start() {
     },
     getCourseWeights: ui.getCourseWeights,
     setCourseWeights: ui.setCourseWeights,
+    getRaceOptions: () => ({ ...raceOptions }),
   });
 
   function cycleCamera() {
@@ -1135,6 +1244,11 @@ async function start() {
 
   window.addEventListener('keydown', (event) => {
     if (inputBindings.isCaptureActive()) return;
+    if (results.open && keyboardActionForCode(event.code) === 'reset') {
+      event.preventDefault();
+      if (!event.repeat) requestReset();
+      return;
+    }
     if (dialogOpen) return;
     if (event.target instanceof HTMLSelectElement || event.target instanceof HTMLInputElement)
       return;
@@ -1145,7 +1259,7 @@ async function start() {
     if (event.target instanceof HTMLButtonElement && event.code === 'Space') return;
     event.preventDefault();
     if (action === 'reset') {
-      if (!event.repeat) reset();
+      if (!event.repeat) requestReset();
     } else if (action === 'camera') {
       if (!event.repeat) cycleCamera();
     } else if (cycleObservedBot) {
@@ -1231,7 +1345,7 @@ async function start() {
   function frame(time: number) {
     if (changingCourse) return;
     const { driveMode, profiles } = configurationState.getState();
-    controls.poll(!dialogOpen, profiles[driveMode].steeringExpo, ui.dismissError);
+    controls.poll(!dialogOpen, profiles[driveMode].steeringExpo, ui.dismissError, results.open);
     if (controls.lightingRequested && !replay) {
       vehicleLights = updateVehicleLights(vehicleLights, controls.lightingRequested);
       headlightsOverridden = true;
@@ -1239,7 +1353,7 @@ async function start() {
     if (controls.driveModeRequested) toggleDriveMode();
     if (controls.cameraRequested) cycleCamera();
     if (controls.timeOfDayRequested) cycleTimeOfDay();
-    if (controls.resetRequested) reset();
+    if (controls.resetRequested) requestReset();
     if (controls.recordRequested) pressLapRecorder();
     if (controls.previousLapRequested) {
       if (replay) seekReplayLap('previous');
@@ -1254,8 +1368,16 @@ async function start() {
     for (const record of physics.takeRecords()) {
       // Records already taken belong to the run a bot reset just ended.
       if (physics.resetting) break;
-      recordStep(record);
+      if (!results.open) recordStep(record);
     }
+    if (
+      !replay &&
+      !results.open &&
+      run?.count &&
+      run.lapTimes.length >= (activeDefinition.closed === false ? 1 : raceOptions.laps) &&
+      run.duration >= run.lapStarts[run.lapStarts.length - 1]
+    )
+      showResults(true);
     if (cameraNeedsReset && !physics.resetting) {
       physics.interpolate(1);
       drivingCamera.reset(spawn.heading);
@@ -1318,6 +1440,8 @@ async function start() {
       physics.raceEntrants,
       botsOnly ? physics.observedBot : null,
     );
+    if (results.open)
+      results.updateStandings(physics.standings, physics.raceEntrants, physics.raceFinished);
     // Manifold pressure: closed-throttle vacuum through to full turbo boost.
     const manifoldMmHg =
       THREE.MathUtils.lerp(-550, 0, engine.load) * (1 - engine.boost) + 650 * engine.boost;
@@ -1516,7 +1640,7 @@ async function start() {
   });
 }
 
-function showLoading(message: string, progress: number) {
+function showLoading(message: string, progress = gameState.getState().status.progress ?? 0.8) {
   gameState.update({ status: { visible: true, error: false, message, progress } });
 }
 

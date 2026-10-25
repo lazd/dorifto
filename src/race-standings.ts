@@ -10,11 +10,16 @@ export interface RaceStanding {
   lastLap: number | null;
   gap: number | null;
   lapsBehind: number;
+  finished?: boolean;
+  disqualified?: boolean;
+  retired?: boolean;
+  finishTime?: number;
 }
 
 interface RaceEntrant {
   position: { x: number; z: number };
-  laps: Pick<LapState, 'lap' | 'lapStartedAt' | 'last'>;
+  laps: Pick<LapState, 'lap' | 'lapStartedAt' | 'last'> &
+    Partial<Pick<LapState, 'finished' | 'completed' | 'lastAttempt' | 'retired'>>;
 }
 
 /** One circuit of distance-indexed passage times, independent of simulation frequency. */
@@ -106,8 +111,30 @@ export function createRaceStandings(
   const order = entrants.map((_, i) => i);
   const positions = entrants.map(() => 0);
 
+  function disqualified(index: number) {
+    const laps = entrants[index].laps;
+    const valid = laps.lap - 1 + Number(laps.lastAttempt?.valid ?? false);
+    return Boolean(laps.finished && (laps.completed ?? 0) > valid);
+  }
+
   function rank() {
-    order.sort((a, b) => states[b].distance - states[a].distance || a - b);
+    order.sort((a, b) => {
+      const left = entrants[a].laps;
+      const right = entrants[b].laps;
+      const category = (index: number) =>
+        entrants[index].laps.retired
+          ? 3
+          : disqualified(index)
+            ? 2
+            : entrants[index].laps.finished
+              ? 0
+              : 1;
+      const difference = category(a) - category(b);
+      if (difference) return difference;
+      if (left.finished && right.finished && !disqualified(a))
+        return left.lapStartedAt - right.lapStartedAt || a - b;
+      return states[b].distance - states[a].distance || a - b;
+    });
     order.forEach((entrant, index) => {
       positions[entrant] = index + 1;
     });
@@ -172,6 +199,8 @@ export function createRaceStandings(
     elapsed += dt;
     entrants.forEach((entrant, index) => {
       const state = states[index];
+      if (entrant.laps.retired) return;
+      if (entrant.laps.finished && state.lapStartedAt === entrant.laps.lapStartedAt) return;
       const phase = state.phase;
       project(entrant.position, state);
       const delta = open
@@ -184,7 +213,9 @@ export function createRaceStandings(
         !open &&
         state.lap > 0 &&
         entrant.laps.lapStartedAt !== state.lapStartedAt &&
-        entrant.laps.lap === state.lap
+        (entrant.laps.lastAttempt
+          ? !entrant.laps.lastAttempt.valid
+          : entrant.laps.lap === state.lap)
       ) {
         state.distance -= length;
         state.marker = state.distance;
@@ -219,6 +250,14 @@ export function createRaceStandings(
       lastLap: entrants[index].laps.last,
       gap: gaps[index],
       lapsBehind: Math.max(0, Math.floor((leader.distance - states[index].distance) / length)),
+      ...(entrants[index].laps.finished
+        ? {
+            finished: true,
+            disqualified: disqualified(index),
+            finishTime: entrants[index].laps.lapStartedAt,
+          }
+        : {}),
+      ...(entrants[index].laps.retired ? { retired: true } : {}),
     }));
   }
 

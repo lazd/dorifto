@@ -1,6 +1,9 @@
 import type { RaceStanding } from './race-standings';
 
 export function formatStanding(standing: RaceStanding, leader: boolean) {
+  if (standing.retired) return 'DNF';
+  if (standing.disqualified) return 'DSQ';
+  if (standing.finished) return 'Finished';
   if (leader) {
     if (standing.lastLap === null) return '--:--';
     const seconds = Math.floor(standing.lastLap);
@@ -82,7 +85,15 @@ export function createLeaderboard(
         if (timing.textContent !== text) timing.textContent = text;
         const pending = text.startsWith('--') ? 'true' : 'false';
         if (timing.dataset.pending !== pending) timing.dataset.pending = pending;
-        const title = index === 0 ? 'Last valid lap time' : 'Gap to leader';
+        const title = standing.retired
+          ? 'Did not finish'
+          : standing.disqualified
+            ? 'Disqualified: invalid laps'
+            : standing.finished
+              ? 'Race finished'
+              : index === 0
+                ? 'Last valid lap time'
+                : 'Gap to leader';
         if (timing.title !== title) timing.title = title;
         if (container.children[index] !== row)
           container.insertBefore(row, container.children[index] ?? null);

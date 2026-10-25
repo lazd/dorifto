@@ -7,6 +7,7 @@ import type { TerrainQueryData } from './terrain-query';
 import type { PhysicsCar, PhysicsConfiguration, PhysicsControls } from './vehicle-physics';
 import type { Bot, RaceBotOptions, VehicleState } from './race-bot';
 import type { RaceStanding } from './race-standings';
+import type { RaceOptions } from './race-rules';
 
 export const physicsStep = 1 / 120;
 export const raceStartDelay = 3;
@@ -20,6 +21,7 @@ export interface PoseData {
 }
 
 export interface PhysicsInit {
+  race?: RaceOptions;
   botsOnly?: boolean;
   bots?: RaceBotOptions[];
   definition: CourseDefinition;
@@ -78,6 +80,7 @@ export type LapState = Pick<
   LapTimer,
   | 'lap'
   | 'finished'
+  | 'retired'
   | 'invalid'
   | 'current'
   | 'last'
@@ -86,12 +89,20 @@ export type LapState = Pick<
   | 'elapsedTime'
   | 'lapStartedAt'
   | 'conesHit'
+  | 'completed'
+  | 'lastAttempt'
+  | 'trackLimits'
+  | 'mayoTouched'
+  | 'mustard'
+  | 'mustardTouched'
+  | 'mustardCrossed'
 >;
 
 export function emptyLapState(): LapState {
   return {
     lap: 0,
     finished: false,
+    retired: false,
     invalid: false,
     current: 0,
     last: null,
@@ -100,6 +111,13 @@ export function emptyLapState(): LapState {
     elapsedTime: 0,
     lapStartedAt: 0,
     conesHit: 0,
+    completed: 0,
+    lastAttempt: null,
+    trackLimits: true,
+    mayoTouched: false,
+    mustard: null,
+    mustardTouched: false,
+    mustardCrossed: false,
   };
 }
 
@@ -144,6 +162,11 @@ export interface PhysicsTelemetry {
 export interface PhysicsRecord {
   laps: LapState;
   sample?: Float32Array;
+  speed?: number;
+  driftTime?: number;
+  conesHit?: number;
+  carContacts?: number;
+  timeInFirst?: number;
 }
 
 export interface ReplayData {
@@ -166,6 +189,7 @@ export type PhysicsCommand =
   | { type: 'init'; data: PhysicsInit }
   | { type: 'advance'; dt: number; input: PhysicsInput; recycled: ArrayBuffer[] }
   | { type: 'reset'; input: PhysicsInput }
+  | { type: 'retire'; input: PhysicsInput }
   | {
       type: 'direction';
       spawn: ReturnType<typeof courseSpawn>;

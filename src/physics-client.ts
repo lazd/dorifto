@@ -13,6 +13,7 @@ import { botColor, botName, createBotCar } from './bot-car';
 import { createBotPlate } from './bot-plate';
 import type { RaceBotOptions } from './race-bot';
 import type { RaceStanding } from './race-standings';
+import type { RaceOptions } from './race-rules';
 import {
   createPhysicsInit,
   emptyLapState,
@@ -35,6 +36,7 @@ const maxRequestTime = 0.05;
 const maxExtrapolation = 0.05;
 
 interface PhysicsClientOptions {
+  race?: RaceOptions;
   botsOnly?: boolean;
   bots?: RaceBotOptions[];
   observedBot?: number;
@@ -49,6 +51,7 @@ interface PhysicsClientOptions {
 }
 
 export function createPhysicsClient({
+  race,
   car,
   course,
   definition,
@@ -271,6 +274,7 @@ export function createPhysicsClient({
     botCars.forEach((car, index) => car.setColor(botColors[botForModel(index + 1)]));
   }
   const data = createPhysicsInit(definition, car, course, input().configuration, bots, botsOnly);
+  data.race = race;
   send({ type: 'init', data });
 
   function invalidate() {
@@ -393,6 +397,14 @@ export function createPhysicsClient({
     get standings() {
       return standings;
     },
+    get raceFinished() {
+      return (
+        !resetting &&
+        (laps.finished || laps.retired) &&
+        botTelemetry.length === bots.length &&
+        botTelemetry.every(({ laps }) => laps.finished || laps.retired)
+      );
+    },
     botSounds,
     get botSmokeActive() {
       return botEffects.some((effect) => effect.active);
@@ -480,6 +492,9 @@ export function createPhysicsClient({
       const result = records;
       records = [];
       return result;
+    },
+    retire() {
+      send({ type: 'retire', input: input() });
     },
     reset() {
       botEffects.forEach((effect) => effect.reset());

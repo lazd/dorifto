@@ -381,14 +381,66 @@ for the car's live position and heading. It follows course changes automatically
 or **Follow heading** (default, `?minimap=heading-up`). Follow heading rotates the course
 so the car always points up, fitting the entire course at any angle. The lap
 times stay upright. The choice is retained in the URL across reloads and course changes.
-When all four tires, including their tread edges, are beyond the outer edges of the white lines (farther than
-half the track width plus half the 16 cm stripe width from the centerline), the current lap time turns red and pulses (solid red with
-reduced motion enabled). Asphalt shoulders do not count as inside the track. The warning
-stays latched after rejoining; reset clears it, or crossing start/finish discards the invalid
-attempt and starts fresh without changing completed times or the best lap. Airborne tires
-use their projected wheel positions rather than stale ground-contact points. The check includes
-the loaded model's tire widths and front-wheel steering, so a tread edge touching the line
-keeps the lap valid even when the tire's center is outside.
+The course chooser offers three race modes, independent of Grip/Drift handling:
+
+- **Track Limits**: a lap becomes invalid only when all four tires, including both
+  tread edges, are completely beyond the outer edges of the white lines. Any tire
+  still touching the stripe or inside keeps the lap valid; shoulders are outside.
+- **Don't Cross the Mustard**: available only with a double-yellow centerline.
+  White-line limits also apply. Each car must stay in its starting lane: a tire
+  completely beyond the far edge of the double yellow invalidates the lap, but
+  touching or straddling the yellow is allowed.
+- **Anything Goes**: off-track driving never invalidates a lap.
+
+Closed courses default to **3 laps**, editable before loading; open courses have one attempt.
+The URL retains `race-mode=track-limits|mustard|anything-goes` and `race-laps`.
+Every forward finish crossing ends the current attempt, even if invalid. Invalid attempts
+consume race distance but earn no completed lap credit; a car with any invalid attempts
+is disqualified rather than winning. A new attempt starts with fresh validity.
+The current timer turns red and pulses on invalidation (solid with reduced motion),
+remaining invalid after rejoining. Airborne tires use projected positions; the check
+includes the loaded model's tire widths and steering.
+
+Track Limits and Mustard have separate records per layout and direction. Both rule
+sets are checked in every mode, so eligible laps also improve their records when
+driven in Anything Goes or another mode. Anything Goes has its own unrestricted record.
+Saved replays show their selected mode and retain per-lap eligibility.
+Older saved laps remain Track Limits laps with unknown Mustard eligibility.
+
+When your run finishes, or you press reset during a run, a results card shows your
+best eligible lap, track-record comparison, maximum and average speed, drift time,
+cones hit, car contacts, and **Time in 1st** (the percentage of active run time spent
+ranked first, including the launch approach but excluding the start countdown).
+Solo runs count as first place. Drift time counts sideways slip of at least 0.3 radians
+(about 17 degrees) at 5 m/s (18 km/h) or faster. Each cone counts once per run.
+Car contacts count separately for each opponent; sustained contact counts once,
+with at least 250 ms apart required before another contact counts. These statistics
+stop when your run finishes or is reset; older replays show unavailable values as
+a dash. Cornering G is not tracked. A lap table shows
+validity under each applicable rule set; Mustard is hidden without a centerline.
+Track Limits violations read **Exceeded**. Mustard reads **Avoided** when untouched,
+**Tasted** in yellow when a tire touches either yellow stripe without crossing
+(still valid), or **Crossed** in red when a whole tire passes the far yellow edge.
+Touches and crossings persist with new saved laps and records.
+On centerline courses, the Track Limits column is named **Mayo**: **Avoided** for
+untouched white lines, **Tasted** in white for a tire touching either white stripe,
+or **Exceeded** in red using the unchanged Track Limits calculation. White-line
+touches remain valid and are retained with new saved laps and records.
+The standings table shows every driver, race time or gap, and Racing, Finished,
+DSQ, or DNF status. Standings remain live as other cars finish, then become final.
+The header badge shows 🏆 Won for the first classified finisher, 🏁 Finished for
+other classified finishes, 🔴 DNF for a stopped run, or ❌ Disqualified when
+completed attempts do not satisfy the selected mode's validity requirements.
+Resetting before the finish retires your car (DNF) without stopping the other drivers.
+The simulation and engine audio keep running behind the dialog even after everyone
+finishes; driving inputs remain disabled. The minimap displays 🏁 at the finish.
+Results automatically save the run and offer run and record replay.
+New saved runs retain these statistics, including individual lap statistics;
+new track records retain the statistics for their record lap rather than the
+entire run. Existing records are not retroactively populated.
+Record comparisons use the record before the run: a first or faster record is
+**New record**, while an exactly identical lap time is **Record tied**.
+Reset again, **Race again**, or Escape restarts.
 **Settings > HUD & aids > Racing line training gate display** (`?lap-gates=on`, or `rainbow` to color
 gates by lap position) shows visual targets
 3 times the loaded car's width, spaced roughly 22.5 m along a geometry-based,

@@ -1,0 +1,225 @@
+@import './tokens.css';
+
+.results-dialog {
+  width: min(44rem, calc(100vw - var(--space-6)));
+}
+
+.results-header,
+.results-section-heading,
+.results-headline,
+.results-comparison {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.results-header {
+  align-items: baseline;
+  padding: 0;
+}
+
+.results-header h2 {
+  margin: 0;
+  padding: 0;
+  font-size: var(--text-title);
+  letter-spacing: var(--tracking-tight);
+}
+
+.results-header p {
+  margin: var(--space-1) 0 0;
+}
+
+.results-header > span {
+  text-align: right;
+}
+
+.results-outcome {
+  flex-shrink: 0;
+  padding: var(--space-3) var(--space-4);
+  border: var(--line) solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-sunken);
+  font-size: var(--text-lg);
+  font-weight: 600;
+}
+
+.results-hero {
+  padding-block: var(--space-5);
+}
+
+.results-label,
+.results-metrics dt {
+  color: var(--color-muted);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+}
+
+.results-headline {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  margin-top: var(--space-1);
+}
+
+.results-time {
+  font-size: clamp(2.5rem, 8vw, 3.75rem);
+  font-weight: 650;
+  line-height: 1.15;
+  letter-spacing: var(--tracking-tight);
+}
+
+.results-time,
+.results-metrics dd,
+.results-table {
+  font-variant-numeric: tabular-nums;
+}
+
+.results-badge {
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--color-selected);
+  color: var(--color-accent);
+  font-size: var(--text-caption);
+  white-space: nowrap;
+}
+
+.results-comparison p {
+  margin: 0;
+}
+
+.results-record {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.results-comparison .button {
+  flex-shrink: 0;
+}
+
+.results-metrics {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: var(--space-3);
+  margin: 0;
+  padding: var(--space-4);
+  background: var(--color-sunken);
+  border-radius: var(--radius-md);
+}
+
+.results-metrics > div {
+  display: flex;
+  grid-column: span 2;
+  flex-direction: column-reverse;
+  align-items: center;
+  text-align: center;
+  gap: var(--space-1);
+}
+
+.results-metrics dd {
+  margin: 0;
+  font-size: var(--text-xl);
+  font-weight: 600;
+}
+
+.results-metrics small {
+  color: var(--color-muted);
+  font-size: var(--text-caption);
+  font-weight: 400;
+}
+
+.results-section {
+  margin-top: var(--space-5);
+}
+
+.results-section-heading {
+  margin-bottom: var(--space-2);
+}
+
+.results-section h3 {
+  margin: 0;
+  font-size: var(--text-base);
+  font-weight: 600;
+}
+
+.results-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+
+.results-table th {
+  color: var(--color-muted);
+  font-size: var(--text-caption);
+  font-weight: 400;
+}
+
+.results-table :is(th, td) {
+  padding: var(--space-2) var(--space-1);
+  border-bottom: var(--line) solid var(--color-border);
+  text-align: right;
+}
+
+.results-table :is(th, td):nth-child(-n + 2) {
+  text-align: left;
+}
+
+.results-table tr:last-child td {
+  border-bottom: 0;
+}
+
+.results-table .results-badge {
+  display: inline-block;
+  margin-inline-start: var(--space-2);
+  font-size: var(--text-xs);
+}
+
+.results-table td[data-valid='true'],
+.results-table td[data-mustard='avoided'] {
+  color: var(--color-accent);
+}
+
+.results-table td[data-valid='false'],
+.results-table td[data-mustard='crossed'] {
+  color: var(--color-danger);
+}
+
+.results-table td[data-mustard='tasted'] {
+  color: var(--color-warning);
+}
+
+.results-table td[data-mayo='tasted'] {
+  color: var(--color-highlight);
+}
+
+.results-driver {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+@media (max-width: 30rem) {
+  .results-header,
+  .results-comparison {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .results-header > span {
+    text-align: left;
+  }
+
+  .results-metrics {
+    padding: var(--space-3);
+  }
+
+  .results-metrics dd {
+    font-size: var(--text-lg);
+  }
+
+  .results-metrics dt {
+    letter-spacing: normal;
+  }
+}

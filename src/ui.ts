@@ -18,6 +18,7 @@ import { download } from './download';
 import { browserStorage } from './browser-storage';
 import {
   courseDirectionRecords,
+  bestRunTime,
   describeRun,
   exportRun,
   replayStorageKey,
@@ -44,6 +45,7 @@ import {
   type TuningPreset,
 } from './tuning-presets';
 import { formatLapTime } from './laps';
+import { defaultRaceOptions, raceModes, isRaceMode, type RaceOptions } from './race-rules';
 import type { Store } from './store';
 import { isTurnSignMode } from './turn-sign';
 import { isStereoStationSelection, stereoStations } from './stereo';
@@ -589,6 +591,7 @@ export interface CoursePickerActions {
     seed?: number,
     weights?: CourseGenerationWeights,
     reverse?: boolean,
+    race?: RaceOptions,
   ) => Promise<CourseDefinition>;
   changeDirection: (reverse: boolean) => Promise<void>;
   saveCourse: (name: string, definition?: CourseDefinition) => Promise<CourseDefinition>;
@@ -601,6 +604,7 @@ export interface CoursePickerActions {
   reportError: (error: unknown) => void;
   getCourseWeights: () => CourseGenerationWeights;
   setCourseWeights: (weights: CourseGenerationWeights) => void;
+  getRaceOptions: () => RaceOptions;
 }
 
 const courseGroups = [
@@ -661,6 +665,32 @@ export function bindCoursePicker(
   const previewError = bindText('#course-preview-error');
   const previewName = bindText('#course-preview-name');
   const previewDistance = bindText('#course-preview-distance');
+  const raceMode = element<HTMLSelectElement>('#course-race-mode');
+  const raceLaps = element<HTMLInputElement>('#course-race-laps');
+  const raceDescription = bindText('#course-race-description');
+  const lapField = element('#course-laps-field');
+  raceMode.value = actions.getRaceOptions().mode;
+  raceLaps.value = String(actions.getRaceOptions().laps);
+  function selectedRace(): RaceOptions {
+    if (!isRaceMode(raceMode.value)) throw new Error('Choose a valid race mode');
+    const laps = Number(raceLaps.value);
+    if (!Number.isSafeInteger(laps) || laps < 1)
+      throw new Error('Laps must be a positive whole number');
+    return { mode: raceMode.value, laps: preview.closed === false ? 1 : laps };
+  }
+  function syncRaceOptions() {
+    raceMode.querySelector<HTMLOptionElement>('[value="mustard"]')!.disabled =
+      !preview.doubleYellow;
+    if (!preview.doubleYellow && raceMode.value === 'mustard')
+      raceMode.value = defaultRaceOptions.mode;
+    lapField.hidden = preview.closed === false;
+    const mode = raceMode.value;
+    if (isRaceMode(mode)) raceDescription(raceModes[mode].description);
+  }
+  raceMode.addEventListener('change', () => {
+    syncRaceOptions();
+    renderRecords(preview);
+  });
   const courseActions = element<HTMLDetailsElement>('#course-actions');
   const courseActionsSummary = courseActions.querySelector('summary')!;
   const downloadAction = element<HTMLButtonElement>('#course-download');
@@ -849,7 +879,9 @@ export function bindCoursePicker(
   function renderRecords(course: CourseDefinition) {
     let summaries;
     try {
-      summaries = (draftSelected ? [] : courseDirectionRecords(course)).filter(
+      summaries = (
+        draftSelected ? [] : courseDirectionRecords(course, browserStorage, selectedRace().mode)
+      ).filter(
         (summary) =>
           summary.reverse === direction && (summary.record !== null || summary.runs.length),
       );
@@ -874,7 +906,11 @@ export function bindCoursePicker(
         const row = textElement('li', 'record-row', '');
         const text = document.createElement('div');
         text.append(
-          textElement('div', 'help-text', `Local record · ${directionLabel(reverse)}`),
+          textElement(
+            'div',
+            'help-text',
+            `Local record · ${raceModes[selectedRace().mode].name} · ${directionLabel(reverse)}`,
+          ),
           textElement(
             'div',
             'record-time',
@@ -909,7 +945,7 @@ export function bindCoursePicker(
     replaysDirection(`Saved runs · ${directionLabel(direction)}`);
     replayRuns.replaceChildren(
       ...[...runs].reverse().map((run) => {
-        const best = run.laps.length ? Math.min(...run.laps) : null;
+        const best = bestRunTime(run);
         const { date, laps } = describeRun(run);
         const driver = run.driver?.startsWith('bot') ? ' · Bot' : '';
         const row = textElement('li', 'record-row', '');
@@ -938,7 +974,14 @@ export function bindCoursePicker(
           ),
         );
         const text = document.createElement('div');
-        text.append(time, textElement('div', 'help-text', `${date} · ${laps}${driver}`));
+        text.append(
+          time,
+          textElement(
+            'div',
+            'help-text',
+            `${date} · ${laps}${driver} · ${raceModes[run.mode ?? 'track-limits'].name}`,
+          ),
+        );
         const watch = textElement(
           'button',
           'button button-secondary',
@@ -1099,6 +1142,7 @@ export function bindCoursePicker(
     deleteAction.hidden = groupForCourse(course).id !== 'stored';
     savePreview.hidden = !isUnsavedCourse(course);
     editDraft.hidden = !isDraft;
+    syncRaceOptions();
     renderRecords(course);
     render2d(course);
     syncBusy();
@@ -1110,9 +1154,9 @@ export function bindCoursePicker(
 
   function syncBusy() {
     picker.setAttribute('aria-busy', String(changing));
-    for (const control of picker.querySelectorAll<HTMLButtonElement | HTMLInputElement>(
-      'button, .master-detail input',
-    ))
+    for (const control of picker.querySelectorAll<
+      HTMLButtonElement | HTMLInputElement | HTMLSelectElement
+    >('button, .master-detail input, .master-detail select'))
       control.disabled = changing;
     courseActionsSummary.toggleAttribute('aria-disabled', changing);
     downloadAction.disabled = changing || downloading;
@@ -1165,6 +1209,7 @@ export function bindCoursePicker(
     pickerError('');
     await exclusive(async () => {
       try {
+        const race = selectedRace();
         const weights =
           generation?.type === 'custom'
             ? generation.weights
@@ -1179,6 +1224,7 @@ export function bindCoursePicker(
             (isUnsavedCourse({ id }) ? crypto.getRandomValues(new Uint32Array(1))[0] : undefined),
           weights,
           direction,
+          race,
         );
         syncCourseName();
       } catch (error) {
@@ -2078,7 +2124,7 @@ export function bindGameUI(
       speed(mph);
       tachometer(t.rpm, mph, t.limiter);
       gear(t.gear < 0 ? 'R' : t.gear === 0 ? 'N' : String(t.gear));
-      lap(t.finished ? 'Finished' : t.lap ? String(t.lap) : '--');
+      lap(t.finished ? '🏁' : t.lap ? String(t.lap) : '--');
       current(formatLapTime(t.lap ? t.current : null));
       if (currentLap.classList.contains('is-invalid') !== t.invalid) {
         currentLap.classList.toggle('is-invalid', t.invalid);
