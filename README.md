@@ -1088,7 +1088,7 @@ to 70% of its normal opacity when the cars overlap.
 
 ## Drive modes
 
-Built-in tuning presets always come from code, not localStorage. Only user presets
+Built-in tuning presets always come from code, not browser storage. Only user presets
 are saved locally per browser.
 The preset picker shows presets for the active Grip or Drift mode only.
 
@@ -1448,10 +1448,20 @@ a course when empty. A saved course's action disclosure offers rename and confir
 deletion.
 Replay rows offer **Watch** and confirmed **Delete** actions. Right-click a row to
 copy that run's JSON to the clipboard, including its metadata and compressed frames
-in localStorage-compatible format. Deleting a replay
+in the existing keyed JSON format. Deleting a replay
 does not load its course or remove the local record. Saved-run playback and deletion
 live in the course picker; the main HUD only shows the stop-recording button while
 recording, and lap navigation during replay.
+
+Lap records, compressed recordings, user tuning presets, and control bindings are
+stored in the OPFS `dorifto-data` directory, alongside the separate OPFS course
+library. Startup migrates their existing localStorage entries, removing each legacy
+entry only after its OPFS write completes. Unrelated localStorage entries are left
+alone. Reads use a session cache; writes are ordered, and recording saves and
+deletions await persistence. Background settings-write failures are shown as errors.
+If OPFS initialization fails, startup reports the failure rather than falling back
+to quota-limited localStorage. Storage remains local to the browser and origin
+(including the hostname and port).
 
 The reusable `Tabs` class in `src/tabs.ts` handles Settings and Controls tab/panel
 ARIA relationships, roving focus, orientation-aware arrow navigation with wraparound,

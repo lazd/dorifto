@@ -81,17 +81,22 @@ import {
 } from './lap-recording';
 import './style.css';
 import './dialogs.css';
+import { browserStorage } from './browser-storage';
 
 // Imported styles have been applied, so the page can be revealed without unstyled content.
 document.body.hidden = false;
 const gameState = createGameState();
 const configurationState = createConfigurationState();
-const ui = bindGameUI(configurationState, gameState, (error) => showError(error, false));
+let ui: ReturnType<typeof bindGameUI>;
 
 async function start() {
+  await browserStorage.open(await navigator.storage.getDirectory(), localStorage, (error) =>
+    showError(error, false),
+  );
   configurationState.update({
-    tuningPresets: loadTuningPresets(localStorage, defaultTuningPresets()),
+    tuningPresets: loadTuningPresets(browserStorage, defaultTuningPresets()),
   });
+  ui = bindGameUI(configurationState, gameState, (error) => showError(error, false));
   // Invalid URL parameters are not fatal: drop them and use the default.
   const readParams = <Value>(
     names: string[],
@@ -1071,16 +1076,16 @@ async function start() {
         1,
       );
       try {
-        deleteCourseRecords(savedCourse);
+        await deleteCourseRecords(savedCourse);
       } catch (error) {
         reportLapError('Unable to delete course records:', error);
       }
       return fallback;
     },
     playRun: playCourseRun,
-    deleteReplay: (course, reverse, id) => {
+    deleteReplay: async (course, reverse, id) => {
       const key = replayStorageKey({ ...course, reverse });
-      deleteRun(key, id);
+      await deleteRun(key, id);
       if (key === storageKey) refreshSavedRuns();
     },
     getCourseWeights: ui.getCourseWeights,
@@ -1534,4 +1539,7 @@ function showError(error: unknown, fatal = true) {
   });
 }
 
-void start().catch(showError);
+void start().catch((error) => {
+  ui ??= bindGameUI(configurationState, gameState, (error) => showError(error, false));
+  showError(error);
+});

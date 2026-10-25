@@ -1,4 +1,5 @@
 import { Tabs } from './tabs';
+import { browserStorage as persistentStorage } from './browser-storage';
 import {
   axisOptions,
   controllerActions,
@@ -522,7 +523,7 @@ function standardGamepad(): Gamepad | undefined {
 
 function browserStorage(reportError: (error: Error) => void): StorageLike | null {
   try {
-    return window.localStorage;
+    return persistentStorage;
   } catch (error) {
     reportError(
       new Error(

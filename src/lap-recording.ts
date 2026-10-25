@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { browserStorage, flushBrowserStorage } from './browser-storage';
 import type { CourseDefinition } from './courses';
 
 /** Physics steps between recorded samples (120 Hz physics → 30 Hz samples). */
@@ -444,7 +445,7 @@ function readRecord(key: string, storage: Storage): StoredRecord | null {
   return record;
 }
 
-export async function loadRecordLap(key: string, storage: Storage = localStorage) {
+export async function loadRecordLap(key: string, storage: Storage = browserStorage) {
   const stored = readRecord(key, storage);
   if (!stored) return null;
   const { data, count } = decodeFrames(
@@ -461,7 +462,7 @@ export async function loadRecordLap(key: string, storage: Storage = localStorage
 export async function saveRecordLap(
   key: string,
   lap: RunRecording,
-  storage: Storage = localStorage,
+  storage: Storage = browserStorage,
 ) {
   const time = lap.lapTimes[0];
   if (!lap.count || !Number.isFinite(time) || time <= 0) throw new Error('Invalid record lap');
@@ -478,6 +479,7 @@ export async function saveRecordLap(
     frames,
   };
   storage.setItem(`${recordPrefix}:${key}`, JSON.stringify(record));
+  await flushBrowserStorage(storage);
   return true;
 }
 
@@ -508,7 +510,7 @@ export interface CourseDirectionRecords {
 /** Record time and saved runs for each driving direction of a course. */
 export function courseDirectionRecords(
   definition: CourseDefinition,
-  storage: Storage = localStorage,
+  storage: Storage = browserStorage,
 ): CourseDirectionRecords[] {
   return [false, true].map((reverse) => {
     const key = replayStorageKey({ ...definition, reverse });
@@ -622,7 +624,7 @@ function readIndex(storage: Storage, key: string): StoredRun[] {
   }
 }
 
-export function listSavedRuns(key: string, storage: Storage = localStorage): RunSummary[] {
+export function listSavedRuns(key: string, storage: Storage = browserStorage): RunSummary[] {
   return readIndex(storage, key).map(
     ({ id, createdAt, laps, cones, duration, driver, botTuning }) => ({
       id,
@@ -640,7 +642,7 @@ export async function saveRun(
   key: string,
   recording: RunRecording,
   driver: Pick<RunSummary, 'driver' | 'botTuning'>,
-  storage: Storage = localStorage,
+  storage: Storage = browserStorage,
 ): Promise<RunSummary> {
   const id = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
   const run: StoredRun = {
@@ -661,6 +663,7 @@ export async function saveRun(
   storage.setItem(dataKey, payload);
   try {
     storage.setItem(`${storagePrefix}:${key}`, JSON.stringify([...readIndex(storage, key), run]));
+    await flushBrowserStorage(storage);
   } catch (error) {
     storage.removeItem(dataKey);
     throw error;
@@ -675,8 +678,8 @@ export async function saveRun(
   };
 }
 
-/** Export one run as localStorage-compatible JSON, including its compressed frames. */
-export function exportRun(key: string, id: string, storage: Storage = localStorage) {
+/** Export one run as keyed JSON, including its compressed frames. */
+export function exportRun(key: string, id: string, storage: Storage = browserStorage) {
   const run = readIndex(storage, key).find((run) => run.id === id);
   const dataKey = `${storagePrefix}:${key}:${id}`;
   const payload = storage.getItem(dataKey);
@@ -691,7 +694,7 @@ export function exportRun(key: string, id: string, storage: Storage = localStora
   );
 }
 
-export async function loadRun(key: string, id: string, storage: Storage = localStorage) {
+export async function loadRun(key: string, id: string, storage: Storage = browserStorage) {
   const run = readIndex(storage, key).find((run) => run.id === id);
   const payload = storage.getItem(`${storagePrefix}:${key}:${id}`);
   if (!run || payload === null) throw new Error('Saved laps not found');
@@ -705,15 +708,19 @@ export async function loadRun(key: string, id: string, storage: Storage = localS
   return recording;
 }
 
-export function deleteRun(key: string, id: string, storage: Storage = localStorage) {
+export async function deleteRun(key: string, id: string, storage: Storage = browserStorage) {
   storage.removeItem(`${storagePrefix}:${key}:${id}`);
   storage.setItem(
     `${storagePrefix}:${key}`,
     JSON.stringify(readIndex(storage, key).filter((run) => run.id !== id)),
   );
+  await flushBrowserStorage(storage);
 }
 
-export function deleteCourseRecords(course: CourseDefinition, storage: Storage = localStorage) {
+export async function deleteCourseRecords(
+  course: CourseDefinition,
+  storage: Storage = browserStorage,
+) {
   for (const reverse of [false, true]) {
     const key = replayStorageKey({ ...course, reverse });
     for (const run of readIndex(storage, key))
@@ -721,4 +728,5 @@ export function deleteCourseRecords(course: CourseDefinition, storage: Storage =
     storage.removeItem(`${storagePrefix}:${key}`);
     storage.removeItem(`${recordPrefix}:${key}`);
   }
+  await flushBrowserStorage(storage);
 }

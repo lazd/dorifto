@@ -13,6 +13,7 @@ import {
 import { coursePreviewSvg } from './course-preview';
 import { CoursePreviewRenderer } from './course-preview-3d';
 import { startTextSpinner } from './text-spinner';
+import { browserStorage } from './browser-storage';
 import {
   courseDirectionRecords,
   describeRun,
@@ -398,7 +399,7 @@ function bindTuningPresets(
       };
       const tuningPresets = [...state.tuningPresets, preset];
       try {
-        persistTuningPresets(localStorage, tuningPresets);
+        persistTuningPresets(browserStorage, tuningPresets);
         store.update({
           tuningPresets,
           selectedTuningPresets: { ...state.selectedTuningPresets, [state.driveMode]: preset.id },
@@ -458,7 +459,7 @@ function bindTuningPresets(
       entry.id === preset.id ? { ...entry, name } : entry,
     );
     try {
-      persistTuningPresets(localStorage, tuningPresets);
+      persistTuningPresets(browserStorage, tuningPresets);
       store.update({ tuningPresets });
       clearPresetError();
     } catch (error) {
@@ -517,7 +518,7 @@ function bindTuningPresets(
     }
     const tuningPresets = state.tuningPresets.filter(({ id }) => id !== preset.id);
     try {
-      persistTuningPresets(localStorage, tuningPresets);
+      persistTuningPresets(browserStorage, tuningPresets);
       store.update({
         tuningPresets,
         profiles: {
@@ -594,7 +595,7 @@ export interface CoursePickerActions {
   deleteCourse: (id: string) => Promise<CourseDefinition>;
   /** Plays a saved run of the active course and direction, resetting the race. */
   playRun: (runId: string) => Promise<void>;
-  deleteReplay: (course: CourseDefinition, reverse: boolean, runId: string) => void;
+  deleteReplay: (course: CourseDefinition, reverse: boolean, runId: string) => Promise<void>;
   reportError: (error: unknown) => void;
   getCourseWeights: () => CourseGenerationWeights;
   setCourseWeights: (weights: CourseGenerationWeights) => void;
@@ -1504,7 +1505,7 @@ export function bindCoursePicker(
       const replay = editing.replay;
       if (!replay) throw new Error('Missing replay to delete');
       try {
-        actions.deleteReplay(course, replay.direction, replay.id);
+        await actions.deleteReplay(course, replay.direction, replay.id);
         const summary = courseDirectionRecords(course).find(
           ({ reverse }) => reverse === replay.direction,
         );

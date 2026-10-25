@@ -1,4 +1,5 @@
 import './bot-tuning.css';
+import { browserStorage } from './browser-storage';
 import type { DriveMode } from './drive-modes';
 import { type DrivingTuning, type ConfigurationState } from './configuration-state';
 import type { Store } from './store';
@@ -155,7 +156,7 @@ export function createDrivingTuning(
         ? state.tuningPresets.map((entry) => (entry.id === preset.id ? selectedPreset : entry))
         : [...state.tuningPresets, selectedPreset];
     try {
-      persistTuningPresets(localStorage, tuningPresets);
+      persistTuningPresets(browserStorage, tuningPresets);
     } catch (error) {
       reportError(error);
     }
