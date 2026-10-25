@@ -627,6 +627,8 @@ function courseDistance(course: CourseDefinition) {
 }
 
 const directionLabel = (reverse: boolean) => (reverse ? 'Reverse' : 'Forward');
+const routeLabel = (course: CourseDefinition) =>
+  course.closed === false ? 'Open route' : 'Closed loop';
 const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
 function textElement(tag: string, className: string, text: string) {
@@ -709,7 +711,7 @@ export function bindCoursePicker(
         const members = listed.filter((course) => groupForCourse(course) === group);
         if (!members.length && group.id === 'current') return [];
         const section = document.createElement('section');
-        section.className = 'selection-group';
+        section.className = 'selection-group track-list';
         section.setAttribute('role', 'group');
         section.setAttribute('aria-labelledby', `courses-${group.id}-heading`);
         const heading = document.createElement('h3');
@@ -720,7 +722,10 @@ export function bindCoursePicker(
           textElement('span', '', `${members.length}`),
         );
         section.append(heading);
-        if (group.id === 'stored') savedSection = section;
+        if (group.id === 'stored') {
+          savedSection = section;
+          section.append(createButton);
+        }
         if (!members.length && group.id === 'stored' && !draft)
           section.append(textElement('p', 'help-text', 'Create a course to save your own layout.'));
         for (const course of members) {
@@ -735,7 +740,11 @@ export function bindCoursePicker(
           const text = document.createElement('span');
           text.append(
             textElement('span', 'selection-item-title', course.name),
-            textElement('span', 'selection-item-meta', courseDistance(course)),
+            textElement(
+              'span',
+              'selection-item-meta',
+              `${courseDistance(course)} · ${routeLabel(course)}`,
+            ),
           );
           main.append(avatar, text);
           item.append(main);
@@ -999,7 +1008,9 @@ export function bindCoursePicker(
     previewName(course.name);
     previewGroup(groupForCourse(course).badge);
     element('#course-preview-group').hidden = groupForCourse(course).id === 'stored';
-    previewDistance(`${courseDistance(course)}${course.closed === false ? '' : ' per lap'}`);
+    previewDistance(
+      `${courseDistance(course)}${course.closed === false ? '' : ' per lap'} · ${routeLabel(course)}`,
+    );
     courseActions.open = false;
     courseActions.hidden = groupForCourse(course).id !== 'stored';
     savePreview.hidden = !isUnsavedCourse(course);

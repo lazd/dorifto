@@ -91,6 +91,18 @@ dialog .dialog-close {
   border-color: var(--color-border);
 }
 
+.button.button-create {
+  width: 100%;
+  height: calc(var(--control-height) + var(--space-1));
+  margin-top: var(--space-2);
+  margin-bottom: var(--space-5);
+  border: var(--line) dashed var(--color-muted);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-accent);
+  font-weight: 600;
+}
+
 .button-compact {
   min-height: 0;
   padding-inline: var(--space-2);
@@ -133,13 +145,14 @@ dialog .dialog-close {
 }
 
 dialog .button:not(:disabled):hover,
+.button-create:not(:disabled):hover,
 .dialog-close button:not(:disabled):hover {
   background: var(--color-selected);
   border-color: var(--color-accent);
   color: var(--color-text);
 }
 
-dialog .button-primary:not(:disabled):hover {
+.button.button-primary:not(:disabled):hover {
   background: color-mix(in srgb, var(--color-accent), var(--color-highlight) 12%);
   color: var(--color-sunken);
 }
@@ -168,7 +181,7 @@ dialog .button:focus-visible {
   color: var(--color-text);
 }
 
-dialog .button-primary:focus-visible {
+.button.button-primary:focus-visible {
   background: var(--color-highlight);
   border-color: var(--color-highlight);
   color: var(--color-sunken);
@@ -479,6 +492,27 @@ input.switch[type='checkbox']:checked::before {
   font-size: var(--text-sm);
 }
 
+.track-list {
+  display: grid;
+  align-content: start;
+  gap: var(--space-2);
+}
+
+.track-list .selection-item {
+  padding: var(--space-2) var(--space-3);
+  border-color: var(--color-border);
+  background: var(--color-surface);
+  font: inherit;
+}
+
+.track-list .selection-item:not(:disabled):hover {
+  border-color: var(--color-accent);
+}
+
+.track-list .selection-item-main > span:last-child {
+  min-width: 0;
+}
+
 .selection-item[aria-pressed='true'],
 .selection-item[aria-selected='true'],
 .selection-item:has([aria-pressed='true']) {
@@ -583,6 +617,23 @@ dialog .selection-item > button.selection-item-main:focus-visible {
   height: 2.125rem;
   border-radius: var(--radius-sm);
   background: var(--avatar-color, var(--color-selected));
+}
+
+.course-thumbnail {
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: var(--space-1);
+  color: var(--color-muted);
+}
+
+.course-thumbnail svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.selection-item[aria-selected='true'] .course-thumbnail {
+  color: var(--color-accent);
 }
 
 .selection-group + .selection-group {

@@ -3,7 +3,7 @@
 
 :root {
   color-scheme: dark;
-  font: var(--text-md) / 1.5 var(--font-family);
+  font: 1rem / 1.5 var(--font-family);
   color: var(--color-text);
   background: var(--color-sunken);
   --sidebar-width: 320px;
@@ -14,6 +14,7 @@
 }
 body {
   margin: 0;
+  font-size: var(--text-md);
 }
 [hidden] {
   display: none !important;
@@ -47,7 +48,7 @@ body {
   overflow-y: auto;
   padding-bottom: var(--space-5);
 }
-button,
+button:not(.button, .selection-item),
 input,
 select {
   font: inherit;
@@ -61,7 +62,7 @@ select {
 button {
   cursor: pointer;
 }
-button:hover:not(:disabled) {
+button:not(.button, .selection-item):hover:not(:disabled) {
   border-color: var(--color-accent);
 }
 button:disabled {
@@ -72,63 +73,10 @@ button:disabled {
   outline: calc(var(--line) * 2) solid var(--color-accent);
   outline-offset: calc(var(--line) * 2);
 }
-.primary {
-  background: var(--color-accent);
-  color: var(--color-sunken);
-  font-weight: 700;
-}
-.new-track {
-  width: 100%;
-  height: calc(var(--control-height) + var(--space-1));
-  margin-top: var(--space-2);
-  margin-bottom: var(--space-5);
-  border: var(--line) dashed var(--color-muted);
-  background: transparent;
-  color: var(--color-accent);
-  font-weight: 600;
-}
 #saved {
   padding: 0;
   max-height: none;
-  gap: var(--space-2);
   background: transparent;
-}
-.track-option {
-  width: 100%;
-  display: flex;
-  gap: var(--space-3);
-  align-items: center;
-  text-align: left;
-  min-height: 84px;
-  padding: var(--space-3);
-}
-.track-option > span {
-  min-width: 0;
-}
-.track-option strong {
-  display: block;
-  font-size: var(--text-sm);
-  overflow-wrap: anywhere;
-}
-.track-option small {
-  display: block;
-  font-size: var(--text-xs);
-  color: var(--color-muted);
-  margin-top: calc(var(--space-3) / 2);
-}
-.track-option svg {
-  width: 66px;
-  height: 58px;
-  flex: none;
-  background: var(--color-sunken);
-  border-radius: var(--radius-sm);
-}
-.track-option polyline {
-  fill: none;
-  stroke: var(--color-accent);
-  stroke-width: 2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
 }
 #library-message {
   color: var(--color-muted);
@@ -398,7 +346,6 @@ input.switch::before {
 .viewport-toolbar button {
   min-width: 100px;
   white-space: nowrap;
-  padding: var(--space-3) calc(var(--space-4) + var(--space-1));
 }
 .viewport-message {
   position: absolute;
@@ -518,7 +465,6 @@ input.switch::before {
   }
   .viewport-toolbar button {
     min-width: 80px;
-    padding: calc(var(--space-2) + var(--space-1) / 2) var(--space-4);
   }
   .viewport-search input {
     padding: calc(var(--space-2) + var(--space-1) / 2) var(--space-3);

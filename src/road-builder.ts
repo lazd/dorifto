@@ -20,13 +20,13 @@ import {
   readRoadMap,
   restoreRoadDraft,
   roadMapMeta,
-  roadMapThumbnail,
   roadBuildSteps,
   type RoadBuildStep,
   type RoadMap,
 } from './road-builder-data';
 import type { GPSPoint } from './track-conversion.mjs';
 import { courseShoulderWidth } from './courses';
+import { coursePreviewSvg } from './course-preview';
 import { defaultTerrainTransition } from './terrain';
 import { startTextSpinner } from './text-spinner';
 import type { BuildRequest, BuildResponse } from './road-builder-worker';
@@ -652,7 +652,7 @@ element<HTMLFormElement>('build-form').onsubmit = (event) => {
             setView('library');
             updatePreviewInfo();
             for (const item of element('saved').querySelectorAll<HTMLButtonElement>(
-              '.track-option',
+              '.selection-item',
             )) {
               const active = item.dataset.id === selectedId;
               item.setAttribute('aria-selected', String(active));
@@ -765,22 +765,25 @@ async function refreshSaved() {
   savedMaps.forEach(({ course: saved }, i) => {
     const item = document.createElement('button');
     item.type = 'button';
-    item.className = 'track-option selection-item';
+    item.className = 'selection-item';
     item.setAttribute('role', 'option');
     item.dataset.id = saved.id;
-    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    svg.setAttribute('viewBox', '0 0 66 58');
-    svg.setAttribute('aria-hidden', 'true');
-    const line = document.createElementNS(svg.namespaceURI, 'polyline');
-    line.setAttribute('points', roadMapThumbnail(saved));
-    svg.append(line);
+    const main = document.createElement('span');
+    main.className = 'selection-item-main';
+    const avatar = document.createElement('span');
+    avatar.className = 'selection-avatar course-thumbnail';
+    avatar.setAttribute('aria-hidden', 'true');
+    avatar.innerHTML = coursePreviewSvg(saved, { size: 64, padding: 4 });
     const copy = document.createElement('span');
-    const title = document.createElement('strong');
+    const title = document.createElement('span');
+    title.className = 'selection-item-title';
     title.textContent = saved.name;
-    const meta = document.createElement('small');
+    const meta = document.createElement('span');
+    meta.className = 'selection-item-meta';
     meta.textContent = roadMapMeta(saved);
     copy.append(title, meta);
-    item.append(svg, copy);
+    main.append(avatar, copy);
+    item.append(main);
     item.onclick = () => {
       if (item.getAttribute('aria-selected') === 'true') return;
       void selectMap(saved.id);
@@ -803,7 +806,7 @@ async function refreshSaved() {
       const next = savedMaps[index];
       if (index === i) return;
       void selectMap(next.course.id);
-      element('saved').querySelectorAll<HTMLButtonElement>('.track-option')[index].focus();
+      element('saved').querySelectorAll<HTMLButtonElement>('.selection-item')[index].focus();
     };
     item.title = `${saved.name}. Press Delete to remove this track.`;
     list.append(item);
@@ -833,7 +836,7 @@ async function selectMap(id: string) {
   courseSaved = true;
   setView('library');
   updatePreviewInfo();
-  for (const item of element('saved').querySelectorAll<HTMLButtonElement>('.track-option')) {
+  for (const item of element('saved').querySelectorAll<HTMLButtonElement>('.selection-item')) {
     const active = item.dataset.id === id;
     item.setAttribute('aria-selected', String(active));
     item.tabIndex = active ? 0 : -1;

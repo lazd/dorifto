@@ -11,8 +11,13 @@
       <aside class="panel">
         <header><h1>Track Builder</h1></header>
         <section id="library-panel" class="panel-body">
-          <button id="new-track" class="new-track">+ New track</button>
-          <div id="saved" class="selection-list" role="listbox" aria-label="Tracks"></div>
+          <button id="new-track" class="button button-create">+ New track</button>
+          <div
+            id="saved"
+            class="selection-list track-list"
+            role="listbox"
+            aria-label="Tracks"
+          ></div>
           <p id="library-message" role="status">Loading tracks...</p>
         </section>
         <section id="editor-panel" class="panel-body" hidden>
@@ -63,7 +68,7 @@
         </section>
         <footer id="editor-actions" class="panel-actions" hidden>
           <button id="cancel-edit">Cancel</button>
-          <button id="build" class="primary" form="build-form" disabled>Save</button>
+          <button id="build" class="button button-primary" form="build-form" disabled>Save</button>
         </footer>
       </aside>
       <section class="viewport" aria-label="Map and course inspection">
@@ -94,7 +99,7 @@
           </div>
           <div class="viewport-toolbar">
             <button id="edit-route">Edit</button
-            ><button id="play" class="primary" disabled>Play</button>
+            ><button id="play" class="button button-primary" disabled>Play</button>
           </div>
         </section>
         <p id="empty-library" class="viewport-message">Create a track to get started.</p>
