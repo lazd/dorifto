@@ -594,6 +594,9 @@ grid step apart, so the wall's crest, face, and foot follow the road instead of
 stair-stepping along grid rows; cells between snapped vertices split along those lines.
 Where snap lines converge inside tight bends, cells that would fold or lift the
 pavement are left unsnapped.
+Triangles spanning adjacent snap lines are subdivided into six strips sampled from
+the smooth blend, so the road-to-wall corner becomes a rounded fillet rather than one
+sharp crease.
 Pavement and paint are clipped against the same triangles. Bullet's heightfield
 only supports a fixed diagonal at grid positions, so flipped and snapped cells are
 sunk below the heightfield and covered by a triangle-mesh collider with the rendered
@@ -1175,7 +1178,10 @@ outside it is textured dirt/gravel. Both receive shadows and headlights.
 Surface textures use subdued fine grain and seamless weathering patches; asphalt
 also has baked roughness variation and larger-scale weathering. Rock faces, and soil
 on slopes steeper than about 30°, use world-space triplanar color and normal mapping
-to avoid stretching top-down textures into vertical streaks on steep slopes.
+to avoid stretching top-down textures into vertical streaks on steep slopes. Soil and
+rock blend in per pixel from the smoothed surface normal, and the roadside dirt
+overlay fades out as the fillet curves up, so walls meet the shoulder without a
+visible seam.
 Offset texture samples blend together to reduce obvious tiling;
 irregular multi-scale patches add subdued green/dry-grass variation without regular
 vertex-color stripes or artificial rock strata.

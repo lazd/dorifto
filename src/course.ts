@@ -109,6 +109,7 @@ function buildCourse(scene: THREE.Group, definition: CourseDefinition, carWidth:
     1,
     true,
   );
+  const shoulder = definition.shoulderWidth ?? courseShoulderWidth;
   const cones: THREE.Mesh[] = [];
   const cornerCones: THREE.Mesh[] = [];
   const length = route.getLength();
@@ -123,7 +124,9 @@ function buildCourse(scene: THREE.Group, definition: CourseDefinition, carWidth:
     across.set(tangent.z, 0, -tangent.x).normalize();
     for (const side of [-1, 1]) {
       const cone = new THREE.Mesh(coneGeometry, orange);
-      const coneOffset = definition.width / 2 + 0.8 + baseWidth / Math.SQRT2 + 0.1;
+      // Stay on the shoulder; beyond it the ground may already be climbing a wall.
+      const coneOffset =
+        definition.width / 2 + Math.min(0.8 + baseWidth / Math.SQRT2 + 0.1, shoulder);
       cone.position.copy(center).addScaledVector(across, side * coneOffset);
       const normal = terrain.normalAt(cone.position.x, cone.position.z);
       cone.position.y = terrain.heightAt(cone.position.x, cone.position.z);
@@ -225,13 +228,7 @@ function buildCourse(scene: THREE.Group, definition: CourseDefinition, carWidth:
     pad.name = 'skidpad-asphalt';
     pad.receiveShadow = true;
     scene.add(pad);
-  } else
-    ribbon(
-      0,
-      definition.width + (definition.shoulderWidth ?? courseShoulderWidth) * 2,
-      0.008,
-      asphalt,
-    );
+  } else ribbon(0, definition.width + shoulder * 2, 0.008, asphalt);
   for (const side of [-1, 1]) ribbon((side * definition.width) / 2, courseLineWidth, 0.016, white);
   if (definition.doubleYellow) {
     const yellow = paint(0xffd32a);
@@ -320,11 +317,15 @@ function buildCourse(scene: THREE.Group, definition: CourseDefinition, carWidth:
     color: 0xbc2823,
     roughness: 0.85,
     side: THREE.DoubleSide,
+    vertexColors: true,
+    transparent: true,
   });
   const curbWhite = new THREE.MeshStandardMaterial({
     color: 0xe6e3d7,
     roughness: 0.85,
     side: THREE.DoubleSide,
+    vertexColors: true,
+    transparent: true,
   });
   const curbPositions: number[][] = [[], []];
   const kerbs = definition.padRadius === undefined ? courseKerbSegments(route) : [];
@@ -348,6 +349,14 @@ function buildCourse(scene: THREE.Group, definition: CourseDefinition, carWidth:
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
     geometry.computeVertexNormals();
+    // Vanish as soon as the shoulder starts curving up into a roadside wall (about 8°), while
+    // tolerating steep road grades.
+    const normals = geometry.getAttribute('normal');
+    const colors = new Float32Array(normals.count * 4).fill(1);
+    for (let v = 0; v < normals.count; v++) {
+      colors[v * 4 + 3] = THREE.MathUtils.smoothstep(Math.abs(normals.getY(v)), 0.99, 0.996);
+    }
+    geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 4));
     const curbs = new THREE.Mesh(geometry, i ? curbWhite : curbRed);
     curbs.name = 'inside-corner-curbs';
     curbs.receiveShadow = true;
@@ -355,7 +364,6 @@ function buildCourse(scene: THREE.Group, definition: CourseDefinition, carWidth:
   });
   // Dirt washes in from beyond the pavement or kerbs, whichever reaches further. It always
   // covers the pavement edge and drifts up to just past the edge line.
-  const shoulder = definition.shoulderWidth ?? courseShoulderWidth;
   const dirtEdge = definition.width / 2 + Math.max(shoulder, 0.8);
   const dirtMin = dirtEdge - definition.width / 2 - shoulder;
   const dirtMax = dirtEdge - definition.width / 2 + 0.35;

@@ -123,8 +123,11 @@ export function roadDirtMaterial(outerEdge: number, minReach: number, maxReach: 
           (1.0 - smoothstep(pebbleRadius - pebbleWidth, pebbleRadius + pebbleWidth,
             length(pebbleOffset)));
         cover = max(cover, max(pebble, clumps));
-        // Fade out past the edge so the overlay blends into the terrain's own dirt.
-        cover *= 1.0 - smoothstep(0.0, 0.6, -edgeDistance);
+        // Fade out past the edge so the overlay blends into the terrain's own dirt, and as
+        // roadside walls curve up from the pavement, where a horizontal fade reads as a line.
+        float flatness = dot(normalize(vNormal), normalize((viewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz));
+        cover *= (1.0 - smoothstep(0.0, 0.6, -edgeDistance)) *
+          smoothstep(0.8, 0.97, flatness + (drift - 0.5) * 0.1);
         if (cover < 0.01) discard;
         vec3 dirt = roadDirt(texture2D(map, vMapUv).rgb);
         vec3 stone = mix(vec3(0.2, 0.17, 0.14), vec3(0.42, 0.36, 0.29), ph.w * 2.0) *

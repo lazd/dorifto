@@ -29,6 +29,8 @@ export class CourseTerrain {
   readonly flippedCells?: Uint8Array;
   readonly warpedCells?: Uint8Array;
   readonly warpedVertices?: Map<number, Point>;
+  readonly filletVertices?: Float32Array;
+  readonly filletCells?: Map<number, number[]>;
   private readonly segments;
   private readonly surface: TerrainSurface;
   private readonly halfWidth: number;
@@ -122,12 +124,11 @@ export class CourseTerrain {
     const snapStart = this.halfWidth;
     const blendEnd = Math.min(this.halfWidth + 48, 50);
     const transition = definition.terrainTransition ?? defaultTerrainTransition;
-    const vertex = (
-      i: number,
+    const surfaceHeight = (
       px: number,
       pz: number,
-      near = this.nearest(px, pz),
-      start = blendStart,
+      near: ReturnType<typeof this.nearest>,
+      start: number,
     ) => {
       const base = terrainBaseHeight(px, pz);
       const hills =
@@ -146,17 +147,26 @@ export class CourseTerrain {
         : surroundings
           ? surroundings(px, pz) + 0.35 * (hills - 12)
           : base + hills;
-      roadDistances[i] =
-        this.padRadius !== undefined
-          ? Math.hypot(px, pz) - this.padRadius
-          : near.distance - this.halfWidth;
       const rise = ground * elevationScale - road;
       const end = rasterHeight
         ? start + Math.min(transition, Math.max(Math.abs(rise), minTerrainTransition))
         : blendEnd;
-      this.heights[i] = definition.flat
+      return definition.flat
         ? 0
         : road + rise * THREE.MathUtils.smoothstep(near.distance, start, end);
+    };
+    const vertex = (
+      i: number,
+      px: number,
+      pz: number,
+      near = this.nearest(px, pz),
+      start = blendStart,
+    ) => {
+      roadDistances[i] =
+        this.padRadius !== undefined
+          ? Math.hypot(px, pz) - this.padRadius
+          : near.distance - this.halfWidth;
+      this.heights[i] = surfaceHeight(px, pz, near, start);
       smoothingWeights[i] = THREE.MathUtils.smoothstep(
         near.distance,
         this.halfWidth + 3,
@@ -289,6 +299,109 @@ export class CourseTerrain {
         this.rows,
         positions,
       );
+    // Triangles spanning adjacent snap lines are subdivided across the wall so its foot and
+    // crest curve instead of creasing at grid steps. Points on an edge are shared by both
+    // triangles beside it, and edges beside any other triangle aren't split, so there are no
+    // cracks.
+    const fillet: number[] = [];
+    if (this.warpedCells) {
+      const vertexCount = this.heights.length;
+      const point = (i: number) =>
+        i < vertexCount
+          ? { x: positions[i * 3], z: positions[i * 3 + 2] }
+          : { x: fillet[(i - vertexCount) * 3], z: fillet[(i - vertexCount) * 3 + 2] };
+      const line = (i: number) =>
+        warp!.has(i) ? Math.round(roadDistances[i] / this.spacing) : Number.NaN;
+      const key = (p: number, q: number) =>
+        line(p) < line(q) ? p * vertexCount + q : q * vertexCount + p;
+      // Each subdividable triangle's two edges between its lines, each from the inner line.
+      const triangles: { cell: number; crossings?: number[][]; corners: number[] }[] = [];
+      const blocked = new Set<number>();
+      for (let z = 0; z < this.rows - 1; z++)
+        for (let x = 0; x < this.columns - 1; x++) {
+          const cell = z * (this.columns - 1) + x;
+          if (!this.warpedCells[cell]) continue;
+          const corners = cellTriangles(this, x, z);
+          for (let t = 0; t < corners.length; t += 3) {
+            const triangle = corners.slice(t, t + 3);
+            const lines = triangle.map(line);
+            const inner = Math.min(...lines);
+            const subdivides = Math.max(...lines) - inner === 1;
+            for (const [p, q] of [
+              [0, 1],
+              [1, 2],
+              [2, 0],
+            ])
+              if (!subdivides && Math.abs(lines[p] - lines[q]) === 1)
+                blocked.add(key(triangle[p], triangle[q]));
+            if (!subdivides) {
+              triangles.push({ cell, corners: triangle });
+              continue;
+            }
+            const lone = lines.findIndex((l) => lines.filter((m) => m === l).length === 1);
+            const others = triangle.filter((_, i) => i !== lone);
+            const apex = triangle[lone];
+            const crossings =
+              lines[lone] === inner ? others.map((v) => [apex, v]) : others.map((v) => [v, apex]);
+            triangles.push({ cell, crossings, corners: triangle });
+          }
+        }
+      const edgePoints = new Map<number, number[]>();
+      const split = ([p, q]: number[]) => {
+        const edge = key(p, q);
+        if (blocked.has(edge)) return [p, q];
+        let points = edgePoints.get(edge);
+        if (points) return points;
+        points = [p];
+        for (let step = 1; step < filletSteps; step++) {
+          const t = step / filletSteps;
+          const x = THREE.MathUtils.lerp(positions[p * 3], positions[q * 3], t);
+          const z = THREE.MathUtils.lerp(positions[p * 3 + 2], positions[q * 3 + 2], t);
+          const near = this.nearest(x, z);
+          points.push(vertexCount + fillet.length / 3);
+          fillet.push(x, surfaceHeight(x, z, near, snapStart), z);
+          const slope = THREE.MathUtils.lerp(vegetation[p * 2 + 1], vegetation[q * 2 + 1], t);
+          vegetation.push(near.distance - this.halfWidth, slope);
+        }
+        points.push(q);
+        edgePoints.set(edge, points);
+        return points;
+      };
+      const cells = new Map<number, number[]>();
+      for (const { cell, crossings, corners } of triangles) {
+        const indices = cells.get(cell) ?? [];
+        cells.set(cell, indices);
+        if (!crossings) {
+          indices.push(...corners);
+          continue;
+        }
+        // Zipping away from a shared apex would fan collinear triangles along the split edge.
+        const [l, r] = crossings.map((edge) =>
+          edge[0] === crossings[0][0] && edge[0] === crossings[1][0]
+            ? [...split(edge)].reverse()
+            : split(edge),
+        );
+        const add = (p: number, q: number, s: number) => {
+          if (p === q || q === s || s === p) return;
+          const [a, b, c] = [point(p), point(q), point(s)];
+          const upright = (b.x - a.x) * (c.z - a.z) - (c.x - a.x) * (b.z - a.z) < 0;
+          indices.push(...(upright ? [p, q, s] : [p, s, q]));
+        };
+        // Zip the two edges together, advancing whichever is behind.
+        for (let i = 0, j = 0; i < l.length - 1 || j < r.length - 1;) {
+          if (
+            j === r.length - 1 ||
+            (i < l.length - 1 && (i + 1) / (l.length - 1) <= (j + 1) / (r.length - 1))
+          )
+            add(l[i], l[++i], r[j]);
+          else add(l[i], r[j], r[++j]);
+        }
+      }
+      if (fillet.length) {
+        this.filletVertices = new Float32Array(fillet);
+        this.filletCells = new Map([...cells].filter(([, indices]) => indices.length > 6));
+      }
+    }
     // Bullet needs a nonzero vertical range even for an entirely flat heightfield.
     this.minHeight = min === max ? min - 0.01 : min;
     this.maxHeight = min === max ? max + 0.01 : max;
@@ -301,17 +414,29 @@ export class CourseTerrain {
       );
       return;
     }
-    const indices = new Uint32Array((this.columns - 1) * (this.rows - 1) * 6);
-    for (let z = 0; z < this.rows - 1; z++) {
-      for (let x = 0; x < this.columns - 1; x++)
-        indices.set(cellTriangles(this, x, z), (z * (this.columns - 1) + x) * 6);
+    let indexCount = (this.columns - 1) * (this.rows - 1) * 6;
+    for (const triangles of this.filletCells?.values() ?? []) indexCount += triangles.length - 6;
+    const indices = new Uint32Array(indexCount);
+    for (let z = 0, offset = 0; z < this.rows - 1; z++) {
+      for (let x = 0; x < this.columns - 1; x++) {
+        const triangles = cellTriangles(this, x, z);
+        indices.set(triangles, offset);
+        offset += triangles.length;
+      }
     }
+    const vertices = new Float32Array(positions.length + fillet.length);
+    vertices.set(positions);
+    vertices.set(fillet, positions.length);
+    const textureCoordinates = new Float32Array((vertices.length / 3) * 2);
+    textureCoordinates.set(uvs);
+    for (let i = 0; i < fillet.length; i += 3)
+      textureCoordinates.set([fillet[i] / 6, fillet[i + 2] / 6], uvs.length + (i / 3) * 2);
     const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    geometry.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+    geometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+    geometry.setAttribute('uv', new THREE.BufferAttribute(textureCoordinates, 2));
     geometry.setAttribute(
       'color',
-      new THREE.BufferAttribute(new Float32Array(positions.length).fill(1), 3),
+      new THREE.BufferAttribute(new Float32Array(vertices.length).fill(1), 3),
     );
     geometry.setAttribute('vegetation', new THREE.Float32BufferAttribute(vegetation, 2));
     geometry.setIndex(new THREE.BufferAttribute(indices, 1));
@@ -403,20 +528,24 @@ export class CourseTerrain {
             vec3 rockWeights = pow(abs(normalize(vTerrainNormal)), vec3(4.0));
             rockWeights /= max(dot(rockWeights, vec3(1.0)), 0.0001);
             vec3 rockPosition = vTerrainPosition / 3.0;
+            float patches = terrainNoise(vMapUv * 0.45);
+            float detail = terrainNoise(vMapUv * 6.0);
+            // Per-fragment slope follows the smoothly interpolated normal across wall fillets,
+            // and fine noise keeps slope-driven blends from tracing lines along the road.
+            float surfaceSlope = acos(clamp(normalize(vTerrainNormal).y, 0.0, 1.0)) +
+              (detail - 0.5) * 0.3 + (patches - 0.5) * 0.2;
             // Top-down UVs stretch into vertical streaks on cut walls; project soil there too.
-            float wall = 1.0 - smoothstep(0.9, 0.99, rockWeights.y);
+            float wall = smoothstep(0.3, 0.75, surfaceSlope);
             vec4 gravelColor = triplanarSample(map, rockPosition, rockWeights);
             vec4 grassColor = groundSample(grassMap, vMapUv * 2.0);
             vec4 soilColor = groundSample(soilMap, vMapUv * 2.0);
             if (wall > 0.0)
               soilColor = mix(soilColor, triplanarSample(soilMap, rockPosition, rockWeights), wall);
-            float patches = terrainNoise(vMapUv * 0.45);
             // Recolor the gray scan as weathered tan cut-bank material, keeping its detail.
             float rockLuma = dot(gravelColor.rgb, vec3(0.2126, 0.7152, 0.0722));
             gravelColor.rgb = vec3(0.62, 0.5, 0.37) * rockLuma * 2.4;
-            float rockCoverage = smoothstep(0.55, 0.95, vVegetation.y + (patches - 0.5) * 0.35) * 0.75;
+            float rockCoverage = smoothstep(0.45, 1.05, surfaceSlope + (patches - 0.5) * 0.15) * 0.75;
             gravelColor = mix(soilColor, gravelColor, rockCoverage);
-            float detail = terrainNoise(vMapUv * 6.0);
             vec2 landscapeUV = vTerrainPosition.xz * 0.012;
             float landscape = terrainNoise(landscapeUV) * 0.65 +
               terrainNoise(landscapeUV * 2.7 + vec2(17.3, 9.1)) * 0.35;
@@ -617,6 +746,8 @@ export class CourseTerrain {
       flippedCells,
       warpedCells,
       warpedVertices,
+      filletVertices,
+      filletCells,
       segments,
       halfWidth,
       padRadius,
@@ -633,6 +764,8 @@ export class CourseTerrain {
       flippedCells,
       warpedCells,
       warpedVertices,
+      filletVertices,
+      filletCells,
       segments,
       halfWidth,
       padRadius,
@@ -686,10 +819,8 @@ export class CourseTerrain {
       for (let z = Math.max(minZ - pad, 0); z <= Math.min(maxZ + pad, this.rows - 2); z++) {
         for (let x = Math.max(minX - pad, 0); x <= Math.min(maxX + pad, this.columns - 2); x++) {
           const corners = cellTriangles(this, x, z);
-          for (const cell of [
-            [corners[0], corners[2], corners[1]],
-            [corners[3], corners[5], corners[4]],
-          ]) {
+          for (let t = 0; t < corners.length; t += 3) {
+            const cell = [corners[t], corners[t + 2], corners[t + 1]];
             const points = cell.map((i) => vertexPosition(this, i));
             let polygon = triangle;
             for (let edge = 0; edge < 3 && polygon.length; edge++)
@@ -756,6 +887,8 @@ function profileSurroundings(samples: { x: number; z: number; height: number }[]
 }
 
 const contourCorridor = 20;
+/** Strips each roadside wall cell is subdivided into between adjacent snap lines. */
+const filletSteps = 6;
 // Raster walls beside the road need a transition about as wide as they are tall, or the
 // climb squeezes into a crease at their foot, so the transition grows with the wall up to
 // the course's `terrainTransition`. Much wider blends could reach past the midpoint between

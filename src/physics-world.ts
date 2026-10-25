@@ -1,5 +1,5 @@
 import type AmmoFactory from 'ammojs-typed';
-import { cellTriangles, vertexPosition, type HeightfieldData } from './terrain-query';
+import { cellTriangles, vertexHeight, vertexPosition, type HeightfieldData } from './terrain-query';
 
 export function createPhysicsResources(Ammo: typeof AmmoFactory) {
   const buffers: { pointer: number; capacity: number; used: boolean }[] = [];
@@ -131,7 +131,7 @@ function contourCollider(Ammo: typeof AmmoFactory, terrain: HeightfieldData) {
     let index = vertices.get(i);
     if (index === undefined) {
       const { x, z } = vertexPosition(terrain, i);
-      vector.setValue(x, terrain.heights[i], z);
+      vector.setValue(x, vertexHeight(terrain, i), z);
       index = mesh.findOrAddVertex(vector, false);
       vertices.set(i, index);
     }
@@ -142,8 +142,9 @@ function contourCollider(Ammo: typeof AmmoFactory, terrain: HeightfieldData) {
     for (let x = 0; x < columns - 1; x++) {
       const i = z * columns + x;
       if (!(sunk[i] || sunk[i + 1] || sunk[i + columns] || sunk[i + columns + 1])) continue;
-      for (const corner of cellTriangles(terrain, x, z)) mesh.addIndex(vertex(corner));
-      triangles += 2;
+      const corners = cellTriangles(terrain, x, z);
+      for (const corner of corners) mesh.addIndex(vertex(corner));
+      triangles += corners.length / 3;
     }
   Ammo.destroy(vector);
   // ammo.js lacks addTriangleIndices, and addIndex alone does not count triangles.

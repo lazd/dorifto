@@ -181,7 +181,7 @@ test('terrain sampling preserves geographic orientation, height datum, and rever
           flipped += data.flippedCells[cell];
           warped += data.warpedCells[cell];
           const corners = cellTriangles(data, x, z);
-          for (let t = 0; t < 6; t += 3) {
+          for (let t = 0; t < corners.length; t += 3) {
             const [p, q, r] = corners.slice(t, t + 3).map((i) => vertexPosition(data, i));
             const area = (q.x - p.x) * (r.z - p.z) - (r.x - p.x) * (q.z - p.z);
             assert.ok(area < -0.01, 'snapped vertices must not fold or collapse triangles');
@@ -209,6 +209,7 @@ test('terrain sampling preserves geographic orientation, height datum, and rever
       }
       assert.ok(flipped > 0, 'roadside cells follow wall contours');
       assert.ok(warped > 0, 'grid vertices snap onto road-parallel lines');
+      assert.ok(data.filletCells.size > 0, 'roadside walls are subdivided into fillets');
       Ammo.destroy(from);
       Ammo.destroy(to);
       physics.dispose();
