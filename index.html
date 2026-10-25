@@ -6,10 +6,10 @@
     <meta name="theme-color" content="#10191f" />
     <meta name="referrer" content="no-referrer" />
     <title>Dorifto — Z32 Playground</title>
-    <script type="module" crossorigin src="./assets/game-DSuQrVXz.js"></script>
-    <link rel="modulepreload" crossorigin href="./assets/course-builder-data-DPhoFe2z.js">
+    <script type="module" crossorigin src="./assets/game-DRpbIroV.js"></script>
+    <link rel="modulepreload" crossorigin href="./assets/course-builder-data-CETTF_cr.js">
     <link rel="stylesheet" crossorigin href="./assets/course-builder-data-DO3y67q4.css">
-    <link rel="stylesheet" crossorigin href="./assets/game-Cvl5kDsA.css">
+    <link rel="stylesheet" crossorigin href="./assets/game-Baf7fpPr.css">
   </head>
   <body hidden>
     <div id="app"></div>
@@ -39,7 +39,7 @@
         id="minimap"
         class="minimap"
         type="button"
-        aria-label="Choose course"
+        aria-label="Race setup"
         aria-controls="course-picker-dialog"
         aria-haspopup="dialog"
         disabled
@@ -212,7 +212,7 @@
         </button>
       </form>
       <header class="dialog-header">
-        <h2 id="course-picker-title" tabindex="-1" autofocus>Choose course</h2>
+        <h2 id="course-picker-title" tabindex="-1" autofocus>Race setup</h2>
       </header>
       <div class="master-detail dialog-body">
         <div class="selection-library">
@@ -317,7 +317,7 @@
       <p id="course-picker-error" role="alert"></p>
       <div class="dialog-footer">
         <div class="dialog-actions">
-          <button id="course-load" class="button button-primary" type="button">Load course</button>
+          <button id="course-load" class="button button-primary" type="button">Start race →</button>
         </div>
       </div>
     </dialog>
@@ -386,7 +386,7 @@
             Replay race
           </button>
           <button id="run-results-restart" class="button button-primary" type="button" autofocus>
-            Race again →
+            Race Again →
           </button>
         </div>
       </div>
@@ -515,6 +515,15 @@
           aria-controls="bots-dialog"
         >
           Bot setup
+        </button>
+        <button
+          id="race-setup"
+          class="button button-secondary button-translucent toolbar-button"
+          type="button"
+          aria-haspopup="dialog"
+          aria-controls="course-picker-dialog"
+        >
+          Race setup
         </button>
       </div>
     </header>
