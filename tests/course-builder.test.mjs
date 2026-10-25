@@ -60,6 +60,53 @@ test('saved courses restore geographic routes and retain exact editable waypoint
   );
 });
 
+test('embedded builds finish without generating a preview; standalone builds include it', async () => {
+  const course = builderData.readRoadMap(
+    await readFile(new URL('../src/tracks/newtown-road-202-58.json', import.meta.url), 'utf8'),
+  );
+  const messages = [];
+  const previousSelf = globalThis.self;
+  globalThis.self = { postMessage: (message) => messages.push(message) };
+  try {
+    await server.ssrLoadModule('/src/course-builder-worker.ts');
+    const request = {
+      points: builderData
+        .restoreRoadDraft(course)
+        .sections.flatMap((part, i) => (i ? part.slice(1) : part)),
+      name: course.name,
+      width: course.width,
+      shoulderWidth: course.shoulderWidth ?? 1.6,
+      terrainTransition: course.terrainTransition ?? 8,
+      doubleYellow: !!course.doubleYellow,
+      existingCourse: course,
+      draft: builderData.restoreRoadDraft(course),
+      colors: { ground: '#333333', road: '#888888', start: '#ffffff' },
+      closed: false,
+    };
+    for (const skipPreview of [true, false]) {
+      messages.length = 0;
+      const complete = new Promise((resolve) => {
+        globalThis.self.postMessage = (message) => {
+          messages.push(message);
+          if (message.type === 'complete' || message.type === 'error') resolve(message);
+        };
+      });
+      globalThis.self.onmessage({ data: { ...request, skipPreview } });
+      const response = await complete;
+      assert.equal(response.type, 'complete', response.message);
+      assert.equal(!!response.model, !skipPreview);
+      assert.equal(
+        messages.some((message) => message.step === 'preview'),
+        !skipPreview,
+      );
+      assert.equal(await response.json.text(), JSON.stringify(response.course));
+    }
+  } finally {
+    if (previousSelf === undefined) delete globalThis.self;
+    else globalThis.self = previousSelf;
+  }
+});
+
 test('location search preserves coordinates, fits geocoded bounds, and caches submitted queries', async () => {
   let requests = 0;
   const search = createLocationSearch(async (url) => {

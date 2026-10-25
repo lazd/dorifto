@@ -29,6 +29,7 @@ import { courseShoulderWidth } from './courses';
 import { coursePreviewSvg } from './course-preview';
 import { defaultTerrainTransition } from './terrain';
 import { startTextSpinner } from './text-spinner';
+import { download } from './download';
 import type { BuildRequest, BuildResponse } from './course-builder-worker';
 import './course-builder.css';
 
@@ -730,12 +731,13 @@ element<HTMLFormElement>('build-form').onsubmit = (event) => {
               item.tabIndex = active ? 0 : -1;
             }
           } else showPreview();
-          preview = new CourseBuilderPreview(
-            element('preview'),
-            response.model,
-            { ...theme.preview, background: theme.palette.surface },
-            `Interactive 3D terrain preview of ${response.course.name}`,
-          );
+          if (response.model)
+            preview = new CourseBuilderPreview(
+              element('preview'),
+              response.model,
+              { ...theme.preview, background: theme.palette.surface },
+              `Interactive 3D terrain preview of ${response.course.name}`,
+            );
           guide();
           if (saveError)
             notify(
@@ -772,6 +774,7 @@ element<HTMLFormElement>('build-form').onsubmit = (event) => {
   notifyParent({ type: 'course-builder:busy', busy: true });
   buildSteps.replaceChildren();
   for (const [key, label] of Object.entries(roadBuildSteps)) {
+    if (embedded && key === 'preview') continue;
     if (existingCourse && (key === 'terrain' || key === 'corridor')) continue;
     const item = document.createElement('li');
     item.dataset.step = key;
@@ -802,20 +805,10 @@ element<HTMLFormElement>('build-form').onsubmit = (event) => {
     doubleYellow: centerLineInput.checked,
     colors: theme.preview,
     closed: !!closingSection,
+    skipPreview: embedded,
   } satisfies BuildRequest);
   updateControls();
 };
-
-function download(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  document.body.append(link);
-  link.click();
-  link.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
 
 element<HTMLButtonElement>('play').onclick = () => {
   if (course && courseJSON) download(courseJSON, `${course.id}.json`);

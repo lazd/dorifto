@@ -233,13 +233,24 @@
           <section id="course-overview" aria-labelledby="course-preview-name">
             <div class="course-preview-hero">
               <div id="course-preview-visual" class="course-preview-visual"></div>
+              <button
+                id="course-preview-toggle"
+                class="button button-quiet course-preview-toggle"
+                type="button"
+                aria-label="Show 3D course preview"
+              >
+                3D
+              </button>
               <div class="course-preview-caption">
                 <h3 id="course-preview-name"></h3>
                 <p id="course-preview-distance" class="help-text"></p>
               </div>
-              <details id="course-actions" class="action-disclosure" hidden>
-                <summary class="button button-quiet" aria-label="Saved course actions">⋯</summary>
+              <details id="course-actions" class="action-disclosure">
+                <summary class="button button-quiet" aria-label="Course actions">⋯</summary>
                 <div class="action-menu">
+                  <button id="course-download" class="button button-quiet" type="button">
+                    Download
+                  </button>
                   <button id="course-edit" class="button button-quiet" type="button" hidden>
                     Edit course
                   </button>

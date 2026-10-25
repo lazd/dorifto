@@ -4,6 +4,42 @@ const endpoint =
   'https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/exportImage';
 const radius = 6371008.8;
 
+async function downloadBytes(url, fetch) {
+  const attempts = 4;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    let failure;
+    try {
+      const response = await fetch(url, {
+        signal: AbortSignal.timeout(180000),
+        ...(attempt > 1 ? { cache: 'reload' } : {}),
+      });
+      if (response.ok) return new Uint8Array(await response.arrayBuffer());
+      failure = new Error(
+        `USGS terrain request failed: HTTP ${response.status}: ${(await response.text()).slice(0, 300)}`,
+      );
+      if (response.status !== 429 && response.status < 500) throw failure;
+    } catch (error) {
+      if (!(error instanceof TypeError) && error.name !== 'TimeoutError') throw error;
+      failure = new Error(
+        'USGS terrain download failed: a network error, timeout, or blocked cross-origin (CORS) response prevented access. Check your connection and try building again later.',
+        { cause: error },
+      );
+    }
+    if (attempt === attempts) {
+      console.error(
+        `USGS elevation download failed after ${attempts} attempts: ${url.href}`,
+        failure,
+      );
+      throw failure;
+    }
+    console.warn(
+      `USGS elevation download attempt ${attempt}/${attempts} failed: ${url.href}. Retrying in ${attempt}s…`,
+      failure,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 1000 * attempt));
+  }
+}
+
 function roadBounds(data, margin) {
   const points = data.featured_lap?.points;
   if (!Array.isArray(points) || points.length < 2)
@@ -56,12 +92,7 @@ async function downloadRaster(
     console.log(
       `  🏔️  Downloading ${label}: ${columns} × ${rows} pixels, requested ${resolution} m spacing…`,
     );
-    const response = await fetch(url, { signal: AbortSignal.timeout(180000) });
-    if (!response.ok)
-      throw new Error(
-        `USGS terrain request failed: HTTP ${response.status}: ${(await response.text()).slice(0, 300)}`,
-      );
-    bytes = new Uint8Array(await response.arrayBuffer());
+    bytes = await downloadBytes(url, fetch);
   }
   let image;
   try {

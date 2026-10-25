@@ -55,6 +55,11 @@ direct browser requests to OpenFreeMap and USGS, so an internet connection is ne
   and processed with the same conversion pipeline as the command-line importer.
   Bridges/tunnels follow ground elevation, not road-deck heights. Missing data
   and service failures are reported rather than replaced with flat terrain.
+  Transient network/CORS failures, timeouts, HTTP 429, and server errors are retried
+  three times after the initial request, with increasing delays. The browser console
+  logs request URLs and failure details; failed elevation downloads show
+  "Sorry, we couldn't fetch elevation data. Try a different location."
+  Persistent CORS restrictions require a USGS-side fix; the browser cannot bypass them.
 - A Web Worker handles terrain decoding, elevation processing, course conversion,
   JSON serialization, and 3D preview mesh generation. Cancel stops the worker.
   The map uses the game's dark teal/mint design tokens. When a build completes,
@@ -106,12 +111,20 @@ with a large **Regenerate** button and an automatic name (no name field), and **
 library and select the saved course in the chooser without restarting the race;
 choose **Load course** when ready. Real-road generation still runs entirely in
 the browser, including elevation fetching and terrain generation.
+Embedded creation skips the unused 3D preview build. Course previews in the chooser
+start in 2D; use the lower-left **3D** button to build an interactive terrain preview
+on demand in a Web Worker, or **2D** to return to the map. Switching courses or closing
+the chooser cancels pending preview generation and releases the preview.
+Toggling between 2D and 3D reuses the built preview and preserves its camera position.
 Saved courses have an **Edit course** action in the chooser. Real roads reopen in
 the map editor; generated courses reopen with their original seed and generation
 preferences. Saving edits replaces the existing OPFS file and keeps the course ID.
 Course names are changed in the editor rather than a separate Rename action.
+The chooser's course actions menu offers **Download** for any course, exporting its
+complete JSON, including terrain and attribution, as `<course-id>.json`.
 The standalone builder's **Play** button still downloads JSON rather than launching
-the game. Downloaded files use the game's `CourseDefinition` format,
+the game. The standalone builder still builds and shows its 3D preview after creation.
+Downloaded files use the game's `CourseDefinition` format,
 including terrain and attribution; they can be added to `src/tracks/` and built
 like other imported courses. OpenStreetMap-derived data retains
 [OSM attribution and ODbL licensing](https://www.openstreetmap.org/copyright).
@@ -1091,6 +1104,8 @@ to 70% of its normal opacity when the cars overlap.
 Built-in tuning presets always come from code, not browser storage. Only user presets
 are saved locally per browser.
 The preset picker shows presets for the active Grip or Drift mode only.
+Loading the page applies the requested or default preset without rewriting the `preset`
+query parameter. Changing the preset or drive mode updates it in the URL.
 
 Click **Tuning** in the bottom toolbar to open a dialog and adjust the selected mode live without
 resetting the car. Sliders control steering angle (showing low/high-speed limits

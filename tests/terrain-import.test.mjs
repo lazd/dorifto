@@ -7,6 +7,7 @@ import AmmoFactory from 'ammojs-typed';
 import { writeArrayBuffer } from 'geotiff';
 import { createServer } from 'vite';
 import { fetchTerrainDetail, fetchTerrainRaster } from '../scripts/import-terrain.mjs';
+import { fetchTerrainRaster as downloadTerrainRaster } from '../src/terrain-import.mjs';
 import { geographicRasterSampler } from '../src/terrain-raster.mjs';
 import {
   convertTrack,
@@ -44,6 +45,56 @@ function geotiffResponse(url) {
     }),
   );
 }
+
+test('terrain downloads retry network and server failures without reusing a failed cached response', async () => {
+  const requests = [];
+  const raster = await downloadTerrainRaster(source, {
+    fetch: async (url, options) => {
+      requests.push(options);
+      if (requests.length === 1) throw new TypeError('Failed to fetch');
+      if (requests.length === 2) return new Response('Unavailable', { status: 503 });
+      if (requests.length === 3) return new Response('Too many requests', { status: 429 });
+      return geotiffResponse(url);
+    },
+  });
+  assert.equal(requests.length, 4);
+  assert.equal(requests[0].cache, undefined);
+  assert.ok(requests.slice(1).every(({ cache }) => cache === 'reload'));
+  assert.ok(raster.heights.every((height) => height === 120));
+});
+
+test('terrain downloads report persistent network failures after three retries', async () => {
+  let requests = 0;
+  const cause = new TypeError('Failed to fetch');
+  await assert.rejects(
+    downloadTerrainRaster(source, {
+      fetch: async () => {
+        requests++;
+        throw cause;
+      },
+    }),
+    (error) => {
+      assert.match(error.message, /network error.*CORS.*try building again later/);
+      assert.equal(error.cause, cause);
+      return true;
+    },
+  );
+  assert.equal(requests, 4);
+});
+
+test('terrain downloads do not retry permanent HTTP errors', async () => {
+  let requests = 0;
+  await assert.rejects(
+    downloadTerrainRaster(source, {
+      fetch: async () => {
+        requests++;
+        return new Response('Invalid request', { status: 400 });
+      },
+    }),
+    /HTTP 400: Invalid request/,
+  );
+  assert.equal(requests, 1);
+});
 
 test('terrain GeoTIFF cache reuses the request and never caches invalid responses', async () => {
   const cacheDir = await mkdtemp(path.join(os.tmpdir(), 'dorifto-terrain-'));

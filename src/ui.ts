@@ -11,8 +11,10 @@ import {
   type CourseDefinition,
 } from './courses';
 import { coursePreviewSvg } from './course-preview';
-import { CoursePreviewRenderer } from './course-preview-3d';
+import { CourseBuilderPreview } from './course-builder-preview';
+import type { BuildResponse } from './course-builder-worker';
 import { startTextSpinner } from './text-spinner';
+import { download } from './download';
 import { browserStorage } from './browser-storage';
 import {
   courseDirectionRecords,
@@ -661,6 +663,8 @@ export function bindCoursePicker(
   const previewDistance = bindText('#course-preview-distance');
   const courseActions = element<HTMLDetailsElement>('#course-actions');
   const courseActionsSummary = courseActions.querySelector('summary')!;
+  const downloadAction = element<HTMLButtonElement>('#course-download');
+  let downloading = false;
   const editAction = element<HTMLButtonElement>('#course-edit');
   const deleteAction = element<HTMLButtonElement>('#course-delete');
   const records = element('#course-records');
@@ -707,8 +711,11 @@ export function bindCoursePicker(
   let generationSeed = 0;
   let automaticCourseName = true;
   let editingCourse: CourseDefinition | undefined;
-  const enable3dPreview = false;
-  const preview3d = new CoursePreviewRenderer(previewContainer);
+  const previewToggle = element<HTMLButtonElement>('#course-preview-toggle');
+  let preview3d: CourseBuilderPreview | undefined;
+  let showing3d = false;
+  let previewWorker: Worker | undefined;
+  let previewLoading = false;
   const items = new Map<string, HTMLButtonElement>();
   let preview = selected;
   let previewToken = 0;
@@ -982,36 +989,100 @@ export function bindCoursePicker(
     };
   }
 
-  function render3d(course: CourseDefinition) {
-    if (!enable3dPreview) {
-      previewContainer.innerHTML = coursePreviewSvg(course, {
-        size: 400,
-        padding: 64,
-        title: course.name,
-      });
+  function stopPreview() {
+    ++previewToken;
+    previewWorker?.terminate();
+    previewWorker = undefined;
+    preview3d?.dispose();
+    preview3d = undefined;
+    showing3d = false;
+    previewLoading = false;
+    previewContainer.removeAttribute('aria-busy');
+    previewToggle.textContent = '3D';
+    previewToggle.setAttribute('aria-label', 'Show 3D course preview');
+  }
+
+  function render2d(course: CourseDefinition) {
+    stopPreview();
+    previewContainer.innerHTML = coursePreviewSvg(course, {
+      size: 400,
+      padding: 64,
+      title: course.name,
+    });
+  }
+
+  function showPreview3d(show: boolean) {
+    showing3d = show;
+    const canvas = previewContainer.querySelector('canvas');
+    const svg = previewContainer.querySelector('svg');
+    if (canvas) canvas.style.display = show ? '' : 'none';
+    if (svg) svg.style.display = show ? 'none' : '';
+    previewToggle.textContent = show ? '2D' : '3D';
+    previewToggle.setAttribute('aria-label', `Show ${show ? '2D' : '3D'} course preview`);
+  }
+
+  previewToggle.addEventListener('click', async () => {
+    if (changing || previewLoading) return;
+    if (preview3d) {
+      showPreview3d(!showing3d);
       return;
     }
+    const course = preview;
     const token = ++previewToken;
+    previewError('');
+    previewLoading = true;
+    previewToggle.textContent = 'Building…';
     previewContainer.setAttribute('aria-busy', 'true');
-    // Let the status paint first: building a racetrack heightfield takes a moment.
-    requestAnimationFrame(() =>
-      setTimeout(async () => {
+    syncBusy();
+    const fail = (error: unknown) => {
+      if (token !== previewToken) return;
+      console.error('Unable to show 3-D course preview:', error);
+      render2d(course);
+      previewError(`Unable to show 3-D preview: ${errorText(error)}`);
+      syncBusy();
+    };
+    try {
+      const definition = await loadCourseDefinition(course);
+      if (token !== previewToken || !picker.open) return;
+      const colors = previewColors();
+      const active = new Worker(new URL('./course-builder-worker.ts', import.meta.url), {
+        type: 'module',
+      });
+      previewWorker = active;
+      active.onmessage = (event: MessageEvent<BuildResponse>) => {
         if (token !== previewToken || !picker.open) return;
-        try {
-          const definition = await loadCourseDefinition(course);
-          if (token !== previewToken || !picker.open) return;
-          preview3d.render(definition, previewColors(), `3-D terrain preview of ${course.name}`);
-        } catch (error) {
-          console.error('Unable to show 3-D course preview:', error);
-          if (token !== previewToken || !picker.open) return;
-          preview3d.dispose();
-          previewError(`Unable to show 3-D preview: ${errorText(error)}`);
-        } finally {
-          if (token === previewToken) previewContainer.removeAttribute('aria-busy');
+        if (event.data.type === 'error') {
+          fail(new Error(event.data.message));
+          return;
         }
-      }, 0),
-    );
-  }
+        if (event.data.type !== 'preview') return;
+        active.terminate();
+        previewWorker = undefined;
+        try {
+          preview3d = new CourseBuilderPreview(
+            previewContainer,
+            event.data.model,
+            { ...colors, background: colors.ground },
+            `Interactive 3D terrain preview of ${course.name}`,
+          );
+          previewLoading = false;
+          previewContainer.removeAttribute('aria-busy');
+          showPreview3d(true);
+          syncBusy();
+        } catch (error) {
+          fail(error);
+        }
+      };
+      active.onerror = (event) => {
+        event.preventDefault();
+        fail(new Error(event.message || 'The course preview worker stopped unexpectedly.'));
+      };
+      active.onmessageerror = () => fail(new Error('The course preview returned unreadable data.'));
+      active.postMessage({ type: 'preview', course: definition, colors });
+    } catch (error) {
+      fail(error);
+    }
+  });
 
   function previewCourse(course: CourseDefinition, isDraft = false) {
     draftSelected = isDraft;
@@ -1024,12 +1095,12 @@ export function bindCoursePicker(
       `${courseDistance(course)}${course.closed === false ? '' : ' per lap'} · ${routeLabel(course)}`,
     );
     courseActions.open = false;
-    courseActions.hidden = groupForCourse(course).id !== 'stored';
     editAction.hidden = groupForCourse(course).id !== 'stored';
+    deleteAction.hidden = groupForCourse(course).id !== 'stored';
     savePreview.hidden = !isUnsavedCourse(course);
     editDraft.hidden = !isDraft;
     renderRecords(course);
-    render3d(course);
+    render2d(course);
     syncBusy();
   }
 
@@ -1044,6 +1115,8 @@ export function bindCoursePicker(
     ))
       control.disabled = changing;
     courseActionsSummary.toggleAttribute('aria-disabled', changing);
+    downloadAction.disabled = changing || downloading;
+    previewToggle.disabled = changing || previewLoading;
     savedConfirm.disabled = savedCancel.disabled = savedNameInput.disabled = changing;
     pickerButton.disabled = generationFields.disabled = changing;
     loadButton.disabled = changing || creating;
@@ -1574,6 +1647,27 @@ export function bindCoursePicker(
       : fallback
     ).focus();
   });
+  downloadAction.addEventListener('click', async () => {
+    if (changing || downloading) return;
+    const course = preview;
+    courseActions.open = false;
+    previewError('');
+    downloading = true;
+    syncBusy();
+    try {
+      const definition = await loadCourseDefinition(course);
+      download(
+        new Blob([JSON.stringify(definition)], { type: 'application/json' }),
+        `${definition.id}.json`,
+      );
+    } catch (error) {
+      console.error(`Unable to download course "${course.name}":`, error);
+      previewError(`Unable to download ${course.name}: ${errorText(error)}`);
+    } finally {
+      downloading = false;
+      syncBusy();
+    }
+  });
   deleteAction.addEventListener('click', () =>
     editSavedCourse('delete', preview, courseActionsSummary),
   );
@@ -1628,8 +1722,7 @@ export function bindCoursePicker(
     stopPickerSpinner?.();
     stopPickerSpinner = undefined;
     pickerLoading.hidden = true;
-    ++previewToken;
-    preview3d.dispose();
+    stopPreview();
   });
 
   syncCourseName();

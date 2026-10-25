@@ -4,8 +4,8 @@ import type { GPSPoint } from './track-conversion.mjs';
 
 export const roadBuildSteps = {
   starting: 'Starting the course builder',
-  terrain: 'Downloading USGS terrain elevation',
-  corridor: 'Downloading high-resolution road corridor',
+  terrain: 'Downloading USGS terrain elevation data',
+  corridor: 'Downloading high-resolution USGS road elevation data',
   course: 'Sampling road elevation and building the course',
   preview: 'Building the 3D terrain preview',
   saving: 'Saving the course on this device',

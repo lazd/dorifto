@@ -250,6 +250,12 @@
   right: var(--space-4);
 }
 
+.course-preview-toggle {
+  position: absolute;
+  bottom: var(--space-4);
+  left: var(--space-4);
+}
+
 .course-preview-hero:has(.action-disclosure:not([hidden])) .course-preview-caption {
   padding-right: calc(var(--control-height) + var(--space-4) * 2);
 }

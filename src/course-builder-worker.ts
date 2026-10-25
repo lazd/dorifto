@@ -24,11 +24,12 @@ export interface BuildRequest {
   doubleYellow: boolean;
   colors: CoursePreviewColors;
   closed: boolean;
+  skipPreview: boolean;
 }
 
 export type BuildResponse =
   | { type: 'progress'; step: RoadBuildStep }
-  | { type: 'complete'; course: RoadMap; json: Blob; model: PreviewModel }
+  | { type: 'complete'; course: RoadMap; json: Blob; model?: PreviewModel }
   | { type: 'preview'; model: PreviewModel }
   | { type: 'error'; message: string };
 
@@ -82,10 +83,16 @@ async function build(request: BuildRequest) {
         }));
       });
     }
-    progress('terrain');
-    data.terrain = await fetchTerrainRaster(data, { resolution: 5 });
-    progress('corridor');
-    data.terrain.detail = await fetchTerrainDetail(data);
+    try {
+      progress('terrain');
+      data.terrain = await fetchTerrainRaster(data, { resolution: 5 });
+      progress('corridor');
+      data.terrain.detail = await fetchTerrainDetail(data);
+    } catch (error) {
+      throw new Error("Sorry, we couldn't fetch elevation data. Try a different location.", {
+        cause: error,
+      });
+    }
     progress('course');
     data.elevation = terrainElevationProfile(data);
     course = convertTrack(data, {
@@ -99,6 +106,10 @@ async function build(request: BuildRequest) {
   }
   course.courseBuilder = request.draft;
   const json = new Blob([JSON.stringify(course)], { type: 'application/json' });
+  if (request.skipPreview) {
+    self.postMessage({ type: 'complete', course, json } satisfies BuildResponse);
+    return;
+  }
   progress('preview');
   const preview = createCoursePreviewModel(course, request.colors, 512);
   try {
@@ -133,6 +144,7 @@ self.onmessage = (
     } else await build(request);
   };
   run().catch((error: unknown) => {
+    console.error('Course builder failed:', error);
     self.postMessage({
       type: 'error',
       message: error instanceof Error ? error.message : String(error),

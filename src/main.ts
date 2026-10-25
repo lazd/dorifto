@@ -161,8 +161,6 @@ async function start() {
           .getState()
           .tuningPresets.find(({ id }) => id === `${requestedMode}-default`)
       : matchedPreset;
-  const resolvedPresetId =
-    requestedPreset?.id ?? (requestedPresetId === 'custom' ? 'custom' : `${requestedMode}-default`);
   const selectedTuningPresets = {
     ...configurationState.getState().selectedTuningPresets,
     [requestedMode]: requestedPreset?.id ?? null,
@@ -215,11 +213,6 @@ async function start() {
     ),
     muted: !readToggle('sound'),
   });
-  const presetUrl = new URL(location.href);
-  if (presetUrl.searchParams.get('preset') !== resolvedPresetId) {
-    presetUrl.searchParams.set('preset', resolvedPresetId);
-    history.replaceState(null, '', presetUrl);
-  }
   const settingsUrl = new URL(location.href);
   if (settingsUrl.searchParams.has('transmission')) {
     settingsUrl.searchParams.delete('transmission');
