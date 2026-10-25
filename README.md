@@ -137,7 +137,7 @@ the Grip / Default (`grip-default`) preset, and the cabin camera.
 
 ## Bot drivers
 
-Open **Race setup** in the race standings panel to choose **Race solo**, **Race with bots**,
+Open **Bot setup** in the race standings panel to choose **Race solo**, **Race with bots**,
 or **Spectate bots**. Solo hides bot configuration; the other modes share an editable starting
 grid and require at least one bot. Switching to Solo keeps your configured lineup for the
 current page session. **Cancel** discards edits; the primary action starts the selected mode.
