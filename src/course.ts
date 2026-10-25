@@ -287,7 +287,11 @@ function buildCourse(scene: THREE.Group, definition: CourseDefinition, carWidth:
       const position = signRoute.getPointAt(t);
       const tangent = signRoute.getTangentAt(t);
       across.set(tangent.z, 0, -tangent.x).normalize();
-      position.addScaledVector(across, -direction * (definition.width / 2 + 3.5));
+      // Like cones, stay on the shoulder rather than up a roadside slope.
+      position.addScaledVector(
+        across,
+        -direction * (definition.width / 2 + Math.min(3.5, shoulder)),
+      );
 
       const sign = createSign(direction);
       sign.position.copy(position);
