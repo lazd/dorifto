@@ -35,6 +35,10 @@ const botPalette = [
   { name: 'Yellow', hue: 0.13 },
   { name: 'Purple', hue: 0.7 },
   { name: 'Green', hue: 0.34 },
+  { name: 'Red', hue: 0 },
+  { name: 'Orange', hue: 0.07 },
+  { name: 'Pink', hue: 0.9 },
+  { name: 'Blue', hue: 0.63 },
 ] as const;
 
 export function botName(index: number) {

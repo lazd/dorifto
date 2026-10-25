@@ -64,9 +64,9 @@
             type="button"
             aria-haspopup="dialog"
             aria-controls="bots-dialog"
-            aria-label="Configure bots"
+            aria-label="Race setup"
           >
-            Configure bots <span aria-hidden="true">›</span>
+            Race setup <span aria-hidden="true">›</span>
           </button>
         </div>
       </section>
@@ -124,7 +124,7 @@
     </aside>
     <dialog
       id="drift-tuning"
-      class="slider-dialog tuning-dialog"
+      class="slider-dialog tuning-dialog dialog-layout"
       aria-labelledby="drift-tuning-title"
     >
       <form id="tuning-dialog-close" method="dialog" class="dialog-close">
@@ -132,61 +132,64 @@
           <span class="close-icon" aria-hidden="true"></span>
         </button>
       </form>
-      <header class="tuning-dialog-heading">
-        <div>
-          <h2 id="drift-tuning-title" tabindex="-1" autofocus>Tuning</h2>
-          <p>Dial in your car. Changes apply live.</p>
-        </div>
+      <header class="dialog-header">
+        <h2 id="drift-tuning-title" tabindex="-1" autofocus>Tuning</h2>
       </header>
-      <div class="tuning-configuration">
-        <label class="field" for="drive-mode">
-          <span>Drive mode</span>
-          <select id="drive-mode">
-            <option value="grip">Grip</option>
-            <option value="drift">Drift</option>
-          </select>
-        </label>
-        <label class="field tuning-profile-picker">
-          <span id="tuning-preset-title">Tuning profile</span>
-          <select id="tuning-preset" aria-label="Tuning profile"></select>
-          <input
-            id="tuning-preset-edit-name"
-            type="text"
-            maxlength="32"
-            aria-label="Rename tuning profile"
-            hidden
-          />
-        </label>
-        <details class="action-disclosure tuning-profile-actions">
-          <summary class="button button-quiet" aria-label="Profile actions" title="Profile actions">
-            ···
-          </summary>
-          <div class="action-menu">
-            <button
-              id="tuning-preset-edit"
-              class="button button-quiet"
-              type="button"
+      <div class="dialog-body dialog-scroll">
+        <div class="tuning-configuration">
+          <label class="field" for="drive-mode">
+            <span>Drive mode</span>
+            <select id="drive-mode">
+              <option value="grip">Grip</option>
+              <option value="drift">Drift</option>
+            </select>
+          </label>
+          <label class="field tuning-profile-picker">
+            <span id="tuning-preset-title">Tuning profile</span>
+            <select id="tuning-preset" aria-label="Tuning profile"></select>
+            <input
+              id="tuning-preset-edit-name"
+              type="text"
+              maxlength="32"
               aria-label="Rename tuning profile"
-            >
-              Rename profile
-            </button>
-            <button
-              id="tuning-preset-delete"
+              hidden
+            />
+          </label>
+          <details class="action-disclosure tuning-profile-actions">
+            <summary
               class="button button-quiet"
-              type="button"
-              aria-label="Delete tuning profile"
+              aria-label="Profile actions"
+              title="Profile actions"
             >
-              Delete profile
-            </button>
-          </div>
-        </details>
+              ···
+            </summary>
+            <div class="action-menu">
+              <button
+                id="tuning-preset-edit"
+                class="button button-quiet"
+                type="button"
+                aria-label="Rename tuning profile"
+              >
+                Rename profile
+              </button>
+              <button
+                id="tuning-preset-delete"
+                class="button button-quiet"
+                type="button"
+                aria-label="Delete tuning profile"
+              >
+                Delete profile
+              </button>
+            </div>
+          </details>
+        </div>
+        <p id="tuning-profile-error" role="alert" aria-live="polite"></p>
+        <fieldset
+          id="drift-tuning-sliders"
+          class="tuning-sections"
+          aria-label="Driving tuning controls"
+        ></fieldset>
       </div>
-      <p id="tuning-profile-error" role="alert" aria-live="polite"></p>
-      <fieldset
-        id="drift-tuning-sliders"
-        class="tuning-sections"
-        aria-label="Driving tuning controls"
-      ></fieldset>
       <div class="dialog-footer">
         <p class="dialog-help">Changes apply live · Auto-saved locally</p>
         <div class="dialog-actions">
@@ -196,14 +199,20 @@
         </div>
       </div>
     </dialog>
-    <dialog id="course-picker-dialog" class="course-picker" aria-labelledby="course-picker-title">
+    <dialog
+      id="course-picker-dialog"
+      class="course-picker dialog-layout"
+      aria-labelledby="course-picker-title"
+    >
       <form method="dialog" class="dialog-close">
         <button class="button button-quiet" type="submit" aria-label="Close" title="Close">
           <span class="close-icon" aria-hidden="true"></span>
         </button>
       </form>
-      <h2 id="course-picker-title" tabindex="-1" autofocus>Choose course</h2>
-      <div class="master-detail">
+      <header class="dialog-header">
+        <h2 id="course-picker-title" tabindex="-1" autofocus>Choose course</h2>
+      </header>
+      <div class="master-detail dialog-body">
         <div class="selection-library">
           <div
             id="course-list"
@@ -404,14 +413,16 @@
         · Non-commercial demo
       </p>
     </footer>
-    <dialog id="settings-dialog" aria-labelledby="settings-title">
+    <dialog id="settings-dialog" class="dialog-layout" aria-labelledby="settings-title">
       <form method="dialog" class="dialog-close">
         <button class="button button-quiet" type="submit" aria-label="Close" title="Close">
           <span class="close-icon" aria-hidden="true"></span>
         </button>
       </form>
-      <h2 id="settings-title" tabindex="-1" autofocus>Settings</h2>
-      <div class="tabs category-layout" id="settings-tabs">
+      <header class="dialog-header">
+        <h2 id="settings-title" tabindex="-1" autofocus>Settings</h2>
+      </header>
+      <div class="tabs category-layout dialog-body" id="settings-tabs">
         <div role="tablist" aria-label="Settings categories" aria-orientation="vertical">
           <button
             id="settings-controls-tab"
@@ -1060,55 +1071,57 @@
         </form>
       </div>
     </dialog>
-    <dialog id="bots-dialog" class="slider-dialog bots-dialog" aria-labelledby="bots-title">
+    <dialog
+      id="bots-dialog"
+      class="slider-dialog bots-dialog dialog-layout"
+      aria-labelledby="bots-title"
+    >
       <form id="bots-dialog-close" method="dialog" class="dialog-close">
         <button class="button button-quiet" type="submit" aria-label="Close" title="Close">
           <span class="close-icon" aria-hidden="true"></span>
         </button>
       </form>
-      <header class="bot-dialog-heading">
-        <div>
-          <h2 id="bots-title" tabindex="-1" autofocus>Bots</h2>
-          <p>Build the grid. Tune each driver. Applying resets the race.</p>
-        </div>
+      <header class="dialog-header">
+        <h2 id="bots-title" tabindex="-1" autofocus>Race setup</h2>
       </header>
-      <div class="master-detail">
+      <fieldset class="radio-cards race-mode" aria-label="Race mode">
+        <label>
+          <input type="radio" name="race-mode" value="solo" />
+          <span><strong>Race solo</strong><small>Just you and the course</small></span>
+        </label>
+        <label>
+          <input type="radio" name="race-mode" value="race" checked />
+          <span
+            ><strong>Race with bots</strong><small>Go head to head with the clankers</small></span
+          >
+        </label>
+        <label>
+          <input type="radio" name="race-mode" value="spectate" />
+          <span><strong>Spectate bots</strong><small>Watch the clankers compete</small></span>
+        </label>
+      </fieldset>
+      <div class="master-detail dialog-body">
         <aside class="bot-roster" aria-label="Bot roster">
           <div class="selection-group-heading">
             <span>Starting grid</span>
             <span class="bot-count" aria-live="polite"></span>
           </div>
           <div class="selection-list" role="list" aria-label="Bots"></div>
-          <button class="button button-secondary bot-add" type="button">+ Add bot</button>
+          <button class="button button-create bot-add" type="button">+ Add bot</button>
         </aside>
         <div id="bot-editor" class="detail-panel"></div>
       </div>
-      <section class="race-mode" aria-labelledby="race-mode-title">
-        <div class="race-mode-copy">
-          <strong id="race-mode-title">Race mode</strong>
-          <p class="help-text">Bots only: sit out and spectate the first bot.</p>
-        </div>
-        <fieldset class="segmented-control" aria-label="Race mode">
-          <label>
-            <input class="race-with-bots" type="radio" name="race-mode" value="race" checked />
-            <span>Race with bots</span>
-          </label>
-          <label>
-            <input class="bots-only" type="radio" name="race-mode" value="bots-only" />
-            <span>Bots only</span>
-          </label>
-        </fieldset>
-      </section>
+      <div class="race-solo dialog-body" hidden>
+        <h3>Just you and your ghost.</h3>
+        <p>Practice your lines and race against your ghost.</p>
+      </div>
       <div class="dialog-footer">
-        <p class="dialog-help">Choose the grid and race mode before restarting.</p>
         <div class="dialog-actions">
           <p role="alert" aria-live="polite"></p>
           <button class="button button-secondary" type="submit" form="bots-dialog-close">
             Cancel
           </button>
-          <button class="button button-primary bots-apply" type="button">
-            Save &amp; restart race
-          </button>
+          <button class="button button-primary bots-apply" type="button">Start race</button>
         </div>
       </div>
     </dialog>

@@ -1,25 +1,13 @@
 .course-picker {
-  --course-dialog-height: 48rem;
+  --dialog-height: 48rem;
   width: min(var(--dialog-width), calc(100vw - var(--space-6)));
-  height: min(var(--course-dialog-height), calc(100dvh - var(--space-6)));
-  overflow: hidden;
-}
-
-.course-picker[open] {
-  display: flex;
-  flex-direction: column;
-}
-
-.course-picker > :not(.master-detail) {
-  flex-shrink: 0;
 }
 
 /* The course library spans the dialog edge to edge; the footer rule closes it. */
 .course-picker .master-detail {
   margin-inline: calc(-1 * var(--space-5));
+  border-top: 0;
   border-bottom: 0;
-  flex: 1;
-  min-height: 0;
   overflow: hidden;
 }
 

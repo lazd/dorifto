@@ -109,7 +109,12 @@ the Grip / Default (`grip-default`) preset, and the cabin camera.
 
 ## Bot drivers
 
-Race bots are configured with **Bots** in the race standings panel or through URL parameters:
+Open **Race setup** in the race standings panel to choose **Race solo**, **Race with bots**,
+or **Spectate bots**. Solo hides bot configuration; the other modes share an editable starting
+grid and require at least one bot. Switching to Solo keeps your configured lineup for the
+current page session. **Cancel** discards edits; the primary action starts the selected mode.
+The roster and editor scroll independently while the mode cards and actions remain visible.
+Bots can also be configured through URL parameters:
 
 ```text
 ?course=hillside&bots=2&bot-skill=0.8&bot-aggression=0.4

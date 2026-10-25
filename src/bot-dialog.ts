@@ -77,8 +77,8 @@ export function bindBotDialog(
 ) {
   const list = root.querySelector<HTMLElement>('.selection-list')!;
   const add = root.querySelector<HTMLButtonElement>('.bot-add')!;
-  const botsOnly = root.querySelector<HTMLInputElement>('.bots-only')!;
-  const raceWithBots = root.querySelector<HTMLInputElement>('.race-with-bots')!;
+  const modes = [...root.querySelectorAll<HTMLInputElement>('[name="race-mode"]')];
+  const solo = root.querySelector<HTMLElement>('.race-solo')!;
   const error = root.querySelector<HTMLElement>('[role="alert"]')!;
   const editor = root.querySelector<HTMLElement>('#bot-editor')!;
   const count = root.querySelector<HTMLElement>('.bot-count')!;
@@ -90,6 +90,20 @@ export function bindBotDialog(
   let bots: RaceBotOptions[] = [];
   let selectedBotIndex = 0;
   let applying = false;
+  let savedRoster: RaceBotOptions[] = [];
+  const selectedMode = () => modes.find((input) => input.checked)!.value;
+  const syncMode = () => {
+    const mode = selectedMode();
+    masterDetail.hidden = mode === 'solo';
+    solo.hidden = mode !== 'solo';
+    apply.textContent =
+      mode === 'solo' ? 'Start solo race' : mode === 'spectate' ? 'Start spectating' : 'Start race';
+    apply.disabled = applying || (mode !== 'solo' && !bots.length);
+  };
+  raceMode.addEventListener('change', () => {
+    error.textContent = '';
+    syncMode();
+  });
 
   const focusSelected = () => {
     const selected = list.querySelector<HTMLButtonElement>('[aria-pressed="true"]');
@@ -151,11 +165,7 @@ export function bindBotDialog(
       }),
     );
     add.disabled = bots.length >= maxRaceBots;
-    botsOnly.disabled = !bots.length;
-    if (!bots.length) {
-      botsOnly.checked = false;
-      raceWithBots.checked = true;
-    }
+    syncMode();
 
     if (!bots.length) {
       const empty = makeElement<HTMLDivElement>('div', 'bot-empty');
@@ -177,11 +187,6 @@ export function bindBotDialog(
       const profileLabel = makeElement<HTMLLabelElement>('label', 'field');
       const profileTitle = makeElement<HTMLSpanElement>('span', undefined, 'Tuning profile');
       const profile = makeElement<HTMLSelectElement>('select');
-      const modeHelp = makeElement<HTMLParagraphElement>(
-        'p',
-        'dialog-help',
-        'Grip bots race the line; Drift bots slide through corners for style.',
-      );
       const sliders = makeElement<HTMLDivElement>('div', 'bot-sliders');
       const options = makeElement<HTMLDivElement>('div', 'bot-options');
 
@@ -189,7 +194,6 @@ export function bindBotDialog(
       avatar.style.setProperty('--avatar-color', botColor(selectedBotIndex));
       title.id = 'selected-bot-title';
       const preset = bot.preset ?? defaultRaceBotOptions.preset!;
-      mode.setAttribute('aria-describedby', 'bot-drive-mode-help');
       for (const [id, name] of Object.entries(modeNames)) mode.add(new Option(name, id));
       mode.value = botDriveMode(preset);
       mode.addEventListener('change', () => {
@@ -198,7 +202,6 @@ export function bindBotDialog(
         editor.querySelector<HTMLSelectElement>('[aria-label="Drive mode"]')?.focus();
       });
       mode.setAttribute('aria-label', 'Drive mode');
-      modeHelp.id = 'bot-drive-mode-help';
       modeLabel.append(modeTitle, mode);
       profile.setAttribute('aria-label', 'Tuning profile');
       for (const id of botPresets)
@@ -255,7 +258,7 @@ export function bindBotDialog(
           ),
         );
       panel.setAttribute('aria-labelledby', title.id);
-      panel.append(heading, fields, modeHelp, sliders, options);
+      panel.append(heading, fields, sliders, options);
       editor.replaceChildren(panel);
     }
     if (focus) focusSelected();
@@ -269,6 +272,10 @@ export function bindBotDialog(
   });
   apply.addEventListener('click', async () => {
     if (applying) return;
+    if (selectedMode() !== 'solo' && !bots.length) {
+      error.textContent = 'Add at least one bot to start this race mode.';
+      return;
+    }
     applying = true;
     apply.disabled = true;
     closeButton.disabled = true;
@@ -279,9 +286,10 @@ export function bindBotDialog(
     error.textContent = '';
     try {
       await applySettings(
-        bots.map((bot) => ({ ...bot })),
-        botsOnly.checked,
+        selectedMode() === 'solo' ? [] : bots.map((bot) => ({ ...bot })),
+        selectedMode() === 'spectate',
       );
+      savedRoster = bots.map((bot) => ({ ...bot }));
       root.closest('dialog')?.close();
     } catch (problem) {
       error.textContent = `Unable to apply bot settings: ${
@@ -289,7 +297,7 @@ export function bindBotDialog(
       }`;
     } finally {
       applying = false;
-      apply.disabled = false;
+      syncMode();
       closeButton.disabled = false;
       cancelButton.disabled = false;
       masterDetail.inert = false;
@@ -303,12 +311,12 @@ export function bindBotDialog(
     const parameters = new URL(location.href).searchParams;
     try {
       bots = readRaceBots(parameters);
-      botsOnly.checked = readBotsOnly(parameters);
-      raceWithBots.checked = !botsOnly.checked;
+      const mode = !bots.length ? 'solo' : readBotsOnly(parameters) ? 'spectate' : 'race';
+      if (!bots.length) bots = savedRoster.map((bot) => ({ ...bot }));
+      for (const input of modes) input.checked = input.value === mode;
     } catch (problem) {
       bots = [];
-      botsOnly.checked = false;
-      raceWithBots.checked = true;
+      for (const input of modes) input.checked = input.value === 'solo';
       error.textContent = `Ignoring invalid bot parameters: ${
         problem instanceof Error ? problem.message : String(problem)
       }`;

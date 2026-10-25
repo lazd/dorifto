@@ -1,17 +1,5 @@
 #settings-dialog {
-  --settings-dialog-height: 52rem;
   width: min(66rem, calc(100vw - var(--space-6)));
-  height: min(var(--settings-dialog-height), calc(100dvh - var(--space-6)));
-  overflow: hidden;
-}
-
-#settings-dialog[open] {
-  display: flex;
-  flex-direction: column;
-}
-
-#settings-dialog > :not(.category-layout) {
-  flex-shrink: 0;
 }
 
 .category-layout {
@@ -19,8 +7,6 @@
   grid-template-columns: 9rem minmax(0, 1fr);
   gap: var(--space-5);
   margin-top: var(--space-5);
-  flex: 1;
-  min-height: 0;
 }
 
 .category-layout > [role='tablist'] {

@@ -1,50 +1,42 @@
 .bots-dialog,
 .tuning-dialog {
-  width: min(var(--dialog-width), calc(100vw - 2 * var(--space-4)));
-  max-height: calc(100dvh - 2 * var(--space-4));
-  padding: 0;
-  overflow: auto;
-}
-
-.bot-dialog-heading,
-.tuning-dialog-heading {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: var(--space-4);
-  padding: var(--space-5) var(--space-6) var(--space-4);
-}
-
-.bot-dialog-heading h2,
-.tuning-dialog-heading h2 {
-  margin-bottom: var(--space-2);
-}
-
-.bots-dialog .bot-dialog-heading p,
-.tuning-dialog .tuning-dialog-heading p {
-  margin: 0;
-  max-width: 42rem;
+  width: min(var(--dialog-width), calc(100vw - var(--space-6)));
 }
 
 .bots-dialog .master-detail {
-  min-height: 22rem;
+  margin-bottom: var(--space-4);
+  border: var(--line) solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-sunken);
+  overflow: hidden;
+}
+
+.bots-dialog .detail-panel {
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .bot-roster {
   display: grid;
-  align-content: start;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  min-height: 0;
   min-width: 0;
-  padding: var(--space-2);
+  padding: var(--space-3);
   border-right: var(--line) solid var(--color-border);
-  background: var(--color-sunken);
+  background: transparent;
 }
 
 .bot-roster .selection-group-heading {
-  padding-inline: var(--space-2);
+  padding: var(--space-1) var(--space-2) var(--space-3);
+}
+
+.bots-dialog .detail-panel {
+  background: var(--color-surface);
 }
 
 .bot-roster .selection-list {
-  max-height: 34rem;
+  min-height: 0;
+  max-height: none;
   padding: var(--space-1) 0;
   border-right: 0;
   background: transparent;
@@ -70,10 +62,8 @@
   font-variant-numeric: tabular-nums;
 }
 
-.bot-roster > .button {
-  justify-content: center;
-  border-style: dashed;
-  margin-top: var(--space-3);
+.bot-roster > .button-create {
+  margin: 0;
 }
 
 .bot-empty {
@@ -200,35 +190,17 @@
 }
 
 .race-mode {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-4);
-  padding: var(--space-4) var(--space-6);
+  padding-block: var(--space-4);
 }
 
-.bots-dialog .segmented-control {
-  margin: 0;
-  padding: var(--space-1);
-  border: var(--line) solid var(--color-border);
-}
-
-.race-mode-copy {
+.race-solo {
   display: grid;
-  gap: var(--space-1);
+  place-content: center;
+  text-align: center;
 }
 
-.race-mode-copy strong {
-  font-size: var(--text-sm);
-}
-
-.bots-dialog .race-mode-copy p {
+.race-solo :is(h3, p) {
   margin: 0;
-}
-
-.bots-dialog .dialog-footer {
-  margin-top: 0;
-  padding: var(--space-4) var(--space-6);
 }
 
 .bots-dialog .dialog-footer > [role='alert'] {
@@ -241,7 +213,7 @@
   grid-template-columns: minmax(9rem, 0.75fr) minmax(12rem, 1.25fr) auto;
   align-items: end;
   gap: var(--space-4);
-  padding: 0 var(--space-6) var(--space-4);
+  padding-block: var(--space-4);
 }
 
 .tuning-profile-actions > summary {
@@ -254,7 +226,7 @@
   display: block;
   min-width: 0;
   margin: 0;
-  padding: 0 var(--space-6);
+  padding: 0;
   border: 0;
 }
 
@@ -318,21 +290,13 @@
   margin: var(--space-2) 0 0;
 }
 
-.tuning-dialog .dialog-footer {
-  margin-top: var(--space-2);
-  padding: var(--space-4) var(--space-6);
-}
-
 @media (max-width: 40rem) {
-  .bot-dialog-heading,
-  .tuning-dialog-heading {
-    padding-inline: var(--space-4);
+  .radio-cards {
+    gap: var(--space-2);
   }
 
-  .race-mode {
-    align-items: flex-start;
-    flex-direction: column;
-    padding-inline: var(--space-4);
+  .radio-cards label > span {
+    padding: var(--space-2);
   }
 
   .bot-roster {
@@ -341,26 +305,19 @@
   }
 
   .bot-roster .selection-list {
-    max-height: 18rem;
     border-bottom: 0;
+  }
+
+  .bots-dialog .master-detail {
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
   }
 
   .tuning-configuration {
     grid-template-columns: minmax(0, 1fr) auto;
-    padding-inline: var(--space-4);
   }
 
   .tuning-configuration > .field:first-child {
     grid-column: 1 / -1;
-  }
-
-  .tuning-sections {
-    padding-inline: var(--space-4);
-  }
-
-  .bots-dialog .dialog-footer,
-  .tuning-dialog .dialog-footer {
-    padding-inline: var(--space-4);
   }
 }
 
@@ -370,9 +327,5 @@
   .bot-options,
   .tuning-controls {
     grid-template-columns: minmax(0, 1fr);
-  }
-
-  .race-mode .segmented-control {
-    width: 100%;
   }
 }

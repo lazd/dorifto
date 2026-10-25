@@ -25,6 +25,111 @@ dialog::backdrop {
   background: var(--color-backdrop);
 }
 
+.dialog-layout {
+  height: min(var(--dialog-height, 52rem), calc(100dvh - var(--space-6)));
+  overflow: hidden;
+}
+
+.dialog-layout[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+.dialog-layout > * {
+  flex-shrink: 0;
+}
+
+.dialog-layout > .dialog-body {
+  flex: 1;
+  min-height: 0;
+}
+
+.dialog-layout > .dialog-footer {
+  margin-top: 0;
+}
+
+.dialog-scroll {
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+
+.radio-cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.radio-cards label {
+  position: relative;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.radio-cards input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  border: 0;
+}
+
+.radio-cards label > span {
+  display: grid;
+  align-content: center;
+  gap: var(--space-1);
+  height: 100%;
+  min-height: 5rem;
+  padding: var(--space-3) var(--space-4);
+  border: var(--line) solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-sunken);
+}
+
+.radio-cards strong {
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.radio-cards small {
+  color: var(--color-muted);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+}
+
+.radio-cards input:checked + span {
+  border-color: var(--color-accent);
+  background: var(--color-selected);
+  color: var(--color-accent);
+}
+
+.radio-cards label:hover > span {
+  border-color: var(--color-accent);
+}
+
+.radio-cards input:focus-visible + span {
+  outline: calc(2 * var(--line)) solid var(--color-accent);
+  outline-offset: calc(3 * var(--line));
+}
+
+.dialog-header {
+  margin-inline: calc(-1 * var(--space-5));
+  padding: 0 var(--space-5) var(--space-2);
+  border-bottom: var(--line) solid var(--color-border);
+}
+
+.dialog-header h2 {
+  position: relative;
+  top: -0.4em;
+  margin: 0;
+}
+
 dialog :is(header, footer) {
   position: static;
 }
@@ -65,7 +170,7 @@ dialog [role='alert']:empty {
 }
 
 dialog .dialog-close {
-  top: var(--space-3);
+  top: var(--space-2);
   right: var(--space-3);
 }
 
@@ -141,6 +246,9 @@ dialog .dialog-close {
   height: var(--control-height);
   padding: 0;
   font-size: var(--text-title);
+}
+.dialog-close button .close-icon {
+  top: -0.05em;
 }
 
 dialog .button:not(:disabled):hover,
@@ -257,6 +365,7 @@ dialog input {
   flex-wrap: wrap;
   gap: var(--space-2);
   margin: 0;
+  margin-left: auto;
 }
 
 .confirm-dialog .dialog-footer .dialog-actions .button {
