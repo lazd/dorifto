@@ -457,6 +457,10 @@ npm run import-track -- road-imports/newtown-road.json
 ```
 
 Generated road source files are ignored by Git.
+To import an OSM relation's member ways directly, use
+`npm run import-road -- <slug> "relation(<id>)"`. The location argument is optional
+for relation imports, which skip geocoding. If omitted, the relation expression
+is used as the venue label. Named-road imports still require a location.
 The importer also generates a standalone `road-imports/<slug>.html`
 preview using the shared course-preview SVG renderer. Open it directly in a
 browser to inspect the north-up road geometry and its start/finish markers;
@@ -493,6 +497,21 @@ keyed by the location query or the road query including its bounding box.
 Repeated imports reuse these responses without contacting either service.
 Delete the corresponding cache files to refresh the data. Import logs show each
 step, cache hits and misses, request durations, and the generated output path.
+Search bounds are shown as southwest and northeast latitude/longitude pairs.
+Connected OSM ways are joined automatically. If gaps or branching junctions produce
+multiple sections, the importer lists them longest first with length, coordinate
+and way counts, endpoint coordinates, available OSM tags, and links to the ways.
+Enter the section number to import it, `c` (or `combine`) to combine all sections,
+or `q` to cancel. Combining starts with the longest section and repeatedly joins
+the nearest endpoint at either end, reversing sections as needed. Gaps get
+straight, artificial connectors; their lengths and endpoint coordinates are
+reported so you can inspect them in the generated preview.
+The full Overpass response
+is cached before selection, so rerunning lets you choose another section without
+downloading it again. Separate sections are only bridged when you choose Combine.
+Overpass HTTP 429, 502, 503, and 504 responses are retried up to three times,
+waiting two seconds between attempts and logging the status code. Other errors
+and exhausted retries stop the import; only successful, validated responses are cached.
 The road importer saves geometry and the HTML preview without fetching elevation.
 Use the preview to choose a section, then run its track-import command to download
 USGS 3DEP terrain for that section and sample road elevation locally from it.

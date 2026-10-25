@@ -3,6 +3,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createInterface } from 'node:readline';
 import { createServer } from 'vite';
 import { roadDistances, roadImportDefaults } from './import-track.mjs';
 
@@ -10,7 +11,9 @@ const overpassEndpoint = 'https://overpass-api.de/api/interpreter';
 const geocodingEndpoint = 'https://nominatim.openstreetmap.org/search';
 const outputDir = fileURLToPath(new URL('../road-imports/', import.meta.url));
 const responseCacheDir = path.join(outputDir, 'cache');
-const helpText = 'Usage: npm run import-road -- <slug> "<road name>" "<location query>"';
+const helpText =
+  'Usage: npm run import-road -- <slug> "<road name>" "<location query>"\n       npm run import-road -- <slug> "relation(<id>)" ["<location query>"]';
+const isRelation = (name) => /^relation\(\d+\)$/.test(name);
 
 async function cachedResponse(url, { service, timeout, fetchImpl, cacheDir, validate }) {
   const hash = createHash('sha256').update(url.href).digest('hex');
@@ -29,12 +32,21 @@ async function cachedResponse(url, { service, timeout, fetchImpl, cacheDir, vali
 
   console.log(`  🌐 ${service}: requesting fresh data…`);
   const started = performance.now();
-  const response = await fetchImpl(url, {
-    headers: { accept: 'application/json', 'user-agent': 'Dorifto road importer' },
-    signal: AbortSignal.timeout(timeout),
-  });
-  if (!response.ok) {
+  let response;
+  for (let attempt = 0; ; attempt++) {
+    response = await fetchImpl(url, {
+      headers: { accept: 'application/json', 'user-agent': 'Dorifto road importer' },
+      signal: AbortSignal.timeout(timeout),
+    });
+    if (response.ok) break;
     const details = (await response.text()).replace(/\s+/g, ' ').trim().slice(0, 300);
+    if (service === 'Overpass' && [429, 502, 503, 504].includes(response.status) && attempt < 3) {
+      console.log(
+        `  ⏳ Overpass: HTTP ${response.status}; retrying in 2 seconds (retry ${attempt + 1}/3)…`,
+      );
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      continue;
+    }
     throw new Error(
       `${service} request failed: HTTP ${response.status}${details ? `: ${details}` : ''}`,
     );
@@ -53,7 +65,7 @@ function samePoint(a, b) {
   return a.lat === b.lat && a.lon === b.lon;
 }
 
-export function orderWaySegments(elements, roadName = 'Road') {
+export function roadSections(elements, roadName = 'Road') {
   const segments = elements
     .filter((element) => Array.isArray(element.geometry) && element.geometry.length >= 2)
     .map((element) => {
@@ -61,52 +73,101 @@ export function orderWaySegments(elements, roadName = 'Road') {
       if (points.some(({ lat, lon }) => !Number.isFinite(lat) || !Number.isFinite(lon))) {
         throw new Error(`Overpass returned invalid geometry for way ${element.id}`);
       }
-      return points.filter((point, i) => i === 0 || !samePoint(point, points[i - 1]));
+      return {
+        way: { id: element.id, ...element.tags },
+        points: points.filter((point, i) => i === 0 || !samePoint(point, points[i - 1])),
+      };
     })
-    .filter((points) => points.length >= 2);
+    .filter(({ points }) => points.length >= 2);
 
   if (!segments.length) throw new Error(`${roadName}: Overpass returned no road geometry`);
 
-  const remaining = segments.slice(1);
-  const points = segments[0].slice();
-  while (remaining.length) {
-    const tailMatches = remaining
-      .map((segment, index) => ({ segment, index }))
-      .filter(
-        ({ segment }) =>
-          samePoint(points.at(-1), segment[0]) || samePoint(points.at(-1), segment.at(-1)),
-      );
-    if (tailMatches.length > 1) {
-      throw new Error(`${roadName}: road geometry branches; narrow the Overpass query`);
+  const key = ({ lat, lon }) => `${lat},${lon}`;
+  const endpoints = new Map();
+  for (const segment of segments) {
+    for (const point of [segment.points[0], segment.points.at(-1)]) {
+      const connections = endpoints.get(key(point)) ?? [];
+      connections.push(segment);
+      endpoints.set(key(point), connections);
     }
-    if (tailMatches.length === 1) {
-      const { segment, index } = tailMatches[0];
-      const ordered = samePoint(points.at(-1), segment[0]) ? segment : segment.toReversed();
-      points.push(...ordered.slice(1));
-      remaining.splice(index, 1);
-      continue;
-    }
-
-    const headMatches = remaining
-      .map((segment, index) => ({ segment, index }))
-      .filter(
-        ({ segment }) => samePoint(points[0], segment[0]) || samePoint(points[0], segment.at(-1)),
-      );
-    if (headMatches.length > 1) {
-      throw new Error(`${roadName}: road geometry branches; narrow the Overpass query`);
-    }
-    if (headMatches.length === 1) {
-      const { segment, index } = headMatches[0];
-      const ordered = samePoint(points[0], segment.at(-1)) ? segment : segment.toReversed();
-      points.unshift(...ordered.slice(0, -1));
-      remaining.splice(index, 1);
-      continue;
-    }
-
-    throw new Error(`${roadName}: ${remaining.length} road segment(s) are disconnected`);
   }
+  const remaining = new Set(segments);
+  const sections = [];
+  for (const segment of segments) {
+    if (!remaining.delete(segment)) continue;
+    const points = segment.points.slice();
+    const ways = [segment.way];
+    for (const prepend of [false, true]) {
+      while (true) {
+        const endpoint = prepend ? points[0] : points.at(-1);
+        const connections = endpoints.get(key(endpoint));
+        // Do not choose an arbitrary continuation at a junction.
+        if (connections.length !== 2) break;
+        const next = connections.find((candidate) => remaining.has(candidate));
+        if (!next) break;
+        remaining.delete(next);
+        const ordered = samePoint(endpoint, prepend ? next.points.at(-1) : next.points[0])
+          ? next.points
+          : next.points.toReversed();
+        if (prepend) points.unshift(...ordered.slice(0, -1));
+        else points.push(...ordered.slice(1));
+        ways.push(next.way);
+      }
+    }
+    sections.push({ points, ways, length: roadDistances(points).at(-1) });
+  }
+  return sections.sort((a, b) => b.length - a.length);
+}
 
-  return points;
+const formatCoordinate = ({ lat, lon }) =>
+  `${Math.abs(lat).toFixed(6)}° ${lat < 0 ? 'S' : 'N'}, ${Math.abs(lon).toFixed(6)}° ${lon < 0 ? 'W' : 'E'}`;
+
+export function combineRoadSections(sections) {
+  if (!sections.length) throw new Error('No road sections to combine');
+  const remaining = [...sections].sort((a, b) => b.length - a.length);
+  const points = remaining.shift().points.slice();
+  const connectors = [];
+  while (remaining.length) {
+    let best;
+    remaining.forEach((section, index) => {
+      for (const prepend of [false, true]) {
+        const from = prepend ? points[0] : points.at(-1);
+        for (const reverse of [false, true]) {
+          const to = prepend !== reverse ? section.points.at(-1) : section.points[0];
+          const distance = roadDistances([from, to]).at(-1);
+          if (!best || distance < best.distance)
+            best = { index, prepend, reverse, from, to, distance };
+        }
+      }
+    });
+    const section = remaining.splice(best.index, 1)[0];
+    const ordered = best.reverse ? section.points.toReversed() : section.points;
+    const connected = samePoint(best.from, best.to);
+    if (!connected) connectors.push({ from: best.from, to: best.to, length: best.distance });
+    if (best.prepend) points.unshift(...(connected ? ordered.slice(0, -1) : ordered));
+    else points.push(...(connected ? ordered.slice(1) : ordered));
+  }
+  return { points, connectors };
+}
+
+async function chooseRoadSection(sections) {
+  const prompt = `Choose a section (1–${sections.length}), c to combine all, or q to cancel: `;
+  const input = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    input.setPrompt(prompt);
+    input.prompt();
+    for await (const answer of input) {
+      if (answer.trim().toLowerCase() === 'q') throw new Error('Road import cancelled');
+      if (['c', 'combine'].includes(answer.trim().toLowerCase())) return 'combine';
+      const choice = Number(answer.trim());
+      if (Number.isInteger(choice) && choice >= 1 && choice <= sections.length) return choice - 1;
+      console.log(`Enter a number from 1 to ${sections.length}, c to combine all, or q to cancel.`);
+      input.prompt();
+    }
+    throw new Error('No road section selected; run interactively to choose a section');
+  } finally {
+    input.close();
+  }
 }
 
 export async function fetchPlaceBoundingBox(
@@ -146,10 +207,11 @@ export async function fetchRoadCoordinates(
   locationQuery,
   fetchImpl = globalThis.fetch,
   cacheDir = responseCacheDir,
+  selectSection = chooseRoadSection,
 ) {
   const url = new URL(overpassEndpoint);
   url.searchParams.set('data', query);
-  return cachedResponse(url, {
+  const sections = await cachedResponse(url, {
     service: 'Overpass',
     timeout: 60000,
     fetchImpl,
@@ -163,9 +225,53 @@ export async function fetchRoadCoordinates(
       console.log(
         `  🧩 Connecting ${result.elements.length.toLocaleString('en-US')} road segments`,
       );
-      return orderWaySegments(result.elements, `${roadName} in ${locationQuery}`);
+      return roadSections(
+        result.elements,
+        locationQuery ? `${roadName} in ${locationQuery}` : roadName,
+      );
     },
   });
+  if (sections.length === 1) return sections[0].points;
+  console.log(
+    `  🧭 Found ${sections.length} separate sections (split at gaps and branching junctions):`,
+  );
+  sections.forEach(({ points, ways, length }, index) => {
+    const details = ['name', 'ref', 'highway', 'surface', 'lanes', 'oneway', 'access']
+      .map((tag) => {
+        const values = [...new Set(ways.map((way) => way[tag]).filter(Boolean))];
+        return values.length ? `${tag}: ${values.join(', ')}` : '';
+      })
+      .filter(Boolean)
+      .join(' · ');
+    const distance = length < 1000 ? `${length.toFixed(0)} m` : `${(length / 1000).toFixed(2)} km`;
+    console.log(
+      `\n     ${index + 1}. ${distance} · ${points.length.toLocaleString('en-US')} coordinates · ${ways.length} OSM ways\n` +
+        `        Start: ${formatCoordinate(points[0])}\n` +
+        `        End:   ${formatCoordinate(points.at(-1))}\n` +
+        (details ? `        ${details}\n` : '') +
+        `        ${ways.map(({ id }) => `https://www.openstreetmap.org/way/${id}`).join('\n        ')}`,
+    );
+  });
+  console.log(
+    '\n     c. Combine all sections (nearest endpoints; straight connectors across gaps)',
+  );
+  const choice = await selectSection(sections);
+  if (choice === 'combine') {
+    const { points, connectors } = combineRoadSections(sections);
+    for (const { from, to, length } of connectors) {
+      console.log(
+        `  ⚠️  Adding straight connector: ${length.toFixed(1)} m · ${formatCoordinate(from)} → ${formatCoordinate(to)}`,
+      );
+    }
+    console.log(
+      `  ✅ Combined ${sections.length} sections · ${(roadDistances(points).at(-1) / 1000).toFixed(2)} km · ${connectors.length} artificial connectors`,
+    );
+    return points;
+  }
+  if (!Number.isInteger(choice) || choice < 0 || choice >= sections.length)
+    throw new Error('Invalid road section selection');
+  console.log(`  ✅ Selected section ${choice + 1}`);
+  return sections[choice].points;
 }
 
 function escapeOverpassString(value) {
@@ -174,6 +280,18 @@ function escapeOverpassString(value) {
 
 function escapeOverpassRegex(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+export function buildOverpassStateHighwayQuery(name, locationQuery) {
+  return `[out:json][timeout:25];
+
+area["ISO3166-2"="${locationQuery}"]->.searchArea;
+(
+  way["highway"]["ref"="${name}"](area.searchArea);
+);
+
+// Output the geometry so it draws on the map
+out geom;`;
 }
 
 export function buildOverpassQuery(name, [south, north, west, east]) {
@@ -199,10 +317,10 @@ export function buildOverpassQuery(name, [south, north, west, east]) {
   const names = variants ? variants[1].map((suffix) => `${suffixMatch[1]} ${suffix}`) : [name];
   const namePattern = `^(${names.map(escapeOverpassRegex).join('|')})$`;
   return `
-[out:json][timeout:25];
-way["highway"]["access"!="private"]["name"~"${escapeOverpassString(namePattern)}",i](${south},${west},${north},${east});
-out geom;
-`;
+  [out:json][timeout:25];
+  way["highway"]["access"!="private"]["name"~"${escapeOverpassString(namePattern)}",i](${south},${west},${north},${east});
+  out geom;
+  `;
 }
 
 async function writeRoadPreview(source, output) {
@@ -291,28 +409,43 @@ export async function importRoad({
 } = {}) {
   if (!slug) throw new Error('A slug is required as the first argument');
   if (!name?.trim()) throw new Error('A road name is required as the second argument');
-  if (!locationQuery?.trim()) throw new Error('A location query is required as the third argument');
+  if (!isRelation(name) && !locationQuery?.trim())
+    throw new Error('A location query is required as the third argument');
   if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
     throw new Error('Slug must contain only lowercase letters, numbers, and hyphens');
   }
-  console.log(`\n📍 [1/4] Finding ${locationQuery}`);
-  const bbox = await fetchPlaceBoundingBox(locationQuery, fetchImpl, cacheDir);
-  const [south, north, west, east] = bbox;
-  const latitude = (value) => `${Math.abs(value).toFixed(6)}° ${value < 0 ? 'S' : 'N'}`;
-  const longitude = (value) => `${Math.abs(value).toFixed(6)}° ${value < 0 ? 'W' : 'E'}`;
-  console.log(
-    `  🗺️  Search bounds:\n` +
-      `     North: ${latitude(north)}\n` +
-      `     South: ${latitude(south)}\n` +
-      `     West:  ${longitude(west)}\n` +
-      `     East:  ${longitude(east)}`,
-  );
-  const query = buildOverpassQuery(name, bbox);
-  console.log(`\n🛣️  [2/4] Finding ${name}`);
-  const coordinates = await fetchRoadCoordinates(query, name, locationQuery, fetchImpl, cacheDir);
-  if (coordinates.length < 8) {
-    throw new Error(`${name}: expected at least 8 coordinates, got ${coordinates.length}`);
+  console.log(`\n📍 [1/4] Finding ${name}${locationQuery ? ` in ${locationQuery}` : ''}`);
+
+  let query;
+  if (isRelation(name)) {
+    console.log(`  🛠️  Detected relation: ${name}`);
+    query = `[out:json][timeout:25];
+${name};
+way(r);
+out geom;`;
+  } else if (
+    locationQuery.match(/^US-[A-Z]+/) &&
+    (name.match(/^I\s\d+$/) || name.match(/^US\s\d+$/) || name.match(/^[A-Z]{2}\s\d+[A-Za-z]?$/))
+  ) {
+    console.log(`  🇺🇸 Detected US state query: ${locationQuery}`);
+    query = buildOverpassStateHighwayQuery(name, locationQuery);
+  } else {
+    const bbox = await fetchPlaceBoundingBox(locationQuery, fetchImpl, cacheDir);
+    const [south, north, west, east] = bbox;
+    const latitude = (value) => `${Math.abs(value).toFixed(6)}° ${value < 0 ? 'S' : 'N'}`;
+    const longitude = (value) => `${Math.abs(value).toFixed(6)}° ${value < 0 ? 'W' : 'E'}`;
+    console.log(
+      `  🗺️  Search bounds:\n` +
+        `     Southwest: ${latitude(south)}, ${longitude(west)}\n` +
+        `     Northeast: ${latitude(north)}, ${longitude(east)}`,
+    );
+    query = buildOverpassQuery(name, bbox);
   }
+  console.log(`\n🛣️  [2/4] Finding ${name}`);
+  if (process.env['DEBUG']) {
+    console.log(`  🔍 Overpass query:\n${query}`);
+  }
+  const coordinates = await fetchRoadCoordinates(query, name, locationQuery, fetchImpl, cacheDir);
   console.log(
     `  ✅ ${coordinates.length.toLocaleString('en-US')} coordinates ordered from start to finish`,
   );
@@ -323,7 +456,7 @@ export async function importRoad({
     slug,
     closed: false,
     display_name: name,
-    venue_name: locationQuery,
+    venue_name: locationQuery?.trim() || name,
     location: {
       lat: coordinates.reduce((sum, point) => sum + point.lat, 0) / coordinates.length,
       lon: coordinates.reduce((sum, point) => sum + point.lon, 0) / coordinates.length,
@@ -350,7 +483,7 @@ export async function importRoad({
 
 export function parseArguments(argv) {
   if (argv.includes('--help') || argv.includes('-h')) return { help: true };
-  if (argv.length !== 3) throw new Error(helpText);
+  if (argv.length !== 3 && !(argv.length === 2 && isRelation(argv[1]))) throw new Error(helpText);
   const [slug, name, locationQuery] = argv;
   return { slug, name, locationQuery };
 }
