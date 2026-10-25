@@ -325,6 +325,9 @@ h1 span {
   font-size: 10px;
   font-variant-numeric: tabular-nums;
 }
+.minimap.is-open-course .minimap-lap {
+  visibility: hidden;
+}
 .minimap-timing {
   text-align: right;
 }

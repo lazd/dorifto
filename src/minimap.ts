@@ -107,6 +107,7 @@ export function createMinimap(container: HTMLElement, definition: CourseDefiniti
   let layout: ReturnType<typeof createMinimapLayout>;
   function setCourse(next: CourseDefinition) {
     layout = createMinimapLayout(next);
+    container.classList.toggle('is-open-course', next.closed === false);
     svg.setAttribute(
       'aria-label',
       `${next.name}: bird's-eye course map with live car, bot and ghost positions and headings`,
