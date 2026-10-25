@@ -21,9 +21,10 @@ direct browser requests to OpenFreeMap and USGS, so an internet connection is ne
   map. Place searches go directly to Nominatim on submission (no autocomplete),
   are limited to one request per second, and reuse results within the page session.
   The map fits the first result's bounds; add a city/state for ambiguous names.
-  Coordinates work without a geocoding request. At zoom 14 or
-  higher, click a road to place the start, then add waypoints along connected roads.
-  A mint hover marker shows the road-snapped placement point. Status, progress,
+  Coordinates work without a geocoding request. Click a visible road to place the
+  start, then add waypoints along connected roads, without a fixed minimum zoom.
+  Snapping only selects rendered roads. A mint hover marker shows the placement point
+  and turns red when the extension would exceed 8 km or no connected route is available. Status, progress,
   and error messages stay visible in a bottom overlay over the map or 3D preview.
   Step-by-step toast guidance replaces static help text, following search, start
   placement, waypoints, loop closure, and the completed preview. Search is hidden
@@ -33,7 +34,7 @@ direct browser requests to OpenFreeMap and USGS, so an internet connection is ne
   close a road-following loop (still capped at 8 km). Click **S** again or remove
   the final **Start/Finish** row to reopen it. Closing searches for a forward continuation rather than the shortest
   return path that might retrace your selected road. If the remaining roads are not
-  loaded, pan along them at zoom 14+ or add a waypoint farther around the loop.
+  loaded, pan along them or zoom in for more detail, or add a waypoint farther around the loop.
   Removing another waypoint reopens the loop. Closed courses use
   the existing periodic elevation processing. Sharp route reversals are rejected before terrain
   downloading because backtracking can produce overlapping road surfaces and bumps.
@@ -273,6 +274,9 @@ cropped in-game screenshots.
 from physics;
 **Grass tufts** off (`?grass=off`) hides the decorative blades. Both help
 performance on long imported tracks, which carry hundreds of cones.
+**Road-edge dirt** off (`?road-edge-dirt=off`) hides the decorative dirt and pebble
+strips along the pavement without changing grip or collisions. It defaults to off
+and can be toggled live in Settings.
 **Settings > Video > Mirror resolution** defaults to **Low** (512×256,
 `?mirror-resolution=low`). **Medium** (1024×512, `?mirror-resolution=medium`)
 gives nearby cabin mirrors more detail without using full-screen render targets.
@@ -1276,7 +1280,18 @@ not from the surrounding hillside, so hills do not introduce adverse camber.
 Red-and-white painted curbs follow the inside of bends, within the paved shoulder.
 They are flush painted runoff, not raised collision bumps.
 
-The 1.5 m terrain grid drives both rendering and Ammo heightfield collisions.
+The 1.5 m terrain grid drives Ammo heightfield collisions and detailed roadside
+rendering. Beyond 32 m from the pavement, rendered terrain uses adaptive patches
+up to 48 m wide, increasing to 96 m and 192 m patches at extreme distances
+(at least 192 m and 384 m from the detailed roadside band, respectively).
+Unit-spaced boundaries avoid cracks between patches.
+Warped roadside walls retain their original triangles. Collision sampling stays
+unchanged; this reduces rendered geometry without lowering fetched elevation detail.
+Open-road DEM profiles reject short upward excursions with both ascent and descent
+steeper than 35%, at least 10 m of excess height, and a return within 300 m to a
+baseline grade of at most 15%. The affected samples are interpolated between their
+surrounding heights before import smoothing. Existing saved maps are loaded without
+elevation correction; normal hills and sustained climbs are retained.
 Terrain keeps a gravel shoulder, blending to muted meadow-green ground cover
 roughly 1.5–3.2 m beyond the pavement. Per-fragment noise breaks up the transition
 edge and adds broad color patches alongside the fine grass texture. Vegetation

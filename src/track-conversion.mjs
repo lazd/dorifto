@@ -1,4 +1,5 @@
 import { geographicRasterSampler } from './terrain-raster.mjs';
+import { cleanRoadElevation } from './road-elevation.mjs';
 
 const earthRadius = 6371008.8;
 export const roadImportDefaults = { width: 8, doubleYellow: true };
@@ -153,9 +154,10 @@ export function convertTrack(data, options = {}) {
   let elevationOffset = 0;
   if (profile?.length >= 2) {
     const count = Math.max(8, Math.round(length / settings.elevationSpacing));
-    const raw = Array.from({ length: count }, (_, i) =>
+    let raw = Array.from({ length: count }, (_, i) =>
       sampleProfile(profile, i / (closed ? count : count - 1)),
     );
+    if (!closed && data.terrain) raw = cleanRoadElevation(raw, length / (count - 1));
     if (closed) smoothElevationSeam(raw, length / count);
     // Open-road terrain samples need a wider, smoothly weighted filter, not a periodic seam.
     const radius = Math.round(settings.elevationSmoothing / 2 / (length / count));

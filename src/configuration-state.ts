@@ -68,6 +68,7 @@ export interface ConfigurationState {
   courseReverse: boolean;
   coneMode: 'all' | 'corners' | 'off';
   showGrass: boolean;
+  showRoadEdgeDirt: boolean;
   lapGateMode: LapGateMode;
   turnSignMode: TurnSignMode;
   ghostMode: 'fastest' | 'previous' | 'record' | 'off';
@@ -92,6 +93,7 @@ export function createConfigurationState(storage?: Storage) {
     courseReverse: false,
     coneMode: 'corners',
     showGrass: true,
+    showRoadEdgeDirt: false,
     lapGateMode: 'off',
     turnSignMode: 'several',
     ghostMode: 'fastest',

@@ -441,6 +441,11 @@ button.route-marker {
   box-shadow: 0 0 0 var(--space-1) color-mix(in srgb, var(--color-accent), transparent 75%);
   pointer-events: none;
 }
+.route-hover-invalid {
+  border-color: var(--color-danger);
+  background: color-mix(in srgb, var(--color-danger), transparent 75%);
+  box-shadow: 0 0 0 var(--space-1) color-mix(in srgb, var(--color-danger), transparent 75%);
+}
 @media (max-width: 760px) {
   :root {
     --overlay-inset: var(--space-4);

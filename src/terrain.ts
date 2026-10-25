@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { terrainVisualIndices } from './terrain-visual-indices';
 import { courseProfileHeight, courseRoute, courseShoulderWidth } from './courses';
 import type { CourseDefinition } from './courses';
 import { surfaceMaterial, terrainNoiseGlsl } from './surfaces';
@@ -415,16 +416,15 @@ export class CourseTerrain {
       );
       return;
     }
-    let indexCount = (this.columns - 1) * (this.rows - 1) * 6;
-    for (const triangles of this.filletCells?.values() ?? []) indexCount += triangles.length - 6;
-    const indices = new Uint32Array(indexCount);
-    for (let z = 0, offset = 0; z < this.rows - 1; z++) {
-      for (let x = 0; x < this.columns - 1; x++) {
-        const triangles = cellTriangles(this, x, z);
-        indices.set(triangles, offset);
-        offset += triangles.length;
-      }
-    }
+    const visualDistances = warp?.size ? roadDistances.slice() : roadDistances;
+    for (const i of warp?.keys() ?? []) visualDistances[i] = 0;
+    const indices = terrainVisualIndices(
+      this.columns,
+      this.rows,
+      visualDistances,
+      this.spacing,
+      (x, z) => cellTriangles(this, x, z),
+    );
     const vertices = new Float32Array(positions.length + fillet.length);
     vertices.set(positions);
     vertices.set(fillet, positions.length);

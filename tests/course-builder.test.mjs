@@ -24,6 +24,7 @@ test('saved courses restore geographic routes and retain exact editable waypoint
     'utf8',
   );
   const course = builderData.readRoadMap(json);
+  assert.deepEqual(course.elevation, JSON.parse(json).elevation);
   const draft = builderData.restoreRoadDraft(course);
   assert.equal(draft.closingSection, undefined);
   assert.ok(draft.sections.length > 2);

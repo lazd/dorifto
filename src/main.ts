@@ -195,6 +195,12 @@ async function start() {
     ),
     coneMode: requestedConeMode,
     showGrass: readToggle('grass'),
+    showRoadEdgeDirt:
+      readOption(
+        'road-edge-dirt',
+        'off',
+        (value): value is 'on' | 'off' => value === 'on' || value === 'off',
+      ) === 'on',
     lapGateMode: readOption('lap-gates', 'off', isLapGateMode),
     ghostMode: requestedGhost,
     turnSignMode: readParams(
@@ -441,6 +447,7 @@ async function start() {
       course.setTurnSignMode(turnSignMode);
       course.setLapGates(lapGateMode);
       course.terrain.grass.visible = showGrass;
+      course.setRoadEdgeDirt(configurationState.getState().showRoadEdgeDirt);
       physics = createPhysicsClient({
         bots: nextBots,
         botsOnly: nextBotsOnly,
@@ -483,6 +490,7 @@ async function start() {
       course.setTurnSignMode(latest.turnSignMode);
       course.setLapGates(latest.lapGateMode);
       course.terrain.grass.visible = latest.showGrass;
+      course.setRoadEdgeDirt(latest.showRoadEdgeDirt);
       const laps = physics.laps;
       const drivingCamera = createDrivingCamera(
         camera,
@@ -523,6 +531,10 @@ async function start() {
       course.setTurnSignMode(turnSignMode);
     },
     ['turnSignMode'],
+  );
+  configurationState.subscribe(
+    ({ showRoadEdgeDirt }) => course.setRoadEdgeDirt(showRoadEdgeDirt),
+    ['showRoadEdgeDirt'],
   );
   configurationState.subscribe(
     ({ showGrass }) => {

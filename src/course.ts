@@ -372,6 +372,7 @@ function buildCourse(scene: THREE.Group, definition: CourseDefinition, carWidth:
   const dirtMin = dirtEdge - definition.width / 2 - shoulder;
   const dirtMax = dirtEdge - definition.width / 2 + 0.35;
   const dirt = definition.padRadius === undefined && roadDirtMaterial(dirtEdge, dirtMin, dirtMax);
+  const dirtMeshes: THREE.Mesh[] = [];
   if (dirt)
     for (const side of [-1, 1]) {
       // From 0.6 m outside the dirt edge (feather) to past the farthest scattered pebbles.
@@ -379,12 +380,16 @@ function buildCourse(scene: THREE.Group, definition: CourseDefinition, carWidth:
       const strip = ribbon(side * (dirtEdge + 0.6 - stripWidth / 2), stripWidth, 0.04, dirt);
       strip.name = 'road-edge-dirt';
       strip.renderOrder = 1;
+      dirtMeshes.push(strip);
     }
   return {
     cones,
     cornerCones,
     turnSignGroups,
     terrain,
+    setRoadEdgeDirt(visible: boolean) {
+      for (const mesh of dirtMeshes) mesh.visible = visible;
+    },
     setLapGates(mode: LapGateMode) {
       lapGateMesh.visible = mode !== 'off';
       lapGateMaterial.uniforms.rainbow.value = mode === 'rainbow' ? 1 : 0;

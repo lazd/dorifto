@@ -379,8 +379,8 @@ export class RoadGraph {
     }
     throw new Error(
       incoming || outgoing
-        ? 'No forward closing road was found within the remaining 8 km limit. Pan along the unselected part of the loop at zoom 14+ to load its roads, or add a waypoint farther around the loop before clicking S.'
-        : 'No connected route within 8 km in the loaded tiles. Pan along the road at zoom 14+, or add a closer waypoint.',
+        ? 'No forward closing road was found within the remaining 8 km limit. Pan along the unselected part of the loop or zoom in to load its roads, or add a waypoint farther around the loop before clicking S.'
+        : 'No connected route within 8 km in the loaded tiles. Pan along the road or zoom in for more detail, or add a closer waypoint.',
     );
   }
 }

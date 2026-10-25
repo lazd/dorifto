@@ -673,7 +673,6 @@ export function bindCoursePicker(
   const savedForm = element<HTMLFormElement>('#saved-course-form');
   const savedTitle = bindText('#saved-course-title');
   const savedDescription = element<HTMLDivElement>('#saved-course-description');
-  const savedHelp = bindText('#saved-course-help');
   const savedNameField = element('#saved-course-name-field');
   const savedNameInput = element<HTMLInputElement>('#saved-course-name');
   const savedError = bindText('#saved-course-error');
@@ -1481,13 +1480,6 @@ export function bindCoursePicker(
     } else {
       savedDescription.textContent = 'Name this layout to add it to your saved courses.';
     }
-    savedHelp(
-      deletingReplay
-        ? 'The course and local record are kept.'
-        : deleting
-          ? 'Recorded laps and replays are deleted.'
-          : 'Records and replays stay with the course.',
-    );
     savedNameField.hidden = deleting;
     savedNameInput.value = course.name;
     savedError('');
@@ -1930,6 +1922,14 @@ export function bindGameUI(
     'showGrass',
     (state) => (state.showGrass ? 'on' : 'off'),
     (value) => ({ showGrass: value === 'on' }),
+    isToggle,
+  );
+  select<'on' | 'off'>(
+    '#show-road-edge-dirt',
+    'road-edge-dirt',
+    'showRoadEdgeDirt',
+    (state) => (state.showRoadEdgeDirt ? 'on' : 'off'),
+    (value) => ({ showRoadEdgeDirt: value === 'on' }),
     isToggle,
   );
   select<LapGateMode>(

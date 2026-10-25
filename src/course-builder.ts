@@ -66,6 +66,13 @@ const shoulderInput = element<HTMLInputElement>('shoulder-width');
 const clearButton = element<HTMLButtonElement>('clear');
 const locationForm = element<HTMLFormElement>('location-form');
 const locationInput = element<HTMLInputElement>('location');
+let nameCopiedToSearch = false;
+nameInput.addEventListener('blur', () => {
+  const name = nameInput.value.trim();
+  if (editingId || nameCopiedToSearch || !name || name === nameInput.defaultValue) return;
+  nameCopiedToSearch = true;
+  if (!locationInput.value.trim()) locationInput.value = name;
+});
 const locationButton = element<HTMLButtonElement>('location-submit');
 locationButton.addEventListener('mousedown', (event) => event.preventDefault());
 let searching = false;
@@ -120,11 +127,9 @@ function guide() {
           ? 'Add more waypoints or click the start position to create a loop'
           : sections.length
             ? 'Click to set a finish line or add more waypoints'
-            : map.getZoom() >= 14
+            : hasLocated
               ? 'Click to set a start position'
-              : hasLocated
-                ? 'Zoom in and click to set a start position'
-                : 'Search for a place to start your course',
+              : 'Search for a place to start your course',
   );
 }
 
@@ -167,7 +172,7 @@ hoverNode.className = 'route-hover';
 hoverNode.setAttribute('aria-hidden', 'true');
 const hoverMarker = new maplibregl.Marker({ element: hoverNode });
 let hoverPosition: maplibregl.Point | undefined;
-let hoverFrame = 0;
+let hoverFrame: ReturnType<typeof setTimeout> | undefined;
 let hoverAttached = false;
 
 function snapTolerance(point: GPSPoint) {
@@ -178,32 +183,42 @@ function snapTolerance(point: GPSPoint) {
 }
 
 function hideHover() {
-  cancelAnimationFrame(hoverFrame);
-  hoverFrame = 0;
+  clearTimeout(hoverFrame);
+  hoverFrame = undefined;
   if (hoverAttached) hoverMarker.remove();
   hoverAttached = false;
 }
 
 function updateHover() {
-  hoverFrame = 0;
+  clearTimeout(hoverFrame);
+  hoverFrame = undefined;
   if (
     !hoverPosition ||
     !mapReady ||
     worker ||
     mapContainer.hidden ||
     map.isMoving() ||
-    map.getZoom() < 14 ||
+    closingSection ||
     !map.isSourceLoaded('openmaptiles')
   ) {
     hideHover();
     return;
   }
-  const location = map.unproject(hoverPosition);
-  const point = { lat: location.lat, lon: location.lng };
-  const snapped = graph.findSnap(point, snapTolerance(point));
+  const snapped = visibleRoadSnap(hoverPosition);
   if (!snapped) {
     hideHover();
     return;
+  }
+  try {
+    const points = routePoints();
+    const previous = points.at(-1);
+    const section = previous ? graph.connect(previous, snapped.point, 2) : [];
+    const tooLong = routeLength(points) + routeLength(section) > maximumRoadLength;
+    hoverNode.classList.toggle('route-hover-invalid', tooLong);
+    hoverNode.title = tooLong ? 'That would exceed 8 km. Choose a closer endpoint.' : '';
+  } catch (error) {
+    hoverNode.classList.add('route-hover-invalid');
+    hoverNode.title = error instanceof Error ? error.message : String(error);
   }
   const previous = hoverMarker.getLngLat();
   if (!previous || previous.lng !== snapped.point.lon || previous.lat !== snapped.point.lat)
@@ -216,7 +231,7 @@ function updateHover() {
 
 map.on('mousemove', (event) => {
   hoverPosition = event.point;
-  if (!hoverFrame) hoverFrame = requestAnimationFrame(updateHover);
+  if (hoverFrame === undefined) hoverFrame = setTimeout(updateHover, 10);
 });
 map.on('movestart', hideHover);
 map.getCanvas().addEventListener('mouseleave', () => {
@@ -457,8 +472,35 @@ function updateRoute() {
   guide();
 }
 
+function visibleRoadSnap(position: maplibregl.Point) {
+  const features = map.queryRenderedFeatures([
+    [position.x - 12, position.y - 12],
+    [position.x + 12, position.y + 12],
+  ]);
+  const roads = features.filter(
+    (feature) =>
+      feature.source === 'openmaptiles' &&
+      feature.sourceLayer === 'transportation' &&
+      feature.layer.type === 'line' &&
+      roadClasses.includes(feature.properties.class),
+  );
+  const lines = roads.flatMap(({ geometry }) =>
+    geometry.type === 'LineString'
+      ? [{ coordinates: geometry.coordinates }]
+      : geometry.type === 'MultiLineString'
+        ? geometry.coordinates.map((coordinates: number[][]) => ({ coordinates }))
+        : [],
+  );
+  const visible = new RoadGraph();
+  visible.add(lines);
+  graph.add(lines);
+  const location = map.unproject(position);
+  const point = { lat: location.lat, lon: location.lng };
+  return visible.findSnap(point, snapTolerance(point));
+}
+
 function collectRoads() {
-  if (!mapReady || map.getZoom() < 14 || !map.isSourceLoaded('openmaptiles')) return;
+  if (!mapReady || !map.isSourceLoaded('openmaptiles')) return;
   const features = map.querySourceFeatures('openmaptiles', { sourceLayer: 'transportation' });
   const roads = features.filter((feature) => roadClasses.includes(feature.properties.class));
   graph.add(
@@ -516,13 +558,12 @@ map.on('click', (event) => {
       throw new Error(
         'This loop is closed. Click the start or remove the final Start/Finish in the list to reopen it.',
       );
-    if (map.getZoom() < 14)
-      throw new Error('Zoom in to level 14 or higher to select detailed road geometry.');
     if (!mapReady || !map.isSourceLoaded('openmaptiles'))
       throw new Error('Road tiles are still loading. Wait a moment before selecting.');
     collectRoads();
-    const clicked = { lat: event.lngLat.lat, lon: event.lngLat.lng };
-    const point = graph.snap(clicked, snapTolerance(clicked)).point;
+    const snapped = visibleRoadSnap(event.point);
+    if (!snapped) throw new Error('Click closer to a visible road.');
+    const point = snapped.point;
     const previous = routePoints().at(-1);
     const section = previous ? graph.connect(previous, point, 2) : [point];
     if (previous && routeLength(section) < 1)
@@ -995,6 +1036,7 @@ function editSavedCourse() {
 
 element<HTMLButtonElement>('new-course').onclick = () => {
   stopLibraryPreview();
+  nameCopiedToSearch = false;
   editingId = undefined;
   editingFilename = undefined;
   editingSnapshot = undefined;
@@ -1011,6 +1053,7 @@ element<HTMLButtonElement>('new-course').onclick = () => {
   updateRoute();
   collectRoads();
   nameInput.focus();
+  nameInput.select();
 };
 element<HTMLButtonElement>('cancel-edit').onclick = () => {
   if (embedded) notifyParent({ type: 'course-builder:cancel' });
@@ -1080,6 +1123,7 @@ if (embedded) {
 } else void showLibrary();
 
 window.addEventListener('pagehide', () => {
+  hideHover();
   stopBuildSpinner?.();
   stopPreviewSpinner?.();
   stopPreviewSpinner = undefined;
