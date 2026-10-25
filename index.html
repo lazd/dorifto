@@ -239,6 +239,7 @@
               >
                 3D
               </button>
+              <ul id="course-records" class="record-list course-preview-records"></ul>
               <div class="course-preview-caption">
                 <h3 id="course-preview-name"></h3>
                 <p id="course-preview-distance" class="help-text"></p>
@@ -246,6 +247,9 @@
               <details id="course-actions" class="action-disclosure">
                 <summary class="button button-quiet" aria-label="Course actions">⋯</summary>
                 <div class="action-menu">
+                  <button id="course-view-replays" class="button button-quiet" type="button" hidden>
+                    View replays
+                  </button>
                   <button id="course-download" class="button button-quiet" type="button">
                     Download
                   </button>
@@ -298,7 +302,15 @@
               <label for="course-race-laps"><strong>Laps</strong></label>
               <input id="course-race-laps" type="number" min="1" step="1" value="3" required />
             </div>
-            <ul id="course-records" class="record-list"></ul>
+            <div class="course-direction">
+              <label for="course-ghost-mode"><strong>Ghost car</strong></label>
+              <select id="course-ghost-mode">
+                <option value="off">Off</option>
+                <option value="record">Record lap</option>
+                <option value="fastest">Fastest lap</option>
+                <option value="previous">Previous lap</option>
+              </select>
+            </div>
           </section>
           <section id="course-replays" aria-labelledby="course-replays-title" hidden>
             <button id="course-replays-back" class="button button-quiet" type="button">
@@ -994,6 +1006,27 @@
                     <option value="mph">MPH</option>
                     <option value="kmh">km/h</option>
                   </select>
+                </div>
+                <div
+                  class="setting-illustration"
+                  role="img"
+                  aria-label="Illustration of a speedometer with MPH and km/h units"
+                >
+                  <svg viewBox="0 0 224 126" aria-hidden="true">
+                    <path class="illustration-map" d="M54 110 A67 67 0 1 1 170 110" />
+                    <path
+                      class="illustration-mark"
+                      d="M63 91 L70 87 M55 63 H64 M63 35 L71 40 M84 15 L88 24 M112 9 V19 M140 15 L136 24 M161 35 L153 40 M169 63 H160 M161 91 L154 87"
+                    />
+                    <g class="illustration-dial-label">
+                      <text x="77" y="79">0</text>
+                      <text x="112" y="39">60</text>
+                      <text x="147" y="79">120</text>
+                      <text x="112" y="110">MPH / km/h</text>
+                    </g>
+                    <path class="illustration-gate" d="M112 76 L145 44" />
+                    <circle class="illustration-position" cx="112" cy="76" r="5" />
+                  </svg>
                 </div>
               </section>
               <section class="illustrated-setting">

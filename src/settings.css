@@ -122,6 +122,13 @@
   stroke-width: 5;
 }
 
+.illustration-dial-label {
+  fill: var(--color-muted);
+  font-family: var(--font-family);
+  font-size: 10px;
+  text-anchor: middle;
+}
+
 .illustration-position,
 .illustration-sign {
   fill: var(--color-accent);

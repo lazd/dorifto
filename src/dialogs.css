@@ -720,6 +720,12 @@ dialog .selection-item > button.selection-item-main:focus-visible {
   font-size: var(--text-xs);
 }
 
+.badge-highlight {
+  background: var(--color-selected);
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
 .selection-avatar {
   display: inline-grid;
   place-items: center;

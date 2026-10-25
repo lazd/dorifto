@@ -411,6 +411,13 @@ The course chooser offers three race modes, independent of Grip/Drift handling:
 Closed courses default to **3 laps**, editable before loading; open courses have one attempt.
 Selecting a different racetrack or built-in course resets race setup to **Track Limits**
 and **3 laps**; both remain editable before starting.
+Race setup also offers the ghost car reference lap selector, kept in sync with
+Settings > HUD & aids and applied immediately.
+Ghost car defaults to Off with bots unless the URL specifies a choice. Enabling bots
+also switches it off; subsequent ghost selections are preserved.
+The map preview shows the local lap record at the bottom right; clicking its badge
+or time plays the matching saved run when available. The course actions menu offers
+View replays when saved runs are available.
 The URL retains `race-mode=track-limits|mustard|anything-goes` and `race-laps`.
 Every forward finish crossing ends the current attempt, even if invalid. Invalid attempts
 consume race distance but earn no completed lap credit; a car with any invalid attempts

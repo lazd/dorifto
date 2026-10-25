@@ -194,7 +194,10 @@ async function start() {
       value === 'all' || value === 'on' || value === 'corners' || value === 'off',
   );
   const requestedConeMode = coneMode === 'on' ? 'all' : coneMode;
-  const requestedGhost = readOption('ghost', 'fastest', isGhostMode);
+  const courseUrl = new URL(location.href);
+  let botsOnly = readBotsOnly(courseUrl.searchParams);
+  let botOptions = readRaceBots(courseUrl.searchParams);
+  const requestedGhost = readOption('ghost', botOptions.length ? 'off' : 'fastest', isGhostMode);
   configurationState.update({
     driveMode: requestedMode,
     profiles,
@@ -226,9 +229,6 @@ async function start() {
     settingsUrl.searchParams.delete('transmission');
     history.replaceState(null, '', settingsUrl);
   }
-  const courseUrl = new URL(location.href);
-  let botsOnly = readBotsOnly(courseUrl.searchParams);
-  let botOptions = readRaceBots(courseUrl.searchParams);
   // Recordings follow the primary car: the player, or the first bot in bots-only mode.
   const recordedDriverFor = (bots: RaceBotOptions[], only: boolean) => {
     const recordedBot = only ? bots[0] : null;
@@ -755,12 +755,17 @@ async function start() {
       const previousPhysics = physics;
       ({ course, terrain, spawn, laps, physics, drivingCamera } = next);
       previousPhysics.dispose(botsOnly && !nextBotsOnly);
+      const enablingBots = botOptions.length === 0 && nextBots.length > 0;
       botsOnly = nextBotsOnly;
       botOptions = nextBots;
       recordedBot = botsOnly ? botOptions[0] : null;
       recordedDriver = recordedDriverFor(botOptions, botsOnly);
       const botsUrl = new URL(location.href);
       writeRaceBots(botsUrl.searchParams, botOptions, botsOnly);
+      if (enablingBots) {
+        configurationState.update({ ghostMode: 'off' });
+        botsUrl.searchParams.set('ghost', 'off');
+      }
       history.replaceState(null, '', botsUrl);
       cameraNeedsReset = true;
       gameState.update({ status: { visible: false, error: false, message: '' } });

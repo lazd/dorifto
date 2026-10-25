@@ -253,8 +253,8 @@
 .course-preview-toggle,
 .course-preview-toggle.text-spinner {
   position: absolute;
-  bottom: var(--space-4);
-  left: var(--space-4);
+  bottom: var(--space-2);
+  left: var(--space-2);
 }
 
 .course-preview-toggle .text-spinner-frame {
@@ -327,6 +327,50 @@ dialog .course-preview-heading h3 {
   list-style: none;
 }
 
+.course-preview-records {
+  position: absolute;
+  bottom: var(--space-4);
+  right: var(--space-4);
+  max-width: calc(100% - var(--control-height) - var(--space-4) * 3);
+  margin: 0;
+  text-align: right;
+}
+
+.course-preview-records .record-row {
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-1);
+  padding: 0;
+  border: 0;
+}
+
+.course-preview-records .help-text,
+.course-preview-records .button-link:not(.record-time) {
+  margin: 0;
+  font-size: var(--text-sm);
+}
+
+.course-preview-records .record-time {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--color-text);
+}
+
+.course-preview-records .record-time.button-link:hover {
+  text-decoration: none;
+}
+
+.course-preview-records .record-time.button-link:hover .record-time-value {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.course-preview-records .record-time.button-link:not(:disabled):is(:hover, :focus-visible) .badge {
+  background: var(--color-accent);
+  color: var(--color-sunken);
+}
+
 .course-direction + .record-list {
   margin-top: 0;
 }
@@ -358,9 +402,16 @@ dialog .course-preview-heading h3 {
   margin: var(--space-1) 0 0;
 }
 
-.record-time .help-text {
+.record-time .help-text,
+.record-time .badge {
+  display: inline-block;
   margin-left: var(--space-2);
   font-weight: 400;
+  vertical-align: middle;
+}
+
+.course-preview-records .record-time .badge {
+  margin: 0;
 }
 
 #course-replays > .button {

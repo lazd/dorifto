@@ -717,6 +717,7 @@ export function bindCoursePicker(
   const editAction = element<HTMLButtonElement>('#course-edit');
   const deleteAction = element<HTMLButtonElement>('#course-delete');
   const records = element('#course-records');
+  const viewReplays = element<HTMLButtonElement>('#course-view-replays');
   const replays = element('#course-replays');
   const replaysBack = element<HTMLButtonElement>('#course-replays-back');
   const replaysTitle = element('#course-replays-title');
@@ -898,6 +899,8 @@ export function bindCoursePicker(
   });
 
   function renderRecords(course: CourseDefinition) {
+    viewReplays.hidden = true;
+    viewReplays.onclick = null;
     let summaries;
     try {
       summaries = (
@@ -914,10 +917,7 @@ export function bindCoursePicker(
     if (!summaries.length) {
       const row = textElement('li', 'record-row', '');
       const text = document.createElement('div');
-      text.append(
-        textElement('div', 'help-text', 'Local record'),
-        textElement('div', 'record-time', 'No recorded lap yet'),
-      );
+      text.append(textElement('div', 'record-time', 'No recorded lap yet'));
       row.append(text);
       records.replaceChildren(row);
       return;
@@ -926,29 +926,35 @@ export function bindCoursePicker(
       ...summaries.map(({ reverse, record, runs }) => {
         const row = textElement('li', 'record-row', '');
         const text = document.createElement('div');
-        text.append(
+        const recordRun =
+          record === null
+            ? undefined
+            : runs.find((run) => bestRunTime(run, selectedRace().mode) === record);
+        const time = textElement(recordRun ? 'button' : 'div', 'record-time', '');
+        if (record !== null) time.append(textElement('span', 'badge badge-highlight', '🏆 Record'));
+        time.append(
           textElement(
-            'div',
-            'help-text',
-            `Local record · ${raceModes[selectedRace().mode].name} · ${directionLabel(reverse)}`,
-          ),
-          textElement(
-            'div',
-            'record-time',
+            'span',
+            'record-time-value',
             record === null ? 'No full lap yet' : formatLapTime(record),
           ),
         );
-        row.append(text);
-        if (runs.length) {
-          const view = textElement(
-            'button',
-            'button button-quiet',
-            `View replays (${runs.length}) →`,
-          ) as HTMLButtonElement;
-          view.type = 'button';
-          view.addEventListener('click', () => showReplays(course, reverse, record, runs));
-          row.append(view);
+        if (time instanceof HTMLButtonElement && recordRun && record !== null) {
+          time.type = 'button';
+          time.classList.add('button-link');
+          time.setAttribute('aria-label', `Watch record lap ${formatLapTime(record)}`);
+          time.addEventListener('click', () => void watchRun(course, reverse, recordRun.id));
         }
+        text.append(time);
+        if (runs.length) {
+          viewReplays.hidden = false;
+          viewReplays.textContent = `View replays (${runs.length})`;
+          viewReplays.onclick = () => {
+            courseActions.open = false;
+            showReplays(course, reverse, record, runs);
+          };
+        }
+        row.append(text);
         return row;
       }),
     );
@@ -987,13 +993,9 @@ export function bindCoursePicker(
           'record-time',
           best === null ? '--:--.---' : formatLapTime(best),
         );
-        time.append(
-          textElement(
-            'span',
-            'help-text',
-            best === null ? 'Partial lap' : best === record ? 'Best lap · Record' : 'Best lap',
-          ),
-        );
+        time.append(textElement('span', 'help-text', best === null ? 'Partial lap' : 'Best lap'));
+        if (best !== null && best === record)
+          time.append(textElement('span', 'badge badge-highlight', '🏆 Record'));
         const text = document.createElement('div');
         text.append(
           time,
@@ -2135,14 +2137,16 @@ export function bindGameUI(
     (turnSignMode) => ({ turnSignMode }),
     isTurnSignMode,
   );
-  select<ConfigurationState['ghostMode']>(
-    '#ghost-mode',
-    'ghost',
-    'ghostMode',
-    (state) => state.ghostMode,
-    (ghostMode) => ({ ghostMode }),
-    isGhostMode,
-  );
+  for (const selector of ['#ghost-mode', '#course-ghost-mode']) {
+    select<ConfigurationState['ghostMode']>(
+      selector,
+      'ghost',
+      'ghostMode',
+      (state) => state.ghostMode,
+      (ghostMode) => ({ ghostMode }),
+      isGhostMode,
+    );
+  }
   select<'on' | 'off'>(
     '#show-grass',
     'grass',
