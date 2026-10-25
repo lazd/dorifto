@@ -1,0 +1,1 @@
+.text-spinner{position:relative}.text-spinner:disabled{opacity:1}.text-spinner-label{opacity:0}.text-spinner-frame{color:var(--color-text);place-items:center;font-family:monospace;font-size:2.75em;font-weight:400;line-height:1;display:grid;position:absolute;inset:0;transform:rotate(90deg)}

@@ -6,8 +6,10 @@
     <meta name="theme-color" content="#10191f" />
     <meta name="referrer" content="no-referrer" />
     <title>Dorifto — Z32 Playground</title>
-    <script type="module" crossorigin src="./assets/index-RvCpGa8L.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-BIk1F7JX.css">
+    <script type="module" crossorigin src="./assets/game-2m7m1gS1.js"></script>
+    <link rel="modulepreload" crossorigin href="./assets/text-spinner-BcBUWitR.js">
+    <link rel="stylesheet" crossorigin href="./assets/text-spinner-DO3y67q4.css">
+    <link rel="stylesheet" crossorigin href="./assets/game-Bo4L5mxm.css">
   </head>
   <body hidden>
     <div id="app"></div>
@@ -29,7 +31,7 @@
         title="Dismiss error (Escape / B)"
         hidden
       >
-        ×
+        <span class="close-icon" aria-hidden="true"></span>
       </button>
     </div>
     <aside class="course-hud hide-when-loading" aria-label="Course map and options">
@@ -66,9 +68,9 @@
             type="button"
             aria-haspopup="dialog"
             aria-controls="bots-dialog"
-            aria-label="Configure bots"
+            aria-label="Race setup"
           >
-            Configure bots <span aria-hidden="true">›</span>
+            Race setup <span aria-hidden="true">›</span>
           </button>
         </div>
       </section>
@@ -126,69 +128,72 @@
     </aside>
     <dialog
       id="drift-tuning"
-      class="slider-dialog tuning-dialog"
+      class="slider-dialog tuning-dialog dialog-layout"
       aria-labelledby="drift-tuning-title"
     >
       <form id="tuning-dialog-close" method="dialog" class="dialog-close">
         <button class="button button-quiet" type="submit" aria-label="Close" title="Close">
-          ×
+          <span class="close-icon" aria-hidden="true"></span>
         </button>
       </form>
-      <header class="tuning-dialog-heading">
-        <div>
-          <h2 id="drift-tuning-title" tabindex="-1" autofocus>Tuning</h2>
-          <p>Dial in your car. Changes apply live.</p>
-        </div>
+      <header class="dialog-header">
+        <h2 id="drift-tuning-title" tabindex="-1" autofocus>Tuning</h2>
       </header>
-      <div class="tuning-configuration">
-        <label class="field" for="drive-mode">
-          <span>Drive mode</span>
-          <select id="drive-mode">
-            <option value="grip">Grip</option>
-            <option value="drift">Drift</option>
-          </select>
-        </label>
-        <label class="field tuning-profile-picker">
-          <span id="tuning-preset-title">Tuning profile</span>
-          <select id="tuning-preset" aria-label="Tuning profile"></select>
-          <input
-            id="tuning-preset-edit-name"
-            type="text"
-            maxlength="32"
-            aria-label="Rename tuning profile"
-            hidden
-          />
-        </label>
-        <details class="action-disclosure tuning-profile-actions">
-          <summary class="button button-quiet" aria-label="Profile actions" title="Profile actions">
-            ···
-          </summary>
-          <div class="action-menu">
-            <button
-              id="tuning-preset-edit"
-              class="button button-quiet"
-              type="button"
+      <div class="dialog-body dialog-scroll">
+        <div class="tuning-configuration">
+          <label class="field" for="drive-mode">
+            <span>Drive mode</span>
+            <select id="drive-mode">
+              <option value="grip">Grip</option>
+              <option value="drift">Drift</option>
+            </select>
+          </label>
+          <label class="field tuning-profile-picker">
+            <span id="tuning-preset-title">Tuning profile</span>
+            <select id="tuning-preset" aria-label="Tuning profile"></select>
+            <input
+              id="tuning-preset-edit-name"
+              type="text"
+              maxlength="32"
               aria-label="Rename tuning profile"
-            >
-              Rename profile
-            </button>
-            <button
-              id="tuning-preset-delete"
+              hidden
+            />
+          </label>
+          <details class="action-disclosure tuning-profile-actions">
+            <summary
               class="button button-quiet"
-              type="button"
-              aria-label="Delete tuning profile"
+              aria-label="Profile actions"
+              title="Profile actions"
             >
-              Delete profile
-            </button>
-          </div>
-        </details>
+              ···
+            </summary>
+            <div class="action-menu">
+              <button
+                id="tuning-preset-edit"
+                class="button button-quiet"
+                type="button"
+                aria-label="Rename tuning profile"
+              >
+                Rename profile
+              </button>
+              <button
+                id="tuning-preset-delete"
+                class="button button-quiet"
+                type="button"
+                aria-label="Delete tuning profile"
+              >
+                Delete profile
+              </button>
+            </div>
+          </details>
+        </div>
+        <p id="tuning-profile-error" role="alert" aria-live="polite"></p>
+        <fieldset
+          id="drift-tuning-sliders"
+          class="tuning-sections"
+          aria-label="Driving tuning controls"
+        ></fieldset>
       </div>
-      <p id="tuning-profile-error" role="alert" aria-live="polite"></p>
-      <fieldset
-        id="drift-tuning-sliders"
-        class="tuning-sections"
-        aria-label="Driving tuning controls"
-      ></fieldset>
       <div class="dialog-footer">
         <p class="dialog-help">Changes apply live · Auto-saved locally</p>
         <div class="dialog-actions">
@@ -198,47 +203,49 @@
         </div>
       </div>
     </dialog>
-    <dialog id="course-picker-dialog" class="course-picker" aria-labelledby="course-picker-title">
+    <dialog
+      id="course-picker-dialog"
+      class="course-picker dialog-layout"
+      aria-labelledby="course-picker-title"
+    >
       <form method="dialog" class="dialog-close">
         <button class="button button-quiet" type="submit" aria-label="Close" title="Close">
-          ×
+          <span class="close-icon" aria-hidden="true"></span>
         </button>
       </form>
-      <h2 id="course-picker-title" tabindex="-1" autofocus>Choose course</h2>
-      <p class="help-text">Explore the layouts, then load your next drive.</p>
-      <div class="master-detail">
+      <header class="dialog-header">
+        <h2 id="course-picker-title" tabindex="-1" autofocus>Choose course</h2>
+      </header>
+      <div class="master-detail dialog-body">
         <div class="selection-library">
+          <p id="course-picker-loading" class="course-picker-loading" role="status" hidden>
+            Loading courses…
+          </p>
           <div
             id="course-list"
             class="selection-list"
             role="listbox"
             aria-label="Courses"
             aria-orientation="vertical"
-          ></div>
-          <div class="selection-library-actions">
-            <button id="course-create" class="button button-secondary" type="button">
+          >
+            <button id="course-create" class="button button-create" type="button">
               + Create course
             </button>
           </div>
         </div>
         <div class="detail-panel course-detail">
           <section id="course-overview" aria-labelledby="course-preview-name">
-            <div id="course-preview-visual" class="course-preview-visual"></div>
-            <p id="course-preview-error" role="alert"></p>
-            <div class="course-preview-heading">
-              <h3 id="course-preview-name"></h3>
-              <span id="course-preview-group" class="badge"></span>
-              <button id="course-save-preview" class="button button-quiet" type="button" hidden>
-                Save layout…
-              </button>
-              <button id="course-edit-draft" class="button button-quiet" type="button" hidden>
-                Edit
-              </button>
+            <div class="course-preview-hero">
+              <div id="course-preview-visual" class="course-preview-visual"></div>
+              <div class="course-preview-caption">
+                <h3 id="course-preview-name"></h3>
+                <p id="course-preview-distance" class="help-text"></p>
+              </div>
               <details id="course-actions" class="action-disclosure" hidden>
                 <summary class="button button-quiet" aria-label="Saved course actions">⋯</summary>
                 <div class="action-menu">
-                  <button id="course-rename" class="button button-quiet" type="button">
-                    Rename course
+                  <button id="course-edit" class="button button-quiet" type="button" hidden>
+                    Edit course
                   </button>
                   <button id="course-delete" class="button button-quiet danger" type="button">
                     Delete course
@@ -246,7 +253,15 @@
                 </div>
               </details>
             </div>
-            <p id="course-preview-distance" class="help-text"></p>
+            <p id="course-preview-error" role="alert"></p>
+            <div class="course-preview-heading">
+              <button id="course-save-preview" class="button button-quiet" type="button" hidden>
+                Save layout…
+              </button>
+              <button id="course-edit-draft" class="button button-quiet" type="button" hidden>
+                Edit
+              </button>
+            </div>
             <div class="course-direction">
               <div>
                 <strong>Direction</strong>
@@ -267,54 +282,6 @@
             </div>
             <ul id="course-records" class="record-list"></ul>
           </section>
-          <section
-            id="course-generator"
-            class="creation-panel"
-            aria-labelledby="course-generator-title"
-            hidden
-          >
-            <h3 id="course-generator-title">Create course</h3>
-            <p class="help-text">Preview a new layout before changing your race.</p>
-            <form id="course-generator-form" class="creation-form">
-              <div class="field">
-                <label for="course-draft-name">Course name</label>
-                <input
-                  id="course-draft-name"
-                  name="name"
-                  type="text"
-                  maxlength="80"
-                  required
-                  placeholder="Name your course"
-                />
-              </div>
-              <fieldset class="segmented-control" aria-label="Generation type">
-                <label
-                  ><input type="radio" name="generation" value="random" checked /><span
-                    >Random</span
-                  ></label
-                >
-                <label
-                  ><input type="radio" name="generation" value="custom" /><span>Custom</span></label
-                >
-              </fieldset>
-              <div class="creation-settings">
-                <p id="course-random-help" class="help-text">
-                  Generate a balanced layout with a mix of corners and elevation.
-                </p>
-                <fieldset id="custom-course-sliders" class="parameter-grid" hidden>
-                  <legend class="visually-hidden">Generation preferences</legend>
-                </fieldset>
-              </div>
-              <div class="creation-actions">
-                <button id="custom-course-reset" class="button button-quiet" type="button" hidden>
-                  Reset defaults
-                </button>
-                <button id="custom-course-generate" class="button button-secondary" type="submit">
-                  Generate preview
-                </button>
-              </div>
-            </form>
-          </section>
           <section id="course-replays" aria-labelledby="course-replays-title" hidden>
             <button id="course-replays-back" class="button button-quiet" type="button">
               ← Course preview
@@ -327,14 +294,78 @@
       </div>
       <p id="course-picker-error" role="alert"></p>
       <div class="dialog-footer">
-        <p id="course-picker-status" class="dialog-help" role="status">
-          Loading a course resets the race.
-        </p>
         <div class="dialog-actions">
-          <button id="course-picker-cancel" class="button button-secondary" type="button">
+          <button id="course-load" class="button button-primary" type="button">Load course</button>
+        </div>
+      </div>
+    </dialog>
+    <dialog
+      id="course-generator"
+      class="course-creator dialog-layout"
+      aria-labelledby="course-generator-title"
+    >
+      <form method="dialog" class="dialog-close">
+        <button class="button button-quiet" type="submit" aria-label="Close" title="Close">
+          <span class="close-icon" aria-hidden="true"></span>
+        </button>
+      </form>
+      <header class="dialog-header">
+        <h2 id="course-generator-title" tabindex="-1" autofocus>Create course</h2>
+      </header>
+      <fieldset class="radio-cards creation-modes" aria-label="Course type">
+        <label
+          ><input type="radio" name="generation" value="roads" checked />
+          <span><strong>Real roads</strong><small>Build a route on the map</small></span>
+        </label>
+        <label
+          ><input type="radio" name="generation" value="random" />
+          <span><strong>Random course</strong><small>Discover a new layout</small></span>
+        </label>
+        <label
+          ><input type="radio" name="generation" value="custom" />
+          <span><strong>Custom course</strong><small>Shape your own layout</small></span>
+        </label>
+      </fieldset>
+      <div class="creation-content dialog-body">
+        <p id="course-road-loading" class="creation-loading help-text" role="status" hidden>
+          Loading course builder…
+        </p>
+        <iframe id="course-road-editor" title="Real road course editor" hidden></iframe>
+        <form id="course-generator-form" class="creation-form" hidden>
+          <div class="creation-settings">
+            <div class="field">
+              <label for="course-draft-name">Course name</label>
+              <input
+                id="course-draft-name"
+                name="name"
+                type="text"
+                maxlength="80"
+                required
+                placeholder="Name your course"
+              />
+            </div>
+            <fieldset id="custom-course-sliders" class="parameter-grid" hidden>
+              <legend class="visually-hidden">Generation preferences</legend>
+            </fieldset>
+          </div>
+          <div class="creation-inspection">
+            <div id="creation-preview" class="course-preview-visual" aria-live="polite"></div>
+            <p id="creation-distance" class="help-text"></p>
+            <button id="custom-course-generate" class="button button-secondary" type="submit">
+              Regenerate
+            </button>
+          </div>
+        </form>
+      </div>
+      <p id="course-creation-error" role="alert"></p>
+      <div class="dialog-footer">
+        <div class="dialog-actions">
+          <button id="course-road-cancel" class="button button-secondary" type="button" hidden>
             Cancel
           </button>
-          <button id="course-load" class="button button-primary" type="button">Load course</button>
+          <button id="course-creation-save" class="button button-primary" type="button" hidden>
+            Save course
+          </button>
         </div>
       </div>
     </dialog>
@@ -408,14 +439,16 @@
         · Non-commercial demo
       </p>
     </footer>
-    <dialog id="settings-dialog" aria-labelledby="settings-title">
+    <dialog id="settings-dialog" class="dialog-layout" aria-labelledby="settings-title">
       <form method="dialog" class="dialog-close">
         <button class="button button-quiet" type="submit" aria-label="Close" title="Close">
-          ×
+          <span class="close-icon" aria-hidden="true"></span>
         </button>
       </form>
-      <h2 id="settings-title" tabindex="-1" autofocus>Settings</h2>
-      <div class="tabs category-layout" id="settings-tabs">
+      <header class="dialog-header">
+        <h2 id="settings-title" tabindex="-1" autofocus>Settings</h2>
+      </header>
+      <div class="tabs category-layout dialog-body" id="settings-tabs">
         <div role="tablist" aria-label="Settings categories" aria-orientation="vertical">
           <button
             id="settings-controls-tab"
@@ -1064,55 +1097,57 @@
         </form>
       </div>
     </dialog>
-    <dialog id="bots-dialog" class="slider-dialog bots-dialog" aria-labelledby="bots-title">
+    <dialog
+      id="bots-dialog"
+      class="slider-dialog bots-dialog dialog-layout"
+      aria-labelledby="bots-title"
+    >
       <form id="bots-dialog-close" method="dialog" class="dialog-close">
         <button class="button button-quiet" type="submit" aria-label="Close" title="Close">
-          ×
+          <span class="close-icon" aria-hidden="true"></span>
         </button>
       </form>
-      <header class="bot-dialog-heading">
-        <div>
-          <h2 id="bots-title" tabindex="-1" autofocus>Bots</h2>
-          <p>Build the grid. Tune each driver. Applying resets the race.</p>
-        </div>
+      <header class="dialog-header">
+        <h2 id="bots-title" tabindex="-1" autofocus>Race setup</h2>
       </header>
-      <div class="master-detail">
+      <fieldset class="radio-cards race-mode" aria-label="Race mode">
+        <label>
+          <input type="radio" name="race-mode" value="solo" />
+          <span><strong>Race solo</strong><small>Just you and the course</small></span>
+        </label>
+        <label>
+          <input type="radio" name="race-mode" value="race" checked />
+          <span
+            ><strong>Race with bots</strong><small>Go head to head with the clankers</small></span
+          >
+        </label>
+        <label>
+          <input type="radio" name="race-mode" value="spectate" />
+          <span><strong>Spectate bots</strong><small>Watch the clankers compete</small></span>
+        </label>
+      </fieldset>
+      <div class="master-detail dialog-body">
         <aside class="bot-roster" aria-label="Bot roster">
           <div class="selection-group-heading">
             <span>Starting grid</span>
             <span class="bot-count" aria-live="polite"></span>
           </div>
           <div class="selection-list" role="list" aria-label="Bots"></div>
-          <button class="button button-secondary bot-add" type="button">+ Add bot</button>
+          <button class="button button-create bot-add" type="button">+ Add bot</button>
         </aside>
         <div id="bot-editor" class="detail-panel"></div>
       </div>
-      <section class="race-mode" aria-labelledby="race-mode-title">
-        <div class="race-mode-copy">
-          <strong id="race-mode-title">Race mode</strong>
-          <p class="help-text">Bots only: sit out and spectate the first bot.</p>
-        </div>
-        <fieldset class="segmented-control" aria-label="Race mode">
-          <label>
-            <input class="race-with-bots" type="radio" name="race-mode" value="race" checked />
-            <span>Race with bots</span>
-          </label>
-          <label>
-            <input class="bots-only" type="radio" name="race-mode" value="bots-only" />
-            <span>Bots only</span>
-          </label>
-        </fieldset>
-      </section>
+      <div class="race-solo dialog-body" hidden>
+        <h3>Just you and your ghost.</h3>
+        <p>Practice your lines and race against your ghost.</p>
+      </div>
       <div class="dialog-footer">
-        <p class="dialog-help">Choose the grid and race mode before restarting.</p>
         <div class="dialog-actions">
           <p role="alert" aria-live="polite"></p>
           <button class="button button-secondary" type="submit" form="bots-dialog-close">
             Cancel
           </button>
-          <button class="button button-primary bots-apply" type="button">
-            Save &amp; restart race
-          </button>
+          <button class="button button-primary bots-apply" type="button">Start race</button>
         </div>
       </div>
     </dialog>

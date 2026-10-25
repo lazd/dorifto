@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#101b20" />
+    <title>Course builder</title>
+    <script type="module" crossorigin src="./assets/courseBuilder-DLZC2UCB.js"></script>
+    <link rel="modulepreload" crossorigin href="./assets/text-spinner-BcBUWitR.js">
+    <link rel="stylesheet" crossorigin href="./assets/text-spinner-DO3y67q4.css">
+    <link rel="stylesheet" crossorigin href="./assets/courseBuilder-B1sGDrpf.css">
+  </head>
+  <body>
+    <main class="builder" data-view="library">
+      <aside class="panel">
+        <header><h1>Course builder</h1></header>
+        <section id="library-panel" class="panel-body">
+          <button id="new-course" class="button button-create">+ New course</button>
+          <div
+            id="saved"
+            class="selection-list course-list"
+            role="listbox"
+            aria-label="Courses"
+          ></div>
+          <p id="library-message" role="status">Loading courses...</p>
+        </section>
+        <section id="editor-panel" class="panel-body" hidden>
+          <input
+            id="name"
+            class="course-name"
+            aria-label="Course name"
+            value="New course"
+            maxlength="100"
+            required
+            form="build-form"
+          />
+          <output id="distance">0.0km / 8km (max)</output>
+          <div class="section-heading">
+            <h2>Waypoints</h2>
+            <button id="clear" disabled>Clear</button>
+          </div>
+          <ol id="waypoints"></ol>
+          <form id="build-form">
+            <details class="advanced">
+              <summary>Advanced</summary>
+              <div class="field">
+                <label for="width">Road width (m)</label>
+                <input id="width" type="number" min="3" max="30" step="0.5" value="8" required />
+              </div>
+              <div class="field">
+                <label for="shoulder-width">Shoulder width (m)</label>
+                <input
+                  id="shoulder-width"
+                  type="number"
+                  min="0"
+                  max="10"
+                  step="0.1"
+                  value="2"
+                  required
+                />
+              </div>
+              <div class="field">
+                <label for="terrain-transition">Terrain transition (m)</label>
+                <input id="terrain-transition" type="number" min="1" step="1" value="2" required />
+              </div>
+              <label class="switch-field"
+                >Center line
+                <input id="center-line" class="switch" type="checkbox" role="switch" checked />
+              </label>
+            </details>
+          </form>
+        </section>
+        <footer id="editor-actions" class="panel-actions" hidden>
+          <button id="cancel-edit">Cancel</button>
+          <button id="build" class="button button-primary" form="build-form" disabled>Save</button>
+        </footer>
+      </aside>
+      <section class="viewport" aria-label="Map and course inspection">
+        <form
+          id="location-form"
+          class="viewport-search"
+          role="search"
+          aria-label="Find a place"
+          hidden
+        >
+          <input
+            id="location"
+            type="search"
+            aria-label="Place, address, or latitude, longitude"
+            placeholder="Search for a place or coordinates"
+            required
+          />
+          <button id="location-submit" tabindex="-1">Go</button>
+        </form>
+        <p id="status" role="status" aria-live="polite" aria-atomic="true" hidden></p>
+        <div id="map" aria-label="OpenStreetMap road selection map" hidden></div>
+        <section id="inspection" hidden aria-label="3D course inspection">
+          <div id="preview"></div>
+          <p id="preview-status" class="viewport-message" role="status" hidden></p>
+          <div class="preview-info">
+            <h2 id="preview-name"></h2>
+            <p id="preview-meta"></p>
+          </div>
+          <div class="viewport-toolbar">
+            <button id="edit-route">Edit</button
+            ><button id="play" class="button button-primary" disabled>Play</button>
+          </div>
+        </section>
+        <p id="empty-library" class="viewport-message">Create a course to get started.</p>
+      </section>
+    </main>
+    <dialog id="build-dialog" aria-labelledby="build-title">
+      <h2 id="build-title" tabindex="-1" autofocus>Building your course...</h2>
+      <ol id="build-steps" aria-live="polite"></ol>
+      <footer class="dialog-footer">
+        <div class="dialog-actions">
+          <button id="cancel-build" class="button button-secondary">Cancel</button>
+        </div>
+      </footer>
+    </dialog>
+  </body>
+</html>
