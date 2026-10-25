@@ -1294,6 +1294,8 @@ add no per-frame cloud rendering passes.
 Sky, fog, ambient illumination, reflections, and exposure change together.
 Distance haze fades in from 800 m to 3 km, using muted time-of-day colors
 separate from the sky horizon so distant slopes retain their shading.
+Sunset haze uses a subdued warm terracotta rather than a pale neutral, keeping
+distant mountains from looking white against the orange and coral sky.
 At every time of day, reflective materials use the visible sky, so the car
 reflects the actual clouds and sky colors. All three skies and their reflection maps
 are generated during loading, then reused when switching time of day; only the

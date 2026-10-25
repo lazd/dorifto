@@ -23,7 +23,7 @@ export const daylight = {
   sunset: {
     sky: '#182b45',
     horizon: '#f5a04c',
-    haze: '#a79589',
+    haze: '#825347',
     ground: '#493b38',
     cloudLight: '#fa603d',
     cloudShade: '#29394f',
