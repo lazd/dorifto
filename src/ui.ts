@@ -1061,6 +1061,18 @@ export function bindCoursePicker(
         : !draft?.course);
   }
 
+  async function refreshPickerCourses() {
+    pickerLoading.hidden = false;
+    stopPickerSpinner = startTextSpinner(pickerLoading);
+    try {
+      return await actions.refreshCourses();
+    } finally {
+      stopPickerSpinner?.();
+      stopPickerSpinner = undefined;
+      pickerLoading.hidden = true;
+    }
+  }
+
   /** Runs one course operation at a time; returns false if another is already running. */
   async function exclusive(operation: () => Promise<void>) {
     if (changing) return false;
@@ -1380,10 +1392,8 @@ export function bindCoursePicker(
       const id = event.data.id;
       roadBuilding = false;
       await exclusive(async () => {
-        pickerLoading.hidden = false;
-        stopPickerSpinner = startTextSpinner(pickerLoading);
         try {
-          const refreshed = await actions.refreshCourses();
+          const refreshed = await refreshPickerCourses();
           const saved = refreshed.find((course) => course.id === id);
           if (!saved) throw new Error('The saved road course was not found in OPFS.');
           courses.splice(0, courses.length, ...refreshed);
@@ -1611,17 +1621,13 @@ export function bindCoursePicker(
     previewCourse(selected);
     await exclusive(async () => {
       try {
-        const refreshed = await actions.refreshCourses();
+        const refreshed = await refreshPickerCourses();
         if (!picker.open) return;
         courses.splice(0, courses.length, ...refreshed);
         renderList();
         previewCourse(courses.find(({ id }) => id === selected.id) ?? selected);
       } catch (error) {
         pickerError(`Unable to load saved tracks: ${errorText(error)}`);
-      } finally {
-        stopPickerSpinner?.();
-        stopPickerSpinner = undefined;
-        pickerLoading.hidden = true;
       }
     });
   });

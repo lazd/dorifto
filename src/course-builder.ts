@@ -57,6 +57,7 @@ const buildButton = element<HTMLButtonElement>('build');
 const builder = document.querySelector<HTMLElement>('.builder')!;
 const buildDialog = element<HTMLDialogElement>('build-dialog');
 const buildSteps = element('build-steps');
+let stopBuildSpinner: (() => void) | undefined;
 const nameInput = element<HTMLInputElement>('name');
 const widthInput = element<HTMLInputElement>('width');
 const transitionInput = element<HTMLInputElement>('terrain-transition');
@@ -578,6 +579,8 @@ locationForm.onsubmit = async (event) => {
 };
 
 function finishBuild() {
+  stopBuildSpinner?.();
+  stopBuildSpinner = undefined;
   worker?.terminate();
   worker = undefined;
   buildDialog.close();
@@ -603,6 +606,8 @@ buildDialog.oncancel = (event) => {
 };
 
 function buildProgress(active: RoadBuildStep | 'complete') {
+  stopBuildSpinner?.();
+  stopBuildSpinner = undefined;
   let pending = false;
   for (const item of buildSteps.querySelectorAll<HTMLLIElement>('li')) {
     const current = item.dataset.step === active;
@@ -612,8 +617,11 @@ function buildProgress(active: RoadBuildStep | 'complete') {
     else item.removeAttribute('aria-current');
     item.setAttribute(
       'aria-label',
-      `${item.textContent}: ${item.dataset.state === 'complete' ? 'completed' : item.dataset.state === 'active' ? 'in progress' : 'pending'}`,
+      `${item.lastChild?.textContent}: ${item.dataset.state === 'complete' ? 'completed' : item.dataset.state === 'active' ? 'in progress' : 'pending'}`,
     );
+    const indicator = item.querySelector<HTMLElement>('.build-step-indicator')!;
+    indicator.textContent = item.dataset.state === 'complete' ? '\u2713' : '';
+    if (current) stopBuildSpinner = startTextSpinner(indicator);
   }
 }
 
@@ -727,6 +735,10 @@ element<HTMLFormElement>('build-form').onsubmit = (event) => {
     const item = document.createElement('li');
     item.dataset.step = key;
     item.textContent = existingCourse && key === 'course' ? 'Updating course settings' : label;
+    const indicator = document.createElement('span');
+    indicator.className = 'build-step-indicator';
+    indicator.setAttribute('aria-hidden', 'true');
+    item.prepend(indicator);
     buildSteps.append(item);
   }
   buildProgress('starting');
@@ -1068,6 +1080,7 @@ if (embedded) {
 } else void showLibrary();
 
 window.addEventListener('pagehide', () => {
+  stopBuildSpinner?.();
   stopPreviewSpinner?.();
   stopPreviewSpinner = undefined;
   embeddedResize?.disconnect();

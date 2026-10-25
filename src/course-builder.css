@@ -263,7 +263,7 @@ input.switch::before {
 .viewport-search {
   position: absolute;
   z-index: 2;
-  top: var(--overlay-inset);
+  top: calc(var(--overlay-inset) - var(--space-2));
   left: 50%;
   transform: translateX(-50%);
   width: min(480px, calc(100% - 112px));
@@ -295,9 +295,6 @@ input.switch::before {
   background: var(--color-accent);
   color: var(--color-sunken);
 }
-.viewport-search button.text-spinner {
-  background: transparent;
-}
 .viewport-search:focus-within {
   border-color: var(--color-accent);
 }
@@ -310,7 +307,7 @@ input.switch::before {
   z-index: 2;
   left: var(--space-4);
   right: var(--space-4);
-  bottom: var(--space-8);
+  bottom: var(--space-5);
   width: fit-content;
   max-width: calc(100% - 2 * var(--space-4));
   margin: 0 auto;
@@ -382,13 +379,13 @@ input.switch::before {
   color: var(--color-muted);
   margin-block: var(--space-2);
 }
-#build-steps li::before {
-  content: '';
+.build-step-indicator {
   width: 1em;
+  height: 1em;
   flex: none;
 }
-#build-steps li[data-state='complete']::before {
-  content: '\2713';
+.build-step-indicator .text-spinner-frame {
+  font-size: 1.25em;
 }
 #build-steps li[data-state='active'],
 #build-steps li[data-state='complete'] {
