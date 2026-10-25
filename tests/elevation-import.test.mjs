@@ -37,7 +37,7 @@ test('road preview needs no elevation; track import fetches only the selected se
   assert.match(preview, /value="double-yellow" selected/);
   assert.ok(preview.includes('--no-double-yellow'));
   assert.match(preview, /id="segment-shoulder"[^>]*value="1.6"/);
-  assert.match(preview, /id="segment-transition"[^>]*value="3"/);
+  assert.match(preview, /id="segment-transition"[^>]*value="8"/);
   assert.ok(preview.includes('--shoulder-width'));
   assert.ok(preview.includes('--terrain-transition'));
   let requests = 0;

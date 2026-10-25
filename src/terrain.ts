@@ -112,14 +112,23 @@ export class CourseTerrain {
     const vegetation: number[] = [];
     const roadDistances = new Float32Array(this.heights.length);
     const smoothingWeights = new Float32Array(this.heights.length);
-    // Every triangle touching pavement must have all its vertices on the road profile.
+    // Every triangle touching pavement must have all its vertices on the road profile. Snapped
+    // vertices sit on lines parallel to the pavement edge, so they rise right from it; other
+    // raster vertices stay on the profile for a cell diagonal so no triangle lifts pavement.
     const supportWidth = rasterHeight ? this.spacing * Math.SQRT2 : 0;
     const blendStart = rasterHeight
       ? this.halfWidth + supportWidth
       : Math.min(this.halfWidth + 3, 48);
+    const snapStart = this.halfWidth;
     const blendEnd = Math.min(this.halfWidth + 48, 50);
-    const transition = definition.terrainTransition ?? 3;
-    const vertex = (i: number, px: number, pz: number, near = this.nearest(px, pz)) => {
+    const transition = definition.terrainTransition ?? defaultTerrainTransition;
+    const vertex = (
+      i: number,
+      px: number,
+      pz: number,
+      near = this.nearest(px, pz),
+      start = blendStart,
+    ) => {
       const base = terrainBaseHeight(px, pz);
       const hills =
         12 + 9 * Math.sin(px / 48 + 0.6) * Math.cos(pz / 61) + 5 * Math.sin((px - pz) / 83);
@@ -143,11 +152,11 @@ export class CourseTerrain {
           : near.distance - this.halfWidth;
       const rise = ground * elevationScale - road;
       const end = rasterHeight
-        ? blendStart + Math.max(transition, Math.min(Math.abs(rise), maxTerrainTransition))
+        ? start + Math.min(transition, Math.max(Math.abs(rise), minTerrainTransition))
         : blendEnd;
       this.heights[i] = definition.flat
         ? 0
-        : road + rise * THREE.MathUtils.smoothstep(near.distance, blendStart, end);
+        : road + rise * THREE.MathUtils.smoothstep(near.distance, start, end);
       smoothingWeights[i] = THREE.MathUtils.smoothstep(
         near.distance,
         this.halfWidth + 3,
@@ -169,23 +178,23 @@ export class CourseTerrain {
       rasterHeight && !definition.flat && this.padRadius === undefined
         ? new Map<number, Point>()
         : undefined;
-    const snapLines = Math.ceil(Math.max(transition, maxTerrainTransition) / this.spacing);
+    const snapLines = Math.ceil(transition / this.spacing);
     for (let i = 0; i < this.heights.length; i++) {
       const px = this.minX + (i % this.columns) * this.spacing;
       const pz = this.minZ + Math.floor(i / this.columns) * this.spacing;
       const near = this.nearest(px, pz);
-      const line = Math.round((near.distance - blendStart) / this.spacing);
+      const line = Math.round((near.distance - snapStart) / this.spacing);
       if (!warp || line < 0 || line > snapLines) {
         vertex(i, px, pz, near);
         continue;
       }
-      const scale = (blendStart + line * this.spacing) / near.distance;
+      const scale = (snapStart + line * this.spacing) / near.distance;
       const snapped = { x: near.x + (px - near.x) * scale, z: near.z + (pz - near.z) * scale };
       warp.set(i, snapped);
-      vertex(i, snapped.x, snapped.z);
+      vertex(i, snapped.x, snapped.z, undefined, snapStart);
     }
     // Snap lines converge inside tight bends; release the corners of any cell that can no
-    // longer be split into two upright triangles.
+    // longer be split into two upright triangles without lifting the pavement.
     for (let released = true; warp && released;) {
       released = false;
       for (const i of warp.keys()) {
@@ -195,7 +204,9 @@ export class CourseTerrain {
           for (let cx = Math.max(x - 1, 0); cx <= Math.min(x, this.columns - 2); cx++) {
             const a = cz * this.columns + cx;
             const corners = [a, a + 1, a + this.columns, a + this.columns + 1] as const;
-            if (cellSplits(positions, ...corners).some(Boolean)) continue;
+            const splits = cellSplits(positions, ...corners);
+            const lifts = cellLifts(roadDistances, ...corners);
+            if (splits.some((upright, split) => upright && !lifts[split])) continue;
             for (const corner of corners)
               if (warp.delete(corner)) {
                 gridVertex(corner);
@@ -276,7 +287,6 @@ export class CourseTerrain {
         roadDistances,
         this.columns,
         this.rows,
-        supportWidth,
         positions,
       );
     // Bullet needs a nonzero vertical range even for an entirely flat heightfield.
@@ -746,10 +756,12 @@ function profileSurroundings(samples: { x: number; z: number; height: number }[]
 }
 
 const contourCorridor = 20;
-// Raster walls beside the road need a transition at least as wide as they are tall, or the
-// climb squeezes into a crease at their foot. Wider blends could reach past the midpoint
-// between switchback legs, where the nearest road and its height change.
-export const maxTerrainTransition = 8;
+// Raster walls beside the road need a transition about as wide as they are tall, or the
+// climb squeezes into a crease at their foot, so the transition grows with the wall up to
+// the course's `terrainTransition`. Much wider blends could reach past the midpoint between
+// switchback legs, where the nearest road and its height change.
+export const defaultTerrainTransition = 8;
+export const minTerrainTransition = 3;
 
 /** Whether each of a cell's diagonals (unflipped, flipped) yields two upright triangles. */
 function cellSplits(positions: Float32Array, a: number, b: number, c: number, d: number) {
@@ -760,20 +772,26 @@ function cellSplits(positions: Float32Array, a: number, b: number, c: number, d:
   return [upright(a, c, b) && upright(b, c, d), upright(a, c, d) && upright(a, d, b)];
 }
 
+/** Whether each split of `cellSplits` joins a pavement vertex to one beyond its edge. */
+function cellLifts(roadDistances: Float32Array, a: number, b: number, c: number, d: number) {
+  const lifts = (...corners: number[]) =>
+    corners.some((i) => roadDistances[i] < -1e-3) && corners.some((i) => roadDistances[i] > 1e-3);
+  return [lifts(a, b, c) || lifts(b, c, d), lifts(a, c, d) || lifts(a, d, b)];
+}
+
 /**
  * A fixed diagonal turns roadside walls crossing it into sawtooth facets. Near the road,
  * split each cell along the diagonal whose corners differ least, following the wall's
- * contours. Cells within `support` of the pavement lie on the road profile; the support is
- * a cell diagonal wide, so no other cell reaches the pavement. Snapped cells whose other
- * diagonal would fold or collapse a triangle keep the upright one, and otherwise prefer a
- * diagonal along a snap line so the wall's profile stays consistent along the road.
+ * contours. Snapped cells whose other diagonal would fold or collapse a triangle keep the
+ * upright one. Otherwise no triangle may join a vertex on the pavement to one beyond its
+ * edge, which would lift the pavement, and diagonals along a snap line are preferred so the
+ * wall's profile stays consistent along the road.
  */
 function flipCellsAlongContours(
   heights: Float32Array,
   roadDistances: Float32Array,
   columns: number,
   rows: number,
-  support: number,
   positions: Float32Array,
 ) {
   const flipped = new Uint8Array((columns - 1) * (rows - 1));
@@ -786,14 +804,17 @@ function flipCellsAlongContours(
       const near = Math.min(roadDistances[a], roadDistances[b], roadDistances[c], roadDistances[d]);
       const far = Math.max(roadDistances[a], roadDistances[b], roadDistances[c], roadDistances[d]);
       const [keep, flip] = cellSplits(positions, a, b, c, d);
+      const [liftKeep, liftFlip] = cellLifts(roadDistances, a, b, c, d);
       const alongKeep = Math.abs(roadDistances[b] - roadDistances[c]) < 1e-3;
       const alongFlip = Math.abs(roadDistances[a] - roadDistances[d]) < 1e-3;
       if (flip !== keep) flipped[z * (columns - 1) + x] = Number(flip);
-      else if (far > support + 1e-3 && near <= contourCorridor)
+      else if (far > 1e-3 && near <= contourCorridor)
         flipped[z * (columns - 1) + x] = Number(
-          alongKeep !== alongFlip
-            ? alongFlip
-            : Math.abs(heights[b] - heights[c]) > Math.abs(heights[a] - heights[d]),
+          liftKeep !== liftFlip
+            ? liftKeep
+            : alongKeep !== alongFlip
+              ? alongFlip
+              : Math.abs(heights[b] - heights[c]) > Math.abs(heights[a] - heights[d]),
         );
     }
   }

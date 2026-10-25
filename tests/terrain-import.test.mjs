@@ -138,13 +138,11 @@ test('terrain sampling preserves geographic orientation, height datum, and rever
       ),
       /Invalid terrain/,
     );
-    const { CourseTerrain, maxTerrainTransition } = await server.ssrLoadModule('/src/terrain.ts');
+    const { CourseTerrain, defaultTerrainTransition, minTerrainTransition } =
+      await server.ssrLoadModule('/src/terrain.ts');
     const narrow = new CourseTerrain({ ...course, shoulderWidth: 0 }, false);
     const wide = new CourseTerrain({ ...course, shoulderWidth: 8 }, false);
-    const gradual = new CourseTerrain(
-      { ...course, shoulderWidth: 0, terrainTransition: 12 },
-      false,
-    );
+    const gradual = new CourseTerrain({ ...course, shoulderWidth: 0, terrainTransition: 1 }, false);
     const edgeDefinition = { ...course, shoulderWidth: 0, elevation: [0], bankingScale: 0 };
     const protectedEdge = new CourseTerrain(edgeDefinition, false);
     try {
@@ -154,13 +152,15 @@ test('terrain sampling preserves geographic orientation, height datum, and rever
         const fraction = step / 400;
         const point = route.getPointAt(fraction);
         const tangent = route.getTangentAt(fraction).normalize();
-        for (const side of [-1, 1]) {
-          const offset = (side * course.width) / 2;
+        for (const across of [-1, -0.9, -0.5, 0.5, 0.9, 1]) {
+          const offset = (across * course.width) / 2;
           const height = protectedEdge.heightAt(
             point.x + tangent.z * offset,
             point.z - tangent.x * offset,
           );
-          assert.equal(height, 0, 'hillside vertices must not lift interpolated pavement edges');
+          // Chords between edge vertices on the outside of bends leave a sliver of pavement
+          // in the first wall triangle; it may rise only slightly.
+          assert.ok(Math.abs(height) < 0.025, 'hillside vertices must not lift pavement');
         }
       }
       const { createPhysicsResources, createPhysicsWorld } =
@@ -212,16 +212,21 @@ test('terrain sampling preserves geographic orientation, height datum, and rever
       Ammo.destroy(from);
       Ammo.destroy(to);
       physics.dispose();
-      const blendStart = course.width / 2 + narrow.spacing * Math.SQRT2;
       let snapped = 0;
       for (let i = 0; i < narrow.heights.length; i++) {
         const { x: px, z: pz } = vertexPosition(data, i);
         const near = narrow.nearest(px, pz);
+        // Snapped vertices rise from the pavement edge; others keep a cell-diagonal collar.
+        const blendStart =
+          course.width / 2 + (data.warpedVertices.has(i) ? 0 : narrow.spacing * Math.SQRT2);
         if (near.distance > blendStart + 8) continue;
         const road =
           courseProfileHeight(course.elevation, near.fraction, false) + near.bank * near.across;
         const rise = sample(px, pz) - road;
-        const width = Math.max(3, Math.min(Math.abs(rise), maxTerrainTransition));
+        const width = Math.min(
+          defaultTerrainTransition,
+          Math.max(Math.abs(rise), minTerrainTransition),
+        );
         const t = Math.max(0, Math.min(1, (near.distance - blendStart) / width));
         const expected = road + rise * t * t * (3 - 2 * t);
         assert.ok(

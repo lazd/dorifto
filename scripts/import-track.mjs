@@ -502,7 +502,7 @@ async function main() {
     parseArguments(process.argv.slice(2));
   if (help || !inputs.length) {
     console.log(
-      'Usage: npm run import-track -- <track.json...> [--start <index> --finish <index>] [--slug <slug>] [--name <name>] [--venue-name <venue>] [--config-name <configuration>] [--terrain] [--terrain-resolution 5] [--terrain-margin 250] [--terrain-detail-resolution 1.5] [--terrain-detail-width 40 (0 disables)] [--terrain-transition 3] [--out-dir src/tracks] [--width <m> (roads: 8, circuits: 15)] [--shoulder-width 1.6] [--double-yellow | --no-double-yellow] [--spacing 8]',
+      'Usage: npm run import-track -- <track.json...> [--start <index> --finish <index>] [--slug <slug>] [--name <name>] [--venue-name <venue>] [--config-name <configuration>] [--terrain] [--terrain-resolution 5] [--terrain-margin 250] [--terrain-detail-resolution 1.5] [--terrain-detail-width 40 (0 disables)] [--terrain-transition 8] [--out-dir src/tracks] [--width <m> (roads: 8, circuits: 15)] [--shoulder-width 1.6] [--double-yellow | --no-double-yellow] [--spacing 8]',
     );
     if (!help) process.exitCode = 1;
     return;

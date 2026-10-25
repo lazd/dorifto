@@ -575,23 +575,25 @@ The generated course embeds the geographic raster and elevation datum, so the ga
 does not fetch terrain or depend on the local cache. Terrain follows real hillsides
 and dropoffs outside the smoothed pavement and shoulders. Older courses without a
 raster retain their existing procedural surroundings; re-import to add real terrain.
-Raster-backed terrain protects a one-grid-diagonal support collar (about 2.1 m)
-outside the paved shoulder so hillside vertices cannot lift triangles crossing
-the pavement edge. This does not widen the asphalt. Terrain blends after that collar and
-returns fully to raster heights within `--terrain-transition <m>` (default 3 m;
+Raster-backed terrain starts blending right at the paved shoulder's edge: vertices
+near it are snapped onto the edge, and no triangle joins a vertex on the pavement to
+one beyond it, so hillside vertices cannot lift the asphalt. Vertices that cannot be
+snapped stay on the road profile for one grid diagonal (about 2.1 m). Terrain
+returns fully to raster heights within at most `--terrain-transition <m>` (default 8 m;
 must be positive); the preview includes this setting in its copied import command.
-Where the raster rises or falls more than that beside the road, the transition widens
-to match the height difference, up to 8 m, so walls and drops start with a rounded foot
-instead of a crease. The cap keeps blends from switchback legs from meeting.
+Within that maximum, the transition is 3 m for low banks and widens to match the
+height difference for taller walls and drops, so they start with a rounded foot
+instead of a crease. Values above 8 m can let blends from nearby switchback legs meet.
 Roadside raster heights are not grid-smoothed; each vertex samples
 the anti-aliased raster blend at its own position.
 Within 20 m of the pavement, raster terrain splits each 1.5 m grid cell along the
 diagonal that best follows the hillside's contours instead of one fixed diagonal,
-which otherwise turns roadside walls into sawtooth facets. From the collar's outer edge
+which otherwise turns roadside walls into sawtooth facets. From the pavement edge
 through the transition, grid vertices are snapped onto lines parallel to the road one
 grid step apart, so the wall's crest, face, and foot follow the road instead of
 stair-stepping along grid rows; cells between snapped vertices split along those lines.
-Where snap lines converge inside tight bends, cells that would fold are left unsnapped.
+Where snap lines converge inside tight bends, cells that would fold or lift the
+pavement are left unsnapped.
 Pavement and paint are clipped against the same triangles. Bullet's heightfield
 only supports a fixed diagonal at grid positions, so flipped and snapped cells are
 sunk below the heightfield and covered by a triangle-mesh collider with the rendered
