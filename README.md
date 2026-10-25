@@ -4,6 +4,97 @@ A small Three.js + Ammo.js driving playground built with TypeScript and Vite.
 Ammo.js is installed through the `ammojs-typed` npm distribution and runs in a
 dedicated Web Worker; there are no runtime CDN dependencies.
 
+## Browser road builder
+
+Open **[road-builder.html](./road-builder.html)** with `npm run dev`, or deploy
+the output of `npm run build` to any static HTTPS host. There is no backend,
+API proxy, Overpass request, or server-side import step. The builder does make
+direct browser requests to OpenFreeMap and USGS, so an internet connection is needed.
+
+- The library opens first, with route thumbnails and the first saved track selected
+  in an interactive 3D preview. Choose **Edit** to restore its route, name, and settings,
+  or **+ New track** to start a new one. **Cancel** returns to the library without
+  changing the saved track. **Save** stays disabled until the route, name, or settings
+  differ from the opened track, and disables again if all changes are reverted.
+  **Play** currently downloads the selected course JSON.
+- Search using the floating bar over the map, enter latitude/longitude, or pan the OpenStreetMap
+  map. Place searches go directly to Nominatim on submission (no autocomplete),
+  are limited to one request per second, and reuse results within the page session.
+  The map fits the first result's bounds; add a city/state for ambiguous names.
+  Coordinates work without a geocoding request. At zoom 14 or
+  higher, click a road to place the start, then add waypoints along connected roads.
+  A mint hover marker shows the road-snapped placement point. Status, progress,
+  and error messages stay visible in a bottom overlay over the map or 3D preview.
+  Step-by-step toast guidance replaces static help text, following search, start
+  placement, waypoints, loop closure, and the completed preview. Search is hidden
+  during 3D inspection and returns when editing the route.
+  All clicked waypoints are marked in driving order; click a marker to remove it
+  and reconnect its neighbours. With at least three waypoints, click **S** to
+  close a road-following loop (still capped at 8 km). Click **S** again or remove
+  the final **Start/Finish** row to reopen it. Closing searches for a forward continuation rather than the shortest
+  return path that might retrace your selected road. If the remaining roads are not
+  loaded, pan along them at zoom 14+ or add a waypoint farther around the loop.
+  Removing another waypoint reopens the loop. Closed courses use
+  the existing periodic elevation processing. Sharp route reversals are rejected before terrain
+  downloading because backtracking can produce overlapping road surfaces and bumps.
+  Narrow collinear spurs from overlapping vector tiles are removed within a 2 m
+  tolerance; genuine hairpins and reversals are not flattened.
+  Pan along the route to load tiles before selecting distant points.
+- The shortest connected path between each pair of clicks uses the vector road
+  geometry already loaded from OpenFreeMap. The sidebar lists the start, intermediate
+  waypoints, and finish; remove individual points or **Clear** the entire route.
+  Routes must be **100 m to 8 km**; over-limit extensions are rejected.
+  Tiles are cartographic data, not a routing network: gaps can require closer
+  waypoints, and selection does not enforce one-way or access restrictions.
+- Expand **Advanced** to set road width, shoulder width, terrain transition distance, and whether
+  to include a double-yellow **Center line**; the setting is shown
+  in the preview and retained in the exported course.
+- Build downloads **US-only USGS 3DEP** terrain at a fixed 5 m raster resolution with a 250 m margin and
+  an automatic 1.5 m road corridor. Road elevation is sampled from the terrain
+  and processed with the same conversion pipeline as the command-line importer.
+  Bridges/tunnels follow ground elevation, not road-deck heights. Missing data
+  and service failures are reported rather than replaced with flat terrain.
+- A Web Worker handles terrain decoding, elevation processing, course conversion,
+  JSON serialization, and 3D preview mesh generation. Cancel stops the worker.
+  The map uses the game's dark teal/mint design tokens. When a build completes,
+  an interactive 3D terrain and road preview replaces the map. Terrain is a closed
+  block with outward-facing side walls and a flat underside; ambient fill lighting
+  keeps all sides visible. Drag to orbit, right-drag/Shift-drag to pan, and scroll
+  to zoom. Touch supports one-finger orbit
+  and two-finger pan/zoom; arrow keys pan when the preview is focused.
+  Generation hides the editor and expands the map to fill the viewport under a
+  modal listing the active build steps, including automatic saving. **Cancel**
+  (or Escape) returns to the unchanged route.
+  **Save** builds and saves the track, then returns directly to the track manager
+  with that track highlighted and its 3D preview shown. New tracks are added to the
+  list; edited tracks update their existing entry. **Edit** reopens the track,
+  and **Play** currently downloads its JSON; game launch from OPFS is not yet wired.
+  Editing the route or build settings
+  discards the stale preview. Rendering is on demand, not an idle animation loop.
+  After deploying a new build, reload already-open builder tabs before building:
+  older tabs may reference worker assets that were replaced. Worker startup
+  failures are reported with reload/retry guidance.
+- Completed builds automatically save the complete course JSON under
+  **`dorifto-road-maps/` in OPFS**, listed by the entered course name. Download
+  JSON for a portable backup. If saving fails, the preview and download remain
+  available with an explicit error; **Play** downloads a portable copy.
+  Newly built JSON also retains the original clicked route sections for editing
+  after reload. Terrain transition is retained in the course settings.
+  Older maps with geographic terrain metadata
+  can be edited using their existing road geometry, divided into approximate
+  waypoints. Maps without geographic metadata report an editing error.
+  Rebuilding an edited map preserves its ID and replaces its original OPFS file,
+  even when renamed. To delete a saved track, focus its library row and press
+  Delete, then confirm. OPFS requires a
+  supported browser on HTTPS/localhost; it is origin-specific, quota-limited,
+  and can be cleared by the browser. Download backups for portability.
+
+This is a standalone prototype: OPFS maps are **not yet connected to the game's
+course library**. Downloaded files use the game's `CourseDefinition` format,
+including terrain and attribution; they can be added to `src/tracks/` and built
+like other imported courses. OpenStreetMap-derived data retains
+[OSM attribution and ODbL licensing](https://www.openstreetmap.org/copyright).
+
 With no query parameters, the game starts on Hillside Circuit at sunset with two bots,
 the Grip / Default (`grip-default`) preset, and the cabin camera.
 

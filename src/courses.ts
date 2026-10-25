@@ -56,6 +56,8 @@ export interface CourseDefinition {
    */
   elevation?: readonly number[];
   elevationSource?: string;
+  /** Attribution retained in exported real-world map data. */
+  attribution?: string;
   terrain?: TerrainRaster;
 }
 

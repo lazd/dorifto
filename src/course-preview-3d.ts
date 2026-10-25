@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import {
   courseGateDistances,
+  courseLineWidth,
   courseRoute,
   courseShoulderWidth,
   type CourseDefinition,
@@ -47,6 +48,7 @@ function meshFrom(positions: number[], indices: number[], material: THREE.Materi
 export function createCoursePreviewModel(
   definition: CourseDefinition,
   colors: Pick<CoursePreviewColors, 'ground' | 'road' | 'start'>,
+  cells = terrainCells,
 ) {
   const group = new THREE.Group();
   try {
@@ -76,6 +78,8 @@ export function createCoursePreviewModel(
       const samples = THREE.MathUtils.clamp(Math.round(length / 2), 200, 2000);
       const positions: number[] = [];
       const indices: number[] = [];
+      const linePositions: number[] = [];
+      const lineIndices: number[] = [];
       for (let i = 0; i < samples; i++) {
         const t = i / (definition.closed === false ? samples - 1 : samples);
         const center = route.getPointAt(t);
@@ -90,8 +94,36 @@ export function createCoursePreviewModel(
         const k = ((i + 1) % samples) * 2;
         if (definition.closed !== false || i < samples - 1)
           indices.push(j, k, j + 1, j + 1, k, k + 1);
+        if (definition.doubleYellow) {
+          for (const side of [-1, 1]) {
+            for (const edge of [-0.5, 0.5]) {
+              const offset = (side + edge) * courseLineWidth;
+              const x = center.x + tangent.z * offset;
+              const z = center.z - tangent.x * offset;
+              linePositions.push(x, height(x, z) + roadLift * 2, z);
+            }
+            const from = i * 4 + (side === -1 ? 0 : 2);
+            const to = ((i + 1) % samples) * 4 + (side === -1 ? 0 : 2);
+            if (definition.closed !== false || i < samples - 1)
+              lineIndices.push(from, to, from + 1, from + 1, to, to + 1);
+          }
+        }
       }
       group.add(meshFrom(positions, indices, roadMaterial));
+      if (definition.doubleYellow) {
+        const line = meshFrom(
+          linePositions,
+          lineIndices,
+          new THREE.MeshBasicMaterial({
+            color: 0xffd32a,
+            polygonOffset: true,
+            polygonOffsetFactor: -2,
+            polygonOffsetUnits: -1,
+          }),
+        );
+        line.name = 'double-yellow-center-line';
+        group.add(line);
+      }
     }
     for (const startT of courseGateDistances({ ...definition, reverse: false }, length).map(
       (d) => d / length,
@@ -119,7 +151,7 @@ export function createCoursePreviewModel(
     const minZ = Math.max(bounds.min.y, terrain.minZ);
     const maxX = Math.min(bounds.max.x, terrain.minX + (terrain.columns - 1) * terrain.spacing);
     const maxZ = Math.min(bounds.max.y, terrain.minZ + (terrain.rows - 1) * terrain.spacing);
-    const cell = Math.max(maxX - minX, maxZ - minZ) / terrainCells;
+    const cell = Math.max(maxX - minX, maxZ - minZ) / cells;
     const columns = Math.ceil((maxX - minX) / cell) + 1;
     const rows = Math.ceil((maxZ - minZ) / cell) + 1;
     const positions: number[] = [];
@@ -134,7 +166,7 @@ export function createCoursePreviewModel(
           indices.push(i - columns - 1, i - 1, i - columns, i - columns, i - 1, i);
         }
       }
-    // A skirt down to a flat base turns the terrain patch into a solid block.
+    // Outward-facing walls and a downward-facing cap close the terrain into a solid block.
     const base = terrain.minHeight - Math.max(4, (maxX - minX) * 0.02);
     const edge = [
       ...Array.from({ length: columns }, (_, column) => column),
@@ -144,8 +176,12 @@ export function createCoursePreviewModel(
     ];
     const skirt = positions.length / 3;
     for (const i of edge) positions.push(positions[i * 3], base, positions[i * 3 + 2]);
-    for (let i = 0; i < edge.length - 1; i++)
-      indices.push(edge[i], skirt + i, edge[i + 1], edge[i + 1], skirt + i, skirt + i + 1);
+    const bottom = positions.length / 3;
+    positions.push((minX + maxX) / 2, base, (minZ + maxZ) / 2);
+    for (let i = 0; i < edge.length - 1; i++) {
+      indices.push(edge[i], edge[i + 1], skirt + i, edge[i + 1], skirt + i + 1, skirt + i);
+      indices.push(bottom, skirt + i, skirt + i + 1);
+    }
     group.add(
       meshFrom(
         positions,

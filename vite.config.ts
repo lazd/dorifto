@@ -56,8 +56,16 @@ export default defineConfig({
   plugins: [courseCatalog()],
   worker: { plugins: () => [courseCatalog()] },
   base: './',
+  build: {
+    rollupOptions: {
+      input: {
+        game: fileURLToPath(new URL('./index.html', import.meta.url)),
+        roadBuilder: fileURLToPath(new URL('./road-builder.html', import.meta.url)),
+      },
+    },
+  },
   // Keep the supplied glTF, its relative textures, binary, and license together.
   publicDir: 'models',
   // Ammo is imported by the physics worker, outside the initial page dependency scan.
-  optimizeDeps: { include: ['ammojs-typed'] },
+  optimizeDeps: { include: ['ammojs-typed', 'geotiff'] },
 });
