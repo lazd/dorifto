@@ -6,10 +6,10 @@
     <meta name="theme-color" content="#10191f" />
     <meta name="referrer" content="no-referrer" />
     <title>Dorifto — Z32 Playground</title>
-    <script type="module" crossorigin src="./assets/game-DRpbIroV.js"></script>
+    <script type="module" crossorigin src="./assets/game-DviTKCNX.js"></script>
     <link rel="modulepreload" crossorigin href="./assets/course-builder-data-CETTF_cr.js">
     <link rel="stylesheet" crossorigin href="./assets/course-builder-data-DO3y67q4.css">
-    <link rel="stylesheet" crossorigin href="./assets/game-Baf7fpPr.css">
+    <link rel="stylesheet" crossorigin href="./assets/game-BDx--6zc.css">
   </head>
   <body hidden>
     <div id="app"></div>
@@ -91,6 +91,14 @@
       </span>
     </div>
     <aside class="telemetry hide-when-loading" aria-label="Driving information">
+      <output
+        id="fps-counter"
+        class="hide-when-loading"
+        aria-label="Frames per second"
+        aria-live="off"
+        hidden
+        >-- FPS</output
+      >
       <div
         id="tachometer"
         role="meter"
@@ -243,6 +251,7 @@
               >
                 3D
               </button>
+              <ul id="course-records" class="record-list course-preview-records"></ul>
               <div class="course-preview-caption">
                 <h3 id="course-preview-name"></h3>
                 <p id="course-preview-distance" class="help-text"></p>
@@ -250,6 +259,9 @@
               <details id="course-actions" class="action-disclosure">
                 <summary class="button button-quiet" aria-label="Course actions">⋯</summary>
                 <div class="action-menu">
+                  <button id="course-view-replays" class="button button-quiet" type="button" hidden>
+                    View replays
+                  </button>
                   <button id="course-download" class="button button-quiet" type="button">
                     Download
                   </button>
@@ -302,7 +314,15 @@
               <label for="course-race-laps"><strong>Laps</strong></label>
               <input id="course-race-laps" type="number" min="1" step="1" value="3" required />
             </div>
-            <ul id="course-records" class="record-list"></ul>
+            <div class="course-direction">
+              <label for="course-ghost-mode"><strong>Ghost car</strong></label>
+              <select id="course-ghost-mode">
+                <option value="off">Off</option>
+                <option value="record">Record lap</option>
+                <option value="fastest">Fastest lap</option>
+                <option value="previous">Previous lap</option>
+              </select>
+            </div>
           </section>
           <section id="course-replays" aria-labelledby="course-replays-title" hidden>
             <button id="course-replays-back" class="button button-quiet" type="button">
@@ -321,69 +341,77 @@
         </div>
       </div>
     </dialog>
-    <dialog id="run-results" class="results-dialog" aria-labelledby="run-results-course">
-      <header class="results-header">
-        <div>
-          <h2 id="run-results-course"></h2>
-          <p id="run-results-mode" class="help-text"></p>
-        </div>
-        <span id="run-results-title" class="results-outcome" role="status">Run results</span>
+    <dialog
+      id="run-results"
+      class="results-dialog dialog-layout"
+      aria-labelledby="run-results-course"
+    >
+      <form id="run-results-dialog-close" method="dialog" class="dialog-close">
+        <button class="button button-quiet" type="submit" aria-label="Close" title="Close">
+          <span class="close-icon" aria-hidden="true"></span>
+        </button>
+      </form>
+      <header class="dialog-header">
+        <h2 id="run-results-course" tabindex="-1"></h2>
+        <p id="run-results-mode" class="help-text"></p>
       </header>
-      <section class="results-section" aria-labelledby="run-results-standings-title">
-        <div class="results-section-heading">
-          <h3 id="run-results-standings-title">Standings</h3>
-          <span id="run-results-race-status" class="help-text" role="status"></span>
-        </div>
-        <table class="results-table">
-          <thead>
-            <tr>
-              <th scope="col">Pos</th>
-              <th scope="col">Driver</th>
-              <th scope="col">Race time / gap</th>
-              <th scope="col">Status</th>
-            </tr>
-          </thead>
-          <tbody id="run-results-standings"></tbody>
-        </table>
-      </section>
-      <div id="run-results-driver" role="region" tabindex="0">
-        <section class="results-hero" aria-label="Best lap and track record">
-          <span class="results-label">Best lap</span>
-          <div class="results-headline">
-            <strong id="run-results-best" class="results-time">--:--.---</strong>
+      <div class="dialog-body dialog-scroll">
+        <section class="results-section" aria-labelledby="run-results-standings-title">
+          <div class="results-section-heading">
+            <h3 id="run-results-standings-title">Standings</h3>
+            <span id="run-results-race-status" class="help-text" role="status"></span>
           </div>
-          <div class="results-comparison">
-            <p class="results-record help-text">
-              <span id="run-results-record"></span>
-              <span id="run-results-badge" class="results-badge" hidden></span>
-            </p>
-            <button id="run-results-record-replay" class="button button-quiet" type="button">
-              Watch record ↗
-            </button>
-          </div>
-        </section>
-        <dl id="run-results-summary" class="results-metrics"></dl>
-        <section class="results-section" aria-labelledby="run-results-laps-title">
-          <div class="results-section-heading"><h3 id="run-results-laps-title">Laps</h3></div>
           <table class="results-table">
             <thead>
               <tr>
-                <th scope="col">Lap</th>
-                <th scope="col">Time</th>
-                <th id="run-results-limits" scope="col">Track Limits</th>
-                <th id="run-results-mustard" scope="col">Mustard</th>
+                <th scope="col">Pos</th>
+                <th scope="col">Driver</th>
+                <th scope="col">Race time / gap</th>
+                <th scope="col">Best lap</th>
+                <th scope="col">Status</th>
               </tr>
             </thead>
-            <tbody id="run-results-laps"></tbody>
+            <tbody id="run-results-standings"></tbody>
           </table>
         </section>
+        <div id="run-results-driver" role="region" tabindex="0">
+          <section class="results-hero" aria-label="Best lap and track record">
+            <span class="results-label">Best lap</span>
+            <div class="results-headline">
+              <strong id="run-results-best" class="results-time">--:--.---</strong>
+              <span id="run-results-title" class="results-outcome" role="status">Run results</span>
+            </div>
+            <div class="results-comparison">
+              <p class="results-record help-text">
+                <span id="run-results-record"></span>
+                <span id="run-results-badge" class="results-badge" hidden></span>
+              </p>
+              <button id="run-results-record-replay" class="button button-quiet" type="button">
+                Watch record ↗
+              </button>
+            </div>
+          </section>
+          <dl id="run-results-summary" class="results-metrics"></dl>
+          <section class="results-section" aria-labelledby="run-results-laps-title">
+            <div class="results-section-heading"><h3 id="run-results-laps-title">Laps</h3></div>
+            <table class="results-table">
+              <thead>
+                <tr>
+                  <th scope="col">Lap</th>
+                  <th scope="col">Time</th>
+                  <th id="run-results-limits" scope="col">Track Limits</th>
+                  <th id="run-results-mustard" scope="col">Mustard</th>
+                </tr>
+              </thead>
+              <tbody id="run-results-laps"></tbody>
+            </table>
+          </section>
+        </div>
       </div>
       <div class="dialog-footer">
-        <span id="run-results-reset-hint" class="help-text">Press reset again to restart</span>
         <div class="dialog-actions">
-          <button id="run-results-close" class="button button-quiet" type="button">Close</button>
           <button id="run-results-replay" class="button button-secondary" type="button">
-            Replay race
+            Watch replay ↗
           </button>
           <button id="run-results-restart" class="button button-primary" type="button" autofocus>
             Race Again →
@@ -947,6 +975,41 @@
                   <option value="high">High (full resolution)</option>
                 </select>
               </div>
+              <div class="field">
+                <label for="pixel-ratio">Render resolution</label>
+                <p id="pixel-ratio-description">
+                  Auto uses 1× when the browser reports 4 GB memory or less, or 4 or fewer logical
+                  CPU cores; otherwise it uses up to 2×.
+                  <span id="pixel-ratio-current" role="status"></span>
+                </p>
+                <select id="pixel-ratio" aria-describedby="pixel-ratio-description">
+                  <option value="auto">Auto</option>
+                  <option value="1">1×</option>
+                  <option value="2">Up to 2×</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="terrain-shadows">Terrain shadows</label>
+                <p id="terrain-shadows-description">
+                  Auto disables terrain shadow casting on lower-end devices.
+                </p>
+                <select id="terrain-shadows" aria-describedby="terrain-shadows-description">
+                  <option value="auto">Auto</option>
+                  <option value="on">On</option>
+                  <option value="off">Off</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="show-fps">Live FPS counter</label>
+                <p id="fps-description">Show the current rendered frame rate.</p>
+                <input
+                  class="switch"
+                  role="switch"
+                  id="show-fps"
+                  type="checkbox"
+                  aria-describedby="fps-description"
+                />
+              </div>
             </div>
           </section>
           <section
@@ -998,6 +1061,27 @@
                     <option value="mph">MPH</option>
                     <option value="kmh">km/h</option>
                   </select>
+                </div>
+                <div
+                  class="setting-illustration"
+                  role="img"
+                  aria-label="Illustration of a speedometer with MPH and km/h units"
+                >
+                  <svg viewBox="0 0 224 126" aria-hidden="true">
+                    <path class="illustration-map" d="M54 110 A67 67 0 1 1 170 110" />
+                    <path
+                      class="illustration-mark"
+                      d="M63 91 L70 87 M55 63 H64 M63 35 L71 40 M84 15 L88 24 M112 9 V19 M140 15 L136 24 M161 35 L153 40 M169 63 H160 M161 91 L154 87"
+                    />
+                    <g class="illustration-dial-label">
+                      <text x="77" y="79">0</text>
+                      <text x="112" y="39">60</text>
+                      <text x="147" y="79">120</text>
+                      <text x="112" y="110">MPH / km/h</text>
+                    </g>
+                    <path class="illustration-gate" d="M112 76 L145 44" />
+                    <circle class="illustration-position" cx="112" cy="76" r="5" />
+                  </svg>
                 </div>
               </section>
               <section class="illustrated-setting">
