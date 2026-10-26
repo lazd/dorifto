@@ -127,8 +127,11 @@ const probeWidth = 0.75;
 const maxSteer = 0.6;
 /** Extra steering a road car needs per g of cornering as its front tires slip. */
 const understeerPerG = THREE.MathUtils.degToRad(3);
-/** Body roll measured from the recording's phone tilt against lateral g. */
-const rollPerG = THREE.MathUtils.degToRad(2.7);
+/**
+ * Body roll per g of cornering. The phone tilt measured ~2.7°, but its mount soaks up some roll
+ * and that reads as flat on screen, so this leans harder to sell the cornering load.
+ */
+const rollPerG = THREE.MathUtils.degToRad(6);
 /** Typical sports car dive/squat; the phone can't separate it from road grade. */
 const pitchPerG = THREE.MathUtils.degToRad(1.5);
 /** Deceleration beyond engine braking and drag, so the brake lights mean the pedal is pressed. */

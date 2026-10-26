@@ -1128,6 +1128,7 @@ async function start() {
     spectatingRealDriver && botsOnly && activeGhostMode() === 'real' && realDriver !== null;
 
   const nowhere = new THREE.Vector3(Infinity, 0, 0);
+  let watchedRealDriverFinished = false;
 
   /**
    * Holds the watched real driver's ghost on the line before the start and after the finish, and
@@ -1141,6 +1142,8 @@ async function start() {
       0,
       lap.duration,
     );
+    // Past its finish, or held in place because the race clock stopped when the race ended.
+    watchedRealDriverFinished = laps.lap > 0 && (laps.finished || time >= lap.duration);
     lap.read(time, ghostFrame);
     applyCarPose(ghostFrame, ghost.chassis, ghost.wheels);
     ghost.setBraking(ghostFrame.braking);
@@ -1148,6 +1151,7 @@ async function start() {
     const cabin = configurationState.getState().cameraStyle === 'cabin';
     ghost.fadeNear(cabin ? ghost.chassis.position : nowhere, cabin);
     ghost.visible = true;
+    if (watchedRealDriverFinished) return replayVelocity.set(0, 0, 0);
     const h = lap.interval / 2;
     lap.read(time - h, replayBefore);
     lap.read(time + h, replayAfter);
@@ -1734,11 +1738,14 @@ async function start() {
       burningOut,
       replaying ? undefined : physics.engine,
     );
-    audio.update({
-      drivetrain: engine,
-      tires: replaying ? playbackFrame.tires : watching ? ghostFrame.tires : physics.tireSounds,
-      ...backfire,
-    });
+    audio.update(
+      {
+        drivetrain: engine,
+        tires: replaying ? playbackFrame.tires : watching ? ghostFrame.tires : physics.tireSounds,
+        ...backfire,
+      },
+      watching && watchedRealDriverFinished,
+    );
     physics.updateBotEffects(
       dt,
       camera,

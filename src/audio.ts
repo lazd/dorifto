@@ -50,6 +50,7 @@ export class VehicleAudio {
   private context?: AudioContext;
   private node?: AudioWorkletNode;
   private master?: GainNode;
+  private voice?: GainNode;
   private starting?: Promise<void>;
   private muted = false;
   private previous = { throttle: 0, gear: 1, boost: 0 };
@@ -140,8 +141,11 @@ export class VehicleAudio {
       rumbleFilter.type = 'highpass';
       rumbleFilter.frequency.value = 25;
       master.connect(rumbleFilter).connect(limiter).connect(context.destination);
-      this.node = this.createSource(context, master).node;
+      const voice = context.createGain();
+      voice.connect(master);
+      this.node = this.createSource(context, voice).node;
       this.master = master;
+      this.voice = voice;
     }
     this.setAudible(true);
     this.publishState();
@@ -248,8 +252,11 @@ export class VehicleAudio {
     this.clearOpponents();
   }
 
-  update(state: VehicleSoundState) {
+  /** Drives the followed vehicle's voice; quiet fades it out, e.g. once it has parked. */
+  update(state: VehicleSoundState, quiet = false) {
     this.setAudible(true);
+    if (this.context && this.voice)
+      this.voice.gain.setTargetAtTime(quiet ? 0 : 1, this.context.currentTime, 0.25);
     this.node?.port.postMessage(soundMessage(state, this.previous));
   }
 
