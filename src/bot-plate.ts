@@ -23,8 +23,9 @@ const plateSurfaces = new WeakMap<
   }
 >();
 
-export function botPlateText(thinking: BotThinking | null) {
-  if (!thinking) return '--\n--\n--';
+export function botPlateText(thinking: BotThinking | null, finished = false) {
+  if (finished) return 'FINISH\n\n';
+  if (!thinking) return '';
   const { slowing, braking, stoppingBackward } = thinking.conditions;
   const pedal = braking ? 'BRAKE' : slowing ? 'LIFT' : '';
   const conditions = [pedal, stoppingBackward ? 'STOP' : ''].filter(Boolean).join(' ');
@@ -70,8 +71,8 @@ export function createBotPlate(chassis: THREE.Group) {
     setColor(color: THREE.ColorRepresentation) {
       material.color.set(color);
     },
-    setThinking(thinking: BotThinking | null) {
-      display.setText(botPlateText(thinking));
+    setThinking(thinking: BotThinking | null, finished = false) {
+      display.setText(botPlateText(thinking, finished));
     },
     dispose() {
       const index = surface.displays.indexOf(attachment);

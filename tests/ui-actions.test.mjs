@@ -374,6 +374,17 @@ test('status binding never runs for telemetry, focus, sound, or lap-recorder upd
   assert.equal(ui.message.textContent, 'Changed status');
 });
 
+test('attribution fade starts only once and is not reset by later map loads or errors', (t) => {
+  const ui = statusFixture(t);
+  assert.equal(ui.footer.classList.contains('loaded'), false);
+  ui.store.update({ status: { visible: false, error: false, message: '' } });
+  assert.equal(ui.footer.classList.contains('loaded'), true);
+  for (const error of [false, true]) {
+    ui.store.update({ status: { visible: true, error, message: 'Loading another map' } });
+    assert.equal(ui.footer.classList.contains('loaded'), true);
+  }
+});
+
 test('nonfatal errors have a working close button without replacing their text', (t) => {
   const ui = statusFixture(t);
   assert.equal(ui.close.hidden, true, 'loading cannot be dismissed');

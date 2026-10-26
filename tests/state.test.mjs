@@ -6,6 +6,8 @@ let server;
 let createStore;
 let createConfigurationState;
 let createGameState;
+let courseGhostMode;
+let isPixelRatio;
 
 before(async () => {
   server = await createServer({
@@ -13,12 +15,27 @@ before(async () => {
     appType: 'custom',
   });
   ({ createStore } = await server.ssrLoadModule('/src/store.ts'));
-  ({ createConfigurationState } = await server.ssrLoadModule('/src/configuration-state.ts'));
+  ({ createConfigurationState, courseGhostMode, isPixelRatio } = await server.ssrLoadModule(
+    '/src/configuration-state.ts',
+  ));
   ({ createGameState } = await server.ssrLoadModule('/src/game-state.ts'));
 });
 
 after(async () => {
   await server?.close();
+});
+
+test('fractional render scales are accepted without accepting arbitrary values', () => {
+  for (const value of ['auto', '0.5', '0.75', '1', '2']) assert.equal(isPixelRatio(value), true);
+  for (const value of ['0', '-1', '0.25', 'NaN', '']) assert.equal(isPixelRatio(value), false);
+});
+
+test('open courses use the record ghost without changing the closed-course preference', () => {
+  for (const mode of ['off', 'record', 'fastest', 'previous']) {
+    assert.equal(courseGhostMode(mode, true), mode);
+    assert.equal(courseGhostMode(mode), mode);
+    assert.equal(courseGhostMode(mode, false), mode === 'off' ? 'off' : 'record');
+  }
 });
 
 test('configuration and game snapshots and notifications are completely independent', () => {

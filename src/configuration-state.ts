@@ -35,7 +35,7 @@ export function isMirrorResolution(value: string): value is ConfigurationState['
 }
 
 export function isPixelRatio(value: string): value is ConfigurationState['pixelRatio'] {
-  return value === 'auto' || value === '1' || value === '2';
+  return value === 'auto' || value === '0.5' || value === '0.75' || value === '1' || value === '2';
 }
 
 export function isTerrainShadows(value: string): value is ConfigurationState['terrainShadows'] {
@@ -60,6 +60,10 @@ export function isGhostMode(value: string): value is ConfigurationState['ghostMo
   return value === 'fastest' || value === 'previous' || value === 'record' || value === 'off';
 }
 
+export function courseGhostMode(mode: ConfigurationState['ghostMode'], closed?: boolean) {
+  return closed === false && (mode === 'fastest' || mode === 'previous') ? 'record' : mode;
+}
+
 export type { DrivingTuning, TuningPreset } from './tuning-presets';
 
 export const lapGateModes = ['off', 'on', 'rainbow'] as const;
@@ -75,7 +79,7 @@ export interface ConfigurationState {
   cameraStyle: 'classic' | 'fpv' | 'cabin';
   cabinHeadMotion: boolean;
   mirrorResolution: 'off' | 'low' | 'medium' | 'high';
-  pixelRatio: 'auto' | '1' | '2';
+  pixelRatio: 'auto' | '0.5' | '0.75' | '1' | '2';
   terrainShadows: 'auto' | 'on' | 'off';
   showFps: boolean;
   minimapOrientation: 'north-up' | 'heading-up';

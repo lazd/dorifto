@@ -30,6 +30,7 @@ import { bindSettingsLayout } from './settings';
 import { bindControlsSettings } from './controls-settings';
 import {
   isCameraStyle,
+  courseGhostMode,
   isGhostMode,
   isLapGateMode,
   isMinimapOrientation,
@@ -658,6 +659,20 @@ function courseDistance(course: CourseDefinition) {
 const directionLabel = (reverse: boolean) => (reverse ? 'Reverse' : 'Forward');
 const routeLabel = (course: CourseDefinition) =>
   course.closed === false ? 'Open route' : 'Closed loop';
+
+function syncGhostOptions(
+  selector: string,
+  course: CourseDefinition,
+  mode: ConfigurationState['ghostMode'],
+) {
+  const input = element<HTMLSelectElement>(selector);
+  for (const option of input.options) {
+    option.hidden =
+      course.closed === false && (option.value === 'fastest' || option.value === 'previous');
+    option.disabled = option.hidden;
+  }
+  input.value = courseGhostMode(mode, course.closed);
+}
 const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
 function textElement(tag: string, className: string, text: string) {
@@ -704,6 +719,7 @@ export function bindCoursePicker(
     if (!preview.doubleYellow && raceMode.value === 'mustard')
       raceMode.value = defaultRaceOptions.mode;
     lapField.hidden = preview.closed === false;
+    syncGhostOptions('#course-ghost-mode', preview, store.getState().ghostMode);
     const mode = raceMode.value;
     if (isRaceMode(mode)) raceDescription(raceModes[mode].description);
   }
@@ -1195,6 +1211,7 @@ export function bindCoursePicker(
 
   function syncCourseName() {
     courseName(selected.name);
+    syncGhostOptions('#ghost-mode', selected, store.getState().ghostMode);
   }
 
   function syncBusy() {
@@ -1817,6 +1834,13 @@ export function bindCoursePicker(
   });
 
   syncCourseName();
+  store.subscribe(
+    ({ ghostMode }) => {
+      syncGhostOptions('#ghost-mode', selected, ghostMode);
+      syncGhostOptions('#course-ghost-mode', preview, ghostMode);
+    },
+    ['ghostMode'],
+  );
   syncBusy();
 }
 
@@ -1878,6 +1902,7 @@ export function bindStatusUI(store: Store<GameState>) {
   const close = element<HTMLButtonElement>('#status-close');
   const progress = element('#status-progress');
   const footer = element('footer');
+  let initiallyLoaded = false;
   const dismissError = () => {
     const current = store.getState().status;
     if (!current.visible || !current.error || current.fatal) return false;
@@ -1904,8 +1929,10 @@ export function bindStatusUI(store: Store<GameState>) {
       const role = current.error ? 'alert' : 'status';
       if (status.getAttribute('role') !== role) status.setAttribute('role', role);
       close.hidden = !current.visible || !current.error || Boolean(current.fatal);
-      const loaded = !current.visible && !current.error;
-      if (footer.classList.contains('loaded') !== loaded) footer.classList.toggle('loaded', loaded);
+      if (!initiallyLoaded && !current.visible && !current.error) {
+        initiallyLoaded = true;
+        footer.classList.toggle('loaded', true);
+      }
       statusText(current.message);
       const percent =
         current.progress === undefined || current.error ? null : Math.round(current.progress * 100);

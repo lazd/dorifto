@@ -257,6 +257,7 @@ snapshot independently of numeric metrics, with lettering tinted to match the ca
 - **Stabilization:** `OH SHIT` during excess-slip stabilization, otherwise `--`.
 
 During the three-second pre-start settling/revving period the plate reads `ANTILAG`.
+Finished bots display `FINISH`. All bot plates are blank during replay.
 Revving above 2,500 RPM in this neutral produces frequent exhaust pops, brief flames,
 and mixed black/white smoke from all four tailpipes. Throttle lift above 3,000 RPM in forward
 gear has a 35% chance per throttle lift to produce quieter, less frequent

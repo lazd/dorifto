@@ -339,6 +339,7 @@ export function createPhysicsClient({
       car.setHazards(!botsOnly && telemetry.hazards, !botsOnly && telemetry.hazardsEnabled);
       observedPlate?.setThinking(
         replayTime === null && !resetting ? (botTelemetry[observedBot]?.thinking ?? null) : null,
+        replayTime === null && !resetting && Boolean(botTelemetry[observedBot]?.laps.finished),
       );
     }
     markerCars.forEach((_car, index) => {
@@ -353,7 +354,10 @@ export function createPhysicsClient({
       const state = botTelemetry[botForModel(index + botOffset)];
       car.setBraking(state?.braking ?? false);
       car.setReversing(state?.reversing ?? false);
-      car.setThinking(replayTime === null && !resetting ? (state?.thinking ?? null) : null);
+      car.setThinking(
+        replayTime === null && !resetting ? (state?.thinking ?? null) : null,
+        replayTime === null && !resetting && Boolean(state?.laps.finished),
+      );
     });
     linearVelocity.lerpVectors(beforeVelocity, afterVelocity, Math.min(alpha, 1));
     return velocity.copy(linearVelocity).setY(0);
@@ -516,6 +520,12 @@ export function createPhysicsClient({
       car.setReversing(false);
       car.setHazards(false);
       replayTime = null;
+      if (botsOnly) {
+        car.setPaintColor(botColors[observedBot]);
+        car.setUnderglowColor(botColors[observedBot]);
+        observedPlate?.setColor(botColors[observedBot]);
+        botCars.forEach((bot, index) => bot.setColor(botColors[botForModel(index + 1)]));
+      }
       send({ type: 'reset', input: input() });
     },
     setCourseDirection(spawn: ReturnType<typeof courseSpawn>, definition: CourseDefinition) {
@@ -527,10 +537,12 @@ export function createPhysicsClient({
       invalidate();
       replayTime = time;
       replayFieldCount = recording.field.length;
+      observedPlate?.setThinking(null);
       if (botsOnly) {
         car.setPaintColor(botColors[0]);
         car.setUnderglowColor(botColors[0]);
         observedPlate?.setColor(botColors[0]);
+        botCars.forEach((bot, index) => bot.setColor(botColors[index + 1]));
       }
       const data = replayData(recording);
       send({ type: 'replay', recording: data, time, input: input() }, [

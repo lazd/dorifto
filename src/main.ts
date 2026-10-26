@@ -34,6 +34,7 @@ import { VehicleAudio } from './audio';
 import { CarStereo, isStereoStationSelection } from './stereo';
 import {
   createConfigurationState,
+  courseGhostMode,
   defaultTuningPresets,
   isCameraStyle,
   isGhostMode,
@@ -56,7 +57,14 @@ import {
   saveCourse,
 } from './saved-courses';
 import { openRoadMaps } from './course-builder-storage';
-import { bindGameUI, bindGameActions, bindCoursePicker, bindLapRecorder, element } from './ui';
+import {
+  bindGameUI,
+  bindGameActions,
+  bindCoursePicker,
+  bindLapRecorder,
+  element,
+  setHudElementHidden,
+} from './ui';
 import { createDrivingCamera } from './camera';
 import { createLighting } from './lighting';
 import { loadTerrainSurfaces } from './surfaces';
@@ -323,7 +331,7 @@ async function start() {
     (navigator.hardwareConcurrency > 0 && navigator.hardwareConcurrency <= 4);
   const pixelRatio = () => {
     const preference = configurationState.getState().pixelRatio;
-    if (preference === '1') return 1;
+    if (preference !== 'auto' && preference !== '2') return Number(preference);
     if (preference === '2') return Math.min(devicePixelRatio, 2);
     return lowEndDevice ? 1 : Math.min(devicePixelRatio, 2);
   };
@@ -338,6 +346,8 @@ async function start() {
     const preference = configurationState.getState().terrainShadows;
     return preference === 'on' || (preference === 'auto' && !lowEndDevice);
   };
+  element<HTMLOptionElement>('#terrain-shadows option[value="auto"]').textContent =
+    `Auto (currently ${lowEndDevice ? 'Off' : 'On'})`;
   const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setPixelRatio(pixelRatio());
   renderer.setSize(innerWidth, innerHeight);
@@ -581,6 +591,7 @@ async function start() {
   const leaderboard = createLeaderboard(element<HTMLOListElement>('#leaderboard'), (index) => {
     if (physics.observeBot(index)) syncObservedBot();
   });
+  const racePanel = element('#race-panel');
   const { fixedStep } = physics;
   configurationState.subscribe(
     ({ coneMode }) => {
@@ -648,7 +659,7 @@ async function start() {
     replay: startReplay,
     speedUnit: () => configurationState.getState().speedUnit,
   });
-  element('#race-panel').addEventListener('click', () => showResults(false, true));
+  element('#race-results').addEventListener('click', () => showResults(false, true));
   const playbackFrame = createReplayFrame();
   const ghostFrame = createReplayFrame();
   const replayBefore = createReplayFrame();
@@ -862,7 +873,7 @@ async function start() {
       completed,
       activeDefinition.name,
       runRecordTime,
-      live && botsOnly ? physics.observedBot : 0,
+      botsOnly ? physics.observedBot : 0,
     );
     results.updateStandings(
       physics.standings,
@@ -982,7 +993,7 @@ async function start() {
       ghost.visible = false;
       return;
     }
-    const mode = configurationState.getState().ghostMode;
+    const mode = courseGhostMode(configurationState.getState().ghostMode, activeDefinition.closed);
     const source = mode === 'record' ? recordLap : run;
     const index =
       mode === 'record'
@@ -1548,6 +1559,7 @@ async function start() {
       physics.raceEntrants,
       botsOnly ? physics.observedBot : null,
     );
+    setHudElementHidden(racePanel, physics.raceEntrants.length < 2);
     if (results.open)
       results.updateStandings(
         physics.standings,

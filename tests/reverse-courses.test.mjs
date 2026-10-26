@@ -283,7 +283,7 @@ test('training gates fit a bounded approximate racing line and scale with the ca
       const { gates, halfWidth } = createTrainingGates(directed, carWidth);
       const route = courseRoute(directed);
       const length = route.getLength();
-      assert.equal(halfWidth * 2, carWidth * 3);
+      assert.equal(halfWidth * 2, carWidth * 2);
       const samples = Math.max(64, Math.ceil(length / 5));
       assert.equal(gates.length, Math.round((Math.ceil(samples / 3) * 2) / 3));
       let shifted = false;

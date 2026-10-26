@@ -703,7 +703,7 @@ input::placeholder {
 input[type='range']:not(:disabled) {
   cursor: pointer;
 }
-button:not(.button-link, .button-primary):not(:disabled):not(:focus):hover,
+button:not(.button-link, .button-primary, .leaderboard-name):not(:disabled):not(:focus):hover,
 select:not(:disabled):not(:focus):hover,
 input:not([type='range']):not([type='checkbox']):not([type='radio']):not(:disabled):not(
     :focus

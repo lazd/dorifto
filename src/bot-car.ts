@@ -8,12 +8,12 @@ const exterior =
   /^(Body2|Front|Hood|rbumper|Wing|Mirrors|Windows|BlackTrim|Mustache|HLblack|hlglass|glasstails|glassmiddle|Glasstop|Rubber_|Cornerglass|FogGlass_|Projectorglass_|Chin_|Badge_|blacklights|tailinside|LightsInside|LicensePlate|platelight|185_T_)|^Cube_Black_0$|_(Badges|Engravings|Reverseref[12]|RefractionInd|Mufflers|Plastico(\.002)?)_0$/;
 
 export const botLampSettings = [
-  { pattern: /^tailbrake_/, color: 0xff1008, running: 0.6, braking: 6 },
-  { pattern: /^184_001_001_BrakeRefraction_0$/, color: 0xff1008, running: 0.15, braking: 2.5 },
-  { pattern: /^Positionbulbrear_/, color: 0xff1008, running: 1, braking: 1 },
+  { pattern: /^tailbrake_/, color: 0xffffff, running: 2.5, braking: 6 },
+  { pattern: /^184_001_001_BrakeRefraction_0$/, color: 0xff1008, running: 0.65, braking: 2.5 },
+  { pattern: /^Positionbulbrear_/, color: 0xff1008, running: 4, braking: 4 },
   { pattern: /^(thirdrefraction|brakebulbrear)_/, color: 0xff1008, running: 0, braking: 5 },
-  { pattern: /^(Cornerglass|Cornerlightbulb)_/, color: 0xff1008, running: 0.7, braking: 0.7 },
-  { pattern: /^BulbsPos_/, color: 0xfff3dc, running: 4, braking: 4 },
+  { pattern: /^(Cornerglass|Cornerlightbulb)_/, color: 0xff1008, running: 2.5, braking: 0 },
+  { pattern: /^BulbsPos_/, color: 0xfff3dc, running: 3.5, braking: 0 },
   { pattern: /^Projectorglass_/, color: 0xffe2b8, running: 0, braking: 0, headlight: true },
   {
     pattern: /^(RevRefraction|Reversebulbs)_/,
@@ -117,7 +117,9 @@ export function createBotCar(source: PhysicsCar, index: number) {
       const material = object.material.clone();
       if (lamp) {
         material.emissive.setHex(lamp.color);
-        material.emissiveIntensity = lamp.running;
+        if (object.name.startsWith('tailbrake_')) material.emissiveMap = material.map;
+        material.emissiveIntensity = 0;
+        material.toneMapped = false;
         if ('reverse' in lamp) material.color.setHex(0x555555);
         lamps.push({ material, settings: lamp });
       } else {
@@ -147,9 +149,11 @@ export function createBotCar(source: PhysicsCar, index: number) {
             ? headlightsOn
               ? 8
               : 0
-            : braking
+            : braking && settings.braking > 0
               ? settings.braking
-              : settings.running;
+              : headlightsOn
+                ? settings.running
+                : 0;
     }
   }
   const wheels = source.wheels.map((wheel) => {

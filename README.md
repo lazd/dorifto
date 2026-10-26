@@ -30,7 +30,9 @@ direct browser requests to OpenFreeMap and USGS, so an internet connection is ne
   placement, waypoints, loop closure, and the completed preview. Search is hidden
   during 3D inspection and returns when editing the route.
   All clicked waypoints are marked in driving order; click a marker to remove it
-  and reconnect its neighbours. With at least three waypoints, click **S** to
+  and reconnect its neighbours. Hover over a road to preview the connecting route
+  before adding a waypoint; hover **S** to preview loop closure.
+  With at least three waypoints, click **S** to
   close a road-following loop (still capped at 8 km). Click **S** again or remove
   the final **Start/Finish** row to reopen it. Closing searches for a forward continuation rather than the shortest
   return path that might retrace your selected road. If the remaining roads are not
@@ -329,8 +331,11 @@ in chase views, without a separate picker caption. Click or tap the minimap (inc
 to open the course library directly. It also opens with Enter/Space.
 Choose **Forward / Reverse** alongside the course preview, or **Create course**
 to generate a named random/custom layout. Nothing changes the race until loading.
-The footer fades out five seconds after loading completes. Hovering over it or
-focusing one of its links reveals it again; it stays visible during loading or errors.
+The attribution footer fades out five seconds after initial loading completes.
+Subsequent map loads and errors do not show it again; focusing a credit link still reveals it.
+**Settings > Video > Render resolution** supports 0.5×, 0.75×, 1×, and up to 2×,
+plus automatic device-based selection. The automatic render-resolution and terrain-shadow
+options show their resolved settings.
 On first load, the page stays hidden until styles apply. A progress bar then explains
 each startup stage: downloading the car (tracked per file), starting physics, loading
 the record lap, compiling light shaders, and preparing mirrors and the ghost car.
@@ -413,6 +418,8 @@ Selecting a different racetrack or built-in course resets race setup to **Track 
 and **3 laps**; both remain editable before starting.
 Race setup also offers the ghost car reference lap selector, kept in sync with
 Settings > HUD & aids and applied immediately.
+Open courses offer only Off and Record lap; a saved fastest/previous preference uses
+the record ghost on open courses and is retained for closed courses.
 Ghost car defaults to Off with bots unless the URL specifies a choice. Enabling bots
 also switches it off; subsequent ghost selections are preserved.
 The map preview shows the local lap record at the bottom right; clicking its badge
@@ -484,7 +491,7 @@ Record comparisons use the record before the run: a first or faster record is
 Reset again, **Race again**, or Escape restarts.
 **Settings > HUD & aids > Racing line training gate display** (`?lap-gates=on`, or `rainbow` to color
 gates by lap position) shows visual targets
-3 times the loaded car's width, spaced roughly 22.5 m along a geometry-based,
+2 times the loaded car's width, spaced roughly 22.5 m along a geometry-based,
 minimum-curvature racing-line approximation. This is not a vehicle-specific optimal line.
 Bounded geometric relaxation minimizes squared second differences around the closed route,
 leaving room for the full gate width. There are no forced corner-entry or apex targets.
@@ -496,7 +503,7 @@ solver in [TUM's planner](https://github.com/TUMRT/online_3D_racing_line_plannin
 models vehicle acceleration limits, speed, banking, and elevation.
 Targets are 36 cm-thick tubular semicircular arches, visible from overhead, emerging from the terrain with a bright core and soft additive
 glow, without lights, shadows, or bloom render passes. The first target is red and the rest cyan.
-The 3x car-width measurement is the diameter of the arch's luminous centerline.
+The 2x car-width measurement is the diameter of the arch's luminous centerline.
 Missing training gates never affects lap validity
 or counting; they update with the course and driving direction.
 

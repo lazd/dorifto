@@ -185,6 +185,21 @@ const hoverMarker = new maplibregl.Marker({ element: hoverNode });
 let hoverPosition: maplibregl.Point | undefined;
 let hoverFrame: ReturnType<typeof setTimeout> | undefined;
 let hoverAttached = false;
+let hoverTooLong = false;
+let previewingClosure = false;
+const routeGeometries = new Map<string, string>();
+
+function previewRoute(points: readonly GPSPoint[], tooLong = false) {
+  setRouteGeometry('hover-route', points);
+  if (hoverTooLong !== tooLong) {
+    hoverTooLong = tooLong;
+    map.setPaintProperty(
+      'hover-route',
+      'line-color',
+      tooLong ? theme.palette.muted : theme.palette.accent,
+    );
+  }
+}
 
 function snapTolerance(point: GPSPoint) {
   return Math.min(
@@ -198,11 +213,14 @@ function hideHover() {
   hoverFrame = undefined;
   if (hoverAttached) hoverMarker.remove();
   hoverAttached = false;
+  previewingClosure = false;
+  setRouteGeometry('hover-route', []);
 }
 
 function updateHover() {
   clearTimeout(hoverFrame);
   hoverFrame = undefined;
+  if (previewingClosure) return;
   if (
     !hoverPosition ||
     !mapReady ||
@@ -225,9 +243,11 @@ function updateHover() {
     const previous = points.at(-1);
     const section = previous ? graph.connect(previous, snapped.point, 2) : [];
     const tooLong = routeLength(points) + routeLength(section) > maximumRoadLength;
+    previewRoute(section, tooLong);
     hoverNode.classList.toggle('route-hover-invalid', tooLong);
     hoverNode.title = tooLong ? 'That would exceed 8 km. Choose a closer endpoint.' : '';
   } catch (error) {
+    setRouteGeometry('hover-route', []);
     hoverNode.classList.add('route-hover-invalid');
     hoverNode.title = error instanceof Error ? error.message : String(error);
   }
@@ -242,7 +262,7 @@ function updateHover() {
 
 map.on('mousemove', (event) => {
   hoverPosition = event.point;
-  if (hoverFrame === undefined) hoverFrame = setTimeout(updateHover, 10);
+  if (hoverFrame === undefined) hoverFrame = setTimeout(updateHover, 60);
 });
 map.on('movestart', hideHover);
 map.getCanvas().addEventListener('mouseleave', () => {
@@ -415,10 +435,14 @@ function updateWaypoints() {
   }
 }
 
-function updateRouteGeometry() {
-  const points = routePoints();
-  const source = map.getSource('selected-route') as GeoJSONSource | undefined;
-  source?.setData({
+function setRouteGeometry(id: string, points: readonly GPSPoint[]) {
+  const source = map.getSource(id) as GeoJSONSource | undefined;
+  if (!source) return;
+  const coordinates = points.map(({ lon, lat }) => [lon, lat]);
+  const key = JSON.stringify(coordinates);
+  if (routeGeometries.get(id) === key) return;
+  routeGeometries.set(id, key);
+  source.setData({
     type: 'FeatureCollection',
     features:
       points.length < 2
@@ -429,14 +453,19 @@ function updateRouteGeometry() {
               properties: {},
               geometry: {
                 type: 'LineString',
-                coordinates: points.map(({ lon, lat }) => [lon, lat]),
+                coordinates,
               },
             },
           ],
   });
 }
 
+function updateRouteGeometry() {
+  setRouteGeometry('selected-route', routePoints());
+}
+
 function updateRoute() {
+  hideHover();
   invalidateCourse();
   updateRouteGeometry();
   markers.splice(0).forEach((marker) => marker.remove());
@@ -454,6 +483,19 @@ function updateRoute() {
           : 'Close loop at start'
         : `Remove waypoint ${i + 1} (${label})`;
     node.setAttribute('aria-label', node.title);
+    if (i === 0 && sections.length >= 3) {
+      node.addEventListener('mouseenter', () => {
+        hideHover();
+        if (closingSection || worker || view !== 'editor') return;
+        previewingClosure = true;
+        try {
+          previewRoute(closeRoadLoop(routePoints(), graph));
+        } catch (error) {
+          node.title = error instanceof Error ? error.message : String(error);
+        }
+      });
+      node.addEventListener('mouseleave', hideHover);
+    }
     node.onclick = (event) => {
       event.stopPropagation();
       if (worker || view !== 'editor') return;
@@ -536,6 +578,22 @@ map.on('load', () => {
     type: 'line',
     source: 'selected-route',
     paint: { 'line-color': theme.palette.background, 'line-width': 9 },
+    layout: { 'line-join': 'round', 'line-cap': 'round' },
+  });
+  map.addSource('hover-route', {
+    type: 'geojson',
+    data: { type: 'FeatureCollection', features: [] },
+  });
+  map.addLayer({
+    id: 'hover-route',
+    type: 'line',
+    source: 'hover-route',
+    paint: {
+      'line-color': theme.palette.accent,
+      'line-width': 5,
+      'line-opacity': 0.6,
+      'line-dasharray': [2, 1],
+    },
     layout: { 'line-join': 'round', 'line-cap': 'round' },
   });
   map.addLayer({

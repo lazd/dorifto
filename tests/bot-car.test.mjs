@@ -110,6 +110,8 @@ test('bot exteriors share underbody and isolate lighting and segmented plates', 
       conditions: { slowing: true, braking: true, stabilizing: true, stoppingBackward: true },
     };
     assert.equal(botPlateText(thinking), 'ATTACK\nBRAKE STOP\nOH SHIT');
+    assert.equal(botPlateText(thinking, true), 'FINISH\n\n');
+    assert.equal(botPlateText(null), '');
     for (const slowing of [false, true]) {
       for (const braking of [false, true]) {
         const text = botPlateText({
@@ -203,10 +205,17 @@ test('bot exteriors share underbody and isolate lighting and segmented plates', 
                 ? headlights
                   ? 8
                   : 0
-                : braking
+                : braking && setting.braking > 0
                   ? setting.braking
-                  : setting.running;
+                  : headlights
+                    ? setting.running
+                    : 0;
           assert.equal(mesh.material.emissiveIntensity, expected, mesh.name);
+          assert.equal(mesh.material.toneMapped, false, mesh.name);
+          if (mesh.name.startsWith('tailbrake_')) {
+            assert.equal(mesh.material.emissive.getHex(), 0xffffff);
+            assert.equal(mesh.material.emissiveMap, mesh.material.map);
+          }
         }
       }
     }

@@ -68,7 +68,7 @@ export function optimizeRacingLine(centers: readonly THREE.Vector3[], maxOffset:
 /** A bounded curvature approximation, not a vehicle-specific minimum-lap-time solution. */
 export function createTrainingGates(definition: CourseDefinition, carWidth: number) {
   if (!Number.isFinite(carWidth) || carWidth <= 0) throw new Error('Invalid training car width');
-  const halfWidth = (carWidth * 3) / 2;
+  const halfWidth = carWidth;
   const route = courseRoute(definition);
   const length = route.getLength();
   const start = courseStartDistance(definition, length);
