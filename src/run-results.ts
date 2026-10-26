@@ -1,7 +1,15 @@
 import { RunRecording } from './lap-recording';
 import { formatLapTime } from './laps';
-import { raceModes, validForMode, type RaceOptions, type LapValidity } from './race-rules';
+import type { ConfigurationState } from './configuration-state';
+import {
+  raceModes,
+  validForMode,
+  type RaceMode,
+  type RaceOptions,
+  type LapValidity,
+} from './race-rules';
 import type { RaceStanding } from './race-standings';
+import { speedInUnit } from './speed-units';
 import { bindDialogBackdrop, element } from './ui';
 import './run-results.css';
 
@@ -97,6 +105,7 @@ export function raceOutcome(
 export function createRunResults(actions: {
   restart(): void;
   replay(recording: RunRecording): void;
+  speedUnit(): ConfigurationState['speedUnit'];
 }) {
   const dialog = element<HTMLDialogElement>('#run-results');
   let run: RunRecording | null = null;
@@ -106,6 +115,7 @@ export function createRunResults(actions: {
   let previousFinished: boolean | undefined;
   let runCompleted = false;
   let runQualified = false;
+  let raceMode: RaceMode = 'track-limits';
   let selected = 0;
   let renderDetails: ((recording: RunRecording) => void) | undefined;
   let renderedLapKey = '';
@@ -125,6 +135,7 @@ export function createRunResults(actions: {
     button: HTMLButtonElement;
     position: HTMLElement;
     timing: HTMLElement;
+    bestLap: HTMLElement;
     status: HTMLElement;
   }[] = [];
   const notify = () => document.dispatchEvent(new Event('driving-ui-change'));
@@ -132,9 +143,12 @@ export function createRunResults(actions: {
     dialog.close();
     notify();
   };
+  element<HTMLFormElement>('#run-results-dialog-close').addEventListener('submit', (event) => {
+    event.preventDefault();
+    close();
+  });
   bindDialogBackdrop(dialog, close);
   element('#run-results-restart').addEventListener('click', actions.restart);
-  element('#run-results-close').addEventListener('click', close);
   element('#run-results-replay').addEventListener('click', () => {
     if (run) actions.replay(run);
   });
@@ -191,9 +205,10 @@ export function createRunResults(actions: {
           label.append(marker, textNode('span', name));
           driver.append(label);
           const timing = textNode('td', '—');
+          const bestLap = textNode('td', '—');
           const status = textNode('td', 'Waiting');
-          row.append(position, driver, timing, status);
-          return { row, button: label, position, timing, status };
+          row.append(position, driver, timing, bestLap, status);
+          return { row, button: label, position, timing, bestLap, status };
         });
         body.replaceChildren(...rows.map(({ row }) => row));
         selectDriver(selected);
@@ -202,12 +217,20 @@ export function createRunResults(actions: {
         (standing) => standing.finished && !standing.disqualified && !standing.retired,
       )?.finishTime;
       standings.forEach((standing, index) => {
-        const { row, position, timing, status } = rows[standing.entrant];
+        const { row, position, timing, bestLap, status } = rows[standing.entrant];
         const formatted = resultStanding(standing, leaderTime);
+        const entrantRecording = standing.entrant === 0 ? run : run?.field[standing.entrant - 1];
+        const entrantBestLap = entrantRecording?.bestLapForMode(raceMode) ?? null;
         setText(position, standing.retired || standing.disqualified ? '—' : String(index + 1));
         setText(
           timing,
           index === 0 && !standing.finished && !standing.retired ? 'Leader' : formatted.timing,
+        );
+        setText(
+          bestLap,
+          entrantBestLap === null || !entrantRecording
+            ? '—'
+            : formatLapTime(entrantRecording.lapTimes[entrantBestLap]),
         );
         setText(status, formatted.status);
         if (body.children[index] !== row) body.insertBefore(row, body.children[index] ?? null);
@@ -231,6 +254,7 @@ export function createRunResults(actions: {
     ) {
       run = recording;
       record = recordLap;
+      raceMode = options.mode;
       setText(
         element('#run-results-restart'),
         recording.finished || recording.retired ? 'Race Again →' : 'Restart Race →',
@@ -257,10 +281,16 @@ export function createRunResults(actions: {
             : raceOutcome(completed, qualified, previousStandings ?? [], selected),
         );
         const stats = recording.statistics;
+        const speedUnit = actions.speedUnit();
+        const speedUnitLabel = speedUnit === 'kmh' ? 'km/h' : 'MPH';
         const summary = element('#run-results-summary');
         const metrics = [
-          ['Top speed', (stats.maxSpeed * 3.6).toFixed(1), 'km/h'],
-          ['Avg speed', (stats.time ? (stats.distance / stats.time) * 3.6 : 0).toFixed(1), 'km/h'],
+          ['Top speed', speedInUnit(stats.maxSpeed, speedUnit).toFixed(1), speedUnitLabel],
+          [
+            'Avg speed',
+            speedInUnit(stats.time ? stats.distance / stats.time : 0, speedUnit).toFixed(1),
+            speedUnitLabel,
+          ],
           ['Drift time', stats.driftTime?.toFixed(1) ?? '—', 's'],
           ['Cones hit', stats.conesHit?.toString() ?? '—', ''],
           ['Car contacts', stats.carContacts?.toString() ?? '—', ''],
@@ -352,10 +382,6 @@ export function createRunResults(actions: {
         element<HTMLButtonElement>('#run-results-record-replay').disabled = !record;
       };
       renderDetails(selected === 0 ? recording : recording.field[selected - 1]);
-      element('#run-results-reset-hint').textContent =
-        !recording.finished && !recording.retired
-          ? 'Close to return to the race'
-          : 'Press reset again to restart';
       element<HTMLButtonElement>('#run-results-replay').disabled = !recording.count;
       previousStandings = previousRoster = undefined;
       previousFinished = undefined;

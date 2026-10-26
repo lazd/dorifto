@@ -122,9 +122,9 @@ export function createRaceStandings(
       const left = entrants[a].laps;
       const right = entrants[b].laps;
       const category = (index: number) =>
-        entrants[index].laps.retired
+        disqualified(index)
           ? 3
-          : disqualified(index)
+          : entrants[index].laps.retired
             ? 2
             : entrants[index].laps.finished
               ? 0

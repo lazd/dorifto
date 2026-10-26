@@ -337,67 +337,75 @@
         </div>
       </div>
     </dialog>
-    <dialog id="run-results" class="results-dialog" aria-labelledby="run-results-course">
-      <header class="results-header">
-        <div>
-          <h2 id="run-results-course"></h2>
-          <p id="run-results-mode" class="help-text"></p>
-        </div>
-        <span id="run-results-title" class="results-outcome" role="status">Run results</span>
+    <dialog
+      id="run-results"
+      class="results-dialog dialog-layout"
+      aria-labelledby="run-results-course"
+    >
+      <form id="run-results-dialog-close" method="dialog" class="dialog-close">
+        <button class="button button-quiet" type="submit" aria-label="Close" title="Close">
+          <span class="close-icon" aria-hidden="true"></span>
+        </button>
+      </form>
+      <header class="dialog-header">
+        <h2 id="run-results-course" tabindex="-1"></h2>
+        <p id="run-results-mode" class="help-text"></p>
       </header>
-      <section class="results-section" aria-labelledby="run-results-standings-title">
-        <div class="results-section-heading">
-          <h3 id="run-results-standings-title">Standings</h3>
-          <span id="run-results-race-status" class="help-text" role="status"></span>
-        </div>
-        <table class="results-table">
-          <thead>
-            <tr>
-              <th scope="col">Pos</th>
-              <th scope="col">Driver</th>
-              <th scope="col">Race time / gap</th>
-              <th scope="col">Status</th>
-            </tr>
-          </thead>
-          <tbody id="run-results-standings"></tbody>
-        </table>
-      </section>
-      <div id="run-results-driver" role="region" tabindex="0">
-        <section class="results-hero" aria-label="Best lap and track record">
-          <span class="results-label">Best lap</span>
-          <div class="results-headline">
-            <strong id="run-results-best" class="results-time">--:--.---</strong>
+      <div class="dialog-body dialog-scroll">
+        <section class="results-section" aria-labelledby="run-results-standings-title">
+          <div class="results-section-heading">
+            <h3 id="run-results-standings-title">Standings</h3>
+            <span id="run-results-race-status" class="help-text" role="status"></span>
           </div>
-          <div class="results-comparison">
-            <p class="results-record help-text">
-              <span id="run-results-record"></span>
-              <span id="run-results-badge" class="results-badge" hidden></span>
-            </p>
-            <button id="run-results-record-replay" class="button button-quiet" type="button">
-              Watch record ↗
-            </button>
-          </div>
-        </section>
-        <dl id="run-results-summary" class="results-metrics"></dl>
-        <section class="results-section" aria-labelledby="run-results-laps-title">
-          <div class="results-section-heading"><h3 id="run-results-laps-title">Laps</h3></div>
           <table class="results-table">
             <thead>
               <tr>
-                <th scope="col">Lap</th>
-                <th scope="col">Time</th>
-                <th id="run-results-limits" scope="col">Track Limits</th>
-                <th id="run-results-mustard" scope="col">Mustard</th>
+                <th scope="col">Pos</th>
+                <th scope="col">Driver</th>
+                <th scope="col">Race time / gap</th>
+                <th scope="col">Best lap</th>
+                <th scope="col">Status</th>
               </tr>
             </thead>
-            <tbody id="run-results-laps"></tbody>
+            <tbody id="run-results-standings"></tbody>
           </table>
         </section>
+        <div id="run-results-driver" role="region" tabindex="0">
+          <section class="results-hero" aria-label="Best lap and track record">
+            <span class="results-label">Best lap</span>
+            <div class="results-headline">
+              <strong id="run-results-best" class="results-time">--:--.---</strong>
+              <span id="run-results-title" class="results-outcome" role="status">Run results</span>
+            </div>
+            <div class="results-comparison">
+              <p class="results-record help-text">
+                <span id="run-results-record"></span>
+                <span id="run-results-badge" class="results-badge" hidden></span>
+              </p>
+              <button id="run-results-record-replay" class="button button-quiet" type="button">
+                Watch record ↗
+              </button>
+            </div>
+          </section>
+          <dl id="run-results-summary" class="results-metrics"></dl>
+          <section class="results-section" aria-labelledby="run-results-laps-title">
+            <div class="results-section-heading"><h3 id="run-results-laps-title">Laps</h3></div>
+            <table class="results-table">
+              <thead>
+                <tr>
+                  <th scope="col">Lap</th>
+                  <th scope="col">Time</th>
+                  <th id="run-results-limits" scope="col">Track Limits</th>
+                  <th id="run-results-mustard" scope="col">Mustard</th>
+                </tr>
+              </thead>
+              <tbody id="run-results-laps"></tbody>
+            </table>
+          </section>
+        </div>
       </div>
       <div class="dialog-footer">
-        <span id="run-results-reset-hint" class="help-text">Press reset again to restart</span>
         <div class="dialog-actions">
-          <button id="run-results-close" class="button button-quiet" type="button">Close</button>
           <button id="run-results-replay" class="button button-secondary" type="button">
             Watch replay ↗
           </button>

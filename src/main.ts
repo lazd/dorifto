@@ -642,7 +642,11 @@ async function start() {
     'anything-goes': null,
   };
   let recordLoad = 0;
-  const results = createRunResults({ restart: reset, replay: startReplay });
+  const results = createRunResults({
+    restart: reset,
+    replay: startReplay,
+    speedUnit: () => configurationState.getState().speedUnit,
+  });
   element('#race-panel').addEventListener('click', () => showResults(false, true));
   const playbackFrame = createReplayFrame();
   const ghostFrame = createReplayFrame();
