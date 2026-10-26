@@ -57,10 +57,22 @@ export function readMirrorResolution(
 }
 
 export function isGhostMode(value: string): value is ConfigurationState['ghostMode'] {
-  return value === 'fastest' || value === 'previous' || value === 'record' || value === 'off';
+  return (
+    value === 'fastest' ||
+    value === 'previous' ||
+    value === 'record' ||
+    value === 'real' ||
+    value === 'off'
+  );
 }
 
-export function courseGhostMode(mode: ConfigurationState['ghostMode'], closed?: boolean) {
+/** The ghost a course can show for the preferred mode; `realDriver` says if it has a recording. */
+export function courseGhostMode(
+  mode: ConfigurationState['ghostMode'],
+  closed?: boolean,
+  realDriver = false,
+) {
+  if (mode === 'real' && !realDriver) return closed === false ? 'record' : 'fastest';
   return closed === false && (mode === 'fastest' || mode === 'previous') ? 'record' : mode;
 }
 
@@ -92,7 +104,7 @@ export interface ConfigurationState {
   showRoadEdgeDirt: boolean;
   lapGateMode: LapGateMode;
   turnSignMode: TurnSignMode;
-  ghostMode: 'fastest' | 'previous' | 'record' | 'off';
+  ghostMode: 'fastest' | 'previous' | 'record' | 'real' | 'off';
   muted: boolean;
   stereoStation: StereoStationSelection;
 }

@@ -20,7 +20,8 @@
     "lint": "oxlint",
     "format": "oxfmt",
     "format:check": "oxfmt --check",
-    "prepare": "git config core.hooksPath .githooks || true"
+    "prepare": "git config core.hooksPath .githooks || true",
+    "import-real-data": "node scripts/import-real-data.mjs"
   },
   "dependencies": {
     "ammojs-typed": "^1.1.0",

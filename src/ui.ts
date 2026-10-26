@@ -50,6 +50,7 @@ import {
   type TuningPreset,
 } from './tuning-presets';
 import { formatLapTime } from './laps';
+import { hasRealDriver } from './real-driver';
 import { defaultRaceOptions, raceModes, isRaceMode, type RaceOptions } from './race-rules';
 import type { Store } from './store';
 import { isTurnSignMode } from './turn-sign';
@@ -663,15 +664,19 @@ const routeLabel = (course: CourseDefinition) =>
 function syncGhostOptions(
   selector: string,
   course: CourseDefinition,
+  reverse: boolean,
   mode: ConfigurationState['ghostMode'],
 ) {
   const input = element<HTMLSelectElement>(selector);
+  const realDriver = hasRealDriver(course, reverse);
   for (const option of input.options) {
     option.hidden =
-      course.closed === false && (option.value === 'fastest' || option.value === 'previous');
+      option.value === 'real'
+        ? !realDriver
+        : course.closed === false && (option.value === 'fastest' || option.value === 'previous');
     option.disabled = option.hidden;
   }
-  input.value = courseGhostMode(mode, course.closed);
+  input.value = courseGhostMode(mode, course.closed, realDriver);
 }
 const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
@@ -719,7 +724,7 @@ export function bindCoursePicker(
     if (!preview.doubleYellow && raceMode.value === 'mustard')
       raceMode.value = defaultRaceOptions.mode;
     lapField.hidden = preview.closed === false;
-    syncGhostOptions('#course-ghost-mode', preview, store.getState().ghostMode);
+    syncGhostOptions('#course-ghost-mode', preview, direction, store.getState().ghostMode);
     const mode = raceMode.value;
     if (isRaceMode(mode)) raceDescription(raceModes[mode].description);
   }
@@ -1211,7 +1216,12 @@ export function bindCoursePicker(
 
   function syncCourseName() {
     courseName(selected.name);
-    syncGhostOptions('#ghost-mode', selected, store.getState().ghostMode);
+    syncGhostOptions(
+      '#ghost-mode',
+      selected,
+      store.getState().courseReverse,
+      store.getState().ghostMode,
+    );
   }
 
   function syncBusy() {
@@ -1593,6 +1603,7 @@ export function bindCoursePicker(
   directions.forEach((input) =>
     input.addEventListener('change', () => {
       direction = input.value === 'reverse';
+      syncRaceOptions();
       renderRecords(preview);
     }),
   );
@@ -1835,11 +1846,11 @@ export function bindCoursePicker(
 
   syncCourseName();
   store.subscribe(
-    ({ ghostMode }) => {
-      syncGhostOptions('#ghost-mode', selected, ghostMode);
-      syncGhostOptions('#course-ghost-mode', preview, ghostMode);
+    ({ ghostMode, courseReverse }) => {
+      syncGhostOptions('#ghost-mode', selected, courseReverse, ghostMode);
+      syncGhostOptions('#course-ghost-mode', preview, direction, ghostMode);
     },
-    ['ghostMode'],
+    ['ghostMode', 'courseReverse'],
   );
   syncBusy();
 }

@@ -7,6 +7,8 @@ import type { CourseDefinition } from './src/courses.ts';
 function courseCatalog(): Plugin {
   const id = '\0virtual:course-catalog';
   const directory = new URL('./src/tracks/', import.meta.url);
+  const realDataDirectory = new URL('./src/real-data/', import.meta.url);
+  const watched = [directory, realDataDirectory].map((url) => fileURLToPath(url));
   let building = false;
   return {
     name: 'course-catalog',
@@ -28,11 +30,22 @@ function courseCatalog(): Plugin {
           const version = createHash('sha256').update(content).digest('hex').slice(0, 16);
           // Headless training and tests already have the full map on disk.
           if (!options?.ssr) delete course.terrain;
+          // Real driver recordings share their track's file name; see scripts/import-real-data.mjs.
+          const realDataPath = new URL(file, realDataDirectory);
+          const realData = await readFile(realDataPath, 'utf8').catch((error) => {
+            if (error.code === 'ENOENT') return null;
+            throw error;
+          });
+          if (realData !== null) this.addWatchFile(fileURLToPath(realDataPath));
           return {
             course,
             size: `${JSON.stringify(course.id)}: ${Buffer.byteLength(content)}`,
             asset: `import url${index} from ${JSON.stringify(`/src/tracks/${file}?url&no-inline`)};`,
             url: `${JSON.stringify(course.id)}: url${index}${building ? '' : ` + "?v=${version}"`}`,
+            realDriver:
+              realData &&
+              `import realDriverUrl${index} from ${JSON.stringify(`/src/real-data/${file}?url&no-inline`)};
+realDrivers[${JSON.stringify(course.id)}] = { url: realDriverUrl${index}, reverse: ${JSON.parse(realData).reverse === true} };`,
           };
         }),
       );
@@ -40,11 +53,13 @@ function courseCatalog(): Plugin {
         ...entries.map(({ asset }) => asset),
         `export const mapUrls = {${entries.map(({ url }) => url).join(',')}};`,
         `export const mapSizes = {${entries.map(({ size }) => size).join(',')}};`,
+        `export const realDrivers = {};`,
+        ...entries.flatMap(({ realDriver }) => (realDriver ? [realDriver] : [])),
         `export default ${JSON.stringify(entries.map(({ course }) => course))};`,
       ].join('\n');
     },
     handleHotUpdate({ file, server }) {
-      if (!file.startsWith(fileURLToPath(directory)) || !file.endsWith('.json')) return;
+      if (!watched.some((path) => file.startsWith(path)) || !file.endsWith('.json')) return;
       const module = server.moduleGraph.getModuleById(id);
       if (module) server.moduleGraph.invalidateModule(module);
       server.ws.send({ type: 'full-reload' });

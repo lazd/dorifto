@@ -1,6 +1,7 @@
 node_modules/
 track-imports/
 road-imports/
+data-imports/
 dist/
 .DS_Store
 .bot-training/

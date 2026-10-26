@@ -45,6 +45,11 @@ export interface CourseDefinition {
   reverse?: boolean;
   /** False for a single point-to-point run; omitted keeps the course closed. */
   closed?: boolean;
+  /**
+   * Open roads only: the timed section, as arc-length fractions of the forward route, in driving
+   * order. Omitted places the gates openRoadLineDistance in from each end.
+   */
+  gates?: { start: number; finish: number };
   generation?:
     | { type: 'random'; seed: number }
     | { type: 'custom'; seed: number; weights: CourseGenerationWeights };
@@ -308,15 +313,28 @@ export function courseKerbSegments(route: THREE.Curve<THREE.Vector3>) {
     .filter(({ direction }) => direction !== 0);
 }
 
+/** Distance along the driving-direction route of a fraction of the forward route. */
+export const directedDistance = (definition: CourseDefinition, fraction: number, length: number) =>
+  (definition.reverse ? 1 - fraction : fraction) * length;
+
 export function courseStartDistance(definition: CourseDefinition, length: number) {
-  if (definition.closed === false) return openRoadLineDistance;
+  if (definition.closed === false)
+    return definition.gates
+      ? directedDistance(definition, definition.gates.start, length)
+      : openRoadLineDistance;
   return definition.reverse ? length - startDistance : startDistance;
 }
 
 /** Distances of the start line and, on open roads, the separate finish line. */
 export function courseGateDistances(definition: CourseDefinition, length: number) {
   const start = courseStartDistance(definition, length);
-  return definition.closed === false ? [start, length - start] : [start];
+  if (definition.closed !== false) return [start];
+  return [
+    start,
+    definition.gates
+      ? directedDistance(definition, definition.gates.finish, length)
+      : length - openRoadLineDistance,
+  ];
 }
 
 export function readCourseReverse(parameters: URLSearchParams) {

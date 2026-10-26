@@ -38,6 +38,12 @@ test('open courses use the record ghost without changing the closed-course prefe
   }
 });
 
+test('the real driver ghost falls back when a course has no recording', () => {
+  assert.equal(courseGhostMode('real', false, true), 'real');
+  assert.equal(courseGhostMode('real', false), 'record');
+  assert.equal(courseGhostMode('real', true), 'fastest');
+});
+
 test('configuration and game snapshots and notifications are completely independent', () => {
   const configuration = createConfigurationState();
   const game = createGameState();

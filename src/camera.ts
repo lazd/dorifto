@@ -70,6 +70,8 @@ export function createDrivingCamera(
   const cameraRoutePoints = cameraRoute.getSpacedPoints(Math.ceil(cameraRouteLength / 2));
   cameraRoutePoints.pop();
 
+  /** The body the camera chases; the car unless spectating a ghost. */
+  let subject: THREE.Object3D = car.chassis;
   let cameraYaw = 0;
   let cameraPitch = 0;
   const cameraOrbit = new THREE.Vector3();
@@ -141,10 +143,10 @@ export function createDrivingCamera(
     droneHeading.copy(cameraDirection);
     droneOffsetVelocity.set(0, 0, 0);
     droneBank = 0;
-    previousCarPosition.copy(car.chassis.position);
-    camera.position.copy(car.chassis.position).addScaledVector(cameraDirection, -9);
+    previousCarPosition.copy(subject.position);
+    camera.position.copy(subject.position).addScaledVector(cameraDirection, -9);
     camera.position.y += cameraHeight;
-    lookTarget.copy(car.chassis.position).add(new THREE.Vector3(0, 0.65, 0));
+    lookTarget.copy(subject.position).add(new THREE.Vector3(0, 0.65, 0));
     camera.lookAt(lookTarget);
   }
 
@@ -158,7 +160,7 @@ export function createDrivingCamera(
     if (dt <= 0) return;
     cabinTargetOffset.set(0, 0, 0);
     if (hasCabinVelocity) {
-      cabinInverseRotation.copy(car.chassis.quaternion).invert();
+      cabinInverseRotation.copy(subject.quaternion).invert();
       cabinTargetOffset
         .subVectors(velocity, previousCabinVelocity)
         .multiplyScalar(1 / (dt * 9.81))
@@ -186,14 +188,14 @@ export function createDrivingCamera(
       const dx = next.x - point.x;
       const dz = next.z - point.z;
       const fraction = THREE.MathUtils.clamp(
-        ((car.chassis.position.x - point.x) * dx + (car.chassis.position.z - point.z) * dz) /
+        ((subject.position.x - point.x) * dx + (subject.position.z - point.z) * dz) /
           Math.max(dx * dx + dz * dz, 0.000001),
         0,
         1,
       );
       const squared =
-        (point.x + dx * fraction - car.chassis.position.x) ** 2 +
-        (point.z + dz * fraction - car.chassis.position.z) ** 2;
+        (point.x + dx * fraction - subject.position.x) ** 2 +
+        (point.z + dz * fraction - subject.position.z) ** 2;
       if (squared < distance) {
         distance = squared;
         nearest = i + fraction;
@@ -253,13 +255,13 @@ export function createDrivingCamera(
         -motion.distance - Math.min(speed * motion.speedDistance, motion.maxSpeedDistance),
       );
     droneTargetOffset.y = motion.height + cameraPitch;
-    droneOffset.subVectors(camera.position, car.chassis.position);
+    droneOffset.subVectors(camera.position, subject.position);
     if (snap) {
       droneOffset.copy(droneTargetOffset);
       droneOffsetVelocity.set(0, 0, 0);
     } else
       dampSpring(droneOffset, droneOffsetVelocity, droneTargetOffset, motion.positionResponse, dt);
-    camera.position.copy(car.chassis.position).add(droneOffset);
+    camera.position.copy(subject.position).add(droneOffset);
     // Bank toward the turn: the drone's left (+heading rotated a quarter turn) side drops.
     cameraRight.set(droneHeading.z, 0, -droneHeading.x);
     camera.up.copy(up).addScaledVector(cameraRight, Math.tan(droneBank)).normalize();
@@ -278,8 +280,8 @@ export function createDrivingCamera(
       camera.position.copy(chasePosition);
       camera.quaternion.copy(chaseQuaternion);
     }
-    carDisplacement.subVectors(car.chassis.position, previousCarPosition);
-    previousCarPosition.copy(car.chassis.position);
+    carDisplacement.subVectors(subject.position, previousCarPosition);
+    previousCarPosition.copy(subject.position);
     if (cameraStyle !== 'cabin') {
       // Follow translation on the same sample as the car; damp only the camera's relative pose.
       camera.position.add(carDisplacement);
@@ -288,7 +290,7 @@ export function createDrivingCamera(
     const tune = driveModes[driveMode];
     updateCabinMotion(dt, velocity, cabinHeadMotion);
     const speed = Math.hypot(velocity.x, velocity.z);
-    forward.set(0, 0, 1).applyQuaternion(car.chassis.quaternion);
+    forward.set(0, 0, 1).applyQuaternion(subject.quaternion);
     forward.y = 0;
     forward.normalize();
     travel.copy(forward);
@@ -320,8 +322,8 @@ export function createDrivingCamera(
       camera.position
         .copy(cabinEye)
         .add(cabinOffset)
-        .applyQuaternion(car.chassis.quaternion)
-        .add(car.chassis.position);
+        .applyQuaternion(subject.quaternion)
+        .add(subject.position);
       cabinTilt.setFromEuler(
         cabinTiltAngles.set(
           cabinOffset.z * cabinCameraMotion.tiltPerMeter,
@@ -337,8 +339,8 @@ export function createDrivingCamera(
           -cameraPitch * 0.6,
         )
         .applyQuaternion(cabinTilt)
-        .applyQuaternion(car.chassis.quaternion);
-      cabinUp.set(0, 1, 0).applyQuaternion(cabinTilt).applyQuaternion(car.chassis.quaternion);
+        .applyQuaternion(subject.quaternion);
+      cabinUp.set(0, 1, 0).applyQuaternion(cabinTilt).applyQuaternion(subject.quaternion);
       camera.up.copy(cabinUp);
       camera.lookAt(desiredLookTarget.copy(camera.position).add(cabinDirection));
     } else {
@@ -354,9 +356,9 @@ export function createDrivingCamera(
         camera.up.copy(up);
         cameraOrbit.copy(cameraDirection).applyAxisAngle(up, cameraYaw);
         desiredCamera
-          .copy(car.chassis.position)
+          .copy(subject.position)
           .addScaledVector(cameraOrbit, -9 - Math.min(speed * 0.04, 2));
-        desiredCamera.y = car.chassis.position.y + cameraHeight + cameraPitch;
+        desiredCamera.y = subject.position.y + cameraHeight + cameraPitch;
         if (previousCameraStyle === 'cabin') camera.position.copy(desiredCamera);
         else camera.position.lerp(desiredCamera, 1 - Math.exp(-tune.cameraPositionResponse * dt));
       }
@@ -365,8 +367,8 @@ export function createDrivingCamera(
         terrain.heightAt(camera.position.x, camera.position.z) +
           (fpv ? fpvCameraMotion.minTerrainClearance : 1),
       );
-      desiredLookTarget.copy(car.chassis.position).addScaledVector(velocity, fpv ? 0.12 : 0.18);
-      desiredLookTarget.y = car.chassis.position.y + 0.65;
+      desiredLookTarget.copy(subject.position).addScaledVector(velocity, fpv ? 0.12 : 0.18);
+      desiredLookTarget.y = subject.position.y + 0.65;
       const lookResponse = fpv ? fpvCameraMotion.lookResponse : 10;
       if (previousCameraStyle === 'cabin') lookTarget.copy(desiredLookTarget);
       else lookTarget.lerp(desiredLookTarget, 1 - Math.exp(-lookResponse * dt));
@@ -413,11 +415,11 @@ export function createDrivingCamera(
     reset,
     update,
     setCabinEye,
+    follow(next: THREE.Object3D) {
+      subject = next;
+    },
     getCabinEye(target: THREE.Vector3) {
-      return target
-        .copy(cabinEye)
-        .applyQuaternion(car.chassis.quaternion)
-        .add(car.chassis.position);
+      return target.copy(cabinEye).applyQuaternion(subject.quaternion).add(subject.position);
     },
   };
 }

@@ -85,6 +85,14 @@ import type { PhysicsRecord } from './physics-messages';
 import { readTurnSignMode } from './turn-sign';
 import { createGhostCar } from './ghost-car';
 import {
+  createRealDriverLine,
+  hasRealDriver,
+  loadRealDriver,
+  realDriverLap,
+  trimRealDriver,
+  type TrimmedRealDriver,
+} from './real-driver';
+import {
   RunRecording,
   bestRunTime,
   applyCarPose,
@@ -98,6 +106,7 @@ import {
   replayStorageKey,
   saveRecordLap,
   saveRun,
+  type ReplayFrame,
   type RunSummary,
 } from './lap-recording';
 import './style.css';
@@ -582,14 +591,21 @@ async function start() {
   }
 
   let activeDefinition = loadedDefinition;
+  /** The running session's course: its direction and, with a real driver, its timed section. */
+  let layout: CourseDefinition = initialDefinition;
   let { course, terrain, spawn, laps, physics, drivingCamera } = await createCourseSession(
     initialDefinition,
     initialCourse,
   );
   const groundHeight = (x: number, z: number) => terrain.heightAt(x, z);
   const minimap = createMinimap(element('#minimap'), definition);
+  /** Spectate mode can watch the real driver; the observed bot then shows as the ghost. */
+  let spectatingRealDriver = false;
   const leaderboard = createLeaderboard(element<HTMLOListElement>('#leaderboard'), (index) => {
-    if (physics.observeBot(index)) syncObservedBot();
+    if (physics.observeBot(index) || spectatingRealDriver) {
+      spectatingRealDriver = false;
+      syncObservedBot();
+    }
   });
   const racePanel = element('#race-panel');
   const { fixedStep } = physics;
@@ -640,9 +656,10 @@ async function start() {
   let run: RunRecording | null = null;
   let automaticResultsHandled = false;
   let cameraNeedsReset = false;
+  let spectatorCameraReset = false;
   const storedRuns = new WeakSet<RunRecording>();
   let replay: { recording: RunRecording; time: number } | null = null;
-  let storageKey = replayStorageKey({ ...definition, reverse: requestedReverse });
+  let storageKey = replayStorageKey(layout);
   let savedRuns: RunSummary[] = [];
   let runOptions: readonly SavedRunOption[] = [];
   let selectedRun: string | null = null;
@@ -707,9 +724,12 @@ async function start() {
     return driver?.startsWith('bot') ? `🤖 ${label} · ${driver}` : `🧑🏽‍🔧 ${label}`;
   }
 
+  /** A timed section trimmed to a real driver is only for comparison, so it keeps no records. */
+  const persistsRuns = () => !layout.gates;
+
   function refreshSavedRuns() {
     try {
-      savedRuns = listSavedRuns(storageKey);
+      savedRuns = persistsRuns() ? listSavedRuns(storageKey) : [];
     } catch (error) {
       console.error('Unable to read saved laps:', error);
       savedRuns = [];
@@ -739,6 +759,7 @@ async function start() {
     if (previous && previous.lapTimes[0] <= lap.lapTimes[0]) return;
     modeRecords[mode] = lap;
     if (mode === raceOptions.mode) recordLap = lap;
+    if (!persistsRuns()) return;
     void saveRecordLap(recordStorageKey(storageKey, mode), lap).catch((error) =>
       reportLapError('Unable to save record lap:', error),
     );
@@ -749,10 +770,13 @@ async function start() {
     const generation = ++recordLoad;
     recordLap = null;
     for (const mode of Object.keys(modeRecords) as RaceMode[]) modeRecords[mode] = null;
+    if (!persistsRuns()) return;
     try {
       for (const mode of Object.keys(modeRecords) as RaceMode[]) {
         if (mode === 'mustard' && !activeDefinition.doubleYellow) continue;
         let loaded = await loadRecordLap(recordStorageKey(key, mode));
+        // savedRuns follows storageKey, so stop before mixing it with a stale key.
+        if (generation !== recordLoad || key !== storageKey) return;
         const bestSaved = savedRuns.reduce<RunSummary | null>((best, saved) => {
           const time = bestRunTime(saved, mode);
           if (time === null) return best;
@@ -770,6 +794,73 @@ async function start() {
       reportLapError('Unable to load record lap:', error);
     }
   }
+
+  let realDriver: { data: TrimmedRealDriver; lap: RunRecording; line: THREE.Mesh } | null = null;
+  let realDriverLoad = 0;
+  const activeGhostMode = (reverse = configurationState.getState().courseReverse) =>
+    courseGhostMode(
+      configurationState.getState().ghostMode,
+      activeDefinition.closed,
+      hasRealDriver(activeDefinition, reverse),
+    );
+  /** The session course for a direction, timed over the real driver's stretch while they're the ghost. */
+  function courseLayout(reverse: boolean): CourseDefinition {
+    const directed = { ...activeDefinition, reverse };
+    return realDriver?.data.reverse === reverse &&
+      realDriver.data.trimsCourse &&
+      activeGhostMode(reverse) === 'real'
+      ? { ...directed, gates: realDriver.data.gates }
+      : directed;
+  }
+  /** Moves the running session to a new direction or timed section without rebuilding the map. */
+  function applyCourseLayout(next: CourseDefinition) {
+    layout = next;
+    const nextSpawn = courseSpawn(next);
+    const nextCamera = createDrivingCamera(camera, car, controls, next, terrain);
+    course.setDirection(next.reverse ?? false);
+    course.setGates(next.gates);
+    minimap.setCourse(next);
+    spawn = nextSpawn;
+    drivingCamera = nextCamera;
+    reset();
+    physics.setCourseDirection(nextSpawn, next);
+    lastTime = 0;
+    storageKey = replayStorageKey(next);
+    refreshSavedRuns();
+  }
+  function syncRealDriver() {
+    if (realDriver) realDriver.line.visible = activeGhostMode() === 'real';
+    const next = courseLayout(layout.reverse ?? false);
+    if (next.gates === layout.gates) return;
+    applyCourseLayout(next);
+    void refreshRecordLap();
+  }
+
+  /** Call right after switching courses; the previous line was disposed with its course. */
+  async function refreshRealDriver() {
+    const generation = ++realDriverLoad;
+    const definition = activeDefinition;
+    const target = course;
+    realDriver = null;
+    try {
+      const loaded = await loadRealDriver(definition);
+      if (!loaded || generation !== realDriverLoad || target !== course) return;
+      const data = trimRealDriver(definition, loaded);
+      if (!data) return;
+      realDriver = {
+        data,
+        lap: realDriverLap(definition, data, groundHeight, car),
+        line: createRealDriverLine(course.drape, definition, data),
+      };
+      syncRealDriver();
+    } catch (error) {
+      reportLapError('Unable to load real driver:', error);
+    }
+  }
+  // Course changes sync once the new course's real driver has loaded.
+  configurationState.subscribe(() => {
+    if (!changingCourse) syncRealDriver();
+  }, ['ghostMode', 'courseReverse']);
 
   function keepRunRecord() {
     if (!run) return;
@@ -812,7 +903,7 @@ async function start() {
         driveMode: nextBotsOnly ? botDriveMode(nextBots[0]?.preset) : nextMode,
         cameraStyle: nextBotsOnly && !url.searchParams.has('camera') ? 'fpv' : nextCamera,
       });
-      const next = await createCourseSession(activeDefinition, course, nextBots, nextBotsOnly);
+      const next = await createCourseSession(layout, course, nextBots, nextBotsOnly);
       const previousPhysics = physics;
       ({ course, terrain, spawn, laps, physics, drivingCamera } = next);
       previousPhysics.dispose(botsOnly && !nextBotsOnly);
@@ -923,7 +1014,7 @@ async function start() {
   }
 
   function storeRun(finished: RunRecording) {
-    if (storedRuns.has(finished)) return;
+    if (storedRuns.has(finished) || !persistsRuns()) return;
     storedRuns.add(finished);
     const key = storageKey;
     saveRun(key, finished, recordedDriver).then(
@@ -988,16 +1079,31 @@ async function start() {
     if (record.raceFinished) storeRun(run);
   }
 
+  /** Drives the gauges and engine sound from a recorded frame instead of the physics engine. */
+  function playEngine(frame: ReplayFrame) {
+    Object.assign(replayEngine, {
+      rpm: frame.rpm,
+      gear: frame.gear,
+      throttle: frame.throttle,
+      load: frame.load,
+      boost: frame.boost,
+      shifting: frame.shifting,
+      limiterCut: frame.limiterCut,
+    });
+  }
+
   function updateGhost(alpha: number) {
-    if (botsOnly) {
+    const mode = activeGhostMode();
+    // While spectating, laps follows the first bot, so only the real driver ghost stays meaningful.
+    if (botsOnly && mode !== 'real') {
       ghost.visible = false;
       return;
     }
-    const mode = courseGhostMode(configurationState.getState().ghostMode, activeDefinition.closed);
-    const source = mode === 'record' ? recordLap : run;
+    const source =
+      mode === 'real' ? (realDriver?.lap ?? null) : mode === 'record' ? recordLap : run;
     const index =
-      mode === 'record'
-        ? laps.lap > 0 && recordLap
+      mode === 'record' || mode === 'real'
+        ? laps.lap > 0 && source
           ? 0
           : null
         : !run || mode === 'off' || laps.lap < 2
@@ -1013,8 +1119,41 @@ async function start() {
     }
     source.read(source.lapStarts[index] + lapTime, ghostFrame);
     applyCarPose(ghostFrame, ghost.chassis, ghost.wheels);
+    ghost.setBraking(ghostFrame.braking);
     ghost.fadeNear(car.chassis.position, configurationState.getState().cameraStyle === 'cabin');
     ghost.visible = true;
+  }
+
+  const watchingRealDriver = () =>
+    spectatingRealDriver && botsOnly && activeGhostMode() === 'real' && realDriver !== null;
+
+  const nowhere = new THREE.Vector3(Infinity, 0, 0);
+
+  /**
+   * Holds the watched real driver's ghost on the line before the start and after the finish, and
+   * returns its velocity for the chase camera. The observed bot still drives the car.
+   */
+  function updateWatchedRealDriver(alpha: number) {
+    if (!watchingRealDriver()) return null;
+    const lap = realDriver!.lap;
+    const time = THREE.MathUtils.clamp(
+      laps.lap > 0 ? laps.current - (1 - alpha) * fixedStep : 0,
+      0,
+      lap.duration,
+    );
+    lap.read(time, ghostFrame);
+    applyCarPose(ghostFrame, ghost.chassis, ghost.wheels);
+    ghost.setBraking(ghostFrame.braking);
+    playEngine(ghostFrame);
+    const cabin = configurationState.getState().cameraStyle === 'cabin';
+    ghost.fadeNear(cabin ? ghost.chassis.position : nowhere, cabin);
+    ghost.visible = true;
+    const h = lap.interval / 2;
+    lap.read(time - h, replayBefore);
+    lap.read(time + h, replayAfter);
+    return replayVelocity
+      .subVectors(replayAfter.position, replayBefore.position)
+      .divideScalar(2 * h);
   }
 
   /**
@@ -1041,15 +1180,7 @@ async function start() {
     recording.read(shownTime - h, replayBefore);
     recording.read(shownTime + h, replayAfter);
     replayVelocity.subVectors(replayAfter.position, replayBefore.position).divideScalar(2 * h);
-    Object.assign(replayEngine, {
-      rpm: playbackFrame.rpm,
-      gear: playbackFrame.gear,
-      throttle: playbackFrame.throttle,
-      load: playbackFrame.load,
-      boost: playbackFrame.boost,
-      shifting: playbackFrame.shifting,
-      limiterCut: playbackFrame.limiterCut,
-    });
+    playEngine(playbackFrame);
     car.setBraking(playbackFrame.braking);
     car.setReversing(playbackFrame.reversing);
     syncLapRecorder();
@@ -1105,10 +1236,12 @@ async function start() {
       else url.searchParams.delete('reverse');
       history.replaceState(null, '', url);
       activeDefinition = nextDefinition;
-      storageKey = replayStorageKey({ ...nextDefinition, reverse });
+      layout = { ...nextDefinition, reverse };
+      storageKey = replayStorageKey(layout);
       refreshSavedRuns();
       configurationState.update({ courseReverse: reverse });
       gameState.update({ status: { visible: false, error: false, message: '' } });
+      await refreshRealDriver();
       await refreshRecordLap();
       return nextDefinition;
     } catch (error) {
@@ -1153,17 +1286,7 @@ async function start() {
   }
 
   async function changeCourseDirection(reverse: boolean) {
-    const directed = { ...activeDefinition, reverse };
-    const nextSpawn = courseSpawn(directed);
-    const nextCamera = createDrivingCamera(camera, car, controls, directed, terrain);
-    course.setDirection(reverse);
-    spawn = nextSpawn;
-    drivingCamera = nextCamera;
-    reset();
-    physics.setCourseDirection(nextSpawn, directed);
-    lastTime = 0;
-    storageKey = replayStorageKey(directed);
-    refreshSavedRuns();
+    applyCourseLayout(courseLayout(reverse));
     const url = new URL(location.href);
     if (reverse) url.searchParams.set('reverse', '1');
     else url.searchParams.delete('reverse');
@@ -1206,14 +1329,12 @@ async function start() {
       if (definition !== activeDefinition) return saved;
       activeDefinition = saved;
       minimap.setCourse(saved);
-      storageKey = replayStorageKey({
-        ...saved,
-        reverse: configurationState.getState().courseReverse,
-      });
+      layout = { ...saved, reverse: layout.reverse };
+      storageKey = replayStorageKey(layout);
       ++recordLoad;
       for (const mode of Object.keys(modeRecords) as RaceMode[]) {
         const record = modeRecords[mode];
-        if (record)
+        if (record && persistsRuns())
           void saveRecordLap(recordStorageKey(storageKey, mode), record).catch((error) =>
             reportLapError('Unable to save record lap:', error),
           );
@@ -1316,10 +1437,22 @@ async function start() {
     const url = new URL(location.href);
     url.searchParams.set('observed-bot', String(physics.observedBot));
     history.replaceState(null, '', url);
-    forward.set(0, 0, 1).applyQuaternion(car.chassis.quaternion);
-    drivingCamera.reset(Math.atan2(forward.x, forward.z));
+    // The real driver's pose is applied in the next frame, so the camera resets there.
+    spectatorCameraReset = true;
     tireEffects.reset();
     audio.reset();
+  }
+
+  /** Tab steps through the bots, then the real driver when its ghost is on. */
+  function cycleSpectated() {
+    const canWatchReal = activeGhostMode() === 'real' && realDriver !== null;
+    if (spectatingRealDriver) {
+      spectatingRealDriver = false;
+      physics.observeBot(0);
+    } else if (canWatchReal && physics.observedBot === botOptions.length - 1) {
+      spectatingRealDriver = true;
+    } else if (!physics.cycleObservedBot()) return;
+    syncObservedBot();
   }
 
   window.addEventListener('keydown', (event) => {
@@ -1343,9 +1476,7 @@ async function start() {
     } else if (action === 'camera') {
       if (!event.repeat) cycleCamera();
     } else if (cycleObservedBot) {
-      if (!event.repeat && physics.cycleObservedBot()) {
-        syncObservedBot();
-      }
+      if (!event.repeat) cycleSpectated();
     } else if (action === 'driveMode') {
       if (!event.repeat) toggleDriveMode();
     } else if (action === 'map') {
@@ -1490,6 +1621,7 @@ async function start() {
       car.setLighting(frameHeadlights, appliedTime);
     }
     let velocity: THREE.Vector3;
+    let watchedVelocity3d: THREE.Vector3 | null = null;
     if (replayVelocity3d) {
       velocity = replayFlatVelocity.copy(replayVelocity3d).setY(0);
     } else {
@@ -1497,12 +1629,24 @@ async function start() {
       const alpha = physics.interpolationAlpha();
       velocity = physics.interpolate(alpha);
       updateGhost(alpha);
+      watchedVelocity3d = updateWatchedRealDriver(alpha);
+    }
+    drivingCamera.follow(watchedVelocity3d ? ghost.chassis : car.chassis);
+    if (spectatorCameraReset) {
+      spectatorCameraReset = false;
+      forward.set(0, 0, 1).applyQuaternion((watchedVelocity3d ? ghost : car).chassis.quaternion);
+      drivingCamera.reset(Math.atan2(forward.x, forward.z));
     }
     const lapInvalid = !replaying && !botsOnly && laps.invalid;
     if (lapInvalid && !previousLapInvalid) audio.playLapInvalid();
     previousLapInvalid = lapInvalid;
     const speed = velocity.length();
-    const engine = replaying ? replayEngine : physics.engine;
+    const watching = watchedVelocity3d !== null;
+    // Watching the real driver: the HUD and engine sound follow it, the car's effects its bot.
+    const shownSpeed = watchedVelocity3d
+      ? Math.hypot(watchedVelocity3d.x, watchedVelocity3d.z)
+      : speed;
+    const engine = replaying || watching ? replayEngine : physics.engine;
     const reversing = replaying ? playbackFrame.reversing : physics.reversing;
     const wheelContacts = replaying ? playbackFrame.contacts : physics.wheelContacts;
     const handbrake = replaying ? playbackFrame.handbrake : !botsOnly && controls.handbrake;
@@ -1535,7 +1679,7 @@ async function start() {
     }
     drivingCamera.update(
       dt,
-      replayVelocity3d ?? physics.linearVelocity,
+      replayVelocity3d ?? watchedVelocity3d ?? physics.linearVelocity,
       botsOnly ? botDriveMode(recordedBot?.preset) : cameraState.driveMode,
       cameraState.cameraStyle,
       reversing,
@@ -1588,11 +1732,11 @@ async function start() {
       wheelContacts,
       sliding,
       burningOut,
-      replaying ? undefined : engine,
+      replaying ? undefined : physics.engine,
     );
     audio.update({
       drivetrain: engine,
-      tires: replaying ? playbackFrame.tires : physics.tireSounds,
+      tires: replaying ? playbackFrame.tires : watching ? ghostFrame.tires : physics.tireSounds,
       ...backfire,
     });
     physics.updateBotEffects(
@@ -1615,13 +1759,15 @@ async function start() {
         };
     const braking = replaying
       ? playbackFrame.braking && !reversing
-      : botsOnly
-        ? physics.braking
-        : controls.brake > 0;
+      : watching
+        ? ghostFrame.braking
+        : botsOnly
+          ? physics.braking
+          : controls.brake > 0;
     gameState.update({
       controllerStatus: controls.controllerStatus,
       telemetry: {
-        speed,
+        speed: shownSpeed,
         rpm: engine.rpm,
         gear: engine.gear,
         limiter: engine.limiterCut,
@@ -1670,7 +1816,7 @@ async function start() {
 
   reset();
   showLoading('Loading your record lap…', 0.4);
-  await refreshRecordLap();
+  await Promise.all([refreshRecordLap(), refreshRealDriver()]);
   const warmupCamera = camera.clone();
   warmupCamera.position.copy(car.chassis.position).add(new THREE.Vector3(5, 3, 6));
   warmupCamera.lookAt(car.chassis.position);

@@ -7,6 +7,8 @@ export const startRevLimitRpm = 4500;
 const ratios = [2.97, 2.1, 1.46, 1.0, 0.8, 0.63];
 const finalDrive = 3.692;
 const reverseRatio = 3.369;
+/** Engine revolutions per wheel revolution in a forward gear. */
+export const overallRatio = (gear: number) => ratios[gear - 1] * finalDrive;
 
 const radiansToRpm = 60 / (2 * Math.PI);
 const idleSpeed = idleRpm / radiansToRpm;
@@ -117,7 +119,7 @@ export class Drivetrain {
     if (!Number.isInteger(gear) || gear < 1 || gear > ratios.length) {
       throw new Error(`Invalid transmission gear: ${gear}`);
     }
-    return ratios[gear - 1] * finalDrive;
+    return overallRatio(gear);
   }
 
   private determineGear(): number {

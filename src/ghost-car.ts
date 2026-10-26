@@ -13,10 +13,12 @@ const trimParts =
 const frontParts =
   /^(FogGlass_|Projectorglass_|Chin_003_001_Paint|Badge_(Insideglass|003_001_Chrome|001_001_Badgecolor))/;
 const wheelParts = /^(tyr_|llantaoem)/;
+const brakeParts = /^(184_001_001_BrakeRefraction_0$|thirdrefraction_|brakebulbrear_)/;
 const ghostOpacity = 0.38;
 const glowOpacity = 0.24;
 const lightIntensity = 0.45;
 const groundLightIntensity = 4;
+const brakeGlow = 4;
 
 function mergeParts(meshes: { mesh: THREE.Mesh; matrix: THREE.Matrix4 }[]) {
   const geometries = meshes.map(({ mesh, matrix }) => {
@@ -152,6 +154,26 @@ export function createGhostCar(scene: THREE.Scene, car: Car) {
   if (!body.length) throw new Error('Missing car body geometry for the ghost car');
   const chassis = new THREE.Group();
   chassis.add(...meshesFor(mergeParts(body)));
+  // The lit lenses sit behind the tail glass, so they draw before the depth prepass and cull
+  // their back faces rather than depth-testing against the ghost's own shell. Unlit, the glass
+  // keeps the ghost look.
+  const brakeMaterial = new THREE.MeshBasicMaterial({
+    // Overbright so the lenses still read as lit through the ghost's tinted tail glass.
+    color: new THREE.Color(0xff1008).multiplyScalar(brakeGlow),
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    toneMapped: false,
+  });
+  const brakeLenses: { mesh: THREE.Mesh; matrix: THREE.Matrix4 }[] = [];
+  car.chassis.traverse((object) => {
+    if (object instanceof THREE.Mesh && brakeParts.test(object.name))
+      brakeLenses.push({ mesh: object, matrix: toChassis.clone().multiply(object.matrixWorld) });
+  });
+  if (!brakeLenses.length) throw new Error('Missing brake light geometry for the ghost car');
+  const brakeLights = new THREE.Mesh(mergeParts(brakeLenses), brakeMaterial);
+  brakeLights.renderOrder = 9;
+  brakeLights.visible = false;
   const wheels = car.wheels.map((wheel) => {
     wheel.updateMatrixWorld(true);
     const parts = wheel.children
@@ -202,6 +224,7 @@ export function createGhostCar(scene: THREE.Scene, car: Car) {
     maskScene.add(mask);
     return mask;
   });
+  chassis.add(brakeLights);
 
   return {
     chassis,
@@ -218,7 +241,11 @@ export function createGhostCar(scene: THREE.Scene, car: Car) {
       const distance = chassis.position.distanceTo(position);
       const fade = THREE.MathUtils.smoothstep(distance, 2.5, 7);
       material.opacity = ghostOpacity * THREE.MathUtils.lerp(cabinView ? 0 : 0.7, 1, fade);
+      brakeMaterial.opacity = material.opacity / ghostOpacity;
       updateLights();
+    },
+    setBraking(braking: boolean) {
+      brakeLights.visible = braking;
     },
     renderGlow(
       renderer: THREE.WebGLRenderer,

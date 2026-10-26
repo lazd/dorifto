@@ -239,36 +239,45 @@ function buildCourse(scene: THREE.Group, definition: CourseDefinition, carWidth:
   }
   const columns = Math.ceil(definition.width / 0.5);
   const tileWidth = definition.width / columns;
-  for (const gateT of courseGateDistances({ ...definition, reverse: false }, length).map(
-    (d) => d / length,
-  )) {
-    const start = route.getPointAt(gateT);
-    const startTangent = route.getTangentAt(gateT);
-    across.set(startTangent.z, 0, -startTangent.x).normalize();
-    for (let row = 0; row < 2; row++) {
-      for (let column = 0; column < columns; column++) {
-        const tile = new THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>(
-          new THREE.PlaneGeometry(tileWidth, 0.5),
-          (row + column) % 2 ? dark : white,
-        );
-        tile.rotation.set(-Math.PI / 2, 0, Math.atan2(startTangent.x, startTangent.z));
-        tile.position
-          .copy(start)
-          .addScaledVector(across, -definition.width / 2 + (column + 0.5) * tileWidth)
-          .addScaledVector(startTangent, row * 0.5)
-          .setY(0.02);
-        tile.updateMatrix();
-        const geometry = tile.geometry.clone().applyMatrix4(tile.matrix);
-        tile.geometry.dispose();
-        tile.geometry = terrain.projectGeometry(geometry, 0.02);
-        geometry.dispose();
-        tile.position.set(0, 0, 0);
-        tile.rotation.set(0, 0, 0);
-        tile.receiveShadow = true;
-        scene.add(tile);
+  const gateTiles = new THREE.Group();
+  gateTiles.name = 'start-finish-lines';
+  scene.add(gateTiles);
+  /** Paints the checkered start (and open-road finish) lines for the given gate placement. */
+  function setGates(gates: CourseDefinition['gates']) {
+    for (const tile of gateTiles.children as THREE.Mesh[]) tile.geometry.dispose();
+    gateTiles.clear();
+    for (const gateT of courseGateDistances({ ...definition, reverse: false, gates }, length).map(
+      (d) => d / length,
+    )) {
+      const start = route.getPointAt(gateT);
+      const startTangent = route.getTangentAt(gateT);
+      across.set(startTangent.z, 0, -startTangent.x).normalize();
+      for (let row = 0; row < 2; row++) {
+        for (let column = 0; column < columns; column++) {
+          const tile = new THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>(
+            new THREE.PlaneGeometry(tileWidth, 0.5),
+            (row + column) % 2 ? dark : white,
+          );
+          tile.rotation.set(-Math.PI / 2, 0, Math.atan2(startTangent.x, startTangent.z));
+          tile.position
+            .copy(start)
+            .addScaledVector(across, -definition.width / 2 + (column + 0.5) * tileWidth)
+            .addScaledVector(startTangent, row * 0.5)
+            .setY(0.02);
+          tile.updateMatrix();
+          const geometry = tile.geometry.clone().applyMatrix4(tile.matrix);
+          tile.geometry.dispose();
+          tile.geometry = terrain.projectGeometry(geometry, 0.02);
+          geometry.dispose();
+          tile.position.set(0, 0, 0);
+          tile.rotation.set(0, 0, 0);
+          tile.receiveShadow = true;
+          gateTiles.add(tile);
+        }
       }
     }
   }
+  setGates(definition.gates);
   const signVariants = [false, true].flatMap((reverse) =>
     (['few', 'several', 'many'] as const).map((mode) => ({ reverse, mode })),
   );
@@ -399,7 +408,10 @@ function buildCourse(scene: THREE.Group, definition: CourseDefinition, carWidth:
       lapGateMaterial.uniforms.rainbow.value = mode === 'rainbow' ? 1 : 0;
     },
     setDirection,
+    setGates,
     setTurnSignMode,
+    /** Drape a strip along the forward route between arc-length fractions, owned by the course. */
+    drape: ribbon,
     isAsphalt: (position: THREE.Vector3) => terrain.isAsphalt(position),
   };
 }

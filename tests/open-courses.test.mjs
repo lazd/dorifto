@@ -260,3 +260,51 @@ test('imported road width and optional double-yellow lines reach the terrain-dra
     }
   }
 });
+
+test('real driver recordings and open-road gates trim to the stretch both cover', async () => {
+  const { trimRealDriver } = await server.ssrLoadModule('/src/real-driver.ts');
+  const { courseGateDistances } = await server.ssrLoadModule('/src/courses.ts');
+  const straight = {
+    ...definition,
+    points: [
+      [0, 0],
+      [0, 200],
+      [0, 400],
+    ],
+  };
+  const length = courseRoute(straight).getLength();
+  // One meter every 0.1 s between two directed distances.
+  const drive = (from, to, reverse = false) => ({
+    source: 'test',
+    reverse,
+    interval: 0.1,
+    progress: Array.from({ length: to - from + 1 }, (_, i) => {
+      const fraction = (from + i) / length;
+      return reverse ? 1 - fraction : fraction;
+    }),
+  });
+  const close = (actual, expected) => assert.ok(Math.abs(actual - expected) < 1e-6, `${actual}`);
+  const cases = [
+    // Inside the map: the gates move to the recording's ends.
+    { data: drive(100, 300), gates: [100, 300], trims: true },
+    // Beyond both map gates: the recording is cut to them.
+    {
+      data: drive(0, 400),
+      gates: [openRoadLineDistance, length - openRoadLineDistance],
+      trims: false,
+    },
+    // Reverse, starting before the map's start and ending inside it.
+    { data: drive(0, 200, true), gates: [openRoadLineDistance, 200], trims: true },
+  ];
+  for (const { data, gates, trims } of cases) {
+    const trimmed = trimRealDriver(straight, data);
+    const course = { ...straight, reverse: data.reverse, gates: trimmed.gates };
+    const [start, finish] = courseGateDistances(course, length);
+    close(start, gates[0]);
+    close(finish, gates[1]);
+    assert.equal(trimmed.trimsCourse, trims);
+    close(trimmed.duration, (gates[1] - gates[0]) * 0.1);
+    close(trimmed.progress[0], data.reverse ? 1 - gates[0] / length : gates[0] / length);
+  }
+  assert.equal(trimRealDriver(straight, drive(0, 40)), null);
+});
