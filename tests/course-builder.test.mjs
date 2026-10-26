@@ -19,10 +19,7 @@ before(async () => {
 });
 
 test('saved courses restore geographic routes and retain exact editable waypoints', async () => {
-  const json = await readFile(
-    new URL('../src/tracks/newtown-road-202-58.json', import.meta.url),
-    'utf8',
-  );
+  const json = await readFile(new URL('./fixtures/road-course.json', import.meta.url), 'utf8');
   const course = builderData.readRoadMap(json);
   assert.deepEqual(course.elevation, JSON.parse(json).elevation);
   const draft = builderData.restoreRoadDraft(course);
@@ -62,7 +59,7 @@ test('saved courses restore geographic routes and retain exact editable waypoint
 
 test('embedded builds finish without generating a preview; standalone builds include it', async () => {
   const course = builderData.readRoadMap(
-    await readFile(new URL('../src/tracks/newtown-road-202-58.json', import.meta.url), 'utf8'),
+    await readFile(new URL('./fixtures/road-course.json', import.meta.url), 'utf8'),
   );
   const messages = [];
   const previousSelf = globalThis.self;

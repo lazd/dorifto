@@ -52,12 +52,7 @@ test('analog speed follows the nonuniform dial markings in either unit', () => {
 
 test('HUD cycle uses hidden and preserves independent camera and recorder visibility', (t) => {
   const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'document');
-  const groups = [
-    ['.telemetry'],
-    ['#minimap'],
-    ['#race-panel'],
-    ['.course-hud', '.lap-recorder', 'header', 'footer'],
-  ];
+  const groups = [['.controls'], ['.telemetry', '.lap-recorder'], ['.course-hud', 'footer']];
   const nodes = new Map(
     groups.flat().map((selector) => {
       return [
@@ -84,13 +79,13 @@ test('HUD cycle uses hidden and preserves independent camera and recorder visibi
         const node = nodes.get(selector);
         assert.equal(
           node.hidden,
-          selector === '.telemetry' || press % 5 > index,
+          selector === '.telemetry' || press % (groups.length + 1) > index,
           'camera and race visibility remain independent of the HUD cycle',
         );
       }
     });
   }
-  for (let level = 0; level <= 4; level++) {
+  for (let level = 0; level <= groups.length; level++) {
     visibility.set(level);
     groups.forEach((selectors, index) => {
       for (const selector of selectors) {
@@ -101,7 +96,7 @@ test('HUD cycle uses hidden and preserves independent camera and recorder visibi
   }
   const telemetry = nodes.get('.telemetry');
   const recorder = nodes.get('.lap-recorder');
-  visibility.set(4);
+  visibility.set(groups.length);
   setHudElementHidden(telemetry, false);
   setHudElementHidden(recorder, false);
   assert.equal(telemetry.hidden, true, 'changing camera cannot reveal a hidden HUD');
@@ -109,13 +104,14 @@ test('HUD cycle uses hidden and preserves independent camera and recorder visibi
   visibility.set(0);
   assert.equal(telemetry.hidden, false);
   assert.equal(recorder.hidden, false);
-  visibility.set(4);
+  visibility.set(groups.length);
   setHudElementHidden(telemetry, true);
   setHudElementHidden(recorder, true);
   visibility.set(0);
   assert.equal(telemetry.hidden, true, 'cabin telemetry remains hidden after restoring the HUD');
   assert.equal(recorder.hidden, true, 'inactive recorder remains hidden after restoring the HUD');
-  for (const invalid of [-1, 5, 1.5]) assert.throws(() => visibility.set(invalid), RangeError);
+  for (const invalid of [-1, groups.length + 1, 1.5])
+    assert.throws(() => visibility.set(invalid), RangeError);
 });
 
 function fixture(t, initiallyOpen = false) {

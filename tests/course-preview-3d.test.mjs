@@ -27,7 +27,7 @@ const colors = { ground: '#2a3f43', road: '#9aaeb4', start: '#e9f0f1' };
 
 test('3-D previews keep overlays above rendered terrain and dispose every resource', async () => {
   const imported = JSON.parse(
-    await readFile(new URL('../src/tracks/newtown-road-202-58.json', import.meta.url), 'utf8'),
+    await readFile(new URL('./fixtures/road-course.json', import.meta.url), 'utf8'),
   );
   for (const definition of [
     courses.find(({ id }) => id === 'hillside'),

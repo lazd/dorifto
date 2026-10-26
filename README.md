@@ -673,6 +673,23 @@ keyboard or standard-mapped gamepad. Click the game if focus is in another windo
 Run `npm test` for course-generation, geometry, camera, and physics-lifecycle regression
 checks, including a multi-seed sweep. Run `npm run build` to type-check and build the app.
 
+Import, course-builder, and 3D-preview tests use checked-in snapshots in `tests/fixtures/`,
+not the ignored local `track-imports/` or `road-imports/` directories. Tests run offline.
+The fixtures were refreshed on 2026-10-26 from OpenStreetMap contributors (ODbL;
+[ways 505453048](https://www.openstreetmap.org/way/505453048),
+[1494191149](https://www.openstreetmap.org/way/1494191149), and
+[913592144](https://www.openstreetmap.org/way/913592144)) and USGS 3DEP:
+
+- `track-source.json`: a Sonoma loop sampled at approximately 50 m, with elevations
+  from `https://epqs.nationalmap.gov/v1/json` in meters.
+- `road-course.json`: the first 15 loop samples exported through `convertTrack` as an
+  open course at 40 m spacing, with a 50 m USGS terrain raster and the default 250 m
+  margin from `fetchTerrainRaster`. It intentionally omits editable waypoint metadata
+  so restoration of older exports remains covered.
+
+Keep replacements small, preserve geographic/elevation provenance, and check them
+in alongside the tests rather than referencing local importer output.
+
 Code is linted with [oxlint](https://oxc.rs/docs/guide/usage/linter) and formatted with
 [oxfmt](https://oxc.rs/docs/guide/usage/formatter) (`.oxlintrc.json`, `.oxfmtrc.json`).
 `npm install` points Git at `.githooks/`, whose pre-commit hook runs both on staged
@@ -681,7 +698,7 @@ manually. The oxc VS Code extension reads the same config for format-on-save.
 
 ## Importing real tracks
 
-`npm run import-track -- src/trackImports/*.json` converts recorded-lap track JSON
+`npm run import-track -- track-imports/*.json` converts recorded-lap track JSON
 into course files in `src/tracks/`, which appear automatically in the course picker.
 Imported point-to-point routes (`closed: false`) appear under **Roads** with a
 **Road** badge; closed circuits remain under **Racetracks**. On roads, the start and

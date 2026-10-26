@@ -11,7 +11,7 @@ let courses;
 let courseRoute;
 let courseProfileHeight;
 const sonoma = JSON.parse(
-  await readFile(new URL('../track-imports/sonoma-raceway.json', import.meta.url), 'utf8'),
+  await readFile(new URL('./fixtures/track-source.json', import.meta.url), 'utf8'),
 );
 
 before(async () => {
@@ -28,8 +28,8 @@ after(async () => {
 
 test('imports GPS laps at real scale, direction, and elevation range', () => {
   const course = convertTrack(sonoma);
-  assert.equal(course.id, 'sonoma-raceway');
-  assert.equal(course.name, 'Sonoma Raceway');
+  assert.equal(course.id, sonoma.slug);
+  assert.equal(course.name, sonoma.display_name);
   const route = courseRoute(course);
   const length = route.getLength();
   assert.ok(
@@ -325,12 +325,12 @@ test('generated track files are listed as courses with imported metadata', async
   for (const id of ['sonoma-raceway', 'thunderhill-east']) {
     const course = courses.find((candidate) => candidate.id === id);
     const source = JSON.parse(
-      await readFile(new URL(`../track-imports/${id}.json`, import.meta.url), 'utf8'),
+      await readFile(new URL(`../src/tracks/${id}.json`, import.meta.url), 'utf8'),
     );
     assert.ok(course, id);
-    assert.equal(course.name, source.display_name);
-    assert.equal(course.venueName, source.venue_name);
-    assert.equal(course.configName, source.config_name);
+    assert.equal(course.name, source.name);
+    assert.equal(course.venueName, source.venueName);
+    assert.equal(course.configName, source.configName);
     assert.deepEqual(course.location, source.location);
     assert.equal(Object.hasOwn(course, 'blurb'), false);
     assert.ok(course.points.length > 100 && course.elevation.length > 0);
