@@ -487,6 +487,7 @@ async function start() {
   let fpsFrameCount = 0;
   let fpsUpdateTime = 0;
   let changingCourse = false;
+  let previousLapInvalid = false;
 
   async function createCourseSession(
     nextDefinition: CourseDefinition,
@@ -837,6 +838,7 @@ async function start() {
     controls.clear();
     audio.reset();
     physics.reset();
+    previousLapInvalid = false;
     cameraNeedsReset = true;
     tireEffects.reset();
     clearLapRecording();
@@ -1082,6 +1084,7 @@ async function start() {
       tireEffects.setCourse(terrain, course.isAsphalt);
       previousPhysics.dispose(false);
       previousCourse.dispose();
+      previousLapInvalid = false;
       const url = new URL(location.href);
       updateUrl(url);
       raceOptions = race;
@@ -1484,6 +1487,9 @@ async function start() {
       velocity = physics.interpolate(alpha);
       updateGhost(alpha);
     }
+    const lapInvalid = !replaying && !botsOnly && laps.invalid;
+    if (lapInvalid && !previousLapInvalid) audio.playLapInvalid();
+    previousLapInvalid = lapInvalid;
     const speed = velocity.length();
     const engine = replaying ? replayEngine : physics.engine;
     const reversing = replaying ? playbackFrame.reversing : physics.reversing;

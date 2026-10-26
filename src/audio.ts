@@ -210,6 +210,34 @@ export class VehicleAudio {
     this.node?.port.postMessage({ clank: clamp(Math.sqrt(impulse / 100), 0.1, 1) });
   }
 
+  playLapInvalid() {
+    const { context, master } = this;
+    if (!context || !master || this.muted || this.failed || context.state !== 'running') return;
+    const start = context.currentTime;
+    for (const [delay, startFrequency, endFrequency] of [
+      [0, 220, 130],
+      [0.2, 180, 105],
+    ]) {
+      const oscillator = context.createOscillator();
+      const gain = context.createGain();
+      const noteStart = start + delay;
+      const noteEnd = noteStart + 0.18;
+      oscillator.type = 'triangle';
+      oscillator.frequency.setValueAtTime(startFrequency, noteStart);
+      oscillator.frequency.exponentialRampToValueAtTime(endFrequency, noteEnd);
+      gain.gain.setValueAtTime(0, noteStart);
+      gain.gain.linearRampToValueAtTime(0.75, noteStart + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, noteEnd);
+      oscillator.connect(gain).connect(master);
+      oscillator.start(noteStart);
+      oscillator.stop(noteEnd + 0.01);
+      oscillator.addEventListener('ended', () => {
+        oscillator.disconnect();
+        gain.disconnect();
+      });
+    }
+  }
+
   silence() {
     this.setAudible(false);
   }
