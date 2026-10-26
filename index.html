@@ -391,7 +391,7 @@
         <div class="dialog-actions">
           <button id="run-results-close" class="button button-quiet" type="button">Close</button>
           <button id="run-results-replay" class="button button-secondary" type="button">
-            Replay race
+            Watch replay
           </button>
           <button id="run-results-restart" class="button button-primary" type="button" autofocus>
             Race Again →
@@ -953,6 +953,30 @@
                   <option value="low">Low (512 × 256)</option>
                   <option value="medium">Medium (1024 × 512)</option>
                   <option value="high">High (full resolution)</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="pixel-ratio">Render resolution</label>
+                <p id="pixel-ratio-description">
+                  Auto uses 1× when the browser reports 4 GB memory or less, or 4 or fewer logical
+                  CPU cores; otherwise it uses up to 2×.
+                  <span id="pixel-ratio-current" role="status"></span>
+                </p>
+                <select id="pixel-ratio" aria-describedby="pixel-ratio-description">
+                  <option value="auto">Auto</option>
+                  <option value="1">1×</option>
+                  <option value="2">Up to 2×</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="terrain-shadows">Terrain shadows</label>
+                <p id="terrain-shadows-description">
+                  Auto disables terrain shadow casting on lower-end devices.
+                </p>
+                <select id="terrain-shadows" aria-describedby="terrain-shadows-description">
+                  <option value="auto">Auto</option>
+                  <option value="on">On</option>
+                  <option value="off">Off</option>
                 </select>
               </div>
             </div>

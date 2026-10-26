@@ -34,7 +34,9 @@ import {
   isLapGateMode,
   isMinimapOrientation,
   isMirrorResolution,
+  isPixelRatio,
   isSpeedUnit,
+  isTerrainShadows,
   isTimeOfDay,
   type ConfigurationState,
   type LapGateMode,
@@ -2111,6 +2113,22 @@ export function bindGameUI(
     (state) => state.mirrorResolution,
     (mirrorResolution) => ({ mirrorResolution }),
     isMirrorResolution,
+  );
+  select<ConfigurationState['pixelRatio']>(
+    '#pixel-ratio',
+    'pixel-ratio',
+    'pixelRatio',
+    (state) => state.pixelRatio,
+    (pixelRatio) => ({ pixelRatio }),
+    isPixelRatio,
+  );
+  select<ConfigurationState['terrainShadows']>(
+    '#terrain-shadows',
+    'terrain-shadows',
+    'terrainShadows',
+    (state) => state.terrainShadows,
+    (terrainShadows) => ({ terrainShadows }),
+    isTerrainShadows,
   );
   select<'on' | 'off'>(
     '#cabin-head-motion',

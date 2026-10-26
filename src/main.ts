@@ -39,7 +39,9 @@ import {
   isGhostMode,
   isLapGateMode,
   isMinimapOrientation,
+  isPixelRatio,
   isSpeedUnit,
+  isTerrainShadows,
   isTimeOfDay,
   readMirrorResolution,
   type ConfigurationState,
@@ -211,6 +213,8 @@ async function start() {
       readMirrorResolution,
       'low',
     ),
+    pixelRatio: readOption('pixel-ratio', 'auto', isPixelRatio),
+    terrainShadows: readOption('terrain-shadows', 'auto', isTerrainShadows),
     coneMode: requestedConeMode,
     showGrass: readToggle('grass'),
     showKerbs: readToggle('kerbs'),
@@ -307,9 +311,31 @@ async function start() {
     modelProgress = fraction;
     showAssetProgress();
   });
+  const { deviceMemory } = navigator as Navigator & { deviceMemory?: number };
+  const lowEndDevice =
+    (deviceMemory !== undefined && deviceMemory <= 4) ||
+    (navigator.hardwareConcurrency > 0 && navigator.hardwareConcurrency <= 4);
+  const pixelRatio = () => {
+    const preference = configurationState.getState().pixelRatio;
+    if (preference === '1') return 1;
+    if (preference === '2') return Math.min(devicePixelRatio, 2);
+    return lowEndDevice ? 1 : Math.min(devicePixelRatio, 2);
+  };
+  const updatePixelRatioReadout = () => {
+    const scale = pixelRatio();
+    const ratioOption = element<HTMLOptionElement>('#pixel-ratio option[value="auto"]');
+    ratioOption.textContent = `Auto (currently ${scale}×)`;
+    element('#pixel-ratio-current').textContent =
+      ` Current output: ${renderer.domElement.width} × ${renderer.domElement.height} pixels.`;
+  };
+  const terrainCastsShadows = () => {
+    const preference = configurationState.getState().terrainShadows;
+    return preference === 'on' || (preference === 'auto' && !lowEndDevice);
+  };
   const renderer = new THREE.WebGLRenderer({ antialias: true });
-  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.setPixelRatio(pixelRatio());
   renderer.setSize(innerWidth, innerHeight);
+  updatePixelRatioReadout();
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFShadowMap;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -468,6 +494,7 @@ async function start() {
       course.setTurnSignMode(turnSignMode);
       course.setLapGates(lapGateMode);
       course.terrain.grass.visible = showGrass;
+      course.terrain.mesh.castShadow = terrainCastsShadows();
       course.setKerbs(configurationState.getState().showKerbs);
       course.setRoadEdgeDirt(configurationState.getState().showRoadEdgeDirt);
       physics = createPhysicsClient({
@@ -567,6 +594,14 @@ async function start() {
     },
     ['showGrass'],
   );
+  configurationState.subscribe(() => {
+    terrain.mesh.castShadow = terrainCastsShadows();
+  }, ['terrainShadows']);
+  configurationState.subscribe(() => {
+    renderer.setPixelRatio(pixelRatio());
+    renderer.setSize(innerWidth, innerHeight);
+    updatePixelRatioReadout();
+  }, ['pixelRatio']);
   configurationState.subscribe(
     ({ lapGateMode }) => {
       course.setLapGates(lapGateMode);
@@ -1342,8 +1377,9 @@ async function start() {
   window.addEventListener('resize', () => {
     camera.aspect = innerWidth / innerHeight;
     camera.updateProjectionMatrix();
-    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    renderer.setPixelRatio(pixelRatio());
     renderer.setSize(innerWidth, innerHeight);
+    updatePixelRatioReadout();
   });
   renderer.domElement.addEventListener('webglcontextlost', (event) => {
     event.preventDefault();

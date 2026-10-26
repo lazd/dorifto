@@ -34,6 +34,14 @@ export function isMirrorResolution(value: string): value is ConfigurationState['
   return value === 'off' || value === 'low' || value === 'medium' || value === 'high';
 }
 
+export function isPixelRatio(value: string): value is ConfigurationState['pixelRatio'] {
+  return value === 'auto' || value === '1' || value === '2';
+}
+
+export function isTerrainShadows(value: string): value is ConfigurationState['terrainShadows'] {
+  return value === 'auto' || value === 'on' || value === 'off';
+}
+
 export function readMirrorResolution(
   params: URLSearchParams,
 ): ConfigurationState['mirrorResolution'] {
@@ -67,6 +75,8 @@ export interface ConfigurationState {
   cameraStyle: 'classic' | 'fpv' | 'cabin';
   cabinHeadMotion: boolean;
   mirrorResolution: 'off' | 'low' | 'medium' | 'high';
+  pixelRatio: 'auto' | '1' | '2';
+  terrainShadows: 'auto' | 'on' | 'off';
   minimapOrientation: 'north-up' | 'heading-up';
   speedUnit: 'mph' | 'kmh';
   timeOfDay: 'noon' | 'sunset' | 'night';
@@ -97,6 +107,8 @@ export function createConfigurationState(storage?: Storage) {
     speedUnit: 'mph',
     cabinHeadMotion: true,
     mirrorResolution: 'low',
+    pixelRatio: 'auto',
+    terrainShadows: 'auto',
     courseReverse: false,
     coneMode: 'corners',
     showGrass: true,
