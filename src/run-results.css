@@ -142,14 +142,6 @@
   background: var(--color-selected);
 }
 
-#run-results-standings td:first-child {
-  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
-}
-
-#run-results-standings td:last-child {
-  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
-}
-
 .results-driver-select {
   padding: 0;
   border: 0;

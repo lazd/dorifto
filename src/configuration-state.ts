@@ -77,6 +77,7 @@ export interface ConfigurationState {
   mirrorResolution: 'off' | 'low' | 'medium' | 'high';
   pixelRatio: 'auto' | '1' | '2';
   terrainShadows: 'auto' | 'on' | 'off';
+  showFps: boolean;
   minimapOrientation: 'north-up' | 'heading-up';
   speedUnit: 'mph' | 'kmh';
   timeOfDay: 'noon' | 'sunset' | 'night';
@@ -109,6 +110,7 @@ export function createConfigurationState(storage?: Storage) {
     mirrorResolution: 'low',
     pixelRatio: 'auto',
     terrainShadows: 'auto',
+    showFps: false,
     courseReverse: false,
     coneMode: 'corners',
     showGrass: true,

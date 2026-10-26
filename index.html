@@ -87,6 +87,14 @@
       </span>
     </div>
     <aside class="telemetry hide-when-loading" aria-label="Driving information">
+      <output
+        id="fps-counter"
+        class="hide-when-loading"
+        aria-label="Frames per second"
+        aria-live="off"
+        hidden
+        >-- FPS</output
+      >
       <div
         id="tachometer"
         role="meter"
@@ -391,7 +399,7 @@
         <div class="dialog-actions">
           <button id="run-results-close" class="button button-quiet" type="button">Close</button>
           <button id="run-results-replay" class="button button-secondary" type="button">
-            Watch replay
+            Watch replay ↗
           </button>
           <button id="run-results-restart" class="button button-primary" type="button" autofocus>
             Race Again →
@@ -978,6 +986,17 @@
                   <option value="on">On</option>
                   <option value="off">Off</option>
                 </select>
+              </div>
+              <div class="field">
+                <label for="show-fps">Live FPS counter</label>
+                <p id="fps-description">Show the current rendered frame rate.</p>
+                <input
+                  class="switch"
+                  role="switch"
+                  id="show-fps"
+                  type="checkbox"
+                  aria-describedby="fps-description"
+                />
               </div>
             </div>
           </section>

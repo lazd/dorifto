@@ -98,10 +98,9 @@ export function setHudElementHidden(
 
 export function createHudVisibilityCycle() {
   const groups = [
-    [element('.telemetry')],
-    [element('#minimap')],
-    [element('#race-panel')],
-    [element('.course-hud'), element('.lap-recorder'), element('header'), element('footer')],
+    [element('.controls')],
+    [element('.telemetry'), element('.lap-recorder')],
+    [element('.course-hud'), element('footer')],
   ];
   let level = 0;
   const set = (nextLevel: number) => {
@@ -1010,7 +1009,7 @@ export function bindCoursePicker(
         const watch = textElement(
           'button',
           'button button-secondary',
-          'Watch',
+          'Watch ↗',
         ) as HTMLButtonElement;
         watch.type = 'button';
         watch.setAttribute('aria-label', `Watch ${date} run, ${laps}`);
@@ -2138,6 +2137,14 @@ export function bindGameUI(
     (value) => ({ cabinHeadMotion: value === 'on' }),
     isToggle,
   );
+  select<'on' | 'off'>(
+    '#show-fps',
+    'fps',
+    'showFps',
+    (state) => (state.showFps ? 'on' : 'off'),
+    (value) => ({ showFps: value === 'on' }),
+    isToggle,
+  );
   select<ConfigurationState['coneMode']>(
     '#show-cones',
     'cones',
@@ -2205,11 +2212,13 @@ export function bindGameUI(
   const sound = element<HTMLInputElement>('#sound');
   const soundStatus = bindText('#sound-status');
   const telemetryPanel = element('.telemetry');
+  const fpsCounter = element<HTMLOutputElement>('#fps-counter');
   configuration.subscribe(
     (state) => {
       // The cabin camera shows the car's own working gauges instead.
       setHudElementHidden(telemetryPanel, state.cameraStyle === 'cabin');
       const chaseView = state.cameraStyle !== 'cabin';
+      (chaseView ? telemetryPanel : document.body).append(fpsCounter);
       if (document.body.classList.contains('chase-view') !== chaseView)
         document.body.classList.toggle('chase-view', chaseView);
     },

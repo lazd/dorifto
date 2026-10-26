@@ -146,7 +146,7 @@ async function start() {
     (params) => {
       const value = params.get('hide-ui');
       if (value === null) return 0;
-      if (!/^[0-4]$/.test(value)) throw new Error(`Invalid hide-ui option: ${value}`);
+      if (!/^[0-3]$/.test(value)) throw new Error(`Invalid hide-ui option: ${value}`);
       return Number(value);
     },
     0,
@@ -215,6 +215,12 @@ async function start() {
     ),
     pixelRatio: readOption('pixel-ratio', 'auto', isPixelRatio),
     terrainShadows: readOption('terrain-shadows', 'auto', isTerrainShadows),
+    showFps:
+      readOption(
+        'fps',
+        'off',
+        (value): value is 'on' | 'off' => value === 'on' || value === 'off',
+      ) === 'on',
     coneMode: requestedConeMode,
     showGrass: readToggle('grass'),
     showKerbs: readToggle('kerbs'),
@@ -336,6 +342,8 @@ async function start() {
   renderer.setPixelRatio(pixelRatio());
   renderer.setSize(innerWidth, innerHeight);
   updatePixelRatioReadout();
+  const fpsCounter = element<HTMLOutputElement>('#fps-counter');
+  fpsCounter.hidden = !configurationState.getState().showFps;
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFShadowMap;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -476,6 +484,8 @@ async function start() {
   let dialogOpen = false;
   const keys = controls.keys;
   let lastTime = 0;
+  let fpsFrameCount = 0;
+  let fpsUpdateTime = 0;
   let changingCourse = false;
 
   async function createCourseSession(
@@ -1381,6 +1391,12 @@ async function start() {
     renderer.setSize(innerWidth, innerHeight);
     updatePixelRatioReadout();
   });
+  configurationState.subscribe(
+    ({ showFps }) => {
+      fpsCounter.hidden = !showFps;
+    },
+    ['showFps'],
+  );
   renderer.domElement.addEventListener('webglcontextlost', (event) => {
     event.preventDefault();
     audio.silence();
@@ -1397,6 +1413,14 @@ async function start() {
 
   function frame(time: number) {
     if (changingCourse) return;
+    if (configurationState.getState().showFps) {
+      fpsFrameCount++;
+      if (time - fpsUpdateTime >= 500) {
+        fpsCounter.value = `${Math.round((fpsFrameCount * 1000) / (time - fpsUpdateTime))} FPS`;
+        fpsFrameCount = 0;
+        fpsUpdateTime = time;
+      }
+    }
     const { driveMode, profiles } = configurationState.getState();
     controls.poll(!dialogOpen, profiles[driveMode].steeringExpo, ui.dismissError, results.open);
     if (controls.lightingRequested && !replay) {

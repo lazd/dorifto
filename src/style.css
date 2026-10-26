@@ -13,6 +13,9 @@
   box-sizing: border-box;
 }
 body {
+  --telemetry-left: 32px;
+  --telemetry-scale: 0.75;
+  --telemetry-bottom: 28px;
   margin: 0;
   overflow: hidden;
 }
@@ -20,6 +23,30 @@ canvas {
   display: block;
   width: 100%;
   height: 100%;
+}
+#fps-counter {
+  --_fps-counter-width: 72px;
+  position: absolute;
+  z-index: 2;
+  bottom: -6px;
+  left: calc(50% - var(--_fps-counter-width) / 2);
+  padding: 5px 8px;
+  border: 1px solid #9ee8d555;
+  border-radius: 4px;
+  background: #10191fcc;
+  color: #eef6f5;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+  width: var(--_fps-counter-width);
+  text-align: center;
+}
+body:not(.chase-view) #fps-counter {
+  position: fixed;
+  top: auto;
+  left: 12px;
+  bottom: 12px;
+  transform: none;
 }
 button,
 a {
@@ -453,10 +480,14 @@ h1 span {
   white-space: nowrap;
 }
 @media (max-width: 600px), (max-height: 600px) {
+  body {
+    --telemetry-left: 12px;
+    --telemetry-scale: 0.6;
+  }
   .telemetry {
     top: 12px;
     left: 12px;
-    transform: scale(0.6);
+    transform: scale(var(--telemetry-scale));
   }
 }
 @media (max-width: 800px), (max-height: 600px) {
@@ -471,8 +502,11 @@ h1 span {
   }
 }
 @media (max-width: 380px) {
+  body {
+    --telemetry-scale: 0.5;
+  }
   .telemetry {
-    transform: scale(0.5);
+    transform: scale(var(--telemetry-scale));
   }
   .course-hud {
     width: 148px;
@@ -485,6 +519,15 @@ h1 span {
   top: auto;
   bottom: 28px;
   transform-origin: bottom left;
+  transform: scale(var(--telemetry-scale));
+}
+body.chase-view {
+  --telemetry-bottom: 28px;
+}
+@media (max-width: 800px), (max-height: 600px) {
+  body.chase-view {
+    --telemetry-bottom: 12px;
+  }
 }
 .chase-view .course-hud {
   top: auto;
@@ -510,6 +553,9 @@ h1 span {
   }
 }
 @media (max-width: 460px) {
+  body.chase-view {
+    --telemetry-bottom: 60px;
+  }
   .chase-view .telemetry,
   .chase-view .course-hud {
     bottom: 60px;
@@ -835,6 +881,12 @@ dialog .dialog-close {
   right: var(--header-padding);
   top: var(--header-padding);
   flex-direction: row-reverse;
+}
+body:not(.chase-view) .lap-recorder {
+  left: auto;
+  right: 12px;
+  bottom: 12px;
+  top: auto;
 }
 #lap-recorder-button {
   display: inline-flex;
