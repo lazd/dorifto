@@ -156,7 +156,7 @@ export function createRaceStandings(
       if (open && (i < 0 || i >= count)) continue;
       const candidate = MathUtils.euclideanModulo(i, count);
       const a = points[candidate];
-      const b = points[(candidate + 1) % count];
+      const b = points[open ? candidate + 1 : (candidate + 1) % count];
       const dx = b.x - a.x;
       const dz = b.z - a.z;
       const squaredLength = dx * dx + dz * dz;

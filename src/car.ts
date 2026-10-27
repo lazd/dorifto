@@ -1011,6 +1011,7 @@ export async function loadCar(onProgress?: (fraction: number) => void) {
     mesh.removeFromParent();
   }
 
+  let paintColor: THREE.ColorRepresentation = carPaintColor;
   return {
     chassis,
     wheels,
@@ -1023,6 +1024,10 @@ export async function loadCar(onProgress?: (fraction: number) => void) {
     setBraking,
     setPaintColor(color: THREE.ColorRepresentation) {
       for (const { material } of named(/_Paint_0$/)) material.color.set(color);
+      paintColor = color;
+    },
+    get paintColor() {
+      return paintColor;
     },
     /** Unlit glow drawn on the terrain; add it to the scene alongside the chassis. */
     underglow: underglow.mesh,

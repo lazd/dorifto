@@ -1052,6 +1052,35 @@
             <div class="illustrated-settings">
               <section class="illustrated-setting">
                 <div class="field">
+                  <label for="optimized-race-line">Optimized race line</label>
+                  <p id="optimized-race-line-description">
+                    Show a glowing racing line in your car's color, or the color of the driver
+                    you're spectating.
+                  </p>
+                  <select
+                    id="optimized-race-line"
+                    aria-describedby="optimized-race-line-description"
+                  >
+                    <option value="off">Off</option>
+                    <option value="full">Full track width</option>
+                    <option value="lane">Stay in your lane</option>
+                  </select>
+                </div>
+                <div
+                  class="setting-illustration"
+                  role="img"
+                  aria-label="Illustration of an optimized racing line through a corner"
+                >
+                  <svg viewBox="0 0 224 126" aria-hidden="true">
+                    <path class="illustration-map" d="M37 118 C37 40 95 18 204 18" />
+                    <path class="illustration-mark" d="M78 118 C78 68 111 58 204 58" />
+                    <path class="illustration-gate" d="M58 118 C58 55 113 38 204 38" />
+                    <circle class="illustration-position" cx="89" cy="67" r="5" />
+                  </svg>
+                </div>
+              </section>
+              <section class="illustrated-setting">
+                <div class="field">
                   <label for="speed-unit">Speed units</label>
                   <p id="speed-unit-description">
                     Choose the units for the HUD and cabin speedometers.

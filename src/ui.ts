@@ -1,4 +1,5 @@
 import { isDriveMode, type DriveMode } from './drive-modes';
+import { isRacingLineMode } from './configuration-state';
 import { bindBotDialog } from './bot-dialog';
 import { createDrivingTuning } from './drift-tuning';
 import { redlineRpm } from './drivetrain';
@@ -2241,6 +2242,14 @@ export function bindGameUI(
     (state) => state.lapGateMode,
     (lapGateMode) => ({ lapGateMode }),
     isLapGateMode,
+  );
+  select<ConfigurationState['racingLineMode']>(
+    '#optimized-race-line',
+    'race-line',
+    'racingLineMode',
+    (state) => state.racingLineMode,
+    (racingLineMode) => ({ racingLineMode }),
+    isRacingLineMode,
   );
   const focus = () => game.update({ focused: document.hasFocus() && !document.hidden });
   window.addEventListener('focus', focus);

@@ -56,6 +56,21 @@ test('record outcomes compare to the pre-run record, including first records and
   assert.match(recordOutcome(19, 20).description, /1.000s faster/);
 });
 
+test('only the current record holder gets a record badge after another driver goes faster', () => {
+  for (const previous of [null, 25]) {
+    assert.equal(recordOutcome(20, previous, 19).badge, '');
+    assert.equal(
+      recordOutcome(20, previous, 19).description,
+      'Track record: 0:19.000 · 1.000s off',
+    );
+    assert.equal(recordOutcome(19, previous, 19).badge, 'New record');
+  }
+  assert.equal(recordOutcome(19, 19, 19).badge, 'Record tied');
+  assert.equal(recordOutcome(20, 18, 19).badge, '', 'an older faster record still wins');
+  assert.match(recordOutcome(20, 18, 19).description, /0:18.000/);
+  assert.equal(recordOutcome(null, null, 19).description, 'Track record: 0:19.000 · No valid lap');
+});
+
 test('run statistics count drift, unique cones, and distinct car-contact episodes', () => {
   let pairs = [];
   const stats = createRunStatistics(

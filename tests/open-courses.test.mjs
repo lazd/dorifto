@@ -298,9 +298,6 @@ test('real driver recordings and open-road gates trim to the stretch both cover'
     { data: drive(0, 200, true), gates: [openRoadLineDistance, 200], trims: true },
   ];
   for (const { data, gates, trims } of cases) {
-    // Unwrapped headings must retain their timeline through forward and reverse gate trimming.
-    data.heading = data.progress.map((_, i) => 3 + i * 0.01);
-    data.offset = data.progress.map((_, i) => -2 + i * 0.001);
     const trimmed = trimRealDriver(straight, data);
     const course = { ...straight, reverse: data.reverse, gates: trimmed.gates };
     const [start, finish] = courseGateDistances(course, length);
@@ -309,18 +306,11 @@ test('real driver recordings and open-road gates trim to the stretch both cover'
     assert.equal(trimmed.trimsCourse, trims);
     close(trimmed.duration, (gates[1] - gates[0]) * 0.1);
     close(trimmed.progress[0], data.reverse ? 1 - gates[0] / length : gates[0] / length);
-    close(
-      trimmed.heading[0],
-      3 + (gates[0] - (data.reverse ? 0 : data.progress[0] * length)) * 0.01,
-    );
-    assert.equal(trimmed.heading.length, trimmed.progress.length);
-    assert.equal(trimmed.offset.length, trimmed.progress.length);
-    close(trimmed.offset[0], -2 + (trimmed.heading[0] - 3) * 0.1);
   }
   assert.equal(trimRealDriver(straight, drive(0, 40)), null);
 });
 
-test('fused positions, body heading, and glowing line share the same lateral path', async () => {
+test('real driver position, heading, and glowing line share the optimized racing line', async () => {
   const { trimRealDriver, realDriverLap, realDriverPath, createRealDriverLine } =
     await server.ssrLoadModule('/src/real-driver.ts');
   const { createReplayFrame } = await server.ssrLoadModule('/src/lap-recording.ts');
@@ -342,16 +332,20 @@ test('fused positions, body heading, and glowing line share the same lateral pat
       reverse,
       interval: 1,
       progress: reverse ? [0.75, 0.5, 0.25] : [0.25, 0.5, 0.75],
-      offset: reverse ? [-1, -2, -3] : [-3, -2, -1],
+      // Old imported sensor fields must not affect the racing line.
+      offset: [-3, -2, -1],
       heading: [Math.PI / 2, Math.PI / 2, Math.PI / 2],
     });
-    const path = realDriverPath(straight, data);
+    const path = realDriverPath(straight, reverse);
     const frame = createReplayFrame();
     realDriverLap(straight, data, () => 0, geometry).read(1, frame);
     const point = path.pointAt(0.5, new Vector3());
     assert.ok(Math.abs(frame.position.x - point.x) < 1e-5);
     assert.ok(Math.abs(frame.position.z - point.z) < 1e-5);
-    assert.ok(Math.abs(point.x + 2) < 1e-5, 'uses measured offset rather than fixed lane');
+    assert.ok(
+      Math.abs(point.x - (reverse ? 2 : -2)) < 1e-5,
+      'uses directional lane, not sensor offset',
+    );
     const direction = path.tangentAt(0.5, new Vector3()).multiplyScalar(reverse ? -1 : 1);
     const forward = new Vector3(0, 0, 1).applyQuaternion(frame.quaternion);
     assert.ok(
@@ -378,54 +372,108 @@ test('fused positions, body heading, and glowing line share the same lateral pat
   }
 });
 
-test('real driver heading adds bounded grip yaw without moving its path in either direction', async () => {
-  const { trimRealDriver, realDriverLap, maxRealDriverHeadingOffset } =
-    await server.ssrLoadModule('/src/real-driver.ts');
-  const { createReplayFrame } = await server.ssrLoadModule('/src/lap-recording.ts');
-  const straight = {
-    ...definition,
-    points: [
-      [0, 0],
-      [0, 200],
-      [0, 400],
-    ],
-  };
-  const centers = [-1, 1].flatMap((x) => [-1, 1].map((z) => new Vector3(x, 0, z)));
-  const geometry = { centers, radii: centers.map(() => 0.3) };
-  for (const reverse of [false, true]) {
-    const pathHeading = reverse ? Math.PI : 0;
-    const data = {
-      source: 'test',
-      reverse,
-      interval: 1,
-      progress: reverse ? [0.75, 0.5, 0.25] : [0.25, 0.5, 0.75],
-      heading: [pathHeading + 0.01, pathHeading + 0.02, pathHeading + 0.03],
+test('open racing-line optimization smooths corners within bounds without joining endpoints', async () => {
+  const { optimizeRacingLine, racingLinePath } = await server.ssrLoadModule('/src/racing-line.ts');
+  const route = courseRoute(definition);
+  const count = Math.max(5, Math.ceil(route.getLength() / 5));
+  const centers = Array.from({ length: count }, (_, i) => route.getPointAt(i / (count - 1)));
+  const limit = definition.width / 2 - 1;
+  const points = optimizeRacingLine(centers, limit, false);
+  assert.ok(points[0].distanceTo(centers[0]) < 1e-6);
+  assert.ok(points.at(-1).distanceTo(centers.at(-1)) < 1e-6);
+  const cost = (samples) =>
+    samples.slice(1, -1).reduce(
+      (sum, point, j) =>
+        sum +
+        point
+          .clone()
+          .multiplyScalar(-2)
+          .add(samples[j])
+          .add(samples[j + 2])
+          .lengthSq(),
+      0,
+    );
+  assert.ok(cost(points) < cost(centers), 'reduces curvature cost');
+  assert.ok(points.every((point, i) => point.distanceTo(centers[i]) <= limit + 1e-6));
+  const path = racingLinePath(definition, 'full');
+  assert.equal(racingLinePath(definition, 'full'), path, 'optimization is cached');
+  let maxOffset = 0;
+  for (let i = 0; i < count; i++) {
+    const fraction = i / (count - 1);
+    const point = path.pointAt(fraction, new Vector3());
+    maxOffset = Math.max(maxOffset, Math.abs(path.offsetAt(fraction)));
+    assert.ok(point.distanceTo(centers[i]) <= limit + 1e-6);
+  }
+  assert.ok(maxOffset > 0.1, 'follows a racing line rather than a fixed road-center offset');
+});
+
+test('racing-line paths have smooth bounded offsets in both lanes and across a closed seam', async () => {
+  const { racingLinePath } = await server.ssrLoadModule('/src/racing-line.ts');
+  for (const closed of [false, true]) {
+    const course = {
+      ...definition,
+      width: 8,
+      closed,
+      points: closed
+        ? [
+            [0, 0],
+            [100, 0],
+            [100, 100],
+            [0, 100],
+          ]
+        : definition.points,
     };
-    const read = (input) => {
-      const lap = realDriverLap(straight, trimRealDriver(straight, input), () => 0, geometry);
-      const frame = createReplayFrame();
-      lap.read(1, frame);
-      return frame;
-    };
-    const fused = read(data);
-    const { heading, ...legacy } = data;
-    const tangent = read(legacy);
-    assert.ok(fused.position.distanceTo(tangent.position) < 1e-6, 'heading does not move the path');
-    const forward = new Vector3(0, 0, 1).applyQuaternion(fused.quaternion);
-    const offset =
-      maxRealDriverHeadingOffset *
-      Math.tanh((heading[1] - pathHeading) / maxRealDriverHeadingOffset);
-    assert.ok(Math.abs(forward.x - Math.sin(pathHeading + offset)) < 1e-5);
-    assert.ok(Math.abs(forward.z - Math.cos(pathHeading + offset)) < 1e-5);
-    const oldForward = new Vector3(0, 0, 1).applyQuaternion(tangent.quaternion);
-    assert.ok(Math.abs(oldForward.z - (reverse ? -1 : 1)) < 1e-5);
-    for (const error of [-Math.PI / 2, Math.PI / 2]) {
-      const frame = read({ ...data, heading: data.heading.map(() => pathHeading + error) });
-      const direction = new Vector3(0, 0, 1).applyQuaternion(frame.quaternion);
-      const difference = Math.atan2(direction.x, direction.z) - pathHeading;
-      const yaw = Math.atan2(Math.sin(difference), Math.cos(difference));
-      assert.ok(Math.abs(yaw) <= maxRealDriverHeadingOffset + 1e-5, 'no apparent drift');
-      assert.equal(Math.sign(yaw), Math.sign(error));
+    const route = courseRoute(course);
+    const count = Math.max(5, Math.ceil(route.getLength() / 5));
+    const divisions = closed ? count : count - 1;
+    for (const mode of ['full', 'lane']) {
+      for (const reverse of [false, true]) {
+        const path = racingLinePath(course, mode, reverse);
+        const center = mode === 'full' ? 0 : reverse ? 2 : -2;
+        const limit = mode === 'full' ? 3 : 1;
+        for (let i = 0; i <= 2000; i++) {
+          assert.ok(Math.abs(path.offsetAt(i / 2000) - center) <= limit + 1e-6);
+        }
+        const sample = (u) =>
+          path.offsetAt(closed ? (((u / divisions) % 1) + 1) % 1 : u / divisions);
+        const h = 0.001;
+        for (let i = closed ? 0 : 1; i < (closed ? count : count - 1); i++) {
+          const value = sample(i);
+          const leftSlope = (value - sample(i - h)) / h;
+          const rightSlope = (sample(i + h) - value) / h;
+          assert.ok(Math.abs(leftSlope - rightSlope) < 0.01, 'continuous offset slope');
+          const leftCurve = (value - 2 * sample(i - h) + sample(i - 2 * h)) / h ** 2;
+          const rightCurve = (sample(i + 2 * h) - 2 * sample(i + h) + value) / h ** 2;
+          assert.ok(Math.abs(leftCurve - rightCurve) < 0.03, 'continuous offset curvature');
+        }
+        if (!closed) {
+          assert.ok(Math.abs(path.offsetAt(0) - center) < 1e-6);
+          assert.ok(Math.abs(path.offsetAt(1) - center) < 1e-6);
+        }
+      }
     }
+  }
+});
+
+test('open-road grip bots target the smooth optimized path with their vehicle clearance', async () => {
+  const { createDrivingMap } = await server.ssrLoadModule('/src/race-bot.ts');
+  const { racingLinePath } = await server.ssrLoadModule('/src/racing-line.ts');
+  const terrain = { heightAt: () => 0, normalAt: () => new Vector3(0, 1, 0) };
+  const halfWidth = 0.9;
+  const edgeMargin = 0.4;
+  for (const reverse of [false, true]) {
+    const course = { ...definition, reverse };
+    const map = createDrivingMap(course, terrain, halfWidth, edgeMargin);
+    const path = racingLinePath(course, 'full', reverse, halfWidth + edgeMargin);
+    let deviation = 0;
+    for (let i = 0; i < map.samples.length; i++) {
+      const fraction = i / (map.samples.length - 1);
+      const point = path.pointAt(reverse ? 1 - fraction : fraction, new Vector3());
+      assert.ok(Math.hypot(map.samples[i].x - point.x, map.samples[i].z - point.z) < 1e-6);
+      const distance = Math.hypot(point.x - map.centers[i].x, point.z - map.centers[i].z);
+      assert.ok(distance <= course.width / 2 - halfWidth - edgeMargin + 1e-6);
+      deviation = Math.max(deviation, distance);
+    }
+    assert.ok(deviation > 0.1, 'does not bypass optimization for open roads');
   }
 });

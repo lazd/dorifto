@@ -7,7 +7,7 @@ import {
   type CourseDefinition,
 } from './courses';
 import { createTrafficPlanner } from './bot-traffic';
-import { optimizeRacingLine } from './racing-line';
+import { optimizeRacingLine, racingLinePath } from './racing-line';
 import { defaultTuningPresets } from './configuration-state';
 import { vehicleSettings } from './vehicle-settings';
 import raceBotTuningsJson from './race-bot-tunings.json';
@@ -24,7 +24,7 @@ import type {
   createVehiclePhysics,
 } from './vehicle-physics';
 
-export const raceBotVersion = 7;
+export const raceBotVersion = 8;
 export const raceBotGridSpacing = 12;
 export const maxRaceBots = 8;
 const raceGridLaneOffset = 2.5;
@@ -290,7 +290,17 @@ export function createDrivingMap(
   });
   const clearance = definition.width / 2 - halfWidth - edgeMargin;
   if (clearance <= 0) throw new Error('Course is too narrow for this vehicle');
-  const line = open ? centers : optimizeRacingLine(centers, clearance);
+  const path = open
+    ? racingLinePath(definition, 'full', definition.reverse ?? false, halfWidth + edgeMargin)
+    : null;
+  const line = path
+    ? centers.map((_, i) =>
+        path.pointAt(
+          definition.reverse ? 1 - i / (count - 1) : i / (count - 1),
+          new THREE.Vector3(),
+        ),
+      )
+    : optimizeRacingLine(centers, clearance);
   const at = (i: number) => line[indexAt(i)];
   const samples = line.map((point, i) => {
     const before = at(i - 1);
@@ -425,8 +435,11 @@ export function createRaceBot(
   function createSpeedProfile(skill: number) {
     // Skill changes the driver's limits, never the vehicle's physical performance.
     const limit = THREE.MathUtils.lerp(0.85, 1, skill);
+    // Leave tire capacity for tracking corrections and combined braking/acceleration.
     const lateralAcceleration =
-      driver.corneringGrip * Math.min(tuning.frontGrip, tuning.rearGrip) * limit;
+      Math.min(driver.corneringGrip, tuning.friction * 9.81 * 0.8) *
+      Math.min(tuning.frontGrip, tuning.rearGrip) *
+      limit;
     return {
       skill,
       brakingDeceleration: driver.brakingLimit * limit,
@@ -580,8 +593,17 @@ export function createRaceBot(
     if (outside || (state.speed > 5 && Math.abs(state.slipAngle) > driver.tractionSlip * 2))
       troubled = true;
 
+    const sample = samples[index];
+    const fraction = clamp(
+      ((state.x - sample.x) * Math.sin(sample.heading) +
+        (state.z - sample.z) * Math.cos(sample.heading)) /
+        spacing,
+      -0.5,
+      0.5,
+    );
+    const adjacent = wrap(index + (fraction < 0 ? -1 : 1), count);
     const lookahead = 5 + state.speed * driver.lookaheadTime;
-    const targetIndex = wrap(index + Math.max(1, Math.round(lookahead / spacing)), count);
+    const targetIndex = wrap(index + fraction + Math.max(1, lookahead / spacing), count);
     const target = trafficPlanner.update(state, index, targetIndex, traffic, dt, racePosition);
     const attacking = target.maneuver === 'attacking';
     profile =
@@ -610,7 +632,12 @@ export function createRaceBot(
         tuning.steeringHigh,
         Math.min((state.speed * 3.6) / 140, 1),
       ) * tuning.steeringScale;
-    const yawError = state.yawRate - state.speed * target.curvature;
+    const curvature = THREE.MathUtils.lerp(
+      sample.curvature,
+      samples[adjacent].curvature,
+      Math.abs(fraction),
+    );
+    const yawError = state.yawRate - state.speed * curvature;
     // Beyond normal cornering slip, point the front wheels along the car's velocity.
     const excessSlip =
       Math.sign(state.slipAngle) * Math.max(0, Math.abs(state.slipAngle) - slipLimit);
@@ -619,15 +646,6 @@ export function createRaceBot(
     thinking.conditions.stabilizing = state.speed > 5 && excessSlip !== 0;
     controls.steer = clamp((wheelAngle + stabilization) / steeringLimit, -1, 1);
     if (Math.abs(controls.steer) > 0.95) saturationSeconds += dt;
-    const sample = samples[index];
-    const fraction = clamp(
-      ((state.x - sample.x) * Math.sin(sample.heading) +
-        (state.z - sample.z) * Math.cos(sample.heading)) /
-        spacing,
-      -0.5,
-      0.5,
-    );
-    const adjacent = wrap(index + (fraction < 0 ? -1 : 1), count);
     const plannedSpeed = THREE.MathUtils.lerp(speeds[index], speeds[adjacent], Math.abs(fraction));
     targetSpeed = plannedSpeed;
     controls.reverse = 0;

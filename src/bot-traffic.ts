@@ -39,9 +39,16 @@ export function createTrafficPlanner(
   ) {
     headingAdjustment = MathUtils.lerp(headingAdjustment, 0, 1 - Math.exp(-dt / 0.4));
     if (Math.abs(headingAdjustment) < 0.0001) headingAdjustment = 0;
-    const target = map.samples[targetIndex];
-    result.x = target.x;
-    result.z = target.z;
+    const targetStart = Math.floor(targetIndex);
+    const targetEnd =
+      map.definition.closed === false
+        ? Math.min(targetStart + 1, map.samples.length - 1)
+        : (targetStart + 1) % map.samples.length;
+    const fraction = targetIndex - targetStart;
+    const target = map.samples[targetStart];
+    const next = map.samples[targetEnd];
+    result.x = MathUtils.lerp(target.x, next.x, fraction);
+    result.z = MathUtils.lerp(target.z, next.z, fraction);
     result.curvature = map.samples[index].curvature;
     result.maneuver = racePosition !== null && racePosition > 1 ? 'chasing' : 'racing-line';
     const right = map.rights[index];
@@ -69,21 +76,39 @@ export function createTrafficPlanner(
     const opponentOffset = (opponent.x - center.x) * right.x + (opponent.z - center.z) * right.z;
     // Positive curvature turns toward the map's right vector.
     const inside = Math.sign(bend);
-    const targetRight = map.rights[targetIndex];
-    const targetCenter = map.centers[targetIndex];
+    const targetRightX = MathUtils.lerp(
+      map.rights[targetStart].x,
+      map.rights[targetEnd].x,
+      fraction,
+    );
+    const targetRightZ = MathUtils.lerp(
+      map.rights[targetStart].z,
+      map.rights[targetEnd].z,
+      fraction,
+    );
+    const targetCenterX = MathUtils.lerp(
+      map.centers[targetStart].x,
+      map.centers[targetEnd].x,
+      fraction,
+    );
+    const targetCenterZ = MathUtils.lerp(
+      map.centers[targetStart].z,
+      map.centers[targetEnd].z,
+      fraction,
+    );
     const ideal =
-      (target.x - targetCenter.x) * targetRight.x + (target.z - targetCenter.z) * targetRight.z;
+      (result.x - targetCenterX) * targetRightX + (result.z - targetCenterZ) * targetRightZ;
     const desired = inside * (Math.max(inside * ideal, inside * opponentOffset) + separation);
     const roadLimit = map.definition.width / 2 + 0.8;
     const blend =
       1 - MathUtils.smoothstep(nearest, dimensions.halfLength * 2, dimensions.halfLength * 2 + 3);
     const offset = MathUtils.lerp(ideal, MathUtils.clamp(desired, -roadLimit, roadLimit), blend);
-    const dx = target.x - state.x;
-    const dz = target.z - state.z;
+    const dx = result.x - state.x;
+    const dz = result.z - state.z;
     const heading = Math.atan2(dx, dz);
     const insideHeading = Math.atan2(
-      targetCenter.x + targetRight.x * offset - state.x,
-      targetCenter.z + targetRight.z * offset - state.z,
+      targetCenterX + targetRightX * offset - state.x,
+      targetCenterZ + targetRightZ * offset - state.z,
     );
     const difference = Math.atan2(
       Math.sin(insideHeading - heading),

@@ -14,6 +14,7 @@ let terrain;
 let definition;
 let configuration;
 let trainRaceBot;
+let createTrainingVehicle;
 let createRaceBot;
 let createDrivingMap;
 let vehicleDimensions;
@@ -45,7 +46,7 @@ before(async () => {
     '/src/configuration-state.ts',
   );
   defaultTuningPresets = presets;
-  ({ trainRaceBot } = await server.ssrLoadModule('/src/bot-training.ts'));
+  ({ trainRaceBot, createTrainingVehicle } = await server.ssrLoadModule('/src/bot-training.ts'));
   ({
     createRaceBot,
     createDrivingMap,
@@ -121,6 +122,55 @@ test('race driver completes repeated three-lap runs and serializes bounded learn
   assert.equal(failed.runs[0].completed, false);
   assert.equal(failed.runs[0].failure, 'timeout');
   assert.equal(failed.runs[0].laps.length, 0);
+});
+
+test('grip driver finishes Newtown in both directions without sliding or leaving the road', async () => {
+  const { roads, loadCourseDefinition } = await server.ssrLoadModule('/src/courses.ts');
+  const { CourseTerrain } = await server.ssrLoadModule('/src/terrain.ts');
+  const { physicsStep } = await server.ssrLoadModule('/src/physics-messages.ts');
+  const road = roads.find(({ id }) => id === 'road-cf5aa9d3-6e94-467e-925f-8d2d3b86ee82');
+  assert.ok(road);
+  const loaded = await loadCourseDefinition(road);
+  const options = { ...defaultRaceBotOptions, preset: 'grip-default' };
+  const setup = raceBotConfiguration(configuration, options.preset);
+  const { botEdgeMargin } = await server.ssrLoadModule('/src/race-bot.ts');
+  const dimensions = vehicleDimensions(geometry);
+  for (const reverse of [false, true]) {
+    const course = { ...loaded, reverse };
+    const terrain = new CourseTerrain(course, false);
+    const map = createDrivingMap(
+      course,
+      terrain,
+      dimensions.halfWidth,
+      botEdgeMargin(options.preset),
+    );
+    const bot = createRaceBot(map, setup, dimensions, options);
+    const { physics, laps } = createTrainingVehicle(
+      Ammo,
+      course,
+      terrain,
+      geometry,
+      setup,
+      bot.controls,
+    );
+    try {
+      physics.reset();
+      for (let step = 0; step < 200 / physicsStep && !laps.finished; step++) {
+        bot.update(physics.readState(), physicsStep);
+        physics.step();
+      }
+      assert.equal(laps.finished, true, `finishes Newtown, reverse=${reverse}`);
+      assert.equal(laps.invalid, false);
+      assert.ok(bot.metrics.maxSlip < 0.15, `grip driving, not sliding: ${bot.metrics.maxSlip}`);
+      assert.equal(bot.metrics.offTrackSeconds, 0);
+    } finally {
+      physics.dispose();
+      for (const mesh of [terrain.mesh, terrain.grass]) {
+        mesh.geometry.dispose();
+        mesh.material.dispose();
+      }
+    }
+  }
 });
 
 test('drift driver laps Sweeper sideways without spinning or touching dirt', () => {
@@ -247,6 +297,9 @@ test('traffic steers inside a nearby opponent and eases back to the racing line'
     };
     assertRacingLine(update());
     assert.equal(update().maneuver, 'racing-line');
+    const interpolated = planner.update(state, index, targetIndex + 0.5, []);
+    assert.ok(Math.abs(interpolated.x - (line.x + map.samples[at(targetIndex + 1)].x) / 2) < 1e-9);
+    assert.ok(Math.abs(interpolated.z - (line.z + map.samples[at(targetIndex + 1)].z) / 2) < 1e-9);
     const right = map.rights[index];
     const opponent = {
       ...state,

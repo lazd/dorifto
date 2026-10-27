@@ -83,6 +83,10 @@ export type LapGateMode = (typeof lapGateModes)[number];
 export const isLapGateMode = (value: string): value is LapGateMode =>
   (lapGateModes as readonly string[]).includes(value);
 
+export function isRacingLineMode(value: string): value is ConfigurationState['racingLineMode'] {
+  return value === 'off' || value === 'full' || value === 'lane';
+}
+
 export interface ConfigurationState {
   driveMode: DriveMode;
   profiles: Readonly<Record<DriveMode, DrivingTuning>>;
@@ -103,6 +107,7 @@ export interface ConfigurationState {
   showKerbs: boolean;
   showRoadEdgeDirt: boolean;
   lapGateMode: LapGateMode;
+  racingLineMode: 'off' | 'full' | 'lane';
   turnSignMode: TurnSignMode;
   ghostMode: 'fastest' | 'previous' | 'record' | 'real' | 'off';
   muted: boolean;
@@ -133,6 +138,7 @@ export function createConfigurationState(storage?: Storage) {
     showKerbs: true,
     showRoadEdgeDirt: true,
     lapGateMode: 'off',
+    racingLineMode: 'off',
     turnSignMode: 'several',
     ghostMode: 'fastest',
     muted: false,

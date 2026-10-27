@@ -110,6 +110,7 @@ function fixture(reverse = false, starts = [-10, -20]) {
     if (published) standings = published;
     return published;
   }
+
   function drive(seconds, speeds) {
     for (let i = 0; i < Math.round(seconds / 0.05); i++) step(speeds);
     return standings;
@@ -152,6 +153,38 @@ for (const reverse of [false, true]) {
     assert.ok(standings[1].gap > 0);
   });
 }
+
+test('open-road standings follow progress instead of projecting onto a finish-to-start chord', async () => {
+  const { roads, loadCourseDefinition } = await server.ssrLoadModule('/src/courses.ts');
+  const road = await loadCourseDefinition(
+    roads.find(({ id }) => id === 'hwy-129-tail-of-the-dragon-1185-711'),
+  );
+  const { raceGridSpawn } = await server.ssrLoadModule('/src/race-bot.ts');
+  for (const reverse of [false, true]) {
+    const definition = { ...road, reverse };
+    const route = courseRoute(definition);
+    const entrants = [0, 1].map((slot) => {
+      const spawn = raceGridSpawn(definition, slot);
+      const position = route.getPointAt(0);
+      position.set(spawn.position[0], 0, spawn.position[1]);
+      return { position, laps: { lap: 1, lapStartedAt: 0, last: null } };
+    });
+    const tracker = createRaceStandings(definition, entrants);
+    for (let distance = 10; distance < route.getLength() - 10; distance += 10) {
+      const leader = Math.floor(distance / 200) % 2;
+      entrants[leader].position.copy(route.getPointAt(distance / route.getLength()));
+      entrants[1 - leader].position.copy(route.getPointAt((distance - 5) / route.getLength()));
+      const standings = tracker.update(0.5);
+      assert.equal(
+        standings[0].entrant,
+        leader,
+        `front car leads at ${distance} m, reverse=${reverse}`,
+      );
+      assert.equal(tracker.position(leader), 1, 'lead-time tracking uses the same leader');
+      assert.equal(tracker.position(1 - leader), 2);
+    }
+  }
+});
 
 test('invalid laps lose a circuit at the finish, not when they leave the road', () => {
   const race = fixture();

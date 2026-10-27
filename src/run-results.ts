@@ -37,7 +37,13 @@ export function mayoResult(validity: LapValidity) {
   return { text: 'Avoided', status: 'avoided' };
 }
 
-export function recordOutcome(best: number | null, previous: number | null) {
+export function recordOutcome(
+  best: number | null,
+  previous: number | null,
+  current: number | null = null,
+) {
+  if (current !== null && (best === null || best > current))
+    previous = previous === null ? current : Math.min(previous, current);
   if (best === null)
     return {
       badge: '',
@@ -375,7 +381,12 @@ export function createRunResults(actions: {
         const bestTime = best === null ? null : recording.lapTimes[best];
         element('#run-results-best').textContent = formatLapTime(bestTime);
         const badge = element('#run-results-badge');
-        const outcome = recordOutcome(bestTime, previousRecordTime);
+        const recordBest = record?.bestLapForMode(options.mode) ?? null;
+        const outcome = recordOutcome(
+          bestTime,
+          previousRecordTime,
+          record && recordBest !== null ? record.lapTimes[recordBest] : null,
+        );
         badge.hidden = !outcome.badge;
         badge.textContent = outcome.badge;
         element('#run-results-record').textContent = outcome.description;

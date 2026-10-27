@@ -8,28 +8,41 @@ dedicated Web Worker; there are no runtime CDN dependencies.
 
 Run `npm run import-real-data` to match Sensor Logger JSON recordings in `data-imports/`
 to open roads and write compact 10 Hz recordings into `src/real-data/`.
-GPS position and speed determine progress; a stationary phone's IMU supplies lean and steering.
-Heading is estimated separately with gyro prediction, GPS-bearing Kalman corrections, and
-offline smoothing. GPS bearings regularly correct gyro bias and phone motion so they do not
-accumulate into exaggerated turns. Compass readings are calibrated against GPS on fast, straight sections,
-downweighted by calibration scatter, and rejected when unreliable or inconsistent with the
-estimate. Import diagnostics report calibration quality; magnetic interference can mean a drive
-uses only gyro/GPS heading.
+GPS position and speed determine progress and timing; a stationary phone's IMU supplies
+body roll/pitch and estimated throttle/braking, not heading or lateral position.
+The ghost and glowing blue line follow `optimizeRacingLine` within the lane for the recorded
+direction, sampled approximately every 5 m with a 1 m centerline/road-edge margin for the
+vehicle center. Open-road optimization holds its endpoints fixed rather
+than joining finish to start. The body points along this path and front-wheel steering
+follows its curvature (plus the existing estimated understeer). Recorded progress remains
+the timing reference, including gate trimming.
 
-The importer also estimates lateral position using fused heading and speed between GPS fixes,
-corrected by accuracy-weighted GPS offsets from the road. An offline smoother suppresses GPS
-jumps, and road-edge constraints leave a 1 m margin for the vehicle's center. A time-scaled
-lane-position prior resists lateral drift from uncertain GPS and heading errors without
-fixing the car to lane center. It relaxes after three consecutive GPS fixes (at most 2 s
-apart) whose two-sigma lateral intervals lie wholly in the oncoming half and within the
-road edges. That support expires after 2 s without another supporting fix; isolated precise
-crossing fixes are rejected. This is a driving-lane assumption, not proof that no crossing
-occurred. The ghost and blue line share this reconstructed path; the
-body points along it, and front-wheel steering follows its curvature, avoiding independent
-heading changes that look like drifting. This is an estimate, not lane-accurate telemetry:
-GPS uncertainty can exceed the lane width, and road constraints cannot recover exact apexes.
-Older recordings without lateral position retain their fixed lane offset and bounded sensor
-heading (up to 3 degrees from the road), or road-tangent orientation when heading is absent.
+This is an optimized racing line, not a reconstruction of the driver's actual line.
+Compass/gyro heading fusion,
+GPS lateral-position fusion, and lane-position priors are not used; legacy heading,
+offset, and curvature fields in older imports are ignored.
+
+### Optimized racing-line HUD aid
+
+Under **Settings > HUD & aids**, **Optimized race line** offers **Off** (default),
+**Full track width**, and **Stay in your lane**. The `race-line=off|full|lane` URL option
+retains the selection. The terrain-draped glow matches the player's car paint or the
+currently spectated car (ghost blue for the real driver). Enabling the aid replaces the
+real-driver-only blue overlay; turning it off restores that overlay when its ghost is selected.
+Direction changes select the appropriate right-hand lane.
+When spectating a grip bot on an open road, **Full track width** uses that bot's
+vehicle-width and road-edge clearance, matching its base target path. The HUD
+selection is a display aid; it does not switch the bot to lane-only driving or
+show temporary traffic-avoidance deviations.
+
+The line is a bounded geometric curvature approximation, not a vehicle-specific
+minimum-lap-time solution or a reconstruction from GPS. Optimization samples the same
+generated road spline used to build the road, rather than raw map vertices. Cubic
+B-spline lateral offsets replace piecewise-linear interpolation, keeping offset slope
+and curvature continuous through sample boundaries without overshooting lane/road
+bounds. Underlying road geometry can still influence the shape. Paths are cached; glow
+geometry is rebuilt only for course, direction, or display-mode changes, and changing
+the spectated car updates only the color.
 
 ## Browser course builder
 
@@ -187,6 +200,13 @@ course, including reversed courses. A local traffic planner checks road-constrai
 passing paths against predicted vehicle footprints, holds a passing side until
 clear, and slows/stops when blocked. Close-range recovery checks behind before
 backing up for steering room. This is basic passing, not competitive defending.
+On open roads, grip bots follow the shared smooth optimized path, with their own
+vehicle-width and preset edge margin; they no longer bypass optimization and follow
+the centerline. Closed circuits retain their existing optimized target points.
+Steering interpolates lookahead targets and local curvature between samples rather
+than jumping between 3 m waypoints. Corner-speed planning is capped by the setup's
+tire friction with a 20% grip reserve for corrections and combined pedal loads,
+in addition to the driver's tuned limit and skill.
 Color-matched minimap arrows show their positions and
 headings. Bots have distance-attenuated stereo engine/tire audio, real-slip smoke
 and tire marks, glowing running lamps and telemetry-driven brake lamps.
@@ -497,6 +517,12 @@ Select a standings row to see that driver's best lap, record comparison, statist
 and **Laps** table below it. The selected row is highlighted; driver buttons also
 support keyboard selection. Drivers still racing update live, while finished
 drivers' statistics freeze at the finish.
+The record badge compares each driver's best valid lap against the shared track record,
+including faster laps set by other drivers in the same race. Beating the pre-race
+record does not retain a **New record** badge after another driver goes faster.
+**Time in 1st** is the percentage of that driver's active race time spent ranked first.
+Open-road progress follows only the road's actual segments, without a finish-to-start
+connection; saved races retain their originally recorded statistics.
 The header badge shows 🏆 Won for the first classified finisher, 🏁 Finished for
 other classified finishes, 🔴 DNF for a stopped run, or ❌ Disqualified when
 completed attempts do not satisfy the selected mode's validity requirements.

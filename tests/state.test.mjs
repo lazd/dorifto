@@ -8,6 +8,7 @@ let createConfigurationState;
 let createGameState;
 let courseGhostMode;
 let isPixelRatio;
+let isRacingLineMode;
 
 before(async () => {
   server = await createServer({
@@ -15,10 +16,15 @@ before(async () => {
     appType: 'custom',
   });
   ({ createStore } = await server.ssrLoadModule('/src/store.ts'));
-  ({ createConfigurationState, courseGhostMode, isPixelRatio } = await server.ssrLoadModule(
-    '/src/configuration-state.ts',
-  ));
+  ({ createConfigurationState, courseGhostMode, isPixelRatio, isRacingLineMode } =
+    await server.ssrLoadModule('/src/configuration-state.ts'));
   ({ createGameState } = await server.ssrLoadModule('/src/game-state.ts'));
+});
+
+test('optimized racing-line aid defaults off and accepts only its three display modes', () => {
+  assert.equal(createConfigurationState().getState().racingLineMode, 'off');
+  for (const mode of ['off', 'full', 'lane']) assert.equal(isRacingLineMode(mode), true);
+  for (const mode of ['on', '', 'all']) assert.equal(isRacingLineMode(mode), false);
 });
 
 after(async () => {

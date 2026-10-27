@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { carLightLayers, loadCar } from './car';
+import { vehicleDimensions } from './car-geometry';
+import { racingLinePath } from './racing-line';
 import { DrivingControls, updateVehicleLights } from './controls';
 import { inputBindings, keyboardActionForCode } from './input-bindings';
 import { createCourse } from './course';
@@ -39,6 +41,7 @@ import {
   isCameraStyle,
   isGhostMode,
   isLapGateMode,
+  isRacingLineMode,
   isMinimapOrientation,
   isPixelRatio,
   isSpeedUnit,
@@ -76,6 +79,7 @@ import {
   raceBotDriverName,
   botDriveMode,
   botTuning,
+  botEdgeMargin,
   readBotsOnly,
   readRaceBots,
   writeRaceBots,
@@ -86,6 +90,7 @@ import { readTurnSignMode } from './turn-sign';
 import { createGhostCar } from './ghost-car';
 import {
   createRealDriverLine,
+  createRacingLineDisplay,
   hasRealDriver,
   loadRealDriver,
   realDriverLap,
@@ -243,6 +248,7 @@ async function start() {
     showKerbs: readToggle('kerbs'),
     showRoadEdgeDirt: readToggle('road-edge-dirt'),
     lapGateMode: readOption('lap-gates', 'off', isLapGateMode),
+    racingLineMode: readOption('race-line', 'off', isRacingLineMode),
     ghostMode: requestedGhost,
     turnSignMode: readParams(
       ['signs'],
@@ -797,6 +803,57 @@ async function start() {
 
   let realDriver: { data: TrimmedRealDriver; lap: RunRecording; line: THREE.Mesh } | null = null;
   let realDriverLoad = 0;
+  const carHalfWidth = vehicleDimensions(car).halfWidth;
+  let racingAid: {
+    course: typeof course;
+    mode: 'full' | 'lane';
+    reverse: boolean;
+    edgeClearance: number;
+    color: THREE.ColorRepresentation;
+    mesh: ReturnType<typeof createRacingLineDisplay>;
+  } | null = null;
+  function syncRacingAid() {
+    const mode = configurationState.getState().racingLineMode;
+    const reverse = layout.reverse ?? false;
+    const color = watchingRealDriver() ? 0x9ee8ff : car.paintColor;
+    const observedBot = botsOnly && !watchingRealDriver() ? botOptions[physics.observedBot] : null;
+    const edgeMargin = observedBot ? botEdgeMargin(observedBot.preset) : undefined;
+    const edgeClearance =
+      activeDefinition.closed === false && mode === 'full' && edgeMargin !== undefined
+        ? carHalfWidth + edgeMargin
+        : 1;
+    if (
+      racingAid &&
+      (racingAid.course !== course ||
+        racingAid.mode !== mode ||
+        racingAid.reverse !== reverse ||
+        racingAid.edgeClearance !== edgeClearance)
+    ) {
+      // Old courses own/dispose their meshes; remove only a line replaced on the live course.
+      if (racingAid.course === course) {
+        racingAid.mesh.removeFromParent();
+        racingAid.mesh.geometry.dispose();
+        racingAid.mesh.material.dispose();
+      }
+      racingAid = null;
+    }
+    if (mode !== 'off' && !racingAid) {
+      const mesh = createRacingLineDisplay(
+        course.drape,
+        racingLinePath(activeDefinition, mode, reverse, edgeClearance),
+        color,
+      );
+      mesh.name = 'optimized-race-line';
+      mesh.visible = true;
+      racingAid = { course, mode, reverse, edgeClearance, color, mesh };
+    }
+    if (racingAid && racingAid.color !== color) {
+      racingAid.mesh.material.uniforms.color.value.set(color);
+      racingAid.color = color;
+    }
+    // Avoid two overlapping glowing paths when the HUD aid is enabled.
+    if (realDriver) realDriver.line.visible = mode === 'off' && activeGhostMode() === 'real';
+  }
   const activeGhostMode = (reverse = configurationState.getState().courseReverse) =>
     courseGhostMode(
       configurationState.getState().ghostMode,
@@ -1646,6 +1703,7 @@ async function start() {
     previousLapInvalid = lapInvalid;
     const speed = velocity.length();
     const watching = watchedVelocity3d !== null;
+    syncRacingAid();
     // Watching the real driver: the HUD and engine sound follow it, the car's effects its bot.
     const shownSpeed = watchedVelocity3d
       ? Math.hypot(watchedVelocity3d.x, watchedVelocity3d.z)
