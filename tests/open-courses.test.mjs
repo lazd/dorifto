@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { createServer } from 'vite';
+import { Vector3 } from 'three';
 import { convertTrack, selectTrackSegment } from '../scripts/import-track.mjs';
 
 let server;
@@ -297,6 +298,9 @@ test('real driver recordings and open-road gates trim to the stretch both cover'
     { data: drive(0, 200, true), gates: [openRoadLineDistance, 200], trims: true },
   ];
   for (const { data, gates, trims } of cases) {
+    // Unwrapped headings must retain their timeline through forward and reverse gate trimming.
+    data.heading = data.progress.map((_, i) => 3 + i * 0.01);
+    data.offset = data.progress.map((_, i) => -2 + i * 0.001);
     const trimmed = trimRealDriver(straight, data);
     const course = { ...straight, reverse: data.reverse, gates: trimmed.gates };
     const [start, finish] = courseGateDistances(course, length);
@@ -305,6 +309,123 @@ test('real driver recordings and open-road gates trim to the stretch both cover'
     assert.equal(trimmed.trimsCourse, trims);
     close(trimmed.duration, (gates[1] - gates[0]) * 0.1);
     close(trimmed.progress[0], data.reverse ? 1 - gates[0] / length : gates[0] / length);
+    close(
+      trimmed.heading[0],
+      3 + (gates[0] - (data.reverse ? 0 : data.progress[0] * length)) * 0.01,
+    );
+    assert.equal(trimmed.heading.length, trimmed.progress.length);
+    assert.equal(trimmed.offset.length, trimmed.progress.length);
+    close(trimmed.offset[0], -2 + (trimmed.heading[0] - 3) * 0.1);
   }
   assert.equal(trimRealDriver(straight, drive(0, 40)), null);
+});
+
+test('fused positions, body heading, and glowing line share the same lateral path', async () => {
+  const { trimRealDriver, realDriverLap, realDriverPath, createRealDriverLine } =
+    await server.ssrLoadModule('/src/real-driver.ts');
+  const { createReplayFrame } = await server.ssrLoadModule('/src/lap-recording.ts');
+  const { Mesh, Vector3 } = await server.ssrLoadModule('three');
+  const straight = {
+    ...definition,
+    width: 8,
+    points: [
+      [0, 0],
+      [0, 200],
+      [0, 400],
+    ],
+  };
+  const centers = [-1, 1].flatMap((x) => [-1, 1].map((z) => new Vector3(x, 0, z)));
+  const geometry = { centers, radii: centers.map(() => 0.3) };
+  for (const reverse of [false, true]) {
+    const data = trimRealDriver(straight, {
+      source: 'test',
+      reverse,
+      interval: 1,
+      progress: reverse ? [0.75, 0.5, 0.25] : [0.25, 0.5, 0.75],
+      offset: reverse ? [-1, -2, -3] : [-3, -2, -1],
+      heading: [Math.PI / 2, Math.PI / 2, Math.PI / 2],
+    });
+    const path = realDriverPath(straight, data);
+    const frame = createReplayFrame();
+    realDriverLap(straight, data, () => 0, geometry).read(1, frame);
+    const point = path.pointAt(0.5, new Vector3());
+    assert.ok(Math.abs(frame.position.x - point.x) < 1e-5);
+    assert.ok(Math.abs(frame.position.z - point.z) < 1e-5);
+    assert.ok(Math.abs(point.x + 2) < 1e-5, 'uses measured offset rather than fixed lane');
+    const direction = path.tangentAt(0.5, new Vector3()).multiplyScalar(reverse ? -1 : 1);
+    const forward = new Vector3(0, 0, 1).applyQuaternion(frame.quaternion);
+    assert.ok(
+      forward.distanceTo(direction) < 1e-5,
+      'points along actual motion, not independent yaw',
+    );
+    let called = false;
+    const line = createRealDriverLine(
+      (offsetAt, width, lift, material, from, to, relative) => {
+        called = true;
+        assert.equal(offsetAt(0.5), path.offsetAt(0.5));
+        assert.equal(offsetAt(0.625), path.offsetAt(0.625));
+        assert.equal(relative, true);
+        assert.ok(Math.abs(from - 0.25) < 1e-6);
+        assert.ok(Math.abs(to - 0.75) < 1e-6);
+        return new Mesh(undefined, material);
+      },
+      straight,
+      data,
+    );
+    assert.ok(called);
+    line.geometry.dispose();
+    line.material.dispose();
+  }
+});
+
+test('real driver heading adds bounded grip yaw without moving its path in either direction', async () => {
+  const { trimRealDriver, realDriverLap, maxRealDriverHeadingOffset } =
+    await server.ssrLoadModule('/src/real-driver.ts');
+  const { createReplayFrame } = await server.ssrLoadModule('/src/lap-recording.ts');
+  const straight = {
+    ...definition,
+    points: [
+      [0, 0],
+      [0, 200],
+      [0, 400],
+    ],
+  };
+  const centers = [-1, 1].flatMap((x) => [-1, 1].map((z) => new Vector3(x, 0, z)));
+  const geometry = { centers, radii: centers.map(() => 0.3) };
+  for (const reverse of [false, true]) {
+    const pathHeading = reverse ? Math.PI : 0;
+    const data = {
+      source: 'test',
+      reverse,
+      interval: 1,
+      progress: reverse ? [0.75, 0.5, 0.25] : [0.25, 0.5, 0.75],
+      heading: [pathHeading + 0.01, pathHeading + 0.02, pathHeading + 0.03],
+    };
+    const read = (input) => {
+      const lap = realDriverLap(straight, trimRealDriver(straight, input), () => 0, geometry);
+      const frame = createReplayFrame();
+      lap.read(1, frame);
+      return frame;
+    };
+    const fused = read(data);
+    const { heading, ...legacy } = data;
+    const tangent = read(legacy);
+    assert.ok(fused.position.distanceTo(tangent.position) < 1e-6, 'heading does not move the path');
+    const forward = new Vector3(0, 0, 1).applyQuaternion(fused.quaternion);
+    const offset =
+      maxRealDriverHeadingOffset *
+      Math.tanh((heading[1] - pathHeading) / maxRealDriverHeadingOffset);
+    assert.ok(Math.abs(forward.x - Math.sin(pathHeading + offset)) < 1e-5);
+    assert.ok(Math.abs(forward.z - Math.cos(pathHeading + offset)) < 1e-5);
+    const oldForward = new Vector3(0, 0, 1).applyQuaternion(tangent.quaternion);
+    assert.ok(Math.abs(oldForward.z - (reverse ? -1 : 1)) < 1e-5);
+    for (const error of [-Math.PI / 2, Math.PI / 2]) {
+      const frame = read({ ...data, heading: data.heading.map(() => pathHeading + error) });
+      const direction = new Vector3(0, 0, 1).applyQuaternion(frame.quaternion);
+      const difference = Math.atan2(direction.x, direction.z) - pathHeading;
+      const yaw = Math.atan2(Math.sin(difference), Math.cos(difference));
+      assert.ok(Math.abs(yaw) <= maxRealDriverHeadingOffset + 1e-5, 'no apparent drift');
+      assert.equal(Math.sign(yaw), Math.sign(error));
+    }
+  }
 });

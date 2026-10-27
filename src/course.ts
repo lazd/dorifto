@@ -168,12 +168,13 @@ function buildCourse(scene: THREE.Group, definition: CourseDefinition, carWidth:
   const dark = paint(0x20282b);
   const segments = Math.ceil(length / 0.5);
   function ribbon(
-    offset: number,
+    offset: number | ((fraction: number) => number),
     width: number,
     height: number,
     material: THREE.Material,
     from = 0,
     to = 1,
+    relativeLateral = false,
   ) {
     const positions: number[] = [];
     const uvs: number[] = [];
@@ -184,11 +185,12 @@ function buildCourse(scene: THREE.Group, definition: CourseDefinition, carWidth:
       const center = route.getPointAt(t);
       const tangent = route.getTangentAt(t);
       across.set(tangent.z, 0, -tangent.x).normalize();
+      const centerOffset = typeof offset === 'number' ? offset : offset(t);
       for (const edge of [-width / 2, width / 2]) {
-        const point = center.clone().addScaledVector(across, offset + edge);
+        const point = center.clone().addScaledVector(across, centerOffset + edge);
         positions.push(point.x, height, point.z);
         uvs.push(point.x / 5, point.z / 5);
-        lateral.push(offset + edge);
+        lateral.push(relativeLateral ? edge : centerOffset + edge);
       }
     }
     const indices: number[] = [];

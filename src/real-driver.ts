@@ -25,6 +25,10 @@ export interface RealDriverData {
   longitudinal?: number[];
   /** Signed path curvature in 1/m (positive turns left), per sample. */
   curvature?: number[];
+  /** Fused gyro/GPS/compass world yaw in radians, unwrapped (positive left from north). */
+  heading?: number[];
+  /** Fused position across the road in meters, positive left of the forward route. */
+  offset?: number[];
 }
 
 export function hasRealDriver(course: Pick<CourseDefinition, 'id'>, reverse: boolean) {
@@ -42,7 +46,7 @@ export async function loadRealDriver(course: Pick<CourseDefinition, 'id'>) {
     !Array.isArray(data.progress) ||
     data.progress.length < 2 ||
     !data.progress.every((value) => value >= 0 && value <= 1) ||
-    [data.lateral, data.longitudinal, data.curvature].some(
+    [data.lateral, data.longitudinal, data.curvature, data.heading, data.offset].some(
       (values) =>
         values !== undefined &&
         (!Array.isArray(values) ||
@@ -112,6 +116,8 @@ export function trimRealDriver(
     lateral: resample(data.lateral),
     longitudinal: resample(data.longitudinal),
     curvature: resample(data.curvature),
+    heading: resample(data.heading),
+    offset: resample(data.offset),
     gates,
     trimsCourse: start > mapStart || finish < mapFinish,
     duration: (to - from) * data.interval,
@@ -122,9 +128,50 @@ export function trimRealDriver(
 const laneOffset = (definition: CourseDefinition, data: RealDriverData) =>
   ((data.reverse ? 1 : -1) * definition.width) / 4;
 
+/** Shared road-relative path for the ghost's position, direction, steering, and painted line. */
+export function realDriverPath(definition: CourseDefinition, data: RealDriverData) {
+  const route = courseRoute({ ...definition, reverse: false });
+  const length = route.getLength();
+  const normal = new THREE.Vector3();
+  const before = new THREE.Vector3();
+  const after = new THREE.Vector3();
+  const offsetAt = (fraction: number) => {
+    if (!data.offset) return laneOffset(definition, data);
+    const sign = data.reverse ? -1 : 1;
+    let lo = 0;
+    let hi = data.progress.length - 1;
+    while (lo < hi) {
+      const mid = Math.floor((lo + hi) / 2);
+      if (sign * data.progress[mid] < sign * fraction) lo = mid + 1;
+      else hi = mid;
+    }
+    if (lo === 0) return data.offset[0];
+    const a = data.progress[lo - 1];
+    const b = data.progress[lo];
+    const t = a === b ? 0 : THREE.MathUtils.clamp((fraction - a) / (b - a), 0, 1);
+    return THREE.MathUtils.lerp(data.offset[lo - 1], data.offset[lo], t);
+  };
+  const pointAt = (fraction: number, target: THREE.Vector3) => {
+    const at = THREE.MathUtils.clamp(fraction, 0, 1);
+    route.getPointAt(at, target);
+    route.getTangentAt(at, normal);
+    normal.set(normal.z, 0, -normal.x).normalize();
+    return target.addScaledVector(normal, offsetAt(at));
+  };
+  const tangentAt = (fraction: number, target: THREE.Vector3) => {
+    const span = 0.5 / length;
+    pointAt(fraction - span, before);
+    pointAt(fraction + span, after);
+    return target.subVectors(after, before).normalize();
+  };
+  return { length, offsetAt, pointAt, tangentAt };
+}
+
 const probeLength = 1.25;
 const probeWidth = 0.75;
 const maxSteer = 0.6;
+/** Grip recordings follow the mapped road, not an independently measured lateral path. */
+export const maxRealDriverHeadingOffset = THREE.MathUtils.degToRad(3);
 /** Extra steering a road car needs per g of cornering as its front tires slip. */
 const understeerPerG = THREE.MathUtils.degToRad(3);
 /**
@@ -196,10 +243,9 @@ export function realDriverLap(
   heightAt: GroundHeight,
   car: { centers: readonly THREE.Vector3[]; radii: readonly number[] },
 ) {
-  const route = courseRoute({ ...definition, reverse: false });
-  const length = route.getLength();
+  const path = realDriverPath(definition, data);
+  const length = path.length;
   const direction = data.reverse ? -1 : 1;
-  const lane = laneOffset(definition, data);
   const rideHeight =
     car.centers.reduce((sum, center, i) => sum + car.radii[i] - center.y, 0) / car.centers.length;
   const front = car.centers.filter(({ z }) => z > 0);
@@ -224,7 +270,7 @@ export function realDriverLap(
   const height = (x: number, z: number, along: number, across: number) =>
     heightAt(x + travel.x * along + left.x * across, z + travel.z * along + left.z * across);
   const tangent = (fraction: number, target: THREE.Vector3) =>
-    route.getTangentAt(THREE.MathUtils.clamp(fraction, 0, 1), target).multiplyScalar(direction);
+    path.tangentAt(fraction, target).multiplyScalar(direction);
   const spins = car.centers.map(() => 0);
   const rearRadii = car.radii.filter((_, i) => car.centers[i].z <= 0);
   const wheelRadius = rearRadii.reduce((sum, radius) => sum + radius, 0) / rearRadii.length;
@@ -238,10 +284,9 @@ export function realDriverLap(
   });
   let gear = lowestGear;
   data.progress.forEach((fraction, i) => {
-    route.getPointAt(fraction, center);
+    path.pointAt(fraction, center);
     tangent(fraction, travel);
     left.set(travel.z, 0, -travel.x).normalize();
-    center.addScaledVector(left, direction * lane);
     const ahead = height(center.x, center.z, probeLength, 0);
     const behind = height(center.x, center.z, -probeLength, 0);
     const leftSide = height(center.x, center.z, 0, probeWidth);
@@ -253,6 +298,16 @@ export function realDriverLap(
       .normalize();
     left.multiplyScalar(2 * probeWidth).setY(leftSide - rightSide);
     up.crossVectors(forward, left).normalize();
+    if (data.heading && !data.offset) {
+      const pathHeading = Math.atan2(travel.x, travel.z);
+      const difference = data.heading[i] - pathHeading;
+      const offset = Math.atan2(Math.sin(difference), Math.cos(difference));
+      // Smoothly bound sensor/map disagreement so a grip drive cannot appear to slide sideways.
+      const heading =
+        pathHeading + maxRealDriverHeadingOffset * Math.tanh(offset / maxRealDriverHeadingOffset);
+      forward.set(Math.sin(heading), 0, Math.cos(heading));
+      forward.addScaledVector(up, -forward.dot(up)).normalize();
+    }
     left.crossVectors(up, forward);
     frame.quaternion.setFromRotationMatrix(basis.makeBasis(left, up, forward));
     frame.position
@@ -270,7 +325,7 @@ export function realDriverLap(
     unlean.copy(lean).invert();
     // Steer the front wheels to the measured path curvature, or the road's, plus understeer;
     // positive yaw turns left.
-    let bend = data.curvature?.[i];
+    let bend = data.offset ? undefined : data.curvature?.[i];
     if (bend === undefined) {
       const span = 2 / length;
       tangent(fraction - direction * span, before);
@@ -364,12 +419,13 @@ function createLineMaterial(offset: number) {
 }
 
 type Drape = (
-  offset: number,
+  offset: number | ((fraction: number) => number),
   width: number,
   lift: number,
   material: THREE.Material,
   from: number,
   to: number,
+  relativeLateral?: boolean,
 ) => THREE.Mesh;
 
 /** The glowing line covering the stretch of road the real driver recorded. */
@@ -378,14 +434,15 @@ export function createRealDriverLine(
   definition: CourseDefinition,
   data: TrimmedRealDriver,
 ) {
-  const offset = laneOffset(definition, data);
+  const path = realDriverPath(definition, data);
   const mesh = drape(
-    offset,
+    path.offsetAt,
     lineWidth,
     lineLift,
-    createLineMaterial(offset),
+    createLineMaterial(0),
     Math.min(data.gates.start, data.gates.finish),
     Math.max(data.gates.start, data.gates.finish),
+    true,
   );
   mesh.name = 'real-driver-line';
   mesh.receiveShadow = false;

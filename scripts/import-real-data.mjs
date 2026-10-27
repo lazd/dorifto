@@ -3,8 +3,11 @@
 // GPS fixes are mapped to progress along the matching track's road and resampled at a fixed
 // interval, fusing Doppler speed with positions between 1 Hz fixes. When the phone sat still in
 // the car, its IMU adds lateral/longitudinal g (body lean) and path curvature (steering).
+// Gyro/GPS heading fusion uses the compass only when straight-line calibration is reliable.
 import { readdir, readFile, writeFile, mkdir } from 'node:fs/promises';
 import { basename, join } from 'node:path';
+import { fuseHeading } from './heading-fusion.mjs';
+import { fuseRoadOffsets } from './path-fusion.mjs';
 
 const root = new URL('..', import.meta.url).pathname;
 const importsDirectory = join(root, 'data-imports');
@@ -65,6 +68,22 @@ function roadOf(file, data) {
   };
 }
 
+function roadPoint(road, distance) {
+  let lo = 0;
+  let hi = road.points.length - 1;
+  while (lo < hi) {
+    const mid = Math.floor((lo + hi) / 2);
+    if (road.distances[mid] < distance) lo = mid + 1;
+    else hi = mid;
+  }
+  const i = Math.max(1, lo);
+  const t = Math.max(
+    0,
+    Math.min(1, (distance - road.distances[i - 1]) / (road.distances[i] - road.distances[i - 1])),
+  );
+  return road.points[i - 1].map((value, k) => value + t * (road.points[i][k] - value));
+}
+
 /** Nearest point on the road within [from, to] meters of progress. */
 function nearestOnRoad(road, [x, z], from = 0, to = road.length) {
   let best = { distance: Infinity, progress: 0 };
@@ -80,6 +99,7 @@ function nearestOnRoad(road, [x, z], from = 0, to = road.length) {
       best = {
         distance,
         progress: road.distances[i] + u * (road.distances[i + 1] - road.distances[i]),
+        offset: ((x - ax - u * dx) * dz - (z - az - u * dz) * dx) / Math.hypot(dx, dz),
       };
   }
   return best;
@@ -94,6 +114,10 @@ function readFixes(records) {
       lon: Number(record.longitude),
       speed: Math.max(0, Number(record.speed)),
       accuracy: Math.max(5, Number(record.horizontalAccuracy) || 50),
+      lateralAccuracy:
+        Number(record.horizontalAccuracy) > 0 ? Number(record.horizontalAccuracy) : 50,
+      heading: Number(record.bearing) >= 0 ? (-Number(record.bearing) * Math.PI) / 180 : NaN,
+      headingAccuracy: (Number(record.bearingAccuracy) * Math.PI) / 180,
     }))
     // Negative times are cached fixes from before the recording started.
     .filter((fix) => fix.time >= 0 && [fix.lat, fix.lon, fix.speed].every(Number.isFinite))
@@ -137,7 +161,7 @@ function roadProgress(road, fixes) {
         `GPS fix at ${fix.time.toFixed(1)}s is ${nearest.distance.toFixed(0)} m off the road`,
       );
     previous = nearest.progress;
-    return nearest.progress;
+    return nearest;
   });
 }
 
@@ -321,23 +345,26 @@ function readMotion(records, times, speeds) {
   const lateral = [];
   const longitudinal = [];
   const curvature = [];
+  const yawRates = [];
   rows.forEach((row, i) => {
     // Zero motion wherever the phone was picked up or slid out of its mount.
     if (!row || Math.acos(Math.min(1, dot(row.up, mount))) > (maxMountTilt * Math.PI) / 180) {
       lateral.push(0);
       longitudinal.push(0);
       curvature.push(0);
+      yawRates.push(null);
       return;
     }
     const acceleration = horizontal(i);
     lateral.push(round(along(acceleration, left), 3));
     longitudinal.push(round(along(acceleration, forward), 3));
     curvature.push(round(row.yawRate / Math.max(speeds[i], minCurvatureSpeed), 4));
+    yawRates.push(row.yawRate);
   });
   console.log(
     `  Phone mount fit ${left.fit.toFixed(2)} lateral, ${forward.fit.toFixed(2)} longitudinal`,
   );
-  return { lateral, longitudinal, curvature };
+  return { lateral, longitudinal, curvature, yawRates };
 }
 
 async function importRecording(file, roads) {
@@ -346,7 +373,8 @@ async function importRecording(file, roads) {
   const metadata = records.find((record) => record.sensor === 'Metadata');
   const fixes = readFixes(records);
   const road = matchRoad(roads, fixes);
-  const progress = roadProgress(road, fixes);
+  const projections = roadProgress(road, fixes);
+  const progress = projections.map((point) => point.progress);
   const direction = Math.sign(progress.at(-1) - progress[0]) || 1;
   const samples = resample(fixes, progress, direction);
   const times = samples.map((_, i) => fixes[0].time + i * interval);
@@ -355,7 +383,57 @@ async function importRecording(file, roads) {
       Math.abs(samples[Math.min(i + 1, samples.length - 1)] - samples[Math.max(i - 1, 0)]) /
       (interval * (Math.min(i + 1, samples.length - 1) - Math.max(i - 1, 0))),
   );
-  const motion = readMotion(records, times, speeds);
+  const measuredMotion = readMotion(records, times, speeds);
+  let motion;
+  let heading;
+  let offset;
+  if (measuredMotion) {
+    const { yawRates, ...pose } = measuredMotion;
+    motion = pose;
+    // Smooth unit vectors rather than angles, so north crossings don't average to south.
+    const compass = records
+      .filter(
+        (record) =>
+          record.sensor === 'Compass' &&
+          Number(record.seconds_elapsed) >= 0 &&
+          Number.isFinite(Number(record.magneticBearing)),
+      )
+      .map((record) => {
+        const angle = (-Number(record.magneticBearing) * Math.PI) / 180;
+        return {
+          time: Number(record.seconds_elapsed),
+          value: [Math.sin(angle), Math.cos(angle), 0],
+        };
+      })
+      .sort((a, b) => a.time - b.time);
+    heading = fuseHeading(
+      times,
+      yawRates,
+      smoothAt(compass, times).map((value) => (value ? Math.atan2(value[0], value[1]) : null)),
+      fixes,
+    )?.map((value) => Number(value.toFixed(5)));
+    if (heading) {
+      // Span several meters so polygon corners cannot become abrupt lateral velocity changes.
+      const roadHeadings = samples.map((distance) => {
+        const a = roadPoint(road, distance - 5);
+        const b = roadPoint(road, distance + 5);
+        return Math.atan2(b[0] - a[0], b[1] - a[1]);
+      });
+      offset = fuseRoadOffsets(
+        times,
+        speeds,
+        heading,
+        roadHeadings,
+        fixes.map((fix, i) => ({
+          ...fix,
+          accuracy: fix.lateralAccuracy,
+          offset: projections[i].offset,
+        })),
+        road.width,
+        direction < 0,
+      ).map((value) => Number(value.toFixed(3)));
+    }
+  }
   const output = {
     source: [
       'Sensor Logger',
@@ -370,6 +448,8 @@ async function importRecording(file, roads) {
       Number(Math.max(0, Math.min(1, meters / road.length)).toFixed(6)),
     ),
     ...motion,
+    heading,
+    offset,
   };
   await mkdir(outputDirectory, { recursive: true });
   const target = join(outputDirectory, basename(road.file));

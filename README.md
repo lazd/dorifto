@@ -4,6 +4,33 @@ A small Three.js + Ammo.js driving playground built with TypeScript and Vite.
 Ammo.js is installed through the `ammojs-typed` npm distribution and runs in a
 dedicated Web Worker; there are no runtime CDN dependencies.
 
+## Real driver recordings
+
+Run `npm run import-real-data` to match Sensor Logger JSON recordings in `data-imports/`
+to open roads and write compact 10 Hz recordings into `src/real-data/`.
+GPS position and speed determine progress; a stationary phone's IMU supplies lean and steering.
+Heading is estimated separately with gyro prediction, GPS-bearing Kalman corrections, and
+offline smoothing. GPS bearings regularly correct gyro bias and phone motion so they do not
+accumulate into exaggerated turns. Compass readings are calibrated against GPS on fast, straight sections,
+downweighted by calibration scatter, and rejected when unreliable or inconsistent with the
+estimate. Import diagnostics report calibration quality; magnetic interference can mean a drive
+uses only gyro/GPS heading.
+
+The importer also estimates lateral position using fused heading and speed between GPS fixes,
+corrected by accuracy-weighted GPS offsets from the road. An offline smoother suppresses GPS
+jumps, and road-edge constraints leave a 1 m margin for the vehicle's center. A time-scaled
+lane-position prior resists lateral drift from uncertain GPS and heading errors without
+fixing the car to lane center. It relaxes after three consecutive GPS fixes (at most 2 s
+apart) whose two-sigma lateral intervals lie wholly in the oncoming half and within the
+road edges. That support expires after 2 s without another supporting fix; isolated precise
+crossing fixes are rejected. This is a driving-lane assumption, not proof that no crossing
+occurred. The ghost and blue line share this reconstructed path; the
+body points along it, and front-wheel steering follows its curvature, avoiding independent
+heading changes that look like drifting. This is an estimate, not lane-accurate telemetry:
+GPS uncertainty can exceed the lane width, and road constraints cannot recover exact apexes.
+Older recordings without lateral position retain their fixed lane offset and bounded sensor
+heading (up to 3 degrees from the road), or road-tangent orientation when heading is absent.
+
 ## Browser course builder
 
 Open **[course-builder.html](./course-builder.html)** with `npm run dev`, or deploy
