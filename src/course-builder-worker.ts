@@ -126,8 +126,8 @@ async function build(request: BuildRequest) {
     course.attribution =
       'OpenStreetMap contributors (ODbL): https://www.openstreetmap.org/copyright; vector tiles by OpenFreeMap; elevation: USGS 3DEP';
   }
-  course.courseBuilder = request.draft;
   const includeNearbyRoads = request.draft.includeNearbyRoads ?? false;
+  course.courseBuilder = { ...request.draft, includeNearbyRoads };
   if (
     course.scenery?.importRevision !== sceneryImportRevision ||
     (includeNearbyRoads && !request.existingCourse?.courseBuilder?.includeNearbyRoads)

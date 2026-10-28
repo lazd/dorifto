@@ -442,7 +442,8 @@ Real-world maps also save scenery from OpenFreeMap's OpenStreetMap-derived vecto
 extruded buildings, water bodies and waterways, and vegetation scattered procedurally
 inside mapped landcover areas. **Include nearby roads** in the course builder adds surrounding
 roads with the game's normal, knockable cones across junction mouths, outside the selected
-course's pavement. Scenery tiles are downloaded in a bounded corridor when saving a map;
+course's pavement.
+Scenery tiles are downloaded in a bounded corridor when saving a map;
 driving and reopening the saved map do not request scenery. Editing and saving an older map
 adds its missing scenery without downloading elevation again. Buildings use mapped heights
 where available and estimates otherwise; tree and shrub positions are deterministic estimates,
