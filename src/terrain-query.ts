@@ -26,6 +26,9 @@ export interface HeightfieldData {
   filletCells?: Map<number, number[]>;
   /** Additional non-heightfield surfaces, such as tunnel walls and ceilings. */
   collisionMesh?: TriangleMeshData;
+  /** Ground below elevated roads; height queries still return the drivable road surface. */
+  groundSurface?: { heights: Float32Array; filletVertices?: Float32Array };
+  bridgeMesh?: TriangleMeshData;
 }
 
 export interface SurfaceSegment {

@@ -78,6 +78,7 @@ export function createPhysicsWorld(
   resources: ReturnType<typeof createPhysicsResources>,
   terrain: HeightfieldData,
 ) {
+  const groundTerrain = terrain.groundSurface ? { ...terrain, ...terrain.groundSurface } : terrain;
   const configuration = new Ammo.btDefaultCollisionConfiguration();
   const dispatcher = new Ammo.btCollisionDispatcher(configuration);
   const broadphase = new Ammo.btDbvtBroadphase();
@@ -85,9 +86,11 @@ export function createPhysicsWorld(
   const world = new Ammo.btDiscreteDynamicsWorld(dispatcher, broadphase, solver, configuration);
   const vector = new Ammo.btVector3(0, -9.81, 0);
   world.setGravity(vector);
-  const contours = (terrain.flippedCells || terrain.warpedCells) && contourCollider(Ammo, terrain);
+  const contours =
+    (terrain.flippedCells || terrain.warpedCells) && contourCollider(Ammo, groundTerrain);
   const structures = terrain.collisionMesh && triangleCollider(Ammo, terrain.collisionMesh);
-  const heightData = resources.acquireHeightfield(contours?.heights ?? terrain.heights);
+  const bridges = terrain.bridgeMesh && triangleCollider(Ammo, terrain.bridgeMesh);
+  const heightData = resources.acquireHeightfield(contours?.heights ?? groundTerrain.heights);
   const minHeight = contours?.minHeight ?? terrain.minHeight;
   const shape = new Ammo.btHeightfieldTerrainShape(
     terrain.columns,
@@ -119,11 +122,12 @@ export function createPhysicsWorld(
   Ammo.destroy(info);
   if (contours) world.addRigidBody(contours.body);
   if (structures) world.addRigidBody(structures.body);
+  if (bridges) world.addRigidBody(bridges.body);
   world.setContactAddedCallback(terrainContactCallback(Ammo));
   const terrainBodyList = contours ? [ground, contours.body] : [ground];
   for (const body of terrainBodyList) {
     body.setCollisionFlags(body.getCollisionFlags() | customMaterialCallback);
-    terrainBodies.set(Ammo.getPointer(body), terrain);
+    terrainBodies.set(Ammo.getPointer(body), groundTerrain);
   }
   Ammo.destroy(transform);
   Ammo.destroy(vector);
@@ -151,6 +155,10 @@ export function createPhysicsWorld(
       if (structures) {
         world.removeRigidBody(structures.body);
         structures.dispose();
+      }
+      if (bridges) {
+        world.removeRigidBody(bridges.body);
+        bridges.dispose();
       }
       Ammo.destroy(world);
       Ammo.destroy(solver);

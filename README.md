@@ -181,8 +181,17 @@ direct browser requests to OpenFreeMap and USGS, so an internet connection is ne
   the existing heightfield. Tunnel walls, ceilings, portals, and cover have matching static
   triangle-mesh collision, shared across driving directions. Clearance is an estimate
   (3 m sidewalls, 6.5 m at the crown), not a surveyed reconstruction of a specific tunnel.
-  The source terrain raster is unchanged, and bridges still use the existing terrain blend
-  without structure geometry. Unloaded or untagged structures
+  Tagged bridges render a concrete deck with raised edge curbs, metal railings/posts,
+  and paired piers grounded in the saved terrain where there is sufficient clearance.
+  The valley underneath is restored from the raster, with short blends into the abutments,
+  while the asphalt and markings stay on the repaired road profile. Ground, deck, railings,
+  and supports have matching collision; game and preview share the same structure geometry.
+  The slab's collision cap follows the road's exact triangle surface, including banking.
+  That hidden cap and the buried abutment end faces are excluded from rendering so the asphalt is the only visible top surface,
+  avoiding depth-buffer overlap at shallow viewing angles.
+  Bridge dimensions and support placement are procedural estimates, not reconstructions
+  of the real bridge design. No additional elevation requests are made, and the source
+  terrain raster is unchanged. Unloaded or untagged structures
   cannot be identified; fords and untagged dips retain existing processing.
   Editing and saving an older course repairs newly identified spans from its saved raster
   without downloading elevation again. Missing data

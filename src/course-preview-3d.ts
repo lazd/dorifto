@@ -8,6 +8,7 @@ import {
 } from './courses';
 import { CourseTerrain, projectTerrainGeometry } from './terrain';
 import { createTunnelMeshes } from './tunnels';
+import { createBridgeMeshes } from './bridges';
 
 export interface CoursePreviewColors {
   ground: string;
@@ -164,8 +165,8 @@ export function createCoursePreviewModel(
       for (let column = 0; column < columns; column++) {
         const x = Math.min(minX + column * cell, maxX);
         const z = Math.min(minZ + row * cell, maxZ);
-        positions.push(x, height(x, z), z);
-        heights[row * columns + column] = positions[positions.length - 2];
+        positions.push(x, terrain.groundHeightAt(x, z), z);
+        heights[row * columns + column] = height(x, z);
         if (row && column) {
           const i = row * columns + column;
           indices.push(i - columns - 1, i - 1, i - columns, i - columns, i - 1, i);
@@ -185,7 +186,7 @@ export function createCoursePreviewModel(
       if (!(object instanceof THREE.Mesh)) continue;
       const source = object.geometry;
       object.geometry = projectTerrainGeometry(
-        previewTerrain,
+        terrain.bridgeMesh ? terrain : previewTerrain,
         source,
         object === group.children[0] ? roadLift : roadLift * 2,
       );
@@ -218,6 +219,8 @@ export function createCoursePreviewModel(
       group.add(
         createTunnelMeshes(terrain.collisionMesh, { ground: colors.ground, lining: colors.road }),
       );
+    if (terrain.bridgeMesh)
+      group.add(createBridgeMeshes(terrain.bridgeMesh, { concrete: colors.road }));
     return { group, dispose: () => disposeGroup(group) };
   } catch (error) {
     disposeGroup(group);

@@ -5,6 +5,12 @@ import type { CourseDefinition } from './courses';
 import { surfaceMaterial, terrainNoiseGlsl } from './surfaces';
 import { terrainBaseHeight, terrainRasterSampler } from './terrain-profile';
 import {
+  bridgeDimensions,
+  buildBridgeGeometry,
+  createBridgeMeshes,
+  type BridgeGeometry,
+} from './bridges';
+import {
   buildTunnelGeometry,
   createTunnelMeshes,
   tunnelShoulderClearance,
@@ -40,10 +46,13 @@ export class CourseTerrain {
   readonly filletVertices?: Float32Array;
   readonly filletCells?: Map<number, number[]>;
   readonly collisionMesh?: TunnelGeometry;
+  readonly bridgeMesh?: BridgeGeometry;
+  readonly groundSurface?: HeightfieldData['groundSurface'];
   private readonly segments;
   private readonly surface: TerrainSurface;
   private readonly halfWidth: number;
   private readonly padRadius?: number;
+  private readonly groundQuery?: HeightfieldData;
 
   constructor(definition: CourseDefinition, buildVisuals = true) {
     this.halfWidth = definition.width / 2 + (definition.shoulderWidth ?? courseShoulderWidth);
@@ -134,7 +143,10 @@ export class CourseTerrain {
     const blendEnd = Math.min(this.halfWidth + 48, 50);
     const transition = definition.terrainTransition ?? defaultTerrainTransition;
     const tunnelSpans = definition.structures?.filter(({ type }) => type === 'tunnel') ?? [];
-    const tunnelBlendStart = this.halfWidth + tunnelShoulderClearance + supportWidth;
+    const bridgeSpans = definition.structures?.filter(({ type }) => type === 'bridge') ?? [];
+    const structureSpans = [...tunnelSpans, ...bridgeSpans];
+    const structureBlendStart =
+      this.halfWidth + Math.max(tunnelShoulderClearance, bridgeDimensions.edgeWidth) + supportWidth;
     const surfaceHeight = (
       px: number,
       pz: number,
@@ -142,14 +154,14 @@ export class CourseTerrain {
       start: number,
     ) => {
       if (
-        tunnelSpans.length &&
-        near.distance < (rasterHeight ? tunnelBlendStart + transition : blendEnd)
+        structureSpans.length &&
+        near.distance < (rasterHeight ? structureBlendStart + transition : blendEnd)
       ) {
-        for (const { start: from, end: to } of tunnelSpans) {
+        for (const { start: from, end: to } of structureSpans) {
           const approach = Math.max(from - near.fraction, near.fraction - to, 0) * length;
           start = THREE.MathUtils.lerp(
             start,
-            Math.max(start, tunnelBlendStart),
+            Math.max(start, structureBlendStart),
             1 - THREE.MathUtils.smoothstep(approach, 0, 10),
           );
         }
@@ -426,10 +438,59 @@ export class CourseTerrain {
         this.filletCells = new Map([...cells].filter(([, indices]) => indices.length > 6));
       }
     }
+    if (bridgeSpans.length && rasterHeight && !definition.flat) {
+      const lower = (x: number, z: number, height: number) => {
+        const near = this.nearest(x, z);
+        const lateral =
+          1 -
+          THREE.MathUtils.smoothstep(
+            near.distance,
+            this.halfWidth + supportWidth,
+            this.halfWidth + transition + 10,
+          );
+        if (lateral <= 0) return height;
+        let weight = 0;
+        for (const { start, end } of bridgeSpans) {
+          if (near.fraction <= start || near.fraction >= end) continue;
+          const approach = Math.min(near.fraction - start, end - near.fraction) * length;
+          weight = Math.max(weight, THREE.MathUtils.smoothstep(approach, 0, 8) * lateral);
+        }
+        return weight > 0
+          ? THREE.MathUtils.lerp(
+              height,
+              Math.min(height, rasterHeight(x, z, near.distance) * elevationScale),
+              weight,
+            )
+          : height;
+      };
+      const heights = this.heights.slice();
+      for (let i = 0; i < heights.length; i++) {
+        heights[i] = lower(positions[i * 3], positions[i * 3 + 2], heights[i]);
+        min = Math.min(min, heights[i]);
+      }
+      const filletVertices = this.filletVertices?.slice();
+      if (filletVertices)
+        for (let i = 0; i < filletVertices.length; i += 3) {
+          filletVertices[i + 1] = lower(
+            filletVertices[i],
+            filletVertices[i + 2],
+            filletVertices[i + 1],
+          );
+          min = Math.min(min, filletVertices[i + 1]);
+        }
+      this.groundSurface = { heights, filletVertices };
+    }
     // Bullet needs a nonzero vertical range even for an entirely flat heightfield.
     this.minHeight = min === max ? min - 0.01 : min;
     this.maxHeight = min === max ? max + 0.01 : max;
+    if (this.groundSurface) this.groundQuery = { ...this, ...this.groundSurface };
     this.collisionMesh = buildTunnelGeometry(definition, (x, z) => heightAt(this, x, z));
+    this.bridgeMesh = buildBridgeGeometry(
+      definition,
+      (x, z) => heightAt(this, x, z),
+      (x, z) => this.groundHeightAt(x, z),
+      (geometry, lift) => this.projectGeometry(geometry, lift),
+    );
     if (!buildVisuals) {
       this.mesh = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshStandardMaterial());
       this.grass = new THREE.InstancedMesh(
@@ -451,6 +512,12 @@ export class CourseTerrain {
     const vertices = new Float32Array(positions.length + fillet.length);
     vertices.set(positions);
     vertices.set(fillet, positions.length);
+    if (this.groundSurface) {
+      for (let i = 0; i < this.heights.length; i++)
+        vertices[i * 3 + 1] = this.groundSurface.heights[i];
+      if (this.groundSurface.filletVertices)
+        vertices.set(this.groundSurface.filletVertices, positions.length);
+    }
     const textureCoordinates = new Float32Array((vertices.length / 3) * 2);
     textureCoordinates.set(uvs);
     for (let i = 0; i < fillet.length; i += 3)
@@ -715,7 +782,7 @@ export class CourseTerrain {
         const radius = Math.sqrt(random()) * 0.22;
         const px = x + Math.cos(angle) * radius;
         const pz = z + Math.sin(angle) * radius;
-        transform.position.set(px, this.heightAt(px, pz) - 0.01, pz);
+        transform.position.set(px, this.groundHeightAt(px, pz) - 0.01, pz);
         transform.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), this.normalAt(px, pz));
         transform.rotateY(angle);
         transform.rotateX((random() - 0.5) * 0.5);
@@ -732,6 +799,7 @@ export class CourseTerrain {
     this.grass = tufts;
     if (this.collisionMesh)
       this.mesh.add(createTunnelMeshes(this.collisionMesh, {}, this.mesh.material));
+    if (this.bridgeMesh) this.mesh.add(createBridgeMeshes(this.bridgeMesh));
   }
 
   private nearest(x: number, z: number) {
@@ -749,6 +817,10 @@ export class CourseTerrain {
 
   heightAt(x: number, z: number) {
     return heightAt(this, x, z);
+  }
+
+  groundHeightAt(x: number, z: number) {
+    return heightAt(this.groundQuery ?? this, x, z);
   }
 
   normalAt(x: number, z: number) {
@@ -775,6 +847,8 @@ export class CourseTerrain {
       filletVertices,
       filletCells,
       collisionMesh,
+      groundSurface,
+      bridgeMesh,
       segments,
       halfWidth,
       padRadius,
@@ -794,6 +868,8 @@ export class CourseTerrain {
       filletVertices,
       filletCells,
       collisionMesh,
+      groundSurface,
+      bridgeMesh,
       segments,
       halfWidth,
       padRadius,
