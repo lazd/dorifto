@@ -18,8 +18,13 @@ export interface SceneryOptions {
    * Return a new geometry; the source is borrowed and disposed by createScenery.
    * `lift` is the game surface offset; previews can use a larger minimum offset.
    * Must use ground beneath bridges, not the selected route's elevated driving surface.
+   * With `horizontal`, clip shallow water to the ground while preserving its source level.
    */
-  projectGroundGeometry?: (source: THREE.BufferGeometry, lift: number) => THREE.BufferGeometry;
+  projectGroundGeometry?: (
+    source: THREE.BufferGeometry,
+    lift: number,
+    horizontal?: boolean,
+  ) => THREE.BufferGeometry;
 }
 
 const categories: SceneryCategory[] = ['buildings', 'water', 'vegetation', 'nearbyRoads'];
@@ -526,6 +531,22 @@ export function createScenery(
         const geometrySteps = 8;
         if (j % geometrySteps !== 0) continue;
         const geometryEnd = (length * Math.min(j + geometrySteps, steps)) / steps;
+        if (!river) {
+          const middle = side((t0 + geometryEnd) / 2, 0);
+          const near = surface.nearest(middle.x, middle.z);
+          const selected =
+            query.segments[
+              Math.min(query.segments.length - 1, Math.floor(near.fraction * query.segments.length))
+            ];
+          if (selected && near.distance < halfWidth + 0.8) {
+            const sx = selected.b.x - selected.a.x;
+            const sz = selected.b.z - selected.a.z;
+            const alignment = Math.abs(dx * sx + dz * sz) / Math.hypot(sx, sz);
+            // A copy of the selected bridge must not become a second road on the valley floor.
+            // Perpendicular roads beneath it are independent features and must remain.
+            if (alignment > 0.85) continue;
+          }
+        }
         const corners = [
           side(t0, -width / 2),
           side(t0, width / 2),
@@ -613,7 +634,18 @@ export function createScenery(
     const waterMaterial = material(0x397d89);
     waterMaterial.roughness = 0.38;
     waterMaterial.metalness = 0.12;
-    addBatch(layers.water, waterBatch, waterMaterial, 'shallow-water-surfaces', false);
+    const mesh = addBatch(
+      layers.water,
+      waterBatch,
+      waterMaterial,
+      'shallow-water-surfaces',
+      false,
+    )!;
+    if (options.projectGroundGeometry) {
+      const source = mesh.geometry;
+      mesh.geometry = options.projectGroundGeometry(source, 0, true);
+      source.dispose();
+    }
   }
 
   let seed = 0x5ce9e12;

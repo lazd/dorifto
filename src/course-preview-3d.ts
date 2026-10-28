@@ -234,11 +234,13 @@ export function createCoursePreviewModel(
     if (definition.scenery)
       group.add(
         createScenery(definition, terrain, {
-          projectGroundGeometry: (source, lift) =>
+          projectGroundGeometry: (source, lift, horizontal) =>
             projectTerrainGeometry(
               { ...previewTerrain, heights: groundHeights },
               source,
               Math.max(lift, roadLift),
+              undefined,
+              horizontal,
             ),
         }).group,
       );

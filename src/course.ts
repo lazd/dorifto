@@ -64,7 +64,10 @@ function buildCourse(scene: THREE.Group, definition: CourseDefinition, carWidth:
   const terrain = new CourseTerrain(definition);
   terrain.grass.name = 'roadside-grass';
   scene.add(terrain.mesh);
-  const scenery = createScenery(definition, terrain);
+  const scenery = createScenery(definition, terrain, {
+    projectGroundGeometry: (source, lift, horizontal) =>
+      terrain.projectGroundGeometry(source, lift, horizontal),
+  });
   scene.add(scenery.group);
   let trainingReverse: boolean | undefined;
   function updateTrainingGates(reverse: boolean) {

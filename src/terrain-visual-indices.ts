@@ -1,3 +1,5 @@
+import type { CourseScenery } from './scenery-data';
+
 /** Coarsen only distant terrain; unit-spaced boundaries keep adjacent patches watertight. */
 export function terrainVisualIndices(
   columns: number,
@@ -5,7 +7,41 @@ export function terrainVisualIndices(
   roadDistances: Float32Array,
   spacing: number,
   detailedCell: (x: number, z: number) => readonly number[],
+  corridors?: {
+    minX: number;
+    minZ: number;
+    lines: CourseScenery['roads'];
+  },
 ) {
+  if (corridors?.lines.length) {
+    roadDistances = roadDistances.slice();
+    for (const { points, width } of corridors.lines) {
+      // Include both verges/banks and the corners of cells intersecting the corridor.
+      const radius = width / 2 + 6 + spacing * Math.SQRT2;
+      for (let i = 1; i < points.length; i++) {
+        const [ax, az] = points[i - 1],
+          [bx, bz] = points[i];
+        const steps = Math.max(1, Math.ceil(Math.hypot(bx - ax, bz - az) / spacing));
+        for (let j = 0; j <= steps; j++) {
+          const x = ax + ((bx - ax) * j) / steps;
+          const z = az + ((bz - az) * j) / steps;
+          const firstX = Math.max(0, Math.ceil((x - radius - corridors.minX) / spacing));
+          const lastX = Math.min(columns - 1, Math.floor((x + radius - corridors.minX) / spacing));
+          const firstZ = Math.max(0, Math.ceil((z - radius - corridors.minZ) / spacing));
+          const lastZ = Math.min(rows - 1, Math.floor((z + radius - corridors.minZ) / spacing));
+          for (let row = firstZ; row <= lastZ; row++)
+            for (let column = firstX; column <= lastX; column++)
+              if (
+                Math.hypot(
+                  corridors.minX + column * spacing - x,
+                  corridors.minZ + row * spacing - z,
+                ) <= radius
+              )
+                roadDistances[row * columns + column] = 0;
+        }
+      }
+    }
+  }
   // Road queries cap distances at 50 m. Extend a conservative distance field so
   // larger patches are allowed only well beyond the detailed roadside band.
   const distances = Float32Array.from(roadDistances, (distance) =>

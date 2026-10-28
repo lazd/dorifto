@@ -183,7 +183,13 @@ direct browser requests to OpenFreeMap and USGS, so an internet connection is ne
   (3 m sidewalls, 6.5 m at the crown), not a surveyed reconstruction of a specific tunnel.
   Tagged bridges render a concrete deck with raised edge curbs, metal railings/posts,
   and paired piers grounded in the saved terrain where there is sufficient clearance.
-  The valley underneath is restored from the raster, with short blends into the abutments,
+  Spans at least 120 m long with at least 12 m of center clearance also get green steel
+  under-deck trusses: upper/lower chords, alternating diagonals, verticals and cross-bracing.
+  Truss depth follows available ground clearance, capped at 20 m, and these bridges use
+  wider pier spacing. This is a procedural approximation, not a reconstruction of the
+  real bridge's engineering. Trusses share one static mesh/material and matching collision.
+  The valley underneath is restored from the raster across the full raised shoulder band,
+  with short blends into the abutments,
   while the asphalt and markings stay on the repaired road profile. Ground, deck, railings,
   and supports have matching collision; game and preview share the same structure geometry.
   The slab's collision cap follows the road's exact triangle surface, including banking.
@@ -456,7 +462,15 @@ Settings > Track has independent **Buildings**, **Water**, **Trees and shrubs**,
 also removes their junction cones and collision. Junction cones remain enabled independently
 of the regular course cone-density setting.
 Nearby-road surfaces share indexed vertices and are split into spatial chunks so off-screen
-sections of long routes can be culled. Vegetation classification respects specific landcover
+sections of long routes can be culled. Nearby-road copies aligned with the selected route
+are excluded even on bridges, while independent roads crossing beneath remain visible.
+Roads and waterways are projected onto the actual
+rendered landscape triangles, including simplified distant patches, rather than the denser
+collision grid. Their surfaces and a 6 m band on either side retain native terrain detail;
+unrelated landscape remains simplified. This changes visual tessellation, not the heightfield
+or collision. Horizontal water surfaces are clipped to that same landscape at their estimated
+level. This is static map-loading work, not a per-frame projection.
+Vegetation classification respects specific landcover
 subclasses, including scrub within a broader grass class.
 Trees and shrubs use smooth-shaded, rounded silhouettes with baked foliage color variation.
 Shared instanced meshes keep foliage to at most 160 triangles per crown, without transparent

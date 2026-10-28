@@ -16,6 +16,10 @@ let createPhysicsWorld;
 let createPhysicsResources;
 let createCoursePreviewModel;
 let definition;
+let terrainRasterSampler;
+let TerrainSurface;
+let tunnelShoulderClearance;
+let vertexPosition;
 
 before(async () => {
   server = await createServer({
@@ -23,6 +27,9 @@ before(async () => {
     appType: 'custom',
   });
   ({ CourseTerrain } = await server.ssrLoadModule('/src/terrain.ts'));
+  ({ terrainRasterSampler } = await server.ssrLoadModule('/src/terrain-profile.ts'));
+  ({ TerrainSurface, vertexPosition } = await server.ssrLoadModule('/src/terrain-query.ts'));
+  ({ tunnelShoulderClearance } = await server.ssrLoadModule('/src/tunnels.ts'));
   ({ courseRoute, courseShoulderWidth } = await server.ssrLoadModule('/src/courses.ts'));
   ({ buildBridgeGeometry, createBridgeMeshes, bridgeDimensions } =
     await server.ssrLoadModule('/src/bridges.ts'));
@@ -41,6 +48,112 @@ before(async () => {
 });
 
 after(async () => server?.close());
+
+test('long elevated bridges get batched under-deck trusses; short and low bridges do not', () => {
+  const length = bridgeDimensions.trussMinLength * 3;
+  const bridge = {
+    id: 'truss-test',
+    name: 'Truss test',
+    width: 8,
+    shoulderWidth: 1,
+    closed: false,
+    points: [
+      [0, 0],
+      [0, length],
+    ],
+    structures: [{ type: 'bridge', start: 0, end: 1 }],
+  };
+  const build = (course, clearance) =>
+    buildBridgeGeometry(
+      course,
+      () => 0,
+      () => -clearance,
+      (geometry) => geometry.clone(),
+    );
+  const data = build(bridge, 100);
+  assert.ok(data.trussCount > 0);
+  assert.deepEqual(build({ ...bridge, reverse: true }, 100), data);
+  assert.equal(build(bridge, 2).trussCount, 0, 'low bridges retain simple supports');
+  assert.equal(
+    build(
+      {
+        ...bridge,
+        points: [
+          [0, 0],
+          [0, bridgeDimensions.trussMinLength / 2],
+        ],
+      },
+      100,
+    ).trussCount,
+    0,
+    'short bridges retain simple supports',
+  );
+  const group = createBridgeMeshes(data);
+  try {
+    const trusses = group.getObjectByName('bridge-trusses');
+    assert.ok(trusses, 'trusses share one mesh and material rather than one draw call per beam');
+    assert.equal(trusses.geometry.index.count, data.trussCount);
+    assert.ok(data.trussCount / 3 < length * 12, 'truss geometry stays bounded per meter');
+    const indices = trusses.geometry.index;
+    const positions = trusses.geometry.getAttribute('position');
+    let lowest = Infinity;
+    for (let i = 0; i < indices.count; i++) {
+      const vertex = indices.getX(i);
+      assert.ok(Number.isFinite(positions.getX(vertex)) && Number.isFinite(positions.getZ(vertex)));
+      const y = positions.getY(vertex);
+      assert.ok(y < -bridgeDimensions.deckThickness, 'no truss member pokes through the deck');
+      assert.ok(y > -100, 'deep members stay above the valley');
+      lowest = Math.min(lowest, y);
+    }
+    assert.ok(lowest < -10, 'tall bridges have deep, visible trusswork');
+  } finally {
+    group.traverse((object) => {
+      if (object.isMesh) {
+        object.geometry.dispose();
+        object.material.dispose();
+      }
+    });
+  }
+});
+
+test('high bridges restore the entire raised shoulder band instead of leaving valley walls', () => {
+  const highBridge = {
+    ...definition,
+    terrain: { ...definition.terrain, elevationOffset: definition.terrain.elevationOffset + 180 },
+  };
+  const terrain = new CourseTerrain(highBridge, false);
+  const query = terrain.physicsData();
+  const surface = new TerrainSurface(query.segments, query.halfWidth);
+  const raster = terrainRasterSampler(highBridge.terrain);
+  const transition = highBridge.terrainTransition ?? 8;
+  const shoulderEnd =
+    query.halfWidth +
+    Math.max(tunnelShoulderClearance, bridgeDimensions.edgeWidth) +
+    terrain.spacing * Math.SQRT2 +
+    transition;
+  let checked = 0;
+  for (let i = 0; i < terrain.heights.length; i++) {
+    const { x, z } = vertexPosition(query, i);
+    const near = surface.nearest(x, z);
+    if (
+      near.fraction < 0.4 ||
+      near.fraction > 0.5 ||
+      near.distance < query.halfWidth + terrain.spacing * Math.SQRT2 ||
+      near.distance > shoulderEnd
+    )
+      continue;
+    const expected = Math.min(
+      terrain.heights[i],
+      raster(x, z, near.distance) * (highBridge.elevationScale ?? 1),
+    );
+    assert.ok(
+      Math.abs(query.groundSurface.heights[i] - expected) < 1e-3,
+      'bridge shoulders reach natural ground before the lateral restoration fades',
+    );
+    checked++;
+  }
+  assert.ok(checked > 20, 'exercise both sides of the elevated span');
+});
 
 test('bridge decks, railings and grounded piers share forward/reverse geometry', () => {
   const terrain = new CourseTerrain(definition, false);
@@ -262,12 +375,14 @@ test('previews retain bridge structures, keep asphalt above the valley and dispo
     new THREE.ObjectLoader().parse(model.group.toJSON()).getObjectByName('bridge-railings'),
   );
   let disposed = 0;
+  let resources = 0;
   bridges.traverse((object) => {
     if (object.isMesh) {
+      resources += 2;
       object.geometry.addEventListener('dispose', () => disposed++);
       object.material.addEventListener('dispose', () => disposed++);
     }
   });
   model.dispose();
-  assert.equal(disposed, 4);
+  assert.equal(disposed, resources);
 });

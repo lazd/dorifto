@@ -268,6 +268,30 @@ test('branch mouth cones are deduplicated and never obstruct the selected paved 
   assert.equal(duplicate.junctionCones.length, 0);
 });
 
+test('selected bridge road copies are omitted in either direction without hiding roads underneath', () => {
+  for (const reverse of [false, true]) {
+    const data = emptyScenery();
+    const points = [
+      [1, -90],
+      [1, 90],
+    ];
+    data.roads.push({ points: reverse ? points.toReversed() : points, width: 10 });
+    const result = build(
+      definition(data),
+      terrain(
+        () => 0,
+        () => 80,
+      ),
+    );
+    assert.equal(
+      result.group.getObjectByName('nearbyRoads').children.length,
+      0,
+      'saved vector-tile copies of the selected road do not paint asphalt below the bridge',
+    );
+    assert.equal(result.junctionCones.length, 0);
+  }
+});
+
 test('water stays shallow and level; waterways and crossing roads drape below elevated selected roads', () => {
   const data = emptyScenery();
   data.water.push({ rings: [square(-40, -40, 40, -20)] });

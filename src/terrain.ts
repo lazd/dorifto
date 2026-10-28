@@ -53,6 +53,7 @@ export class CourseTerrain {
   private readonly halfWidth: number;
   private readonly padRadius?: number;
   private readonly groundQuery?: HeightfieldData;
+  private groundTriangles?: ReturnType<typeof terrainGeometryTriangles>;
 
   constructor(definition: CourseDefinition, buildVisuals = true) {
     this.halfWidth = definition.width / 2 + (definition.shoulderWidth ?? courseShoulderWidth);
@@ -441,12 +442,13 @@ export class CourseTerrain {
     if (bridgeSpans.length && rasterHeight && !definition.flat) {
       const lower = (x: number, z: number, height: number) => {
         const near = this.nearest(x, z);
+        // Restore the entire raised road/shoulder profile before fading into untouched ground.
         const lateral =
           1 -
           THREE.MathUtils.smoothstep(
             near.distance,
-            this.halfWidth + supportWidth,
-            this.halfWidth + transition + 10,
+            structureBlendStart + transition,
+            structureBlendStart + transition + 10,
           );
         if (lateral <= 0) return height;
         let weight = 0;
@@ -508,6 +510,11 @@ export class CourseTerrain {
       visualDistances,
       this.spacing,
       (x, z) => cellTriangles(this, x, z),
+      definition.scenery && {
+        minX: this.minX,
+        minZ: this.minZ,
+        lines: [...definition.scenery.roads, ...definition.scenery.waterways],
+      },
     );
     const vertices = new Float32Array(positions.length + fillet.length);
     vertices.set(positions);
@@ -879,6 +886,51 @@ export class CourseTerrain {
   projectGeometry(source: THREE.BufferGeometry, lift: number) {
     return projectTerrainGeometry(this, source, lift);
   }
+
+  projectGroundGeometry(source: THREE.BufferGeometry, lift: number, horizontal = false) {
+    const ground = this.groundQuery ?? this;
+    this.groundTriangles ??= terrainGeometryTriangles(ground, this.mesh.geometry);
+    return projectTerrainGeometry(ground, source, lift, this.groundTriangles, horizontal);
+  }
+}
+
+type ProjectionBounds = { minX: number; maxX: number; minZ: number; maxZ: number };
+type TerrainTriangles = (bounds: ProjectionBounds) => Iterable<readonly number[]>;
+
+/** Index the rendered triangles once; coarse patches do not follow the physics grid's cells. */
+export function terrainGeometryTriangles(terrain: HeightfieldData, geometry: THREE.BufferGeometry) {
+  const levels = new Map<number, Map<string, number[]>>();
+  const index = geometry.getIndex();
+  if (!index) throw new Error('Terrain projection requires indexed ground geometry');
+  for (let i = 0; i < index.count; i += 3) {
+    const points = [0, 1, 2].map((j) => vertexPosition(terrain, index.getX(i + j)));
+    const minX = Math.min(...points.map((p) => p.x));
+    const maxX = Math.max(...points.map((p) => p.x));
+    const minZ = Math.min(...points.map((p) => p.z));
+    const maxZ = Math.max(...points.map((p) => p.z));
+    // Fine road cells need small buckets; large landscape fans must not fill thousands of them.
+    const size = 2 ** Math.ceil(Math.log2(Math.max(4, maxX - minX, maxZ - minZ)));
+    const buckets = levels.get(size) ?? new Map<string, number[]>();
+    levels.set(size, buckets);
+    for (let z = Math.floor(minZ / size); z <= Math.floor(maxZ / size); z++)
+      for (let x = Math.floor(minX / size); x <= Math.floor(maxX / size); x++) {
+        const key = `${x},${z}`;
+        const bucket = buckets.get(key) ?? [];
+        bucket.push(i);
+        buckets.set(key, bucket);
+      }
+  }
+  return function* ({ minX, maxX, minZ, maxZ }: ProjectionBounds) {
+    const seen = new Set<number>();
+    for (const [size, buckets] of levels)
+      for (let z = Math.floor(minZ / size); z <= Math.floor(maxZ / size); z++)
+        for (let x = Math.floor(minX / size); x <= Math.floor(maxX / size); x++)
+          for (const i of buckets.get(`${x},${z}`) ?? []) {
+            if (seen.has(i)) continue;
+            seen.add(i);
+            yield [index.getX(i), index.getX(i + 1), index.getX(i + 2)];
+          }
+  };
 }
 
 // Split surface overlays at terrain triangle edges so the terrain cannot pierce them.
@@ -886,6 +938,8 @@ export function projectTerrainGeometry(
   terrain: HeightfieldData,
   source: THREE.BufferGeometry,
   lift: number,
+  renderedTriangles?: TerrainTriangles,
+  horizontal = false,
 ) {
   const positions: number[] = [];
   const uv: number[] = [];
@@ -894,6 +948,19 @@ export function projectTerrainGeometry(
   // Optional per-vertex scalar (e.g. distance across a road ribbon), interpolated onto clipped pieces.
   const sourceLateral = source.getAttribute('lateral');
   const lateral: number[] = [];
+  function* gridTriangles({ minX, maxX, minZ, maxZ }: ProjectionBounds) {
+    const pad = terrain.warpedCells ? 1 : 0;
+    const firstX = Math.floor((minX - terrain.minX) / terrain.spacing) - pad;
+    const lastX = Math.floor((maxX - terrain.minX) / terrain.spacing) + pad;
+    const firstZ = Math.floor((minZ - terrain.minZ) / terrain.spacing) - pad;
+    const lastZ = Math.floor((maxZ - terrain.minZ) / terrain.spacing) + pad;
+    for (let z = Math.max(firstZ, 0); z <= Math.min(lastZ, terrain.rows - 2); z++)
+      for (let x = Math.max(firstX, 0); x <= Math.min(lastX, terrain.columns - 2); x++) {
+        const corners = cellTriangles(terrain, x, z);
+        for (let t = 0; t < corners.length; t += 3)
+          yield [corners[t], corners[t + 1], corners[t + 2]];
+      }
+  }
   function clip(polygon: Point[], a: Point, b: Point) {
     const side = (p: Point) => (b.x - a.x) * (p.z - a.z) - (b.z - a.z) * (p.x - a.x);
     const result: Point[] = [];
@@ -922,36 +989,46 @@ export function projectTerrainGeometry(
       const [la, lb, lc] = vertices.map((v) => sourceLateral.getX(v));
       return la + (lb - la) * wb + (lc - la) * wc;
     };
-    const minX = Math.floor(
-      (Math.min(...triangle.map((p) => p.x)) - terrain.minX) / terrain.spacing,
-    );
-    const maxX = Math.floor(
-      (Math.max(...triangle.map((p) => p.x)) - terrain.minX) / terrain.spacing,
-    );
-    const minZ = Math.floor(
-      (Math.min(...triangle.map((p) => p.z)) - terrain.minZ) / terrain.spacing,
-    );
-    const maxZ = Math.floor(
-      (Math.max(...triangle.map((p) => p.z)) - terrain.minZ) / terrain.spacing,
-    );
-    // Warped cells can reach into the neighbors of the triangle's bounding cells.
-    const pad = terrain.warpedCells ? 1 : 0;
-    for (let z = Math.max(minZ - pad, 0); z <= Math.min(maxZ + pad, terrain.rows - 2); z++) {
-      for (let x = Math.max(minX - pad, 0); x <= Math.min(maxX + pad, terrain.columns - 2); x++) {
-        const corners = cellTriangles(terrain, x, z);
-        for (let t = 0; t < corners.length; t += 3) {
-          const cell = [corners[t], corners[t + 2], corners[t + 1]];
-          const points = cell.map((i) => vertexPosition(terrain, i));
-          let polygon = triangle;
-          for (let edge = 0; edge < 3 && polygon.length; edge++)
-            polygon = clip(polygon, points[edge], points[(edge + 1) % 3]);
-          for (let j = 1; j < polygon.length - 1; j++) {
-            for (const p of [polygon[0], polygon[j], polygon[j + 1]]) {
-              positions.push(p.x, triangleHeight(terrain, cell, p.x, p.z)! + lift, p.z);
-              uv.push(p.x / 5, p.z / 5);
-              if (sourceLateral) lateral.push(lateralAt(p));
+    const bounds = {
+      minX: Math.min(...triangle.map((p) => p.x)),
+      maxX: Math.max(...triangle.map((p) => p.x)),
+      minZ: Math.min(...triangle.map((p) => p.z)),
+      maxZ: Math.max(...triangle.map((p) => p.z)),
+    };
+    for (const corners of (renderedTriangles ?? gridTriangles)(bounds)) {
+      const cell = [corners[0], corners[2], corners[1]];
+      const points = cell.map((i) => vertexPosition(terrain, i));
+      let polygon = triangle;
+      for (let edge = 0; edge < 3 && polygon.length; edge++)
+        polygon = clip(polygon, points[edge], points[(edge + 1) % 3]);
+      const level = attribute.getY(vertices[0]);
+      if (horizontal)
+        for (const [limit, sign] of [
+          [level - 0.025, -1],
+          [level - 0.65, 1],
+        ]) {
+          const output: Point[] = [];
+          polygon.forEach((p, i) => {
+            const q = polygon[(i + 1) % polygon.length];
+            const dp = (triangleHeight(terrain, cell, p.x, p.z)! - limit) * sign;
+            const dq = (triangleHeight(terrain, cell, q.x, q.z)! - limit) * sign;
+            if (dp >= 0) output.push(p);
+            if (dp >= 0 !== dq >= 0) {
+              const t = dp / (dp - dq);
+              output.push({ x: p.x + (q.x - p.x) * t, z: p.z + (q.z - p.z) * t });
             }
-          }
+          });
+          polygon = output;
+        }
+      for (let j = 1; j < polygon.length - 1; j++) {
+        for (const p of [polygon[0], polygon[j], polygon[j + 1]]) {
+          positions.push(
+            p.x,
+            horizontal ? level : triangleHeight(terrain, cell, p.x, p.z)! + lift,
+            p.z,
+          );
+          uv.push(p.x / 5, p.z / 5);
+          if (sourceLateral) lateral.push(lateralAt(p));
         }
       }
     }

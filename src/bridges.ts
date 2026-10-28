@@ -9,11 +9,18 @@ export const bridgeDimensions = {
   railingHeight: 1.15,
   postSpacing: 2.5,
   pierSpacing: 28,
+  trussMinLength: 120,
+  trussMinClearance: 12,
+  trussPanelLength: 12,
+  trussPierSpacing: 120,
+  trussMaxDepth: 20,
+  trussBeamWidth: 0.32,
 };
 
 export interface BridgeGeometry extends TriangleMeshData {
   concreteCount: number;
   deckSurfaceCount: number;
+  trussCount: number;
 }
 
 export function buildBridgeGeometry(
@@ -33,6 +40,7 @@ export function buildBridgeGeometry(
   const concrete: number[] = [];
   const deckSurface: number[] = [];
   const steel: number[] = [];
+  const trusses: number[] = [];
   // Duplicate face vertices so concrete edges and the rails keep crisp normals.
   const quad = (points: THREE.Vector3[], indices: number[]) => {
     const first = positions.length / 3;
@@ -75,6 +83,31 @@ export function buildBridgeGeometry(
       },
     };
   };
+  const beam = (a: THREE.Vector3, b: THREE.Vector3) => {
+    const axis = b.clone().sub(a).normalize();
+    const reference =
+      Math.abs(axis.y) > 0.9 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 1, 0);
+    const side = new THREE.Vector3()
+      .crossVectors(axis, reference)
+      .normalize()
+      .multiplyScalar(bridgeDimensions.trussBeamWidth / 2);
+    const up = new THREE.Vector3()
+      .crossVectors(axis, side)
+      .normalize()
+      .multiplyScalar(bridgeDimensions.trussBeamWidth / 2);
+    const ring = (p: THREE.Vector3) => [
+      p.clone().add(side).add(up),
+      p.clone().sub(side).add(up),
+      p.clone().sub(side).sub(up),
+      p.clone().add(side).sub(up),
+    ];
+    const first = ring(a),
+      last = ring(b);
+    quad([...first].reverse(), trusses);
+    quad(last, trusses);
+    for (let i = 0; i < 4; i++)
+      quad([first[i], first[(i + 1) % 4], last[(i + 1) % 4], last[i]], trusses);
+  };
   const sweep = (
     start: number,
     end: number,
@@ -108,6 +141,14 @@ export function buildBridgeGeometry(
     if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || end > 1 || end <= start)
       throw new Error('Invalid bridge span');
     const size = (end - start) * length;
+    const center = frame((start + end) / 2).point(0, -deckThickness);
+    const truss =
+      size >= bridgeDimensions.trussMinLength &&
+      center.y - ground(center.x, center.z) >= bridgeDimensions.trussMinClearance;
+    const bays = Math.max(
+      1,
+      Math.ceil(size / (truss ? bridgeDimensions.trussPierSpacing : pierSpacing)),
+    );
     // The existing asphalt/paint overlays sit immediately above this structural slab.
     sweep(
       start,
@@ -139,7 +180,36 @@ export function buildBridgeGeometry(
         );
       }
     }
-    const bays = Math.max(1, Math.ceil(size / pierSpacing));
+    if (truss) {
+      const panelsPerBay = Math.ceil(size / bays / bridgeDimensions.trussPanelLength);
+      const panels = bays * panelsPerBay;
+      let previous: THREE.Vector3[] | undefined;
+      for (let i = 0; i <= panels; i++) {
+        const t = THREE.MathUtils.lerp(start, end, i / panels);
+        const { point } = frame(t);
+        const tops = [-1, 1].map((side) => point(side * halfWidth, -deckThickness - 0.2));
+        const clearance = Math.min(...tops.map((p) => p.y - ground(p.x, p.z)));
+        const bayPosition = (i % panelsPerBay) / panelsPerBay;
+        const arch = 0.6 + 0.4 * (2 * bayPosition - 1) ** 2;
+        const depth = Math.max(
+          0.5,
+          Math.min(Math.min(bridgeDimensions.trussMaxDepth, size * 0.055) * arch, clearance - 2),
+        );
+        const bottoms = tops.map((p) => p.clone().add(new THREE.Vector3(0, -depth, 0)));
+        const nodes = [...tops, ...bottoms];
+        beam(bottoms[0], bottoms[1]);
+        for (let side = 0; side < 2; side++) {
+          beam(tops[side], bottoms[side]);
+          if (previous) {
+            beam(previous[side], tops[side]);
+            beam(previous[side + 2], bottoms[side]);
+            beam(i % 2 ? previous[side] : previous[side + 2], i % 2 ? bottoms[side] : tops[side]);
+          }
+        }
+        if (previous) beam(previous[2], bottoms[1]);
+        previous = nodes;
+      }
+    }
     for (let i = 1; i < bays; i++) {
       const t = THREE.MathUtils.lerp(start, end, i / bays);
       const { point } = frame(t);
@@ -148,11 +218,12 @@ export function buildBridgeGeometry(
         const p = point(offset, -deckThickness);
         const bottom = ground(p.x, p.z) - p.y - deckThickness - 0.5;
         if (bottom > -deckThickness - 2) continue;
+        const pierHalfWidth = truss ? THREE.MathUtils.clamp(-bottom * 0.025, 0.65, 2.5) : 0.65;
         sweep(
-          t - 0.65 / length,
-          t + 0.65 / length,
-          offset - 0.65,
-          offset + 0.65,
+          t - pierHalfWidth / length,
+          t + pierHalfWidth / length,
+          offset - pierHalfWidth,
+          offset + pierHalfWidth,
           bottom,
           -deckThickness,
           concrete,
@@ -171,9 +242,10 @@ export function buildBridgeGeometry(
   }
   return {
     positions: new Float32Array(positions),
-    indices: new Uint32Array([...concrete, ...steel, ...deckSurface]),
+    indices: new Uint32Array([...concrete, ...steel, ...trusses, ...deckSurface]),
     concreteCount: concrete.length,
     deckSurfaceCount: deckSurface.length,
+    trussCount: trusses.length,
   };
 }
 
@@ -192,11 +264,24 @@ export function createBridgeMeshes(
     ],
     [
       'bridge-railings',
-      data.indices.subarray(data.concreteCount, data.indices.length - data.deckSurfaceCount),
+      data.indices.subarray(
+        data.concreteCount,
+        data.indices.length - data.deckSurfaceCount - data.trussCount,
+      ),
       colors.steel ?? 0x76838a,
       0.65,
     ],
+    [
+      'bridge-trusses',
+      data.indices.subarray(
+        data.indices.length - data.deckSurfaceCount - data.trussCount,
+        data.indices.length - data.deckSurfaceCount,
+      ),
+      colors.steel ?? 0x526d59,
+      0.65,
+    ],
   ] as const) {
+    if (!indices.length) continue;
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.BufferAttribute(data.positions, 3));
     geometry.setIndex(new THREE.BufferAttribute(indices, 1));
