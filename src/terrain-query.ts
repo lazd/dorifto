@@ -28,7 +28,7 @@ export interface HeightfieldData {
   collisionMesh?: TriangleMeshData;
   /** Ground below elevated roads; height queries still return the drivable road surface. */
   groundSurface?: { heights: Float32Array; filletVertices?: Float32Array };
-  bridgeMesh?: TriangleMeshData;
+  bridgeMesh?: TriangleMeshData & { collisionIndices?: Uint32Array };
   buildingMesh?: TriangleMeshData;
 }
 

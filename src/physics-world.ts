@@ -1,4 +1,5 @@
 import type AmmoFactory from 'ammojs-typed';
+import { Vector3 } from 'three';
 import {
   cellTriangles,
   normalAt,
@@ -35,14 +36,16 @@ export function createPhysicsResources(Ammo: typeof AmmoFactory) {
 
 const customMaterialCallback = 8;
 const terrainBodies = new Map<number, HeightfieldData>();
+const meshContactNormals = new Map<number, Float32Array>();
 const contactCallbacks = new WeakMap<typeof AmmoFactory, number>();
 
 /**
  * Bodies sliding along terrain catch on internal triangle edges, whose contact normals can point
  * back against travel and stop a car dead. Like Bullet's btAdjustInternalEdgeContacts, replace
- * every terrain contact normal with the smoothed surface normal so terrain only ever pushes out.
+ * terrain contact normals with the smoothed surface normal. Bridge contacts use their triangle's
+ * face normal, preserving real caps and corners without catching on tessellation edges.
  */
-function terrainContactCallback(Ammo: typeof AmmoFactory) {
+function surfaceContactCallback(Ammo: typeof AmmoFactory) {
   let callback = contactCallbacks.get(Ammo);
   if (callback === undefined) {
     // Emscripten's addFunction is present at runtime but missing from the typings.
@@ -50,15 +53,38 @@ function terrainContactCallback(Ammo: typeof AmmoFactory) {
       addFunction(callback: (...args: number[]) => number, signature: string): number;
     };
     callback = addFunction(
-      (point: number, wrapA: number, _partA: number, _indexA: number, wrapB: number) => {
+      (
+        point: number,
+        wrapA: number,
+        _partA: number,
+        indexA: number,
+        wrapB: number,
+        _partB: number,
+        indexB: number,
+      ) => {
         const objectOf = (wrap: number) =>
           Ammo.getPointer(
             Ammo.wrapPointer(wrap, Ammo.btCollisionObjectWrapper).getCollisionObject(),
           );
-        const terrainB = terrainBodies.get(objectOf(wrapB));
-        const terrain = terrainB ?? terrainBodies.get(objectOf(wrapA));
-        if (!terrain) return 0;
+        const bodyA = objectOf(wrapA);
+        const bodyB = objectOf(wrapB);
         const contact = Ammo.wrapPointer(point, Ammo.btManifoldPoint);
+        const normalsB = meshContactNormals.get(bodyB);
+        const normals = normalsB ?? meshContactNormals.get(bodyA);
+        if (normals) {
+          const index = (normalsB ? indexB : indexA) * 3;
+          const x = normals[index],
+            y = normals[index + 1],
+            z = normals[index + 2];
+          const normal = contact.get_m_normalWorldOnB();
+          // Triangle meshes collide on both sides; keep the normal pointing toward A.
+          const sign = x * normal.x() + y * normal.y() + z * normal.z() < 0 ? -1 : 1;
+          if (x || y || z) normal.setValue(x * sign, y * sign, z * sign);
+          return 0;
+        }
+        const terrainB = terrainBodies.get(bodyB);
+        const terrain = terrainB ?? terrainBodies.get(bodyA);
+        if (!terrain) return 0;
         const position = contact.getPositionWorldOnB();
         const normal = normalAt(terrain, position.x(), position.z());
         // The normal on B points toward A.
@@ -89,7 +115,16 @@ export function createPhysicsWorld(
   const contours =
     (terrain.flippedCells || terrain.warpedCells) && contourCollider(Ammo, groundTerrain);
   const structures = terrain.collisionMesh && triangleCollider(Ammo, terrain.collisionMesh);
-  const bridges = terrain.bridgeMesh && triangleCollider(Ammo, terrain.bridgeMesh);
+  const bridges =
+    terrain.bridgeMesh &&
+    triangleCollider(
+      Ammo,
+      {
+        positions: terrain.bridgeMesh.positions,
+        indices: terrain.bridgeMesh.collisionIndices ?? terrain.bridgeMesh.indices,
+      },
+      true,
+    );
   const buildings = terrain.buildingMesh && triangleCollider(Ammo, terrain.buildingMesh);
   let buildingsEnabled = true;
   const heightData = resources.acquireHeightfield(contours?.heights ?? groundTerrain.heights);
@@ -126,7 +161,7 @@ export function createPhysicsWorld(
   if (structures) world.addRigidBody(structures.body);
   if (bridges) world.addRigidBody(bridges.body);
   if (buildings) world.addRigidBody(buildings.body);
-  world.setContactAddedCallback(terrainContactCallback(Ammo));
+  world.setContactAddedCallback(surfaceContactCallback(Ammo));
   const terrainBodyList = contours ? [ground, contours.body] : [ground];
   for (const body of terrainBodyList) {
     body.setCollisionFlags(body.getCollisionFlags() | customMaterialCallback);
@@ -236,6 +271,7 @@ function contourCollider(Ammo: typeof AmmoFactory, terrain: HeightfieldData) {
 function triangleCollider(
   Ammo: typeof AmmoFactory,
   data: NonNullable<HeightfieldData['collisionMesh']>,
+  correctEdgeContacts = false,
 ) {
   const mesh = new Ammo.btTriangleMesh(true);
   const vector = new Ammo.btVector3();
@@ -249,7 +285,22 @@ function triangleCollider(
     .at(0)
     .set_m_numTriangles(data.indices.length / 3);
   Ammo.destroy(vector);
-  return meshCollider(Ammo, mesh);
+  const collider = meshCollider(Ammo, mesh);
+  if (correctEdgeContacts) {
+    const normals = new Float32Array(data.indices.length);
+    const a = new Vector3(),
+      b = new Vector3(),
+      c = new Vector3();
+    for (let i = 0; i < data.indices.length; i += 3) {
+      a.fromArray(data.positions, data.indices[i] * 3);
+      b.fromArray(data.positions, data.indices[i + 1] * 3).sub(a);
+      c.fromArray(data.positions, data.indices[i + 2] * 3).sub(a);
+      b.cross(c).normalize().toArray(normals, i);
+    }
+    collider.body.setCollisionFlags(collider.body.getCollisionFlags() | customMaterialCallback);
+    meshContactNormals.set(Ammo.getPointer(collider.body), normals);
+  }
+  return collider;
 }
 
 function meshCollider(Ammo: typeof AmmoFactory, mesh: AmmoFactory.btTriangleMesh) {
@@ -267,6 +318,7 @@ function meshCollider(Ammo: typeof AmmoFactory, mesh: AmmoFactory.btTriangleMesh
   return {
     body,
     dispose() {
+      meshContactNormals.delete(Ammo.getPointer(body));
       Ammo.destroy(body);
       Ammo.destroy(motion);
       Ammo.destroy(shape);

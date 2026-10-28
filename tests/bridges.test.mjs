@@ -346,6 +346,102 @@ test('real Ammo collision supports the deck, underside, rails and valley without
   }
 });
 
+test('glancing bridge curb and rail contacts slide across triangle seams without catching', async () => {
+  const bridge = {
+    ...definition,
+    points: [
+      [0, 0],
+      [0, bridgeDimensions.trussMinLength],
+    ],
+    structures: [{ type: 'bridge', start: 0, end: 1 }],
+  };
+  const bridgeMesh = buildBridgeGeometry(
+    bridge,
+    () => 0,
+    () => -20,
+    (geometry) => geometry.clone(),
+  );
+  const Ammo = await AmmoFactory.call({});
+  const resources = createPhysicsResources(Ammo);
+  const halfWidth = bridge.width / 2 + (bridge.shoulderWidth ?? courseShoulderWidth);
+  for (const height of [
+    bridgeDimensions.curbHeight / 2,
+    (bridgeDimensions.curbHeight + 0.8) / 2,
+    0.8,
+  ]) {
+    for (const side of [-1, 1]) {
+      for (const direction of [-1, 1]) {
+        const physics = createPhysicsWorld(Ammo, resources, {
+          columns: 2,
+          rows: 2,
+          spacing: bridgeDimensions.trussMinLength,
+          minX: -bridgeDimensions.trussMinLength / 2,
+          minZ: 0,
+          minHeight: -20,
+          maxHeight: -20,
+          heights: new Float32Array(4).fill(-20),
+          bridgeMesh,
+        });
+        const vector = new Ammo.btVector3(0, 0, 0);
+        physics.world.setGravity(vector);
+        vector.setValue(0.9, 0.1, 2.1);
+        const shape = new Ammo.btBoxShape(vector);
+        const transform = new Ammo.btTransform();
+        transform.setIdentity();
+        const innerEdge =
+          height < bridgeDimensions.curbHeight
+            ? halfWidth
+            : halfWidth + bridgeDimensions.edgeWidth / 2 - 0.07;
+        vector.setValue(side * (innerEdge - 0.93), height, bridgeDimensions.trussMinLength / 2);
+        transform.setOrigin(vector);
+        const motion = new Ammo.btDefaultMotionState(transform);
+        vector.setValue(0, 0, 0);
+        shape.calculateLocalInertia(1500, vector);
+        const info = new Ammo.btRigidBodyConstructionInfo(1500, motion, shape, vector);
+        const body = new Ammo.btRigidBody(info);
+        physics.world.addRigidBody(body);
+        vector.setValue(side, 0, direction * 20);
+        body.setLinearVelocity(vector);
+        let contacts = 0;
+        let largestAlongNormal = 0;
+        try {
+          for (let i = 0; i < 120; i++) {
+            physics.step(1 / 120);
+            for (let j = 0; j < physics.dispatcher.getNumManifolds(); j++) {
+              const manifold = physics.dispatcher.getManifoldByIndexInternal(j);
+              for (let k = 0; k < manifold.getNumContacts(); k++) {
+                const contact = manifold.getContactPoint(k);
+                if (contact.getDistance() > 0) continue;
+                contacts++;
+                largestAlongNormal = Math.max(
+                  largestAlongNormal,
+                  Math.abs(contact.get_m_normalWorldOnB().z()),
+                );
+              }
+            }
+          }
+          assert.ok(contacts > 0, 'exercise actual curb and rail contacts');
+          assert.ok(
+            largestAlongNormal < 0.01,
+            `seams must not push against travel: height=${height}, side=${side}, direction=${direction}, normal=${largestAlongNormal}`,
+          );
+          assert.ok(direction * body.getLinearVelocity().z() > 18, 'retain sliding speed');
+          assert.ok(Math.abs(body.getAngularVelocity().y()) < 0.5, 'no abrupt spin');
+        } finally {
+          physics.world.removeRigidBody(body);
+          Ammo.destroy(body);
+          Ammo.destroy(info);
+          Ammo.destroy(motion);
+          Ammo.destroy(transform);
+          Ammo.destroy(shape);
+          Ammo.destroy(vector);
+          physics.dispose();
+        }
+      }
+    }
+  }
+});
+
 test('previews retain bridge structures, keep asphalt above the valley and dispose resources', () => {
   const model = createCoursePreviewModel(
     definition,

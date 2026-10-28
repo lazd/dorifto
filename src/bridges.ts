@@ -18,6 +18,7 @@ export const bridgeDimensions = {
 };
 
 export interface BridgeGeometry extends TriangleMeshData {
+  collisionIndices: Uint32Array;
   concreteCount: number;
   deckSurfaceCount: number;
   trussCount: number;
@@ -40,6 +41,7 @@ export function buildBridgeGeometry(
   const concrete: number[] = [];
   const deckSurface: number[] = [];
   const steel: number[] = [];
+  const barriers: number[] = [];
   const trusses: number[] = [];
   // Duplicate face vertices so concrete edges and the rails keep crisp normals.
   const quad = (points: THREE.Vector3[], indices: number[]) => {
@@ -163,6 +165,8 @@ export function buildBridgeGeometry(
     for (const side of [-1, 1]) {
       const outer = side * (halfWidth + edgeWidth / 2);
       sweep(start, end, outer - edgeWidth / 2, outer + edgeWidth / 2, -0.03, curbHeight, concrete);
+      // A continuous rail envelope keeps the bumper from hooking individual posts or rail gaps.
+      sweep(start, end, outer - 0.07, outer + 0.07, curbHeight, railingHeight + 0.07, barriers);
       for (const rise of [0.8, railingHeight])
         sweep(start, end, outer - 0.065, outer + 0.065, rise - 0.07, rise + 0.07, steel);
       const posts = Math.max(1, Math.ceil(size / postSpacing));
@@ -243,6 +247,7 @@ export function buildBridgeGeometry(
   return {
     positions: new Float32Array(positions),
     indices: new Uint32Array([...concrete, ...steel, ...trusses, ...deckSurface]),
+    collisionIndices: new Uint32Array([...concrete, ...barriers, ...trusses, ...deckSurface]),
     concreteCount: concrete.length,
     deckSurfaceCount: deckSurface.length,
     trussCount: trusses.length,
