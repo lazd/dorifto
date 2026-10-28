@@ -22,6 +22,8 @@ const smoothstep = (value: number, low: number, high: number) => {
 
 export interface DrivetrainInput {
   startNeutral?: boolean;
+  shiftUp?: boolean;
+  shiftDown?: boolean;
   throttle: number;
   reversing: boolean;
   wheelSpeed: number;
@@ -60,6 +62,9 @@ export class Drivetrain {
   private shiftCooldown = 0;
   private previousPedal = 0;
   private liftingOffThrottle = false;
+  private manualTime = 0;
+  private shiftUpHeld = false;
+  private shiftDownHeld = false;
 
   reset() {
     this.engineSpeed = idleSpeed;
@@ -68,6 +73,8 @@ export class Drivetrain {
     this.shiftTime = this.shiftCooldown = 0;
     this.previousPedal = 0;
     this.liftingOffThrottle = false;
+    this.manualTime = 0;
+    this.shiftUpHeld = this.shiftDownHeld = false;
     Object.assign(this.state, {
       rpm: idleRpm,
       gear: 1,
@@ -83,7 +90,7 @@ export class Drivetrain {
   // while the equal and opposite geared torque drives the two rear wheels.
   step(dt: number, input: DrivetrainInput): number {
     const throttle = this.updateThrottle(input.throttle);
-    if (!input.startNeutral) this.updateShifting(dt, input);
+    this.updateShifting(dt, input);
     const direction = this.reversing ? -1 : 1;
     const ratio = this.getRatio(this.reversing ? -1 : this.gearIndex + 1);
     const shaftSpeed = input.wheelSpeed * direction * ratio;
@@ -144,15 +151,36 @@ export class Drivetrain {
   private updateShifting(dt: number, input: DrivetrainInput) {
     this.shiftTime = Math.max(0, this.shiftTime - dt);
     this.shiftCooldown = Math.max(0, this.shiftCooldown - dt);
+    this.manualTime = Math.max(0, this.manualTime - dt);
+    const shiftUp = Boolean(input.shiftUp && !this.shiftUpHeld);
+    const shiftDown = Boolean(input.shiftDown && !this.shiftDownHeld);
+    this.shiftUpHeld = Boolean(input.shiftUp);
+    this.shiftDownHeld = Boolean(input.shiftDown);
+    if (input.startNeutral) return;
+    const manualShift = Number(shiftUp) - Number(shiftDown);
+    if (manualShift) this.manualTime = 10;
     if (input.reversing !== this.reversing) {
       this.reversing = input.reversing;
       this.gearIndex = 0;
+      this.manualTime = 0;
       this.shiftTime = 0.18;
       this.shiftCooldown = 0.65;
     }
-    if (!this.reversing && !this.shiftCooldown && !input.declutched) {
-      const requested = this.determineGear();
-      if (this.canShiftTo(requested, input)) {
+    if (!this.reversing && !(manualShift ? this.shiftTime : this.shiftCooldown)) {
+      const requested = manualShift
+        ? this.gearIndex + 1 + manualShift
+        : this.manualTime || input.declutched
+          ? this.gearIndex + 1
+          : this.determineGear();
+      const safe = manualShift
+        ? requested >= 1 &&
+          requested <= ratios.length &&
+          Math.max(Math.abs(input.wheelSpeed), Math.abs(input.roadWheelSpeed)) *
+            this.getRatio(requested) *
+            radiansToRpm <=
+            redlineRpm
+        : this.canShiftTo(requested, input);
+      if (safe) {
         this.gearIndex = requested - 1;
         this.shiftTime = 0.22;
       }

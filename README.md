@@ -4,6 +4,81 @@ A small Three.js + Ammo.js driving playground built with TypeScript and Vite.
 Ammo.js is installed through the `ammojs-typed` npm distribution and runs in a
 dedicated Web Worker; there are no runtime CDN dependencies.
 
+## Thrustmaster T300RS GT
+
+The T300 is detected automatically through the browser Gamepad API, including raw
+(non-standard) wheel mappings. Use separate-pedal mode with the pedals connected
+to the wheel base. The operating system must expose the wheel as a game controller;
+install the appropriate driver if needed, let the wheel calibrate, then press a
+wheel button with the game focused. Native-mode profiles do not require in-game remapping.
+
+A device named **Thrustmaster FFB Wheel** with USB ID `044f:b65d` is still in
+generic mode. In the observed macOS setup it exposes digital gas/brake buttons
+but no pedal-axis movement or clutch-pedal input. The game requires pedal axes
+and does not substitute those buttons. A native USB driver or initializer must
+switch the wheel to native mode before axis-based pedals can work. The Gamepad
+API cannot perform this USB initialization; connecting in PS3 / PC mode alone
+may not be sufficient. Thrustmaster's official PC drivers are for Windows.
+
+### Native USB initializer
+
+After `npm install`, inspect the USB connection without opening the wheel or
+sending initialization packets:
+
+```sh
+npm run wheel:init
+```
+
+To prepare the wheel and request native mode, close applications using it and
+keep hands clear of the wheel: it may move or recalibrate. Then run:
+
+```sh
+npm run wheel:init -- --initialize
+```
+
+The helper uses Node/libusb, not browser USB access. It only targets one generic
+`044f:b65d` device, validates that the model is a known attached T300, and checks
+for native-mode re-enumeration on the same USB port. Its preparation, model query,
+and mode-switch sequence follows the protocol documented by Linux's
+[hid-thrustmaster driver](https://github.com/torvalds/linux/blob/master/drivers/hid/hid-thrustmaster.c).
+It does not flash firmware, install a kernel extension, or enable force feedback.
+Unplugging the wheel may require initializing it again.
+
+If native-mode polling times out, the helper makes a fresh, read-only USB
+inspection in a separate process to avoid relying only on a stale device list.
+If neither check confirms the switch, it reports **unconfirmed** (exit code 2),
+not a failed transfer. Check `npm run wheel:init -- --inspect` and actual pedal
+input before repeating initialization; the switch may already have succeeded.
+
+USB ID `044f:b66e` is the normal PS3 / PC mode used by the verified pedal mapping.
+`044f:b66d` is PS4 mode, and `044f:b66f` is PS3 advanced mode; these are not treated
+as equivalent to the verified layout. The helper reports the variant and rejects
+the wrong mode rather than claiming the pedals are ready. If reconnecting produces
+`b66d`, unplug USB, set the base's physical selector to PS3 / PC, reconnect, and
+rerun the initializer. The MODE LED alone does not establish the USB variant.
+
+macOS may deny interface access while its HID driver owns the wheel. The helper
+requests temporary automatic driver detachment; this may require administrator
+privileges. If it reports an access error, run
+`sudo node scripts/initialize-t300.mjs --initialize` yourself in a terminal.
+Do not disable SIP or install a replacement Windows USB driver for this helper.
+After a confirmed switch, reload the game, press a wheel button, and inspect
+the pedal axes. Native USB mode does not guarantee that the browser's HID mapping
+exposes the axes correctly; actual pedal travel still needs hardware verification.
+
+Steering is linear, gas and brake are analog, and the clutch pedal operates the
+game's clutch kick. The D-pad matches Xbox: up records a lap, down cycles time of
+day, and left/right select the previous/next lap or stereo station. Start / Options
+resets the car and run; Select / Share cycles the camera. Face buttons follow
+their Xbox positions, with R2 operating the handbrake and L2 flashing high beams.
+
+The right paddle shifts up and the left paddle shifts down, one gear per press.
+Paddles temporarily override the automatic gearbox; automatic shifting resumes
+after 10 seconds without another shift request. Requests outside the six forward
+gears or that would drive the engine past redline are rejected, and an in-progress
+shift must finish before another shift can begin. Paddles do not select neutral
+or reverse. Force feedback and external H-pattern shifters are not supported.
+
 ## Real driver recordings
 
 Run `npm run import-real-data` to match Sensor Logger JSON recordings in `data-imports/`

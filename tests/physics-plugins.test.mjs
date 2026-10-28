@@ -690,6 +690,30 @@ test('worker client bounds in-flight advances, ignores pre-reset replies, preser
   assert.equal(worker.terminated, true);
 });
 
+test('worker forwards paddles to the drivetrain without repeating shifts across substeps', (t) => {
+  const { simulation, input } = workerFixture();
+  t.after(() => simulation.dispose());
+  input.controls.shiftUp = true;
+  input.controls.clutch = true;
+  const advance = () =>
+    simulation.handle({
+      type: 'advance',
+      dt: physicsStep * 6,
+      input,
+      recycled: [],
+      revision: 0,
+    });
+  assert.equal(advance().telemetry.engine.gear, 2);
+  for (let frame = 0; frame < 20; frame++) assert.equal(advance().telemetry.engine.gear, 2);
+  input.controls.shiftUp = false;
+  advance();
+  input.controls.shiftDown = true;
+  assert.equal(advance().telemetry.engine.gear, 1);
+  simulation.handle({ type: 'reset', input, revision: 0 });
+  input.controls.shiftDown = false;
+  assert.equal(advance().telemetry.engine.gear, 1);
+});
+
 test('worker batches preserve fixed-step timing, transferable poses, and simulation-tick recording', () => {
   const { simulation, input, data } = workerFixture();
   try {

@@ -40,6 +40,37 @@ function revEngine() {
   return drivetrain;
 }
 
+test('paddles shift once per press, refresh manual mode, and return to automatic after 10 seconds', () => {
+  const drivetrain = new Drivetrain();
+  drivetrain.step(dt, { ...input, shiftUp: true });
+  assert.equal(drivetrain.state.gear, 2);
+  for (let step = 0; step < 1200; step++) drivetrain.step(dt, { ...input, shiftUp: true });
+  assert.equal(drivetrain.state.gear, 2, 'holding a paddle never repeats');
+  for (let step = 0; step < 4200; step++) drivetrain.step(dt, input);
+  drivetrain.step(dt, { ...input, shiftUp: true });
+  assert.equal(drivetrain.state.gear, 3);
+  for (let step = 0; step < 5999; step++) drivetrain.step(dt, { ...input, declutched: false });
+  assert.equal(drivetrain.state.gear, 3, 'another shift restarts the full timeout');
+  for (let step = 0; step < 2; step++) drivetrain.step(dt, { ...input, declutched: false });
+  assert.equal(drivetrain.state.gear, 2, 'automatic downshifting resumes at timeout');
+  drivetrain.reset();
+  drivetrain.step(dt, { ...input, shiftDown: true });
+  assert.equal(drivetrain.state.gear, 1, 'paddles cannot select neutral or reverse');
+});
+
+test('manual shifts reject wheel or road speeds that would exceed redline', () => {
+  for (const speedSource of ['wheelSpeed', 'roadWheelSpeed']) {
+    const drivetrain = new Drivetrain();
+    drivetrain.step(dt, { ...input, shiftUp: true });
+    for (let step = 0; step < 600; step++) drivetrain.step(dt, input);
+    drivetrain.step(dt, { ...input, [speedSource]: 250, shiftDown: true });
+    assert.equal(drivetrain.state.gear, 2);
+    drivetrain.step(dt, input);
+    drivetrain.step(dt, { ...input, shiftDown: true });
+    assert.equal(drivetrain.state.gear, 1, 'a fresh safe request succeeds');
+  }
+});
+
 test('closed-throttle free revs fall three times as fast across the RPM range', () => {
   for (const rpm of [1500, 3000, 6000]) {
     const drivetrain = new Drivetrain();

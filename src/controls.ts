@@ -1,7 +1,51 @@
 import { inputBindings, type AxisAction, type ControllerAction } from './input-bindings';
+import type { DriveMode } from './drive-modes';
 
 const STICK_DEADZONE = 0.0;
 const TRIGGER_DEADZONE = 0.0;
+const T300_DRIFT_STEERING_GAIN = 4;
+
+export function isT300(pad: Gamepad): boolean {
+  return /Thrustmaster FFB|\bt300(?:rs)?\b|044f.*b66[def]/i.test(pad.id ?? '');
+}
+
+const t300Buttons = [5, 4, 3, 2, 9, 8, -1, -1, 6, 7, 10, 11];
+const t300PedalAxes = {
+  compact: { accelerate: 1, brake: 2, clutch: 3 },
+  sparse: { accelerate: 5, brake: 1, clutch: 6 },
+};
+const t300HatDirections = [
+  [7, 0, 1],
+  [3, 4, 5],
+  [5, 6, 7],
+  [1, 2, 3],
+];
+
+function t300Button(
+  pad: Gamepad,
+  index: number,
+  needsInitialization: boolean,
+): GamepadButton | undefined {
+  if (needsInitialization && index >= 4 && index <= 7) return undefined;
+  if (index < 12) return pad.buttons[t300Buttons[index]];
+  let pressed = false;
+  if (pad.axes.length === 6) {
+    const horizontal = pad.axes[4];
+    const vertical = pad.axes[5];
+    pressed =
+      [vertical < -0.5, vertical > 0.5, horizontal < -0.5, horizontal > 0.5][index - 12] ?? false;
+  } else {
+    const hat = pad.axes[pad.axes.length >= 10 ? 9 : 4];
+    if (hat === undefined || hat < -1 || hat > 1) return undefined;
+    const direction = Math.round(((hat + 1) * 7) / 2);
+    pressed = t300HatDirections[index - 12]?.includes(direction) ?? false;
+  }
+  return { pressed, touched: pressed, value: Number(pressed) };
+}
+
+function t300Pedal(pad: Gamepad, index: number): number {
+  return Math.max(0, Math.min(1, (1 - (pad.axes[index] ?? 1)) / 2));
+}
 
 type LightingRequest = 'press' | 'tap' | 'hold';
 
@@ -28,6 +72,8 @@ export class DrivingControls {
   handbrake = false;
   /** Held to disengage the clutch; releasing it at high revs kicks the rear loose. */
   clutch = false;
+  shiftUp = false;
+  shiftDown = false;
   highBeams = false;
   leftSignal = false;
   rightSignal = false;
@@ -93,6 +139,7 @@ export class DrivingControls {
     this.cameraX = this.cameraY = 0;
     this.mapZoom = 0;
     this.handbrake = this.clutch = this.lookBehind = false;
+    this.shiftUp = this.shiftDown = false;
     this.highBeams = false;
     this.highBeamPressedAt = null;
     this.highBeamToggled = this.highBeamsLatched = false;
@@ -113,12 +160,25 @@ export class DrivingControls {
     this.nextLapRequested = false;
   }
 
-  poll(enabled = true, steeringExpo = 0, dismissError?: () => boolean, allowReset = false) {
+  poll(
+    enabled = true,
+    steeringExpo = 0,
+    dismissError?: () => boolean,
+    allowReset = false,
+    driveMode: DriveMode = 'grip',
+  ) {
     const available = typeof navigator.getGamepads === 'function';
     const pads = available ? Array.from(navigator.getGamepads()) : [];
-    const pad = pads.find((pad) => pad?.connected && pad.mapping === 'standard');
+    const pad =
+      pads.find((pad) => pad?.connected && isT300(pad)) ??
+      pads.find((pad) => pad?.connected && pad.mapping === 'standard');
+    const wheel = pad && isT300(pad) && pad.mapping !== 'standard';
+    const needsInitialization = Boolean(wheel && /\bb65d\b/i.test(pad.id));
+    const pedalAxes = t300PedalAxes[pad && pad.axes.length >= 9 ? 'sparse' : 'compact'];
     const message = pad
-      ? '✅ Connected'
+      ? needsInitialization
+        ? 'Wheel initialization required: pedal axes unavailable'
+        : '✅ Connected'
       : pads.some((pad) => pad?.connected)
         ? '🛑 Controller unsupported'
         : available
@@ -127,14 +187,18 @@ export class DrivingControls {
     this.controllerStatus = message;
     const bindings = inputBindings.get();
     const captureActive = inputBindings.isCaptureActive();
-    const mapViewPressed = Boolean(pad?.buttons[bindings.controller.buttons.map]?.pressed);
+    const button = (action: ControllerAction) => {
+      const index = bindings.controller.buttons[action];
+      return wheel ? t300Button(pad, index, needsInitialization) : pad?.buttons[index];
+    };
+    const mapViewPressed = Boolean(button('map')?.pressed);
     if (mapViewPressed && !this.mapViewHeld && this.focused && !document.hidden && !captureActive) {
       const dismissed = dismissError?.() ?? false;
       if (enabled && !dismissed) this.mapView = !this.mapView;
     }
     this.mapViewHeld = mapViewPressed;
     if (!enabled || !this.focused || document.hidden || captureActive) {
-      const resetDown = Boolean(pad?.buttons[bindings.controller.buttons.reset]?.pressed);
+      const resetDown = Boolean(button('reset')?.pressed);
       const reset =
         allowReset &&
         this.focused &&
@@ -147,9 +211,10 @@ export class DrivingControls {
       this.resetRequested = reset;
       return;
     }
-    const button = (action: ControllerAction) => pad?.buttons[bindings.controller.buttons[action]];
     const pressed = (action: ControllerAction) => Boolean(button(action)?.pressed);
     const value = (action: ControllerAction) => {
+      if (wheel && (action === 'accelerate' || action === 'brake'))
+        return needsInitialization ? 0 : t300Pedal(pad, pedalAxes[action]);
       const input = button(action);
       const triggerValue = Math.max(
         0,
@@ -158,6 +223,7 @@ export class DrivingControls {
       return Math.max(0, (triggerValue - TRIGGER_DEADZONE) / (1 - TRIGGER_DEADZONE));
     };
     const axis = (action: AxisAction) => {
+      if (wheel) return action === 'steering' ? -(pad.axes[0] ?? 0) : 0;
       const binding = bindings.controller.axes[action];
       const raw = Math.max(-1, Math.min(1, pad?.axes[binding.index] ?? 0));
       const adjusted = binding.inverted ? -raw : raw;
@@ -196,12 +262,22 @@ export class DrivingControls {
     const keyDown = (action: keyof typeof keyboard) => this.keys.has(keyboard[action]);
     const keyboardSteer = Number(keyDown('steerLeft')) - Number(keyDown('steerRight'));
     const stick = axis('steering');
-    this.steer = keyboardSteer || stick * (1 - steeringExpo) + stick ** 3 * steeringExpo;
+    const wheelSteer = Math.max(
+      -1,
+      Math.min(1, stick * (driveMode === 'drift' ? T300_DRIFT_STEERING_GAIN : 1)),
+    );
+    const steering = wheel ? wheelSteer : stick;
+    const expo = wheel && driveMode === 'grip' ? 0 : steeringExpo;
+    this.steer = keyboardSteer || steering * (1 - expo) + steering ** 3 * expo;
     this.throttle = Math.max(Number(keyDown('accelerate')), value('accelerate'));
     this.brake = Math.max(Number(keyDown('brake')), value('brake'));
     this.reverse = this.brake;
     this.handbrake = keyDown('handbrake') || pressed('handbrake');
-    this.clutch = pressed('clutch');
+    this.clutch =
+      pressed('clutch') ||
+      Boolean(wheel && !needsInitialization && t300Pedal(pad, pedalAxes.clutch) > 0.5);
+    this.shiftUp = Boolean(wheel && pad.buttons[1]?.pressed);
+    this.shiftDown = Boolean(wheel && pad.buttons[0]?.pressed);
     const highBeamPressed = keyDown('highBeams') || pressed('highBeams');
     const now = performance.now();
     if (highBeamPressed) {
@@ -267,7 +343,9 @@ export class DrivingControls {
     this.rightSignal = this.signalDirection === 1 && signalOn;
     const padActive =
       Boolean(pad?.buttons.some((button) => button.pressed)) ||
-      Boolean(pad?.axes.some((value) => Math.abs(value) > 0.2));
+      (wheel
+        ? Math.abs(this.steer) > 0.2 || this.throttle > 0.2 || this.brake > 0.2 || this.clutch
+        : Boolean(pad?.axes.some((value) => Math.abs(value) > 0.2)));
     if (this.keys.size > 0 || padActive) this.setCursorHidden(true);
   }
 }

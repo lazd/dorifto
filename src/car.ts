@@ -898,6 +898,21 @@ export async function loadCar(onProgress?: (fraction: number) => void) {
   // The gauge face points at the driver; positive rotation is counter-clockwise from the seat.
   // The boost needle hangs below its hub, so sweeping toward +7 is counter-clockwise.
   const gaugeAxis = new THREE.Vector3(0, 0.1591, -0.9873).normalize();
+  const gearReadout = createSegmentedDisplay(128, 192, '#07130e', '#b9f8d1', 1);
+  gearReadout.texture.offset.set(0.23, 0.27);
+  gearReadout.texture.repeat.set(0.46, 0.46);
+  const gearDisplay = new THREE.Mesh(
+    new THREE.PlaneGeometry(
+      0.022 * gearReadout.texture.repeat.x,
+      0.028 * gearReadout.texture.repeat.y,
+    ),
+    new THREE.MeshBasicMaterial({ map: gearReadout.texture, toneMapped: false }),
+  );
+  gearDisplay.name = 'gear-display';
+  gearDisplay.position.set(-0.3808, 0.207, 0.37);
+  gearDisplay.lookAt(gearDisplay.position.clone().add(gaugeAxis));
+  chassis.add(gearDisplay);
+  gearReadout.setText('1');
   const rotateSpeedNeedle = pivot(
     /^speedarrow_/,
     new THREE.Vector3(-0.3287, 0.2348, 0.4068),
@@ -977,8 +992,9 @@ export async function loadCar(onProgress?: (fraction: number) => void) {
     }
     updateSpeedNeedle();
   }
-  function setGauges(speedKmh: number, rpm: number, boostMmHg: number, dt: number) {
+  function setGauges(speedKmh: number, rpm: number, boostMmHg: number, dt: number, gear: number) {
     const degrees = THREE.MathUtils.degToRad;
+    gearReadout.setText(gear < 0 ? 'R' : gear === 0 ? 'N' : String(gear));
     gaugeSpeedKmh = speedKmh;
     updateSpeedNeedle();
     rotateRpmNeedle(-degrees(TACH_DEG_PER_RPM * THREE.MathUtils.clamp(rpm, 0, 9200)));

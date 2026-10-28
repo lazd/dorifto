@@ -135,6 +135,46 @@ test('steering expo respects live changes and remapped axes without affecting ke
   }
 });
 
+test('T300 drift steering softens the center with expo and reaches full lock at quarter travel', (t) => {
+  const wheel = rig(t);
+  wheel.pad.id = 'Thrustmaster T300RS Racing wheel (Vendor: 044f Product: b66e)';
+  wheel.pad.mapping = '';
+  for (const mode of ['drift', 'grip', 'drift']) {
+    for (const direction of [-1, 1]) {
+      for (const [travel, driftSteering] of [
+        [0, 0],
+        [0.0625, 0.109375],
+        [0.125, 0.275],
+        [0.25, 1],
+        [0.5, 1],
+        [1, 1],
+      ]) {
+        wheel.pad.axes[0] = -travel * direction;
+        wheel.controls.poll(true, 0.6, undefined, false, mode);
+        const expected = (mode === 'drift' ? driftSteering : travel) * direction;
+        assert.ok(Math.abs(wheel.controls.steer - expected) < 1e-12);
+      }
+    }
+  }
+  wheel.pad.axes[0] = -0.125;
+  for (const [expo, expected] of [
+    [0, 0.5],
+    [0.6, 0.275],
+    [1, 0.125],
+  ]) {
+    wheel.controls.poll(true, expo, undefined, false, 'drift');
+    assert.ok(Math.abs(wheel.controls.steer - expected) < 1e-12);
+  }
+  wheel.controls.keys.add(inputBindings.get().keyboard.steerLeft);
+  wheel.controls.poll(true, 0.6, undefined, false, 'drift');
+  assert.equal(wheel.controls.steer, 1, 'keyboard steering retains priority');
+  wheel.controls.keys.clear();
+  wheel.pad.mapping = 'standard';
+  wheel.pad.axes[0] = -0.25;
+  wheel.controls.poll(true, 0, undefined, false, 'drift');
+  assert.equal(wheel.controls.steer, 0.25, 'Xbox steering is not amplified');
+});
+
 test('pedals preserve analog values across the pressed threshold in both directions', (t) => {
   const r = rig(t);
   const { buttons } = inputBindings.get().controller;
@@ -149,6 +189,200 @@ test('pedals preserve analog values across the pressed threshold in both directi
       assert.equal(r.controls.brake, value);
       assert.equal(r.controls.reverse, value);
     }
+  }
+});
+
+test('T300 pedals and steering work without stick side effects and release on disconnect', (t) => {
+  const wheel = rig(t);
+  wheel.pad.id = 'Thrustmaster T300RS Racing wheel (Vendor: 044f Product: b66e)';
+  wheel.pad.mapping = '';
+  wheel.pad.axes = [0, 1, 0, 0, 0, 1, 1, 0, 0, 3.2857];
+  wheel.poll();
+  assert.match(wheel.controls.controllerStatus, /Connected/);
+  assert.equal(wheel.controls.throttle, 0);
+  assert.equal(wheel.controls.brake, 0);
+  assert.equal(wheel.controls.clutch, false);
+  for (const [axis, action] of [
+    [5, 'throttle'],
+    [1, 'brake'],
+    [6, 'clutch'],
+  ]) {
+    for (const value of [0.25, 0.5, 0.75, 1, 0]) {
+      wheel.pad.axes[axis] = 1 - value * 2;
+      wheel.poll();
+      assert.equal(wheel.controls.throttle, action === 'throttle' ? value : 0);
+      assert.equal(wheel.controls.brake, action === 'brake' ? value : 0);
+      assert.equal(wheel.controls.clutch, action === 'clutch' && value > 0.5);
+      assert.equal(wheel.controls.highBeams, false);
+      assert.equal(wheel.controls.handbrake, false);
+    }
+  }
+  wheel.pad.axes[0] = -0.5;
+  wheel.pad.axes[1] = 0;
+  wheel.pad.axes[5] = -0.5;
+  wheel.pad.axes[6] = -1;
+  wheel.controls.poll(true, 1);
+  assert.equal(wheel.controls.steer, 0.5);
+  assert.equal(wheel.controls.throttle, 0.75);
+  assert.equal(wheel.controls.brake, 0.5);
+  assert.equal(wheel.controls.clutch, true);
+  assert.equal(wheel.controls.cameraX, 0);
+  assert.equal(wheel.controls.cameraY, 0);
+  wheel.pad.buttons[0] = { pressed: true };
+  wheel.poll();
+  assert.equal(wheel.controls.shiftDown, true);
+  assert.equal(wheel.controls.shiftUp, false);
+  assert.equal(wheel.controls.handbrake, false);
+  assert.equal(wheel.controls.highBeams, false);
+  wheel.pad.buttons[0].pressed = false;
+  wheel.pad.buttons[1] = { pressed: true };
+  wheel.poll();
+  assert.equal(wheel.controls.shiftUp, true);
+  assert.equal(wheel.controls.shiftDown, false);
+  wheel.controls.mapView = true;
+  wheel.poll();
+  assert.equal(wheel.controls.mapZoom, 0);
+  wheel.pad.connected = false;
+  wheel.poll();
+  assert.equal(wheel.controls.throttle, 0);
+  assert.equal(wheel.controls.brake, 0);
+  assert.equal(wheel.controls.clutch, false);
+  assert.equal(wheel.controls.shiftUp, false);
+  assert.equal(wheel.controls.shiftDown, false);
+});
+
+test('T300 measured paddles and face buttons perform independent Xbox-style actions', (t) => {
+  const wheel = rig(t);
+  wheel.pad.id = 'Thrustmaster T300RS Racing wheel (Vendor: 044f Product: b66e)';
+  wheel.pad.mapping = '';
+  wheel.pad.axes = [0, 1, 0, 0, 0, 1, 1, 0, 0, 3.2857];
+  const actions = ['shiftUp', 'shiftDown', 'clutch', 'mapView', 'driveModeRequested'];
+  for (const [button, action] of [
+    [1, 'shiftUp'],
+    [0, 'shiftDown'],
+    [5, 'clutch'],
+    [4, 'mapView'],
+    [3, 'lightingRequested'],
+    [2, 'driveModeRequested'],
+  ]) {
+    wheel.pad.buttons[button] = { pressed: true };
+    wheel.poll();
+    for (const candidate of actions) assert.equal(wheel.controls[candidate], candidate === action);
+    assert.equal(wheel.controls.lightingRequested, action === 'lightingRequested' ? 'press' : null);
+    assert.equal(wheel.controls.highBeams, false);
+    assert.equal(wheel.controls.handbrake, false);
+    wheel.pad.buttons[button].pressed = false;
+    wheel.poll();
+    wheel.controls.mapView = false;
+  }
+});
+
+test('T300 generic mode requires initialization instead of using digital pedals or empty axes', (t) => {
+  const wheel = rig(t);
+  wheel.pad.id = 'Thrustmaster FFB Wheel (Vendor: 044f Product: b65d)';
+  wheel.pad.mapping = '';
+  wheel.pad.axes = Array(10).fill(0);
+  wheel.pad.buttons = Array.from({ length: 13 }, () => ({ value: 0, pressed: false }));
+  wheel.poll();
+  assert.match(wheel.controls.controllerStatus, /initialization required/);
+  assert.equal(wheel.controls.throttle, 0);
+  assert.equal(wheel.controls.brake, 0);
+  assert.equal(wheel.controls.clutch, false);
+  for (const index of [7, 6]) {
+    for (const value of [0.25, 1, 0]) {
+      wheel.pad.buttons[index] = { value, pressed: value > 0.5 };
+      wheel.poll();
+      assert.equal(wheel.controls.throttle, 0);
+      assert.equal(wheel.controls.brake, 0);
+      assert.equal(wheel.controls.reverse, 0);
+      assert.equal(wheel.controls.highBeams, false);
+      assert.equal(wheel.controls.handbrake, false);
+      assert.equal(wheel.controls.clutch, false);
+    }
+  }
+  wheel.pad.buttons[5] = { value: 1, pressed: true };
+  wheel.poll();
+  assert.equal(wheel.controls.clutch, true, 'the mapped clutch button still works');
+  wheel.pad.connected = false;
+  wheel.poll();
+  assert.equal(wheel.controls.throttle, 0);
+  assert.equal(wheel.controls.brake, 0);
+  assert.equal(wheel.controls.clutch, false);
+});
+
+test('T300 compact HID and Linux axis layouts keep pedals separate from the D-pad', (t) => {
+  const wheel = rig(t);
+  wheel.pad.id = 'Thrustmaster FFB';
+  wheel.pad.mapping = '';
+  for (const axes of [
+    [0, 1, 1, 1, 9 / 7],
+    [0, 1, 1, 1, 0, 0],
+  ]) {
+    wheel.pad.axes = axes;
+    wheel.poll();
+    assert.equal(wheel.controls.throttle, 0);
+    assert.equal(wheel.controls.brake, 0);
+    assert.equal(wheel.controls.clutch, false);
+    assert.equal(wheel.controls.recordRequested, false);
+    wheel.pad.axes[3] = -1;
+    wheel.pad.axes[4] = axes.length === 6 ? 0 : -1;
+    if (axes.length === 6) wheel.pad.axes[5] = -1;
+    wheel.poll();
+    assert.equal(wheel.controls.clutch, true);
+    assert.equal(wheel.controls.recordRequested, true);
+    wheel.pad.axes[4] = axes.length === 6 ? 0 : 9 / 7;
+    if (axes.length === 6) wheel.pad.axes[5] = 0;
+    wheel.poll();
+  }
+});
+
+test('T300 hat and shortcut buttons match their physical actions without conflicts', (t) => {
+  const wheel = rig(t);
+  wheel.pad.id = 'Thrustmaster T300RS Racing wheel (Vendor: 044f Product: b66e)';
+  wheel.pad.mapping = '';
+  wheel.pad.axes = [0, 1, 0, 0, 0, 1, 1, 0, 0, 3.2857];
+  for (const [hat, action] of [
+    [-1, 'recordRequested'],
+    [1 / 7, 'timeOfDayRequested'],
+    [5 / 7, 'previousLapRequested'],
+    [-3 / 7, 'nextLapRequested'],
+  ]) {
+    wheel.pad.axes[9] = hat;
+    wheel.poll();
+    assert.equal(wheel.controls[action], true);
+    wheel.poll();
+    assert.equal(wheel.controls[action], false);
+    wheel.pad.axes[9] = 3.2857;
+    wheel.poll();
+  }
+  wheel.pad.buttons[10] = { pressed: true };
+  wheel.poll();
+  assert.equal(wheel.controls.lookBehind, false, 'L3 does not perform the R3 action');
+  wheel.pad.buttons[10].pressed = false;
+  wheel.poll();
+  for (const [button, action, held] of [
+    [6, 'cameraRequested', false],
+    [7, 'resetRequested', false],
+    [8, 'handbrake', true],
+    [9, 'highBeams', true],
+    [11, 'lookBehind', true],
+  ]) {
+    wheel.pad.buttons[button] = { pressed: true };
+    wheel.poll();
+    assert.equal(wheel.controls[action], true);
+    for (const other of [
+      'cameraRequested',
+      'resetRequested',
+      'handbrake',
+      'highBeams',
+      'lookBehind',
+    ])
+      if (other !== action) assert.equal(wheel.controls[other], false);
+    wheel.poll();
+    assert.equal(wheel.controls[action], held);
+    wheel.pad.buttons[button].pressed = false;
+    wheel.poll();
+    assert.equal(wheel.controls[action], false);
   }
 });
 

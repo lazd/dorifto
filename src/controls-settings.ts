@@ -1,4 +1,5 @@
 import { Tabs } from './tabs';
+import { isT300 } from './controls';
 import { browserStorage as persistentStorage } from './browser-storage';
 import {
   axisOptions,
@@ -722,9 +723,13 @@ function renderKeyboardDiagram(root: HTMLElement): void {
 
 function updateControllerStatus(element: HTMLElement): void {
   const available = typeof navigator.getGamepads === 'function';
-  const pad = standardGamepad();
+  const wheel =
+    available && Array.from(navigator.getGamepads()).find((pad) => pad?.connected && isT300(pad));
+  const pad = wheel || standardGamepad();
   element.textContent = pad
-    ? '✅ Connected'
+    ? wheel
+      ? '✅ Connected: Thrustmaster T300RS GT'
+      : '✅ Connected'
     : available && Array.from(navigator.getGamepads()).some((entry) => entry?.connected)
       ? '🛑 Controller unsupported'
       : available

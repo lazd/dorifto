@@ -120,6 +120,7 @@ import { browserStorage } from './browser-storage';
 
 // Imported styles have been applied, so the page can be revealed without unstyled content.
 document.body.hidden = false;
+const SHOW_REAL_DRIVER_LINE = false;
 const gameState = createGameState();
 const configurationState = createConfigurationState();
 let ui: ReturnType<typeof bindGameUI>;
@@ -852,7 +853,9 @@ async function start() {
       racingAid.color = color;
     }
     // Avoid two overlapping glowing paths when the HUD aid is enabled.
-    if (realDriver) realDriver.line.visible = mode === 'off' && activeGhostMode() === 'real';
+    if (realDriver)
+      realDriver.line.visible =
+        SHOW_REAL_DRIVER_LINE && mode === 'off' && activeGhostMode() === 'real';
   }
   const activeGhostMode = (reverse = configurationState.getState().courseReverse) =>
     courseGhostMode(
@@ -886,7 +889,7 @@ async function start() {
     refreshSavedRuns();
   }
   function syncRealDriver() {
-    if (realDriver) realDriver.line.visible = activeGhostMode() === 'real';
+    if (realDriver) realDriver.line.visible = SHOW_REAL_DRIVER_LINE && activeGhostMode() === 'real';
     const next = courseLayout(layout.reverse ?? false);
     if (next.gates === layout.gates) return;
     applyCourseLayout(next);
@@ -1632,7 +1635,13 @@ async function start() {
       }
     }
     const { driveMode, profiles } = configurationState.getState();
-    controls.poll(!dialogOpen, profiles[driveMode].steeringExpo, ui.dismissError, results.open);
+    controls.poll(
+      !dialogOpen,
+      profiles[driveMode].steeringExpo,
+      ui.dismissError,
+      results.open,
+      driveMode,
+    );
     if (controls.lightingRequested && !replay) {
       vehicleLights = updateVehicleLights(vehicleLights, controls.lightingRequested);
       headlightsOverridden = true;
@@ -1776,7 +1785,7 @@ async function start() {
     // Manifold pressure: closed-throttle vacuum through to full turbo boost.
     const manifoldMmHg =
       THREE.MathUtils.lerp(-550, 0, engine.load) * (1 - engine.boost) + 650 * engine.boost;
-    car.setGauges(Math.abs(forward.dot(velocity)) * 3.6, engine.rpm, manifoldMmHg, dt);
+    car.setGauges(Math.abs(forward.dot(velocity)) * 3.6, engine.rpm, manifoldMmHg, dt, engine.gear);
     car.updateClock(new Date());
     car.updateUnderglow(groundHeight);
     car.setSteering(replaying ? playbackFrame.steering : physics.steering);

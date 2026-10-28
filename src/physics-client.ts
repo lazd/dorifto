@@ -194,6 +194,8 @@ export function createPhysicsClient({
         steer: controls.steer,
         handbrake: controls.handbrake,
         clutch: controls.clutch,
+        shiftUp: controls.shiftUp,
+        shiftDown: controls.shiftDown,
       },
       configuration: { driveMode, profiles, coneMode },
       signs: course.turnSignGroups.map((group) => group.visible),

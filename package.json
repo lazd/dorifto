@@ -9,6 +9,7 @@
     "build": "tsc --noEmit && vite build",
     "deploy": "npm run build && gh-pages --dist dist --remote origin --branch gh-pages --nojekyll",
     "preview": "vite preview --open",
+    "wheel:init": "node scripts/initialize-t300.mjs",
     "import-track": "node scripts/import-track.mjs",
     "import-road": "node scripts/import-road.mjs",
     "train:bot": "node scripts/optimize-race-bot.mjs --preset grip-default --generations 30",
@@ -37,6 +38,7 @@
     "oxfmt": "^0.74.0",
     "oxlint": "^1.89.0",
     "typescript": "~5.9.3",
+    "usb": "^2.19.1",
     "vite": "^8.3.4"
   },
   "lint-staged": {
