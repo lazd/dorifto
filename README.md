@@ -463,7 +463,28 @@ also removes their junction cones and collision. Junction cones remain enabled i
 of the regular course cone-density setting.
 Nearby-road surfaces share indexed vertices and are split into spatial chunks so off-screen
 sections of long routes can be culled. Road and waterway strips share bounded miter joins
-at bends, avoiding disconnected rectangular panels and gaps.
+at bends, avoiding disconnected rectangular panels and gaps. Nearby-road corners are rounded
+locally (up to 12 m) without moving endpoints; their asphalt uses the main road's surface
+material. Junction triangles are clipped at the main pavement rather than dropped in whole
+panels, allowing side roads to continue through the shoulder. Junction coverage interrupts
+dirt, edge paint, and grass; hiding nearby roads restores those details. These masks and
+curves are generated once at map load, with no per-frame geometry work.
+Unambiguous equal-width road fragments and repeated points are normalized by the importer,
+before saving, avoiding square seams at tile/way boundaries. Older saved and bundled maps
+run the same versioned local migration when loaded, without downloading tiles; the migrated
+geometry is retained on the next save. Rendering only rounds the normalized centerlines.
+Connected width changes share a tapered cross-section rather than
+a square step. Nearby pavement uses its rendered triangle footprint for asphalt
+traction and smoke rather than dust, in both the physics worker and tire effects; hiding
+the roads restores terrain traction. Narrow dirt verges share the main road's soil shader
+and fade into grass on either side. They are terrain-projected, spatially batched, and
+controlled by the road-edge dirt setting, with no additional collision bodies.
+Verge distance follows the pavement's actual ribbon edges, with fine cross-road samples
+to avoid gaps caused by interpolating across a whole road-width triangle. Junction soil
+uses a rounded pavement-distance blend and feathers across the main shoulder instead
+of being cut off by a straight triangle clip.
+Roads still stop at the imported 300 m corridor or the supported terrain boundary; they
+are scenery, not an unlimited navigable road network.
 Nearby-road copies aligned with the selected route
 are excluded even on bridges, including overlapping parallel carriageways, while independent
 roads crossing beneath remain visible.

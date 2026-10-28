@@ -260,6 +260,63 @@ test('imported road width and optional double-yellow lines reach the terrain-dra
       course.dispose();
     }
   }
+  const route = courseRoute(imported);
+  const center = route.getPointAt(0.5),
+    tangent = route.getTangentAt(0.5);
+  const branch = [center.x + tangent.z * 40, center.z - tangent.x * 40];
+  const course = createCourse(
+    scene,
+    {
+      ...imported,
+      flat: true,
+      scenery: {
+        version: 1,
+        buildings: [],
+        water: [],
+        waterways: [],
+        vegetation: [],
+        roads: [{ points: [[center.x, center.z], branch], width: 6 }],
+      },
+    },
+    1.8,
+  );
+  try {
+    let masked = 0;
+    scene.traverse((mesh) => {
+      if (!mesh.isMesh || !mesh.geometry.hasAttribute('junction')) return;
+      const mask = mesh.geometry.getAttribute('junction');
+      if (!mask.array.some((value) => value < 0)) return;
+      masked++;
+      const shader = {
+        uniforms: {},
+        vertexShader: '#include <common>\n#include <begin_vertex>',
+        fragmentShader: '#include <common>\n#include <alphatest_fragment>',
+      };
+      mesh.material.onBeforeCompile(shader, {});
+      assert.ok(shader.fragmentShader.includes('junctionsVisible'));
+      course.setScenery({
+        showBuildings: true,
+        showWater: true,
+        showVegetation: true,
+        showNearbyRoads: false,
+      });
+      assert.equal(
+        shader.uniforms.junctionsVisible.value,
+        0,
+        'hiding side roads restores the original shoulder, edge paint and grass',
+      );
+      course.setScenery({
+        showBuildings: true,
+        showWater: true,
+        showVegetation: true,
+        showNearbyRoads: true,
+      });
+      assert.equal(shader.uniforms.junctionsVisible.value, 1);
+    });
+    assert.ok(masked > 0, 'junctions interrupt roadside geometry');
+  } finally {
+    course.dispose();
+  }
 });
 
 test('real driver recordings and open-road gates trim to the stretch both cover', async () => {

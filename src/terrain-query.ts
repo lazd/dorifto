@@ -42,6 +42,54 @@ export interface TerrainQueryData extends HeightfieldData {
   segments: SurfaceSegment[];
   halfWidth: number;
   padRadius?: number;
+  nearbyRoadMesh?: TriangleMeshData;
+}
+
+/** Uses the rendered footprint, so trimmed road panels never become invisible asphalt. */
+export class PavementSurface {
+  private readonly buckets = new Map<string, number[]>();
+
+  constructor(private readonly mesh?: TriangleMeshData) {
+    if (!mesh) return;
+    for (let i = 0; i < mesh.indices.length; i += 3) {
+      const vertices = [0, 1, 2].map((j) => mesh.indices[i + j] * 3);
+      const xs = vertices.map((v) => mesh.positions[v]);
+      const zs = vertices.map((v) => mesh.positions[v + 2]);
+      for (let x = Math.floor(Math.min(...xs) / 16); x <= Math.floor(Math.max(...xs) / 16); x++)
+        for (let z = Math.floor(Math.min(...zs) / 16); z <= Math.floor(Math.max(...zs) / 16); z++) {
+          const key = `${x},${z}`;
+          const bucket = this.buckets.get(key) ?? [];
+          bucket.push(i);
+          this.buckets.set(key, bucket);
+        }
+    }
+  }
+
+  isAsphalt(position: { x: number; y?: number; z: number }) {
+    if (!this.mesh) return false;
+    const { positions: p, indices } = this.mesh;
+    for (const i of this.buckets.get(
+      `${Math.floor(position.x / 16)},${Math.floor(position.z / 16)}`,
+    ) ?? []) {
+      const a = indices[i] * 3,
+        b = indices[i + 1] * 3,
+        c = indices[i + 2] * 3;
+      const bx = p[b] - p[a],
+        bz = p[b + 2] - p[a + 2];
+      const cx = p[c] - p[a],
+        cz = p[c + 2] - p[a + 2];
+      const determinant = bx * cz - bz * cx;
+      if (Math.abs(determinant) < 1e-8) continue;
+      const x = position.x - p[a],
+        z = position.z - p[a + 2];
+      const u = (x * cz - z * cx) / determinant;
+      const v = (bx * z - bz * x) / determinant;
+      if (u < -1e-5 || v < -1e-5 || u + v > 1.00001) continue;
+      const height = p[a + 1] + u * (p[b + 1] - p[a + 1]) + v * (p[c + 1] - p[a + 1]);
+      if (position.y === undefined || Math.abs(position.y - height) < 2) return true;
+    }
+    return false;
+  }
 }
 
 export class TerrainSurface {

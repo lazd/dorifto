@@ -24,7 +24,7 @@ import {
 } from './race-bot';
 import { LapTimer } from './laps';
 import { createRaceStandings } from './race-standings';
-import { TerrainSurface, heightAt, normalAt } from './terrain-query';
+import { PavementSurface, TerrainSurface, heightAt, normalAt } from './terrain-query';
 import {
   RunRecording,
   applyCarPose,
@@ -127,6 +127,7 @@ export function createPhysicsSimulation(Ammo: typeof AmmoFactory, data: PhysicsI
     data.terrain.halfWidth,
     data.terrain.padRadius,
   );
+  const nearbyPavement = new PavementSurface(data.terrain.nearbyRoadMesh);
   let laps = new LapTimer(data.definition, data.race);
   const resources = createPhysicsResources(Ammo);
   const course = {
@@ -135,7 +136,9 @@ export function createPhysicsSimulation(Ammo: typeof AmmoFactory, data: PhysicsI
       heightAt: (x: number, z: number) => heightAt(data.terrain, x, z),
       normalAt: (x: number, z: number) => normalAt(data.terrain, x, z),
     },
-    isAsphalt: (position: THREE.Vector3) => surface.isAsphalt(position),
+    isAsphalt: (position: THREE.Vector3) =>
+      surface.isAsphalt(position) ||
+      (configuration.showNearbyRoads !== false && nearbyPavement.isAsphalt(position)),
   };
   const dimensions = vehicleDimensions(car);
   // Each preset has its own edge margin, so maps are built (and shared) per preset.

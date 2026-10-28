@@ -3,16 +3,19 @@ import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { courseShoulderWidth, type CourseDefinition } from './courses';
 import type { CourseTerrain } from './terrain';
 import { projectTerrainGeometry } from './terrain';
-import { TerrainSurface, type TriangleMeshData } from './terrain-query';
+import { PavementSurface, TerrainSurface, type TriangleMeshData } from './terrain-query';
 import type { SceneryCategory, SceneryPoint, SceneryPolygon } from './scenery-data';
+import { smoothSceneryLine } from './scenery-data';
 
 type Point = { x: number; z: number };
 type Bounds = { minX: number; minZ: number; maxX: number; maxZ: number };
 type Polygon = Bounds & { rings: SceneryPolygon };
-type RoadSegment = Bounds & { a: Point; b: Point; width: number };
+type RoadSegment = Bounds & { a: Point; b: Point; width: number; widthA?: number; widthB?: number };
 type Vertex = Point & { y: number };
 
 export interface SceneryOptions {
+  createRoadMaterial?: () => THREE.MeshStandardMaterial;
+  createRoadDirtMaterial?: () => THREE.MeshStandardMaterial | undefined;
   /**
    * Projects nearby roads and waterways onto the displayed ground, e.g. a coarse preview grid.
    * Return a new geometry; the source is borrowed and disposed by createScenery.
@@ -258,12 +261,45 @@ export function createScenery(
     }),
   ) as Record<SceneryCategory, THREE.Group>;
   const junctionCones: Point[] = [];
+  let roadsVisible = true;
+  const pavement = new SpatialIndex<RoadSegment>();
+  const junctionPavement = new SpatialIndex<RoadSegment>();
+  const pavementEdges = new SpatialIndex<RoadSegment>();
+  let pavementSurface = new PavementSurface();
+  const roadDistance = (x: number, z: number, atGradeOnly = false) => {
+    let distance = 3;
+    (atGradeOnly ? junctionPavement : pavement).some(x, z, (s) => {
+      const dx = s.b.x - s.a.x,
+        dz = s.b.z - s.a.z;
+      const t = THREE.MathUtils.clamp(
+        ((x - s.a.x) * dx + (z - s.a.z) * dz) / (dx * dx + dz * dz),
+        0,
+        1,
+      );
+      const width = THREE.MathUtils.lerp(s.widthA ?? s.width, s.widthB ?? s.width, t);
+      distance = Math.min(distance, segmentDistance(x, z, s.a, s.b) - width / 2);
+      return false;
+    });
+    return distance;
+  };
   const result = {
     group,
     collisionMesh: undefined as TriangleMeshData | undefined,
+    roadMesh: undefined as TriangleMeshData | undefined,
+    isAsphalt: (position: { x: number; y?: number; z: number }) =>
+      roadsVisible && pavementSurface.isAsphalt(position),
     junctionCones,
+    roadDistance,
+    roadCoverage(x: number, z: number) {
+      return roadDistance(x, z, true) <= 0.25 ? 1 : 0;
+    },
     setVisible(category: SceneryCategory, visible: boolean) {
       layers[category].visible = visible;
+      if (category === 'nearbyRoads') roadsVisible = visible;
+    },
+    setRoadEdgeDirt(visible: boolean) {
+      for (const mesh of layers.nearbyRoads.children)
+        if (mesh.name.startsWith('nearby-road-dirt')) mesh.visible = visible;
     },
   };
   const scenery = definition.scenery;
@@ -451,8 +487,34 @@ export function createScenery(
     }
   }
 
+  const dirtMaterial = options.createRoadDirtMaterial?.();
   const roadBatch = new Batch(),
+    dirtBatch = new Batch(),
     riverBatch = new Batch();
+  const roadPaths = scenery.roads;
+  type RoadEnd = { point: SceneryPoint; width: number };
+  const roadEnd = (road: (typeof roadPaths)[number], end: boolean): RoadEnd | undefined => {
+    const p = end ? road.points.at(-1)! : road.points[0];
+    const neighbors = roadPaths.flatMap((other) =>
+      other === road
+        ? []
+        : [false, true].flatMap((last) => {
+            const q = last ? other.points.at(-1)! : other.points[0];
+            return Math.hypot(p[0] - q[0], p[1] - q[1]) < 0.1
+              ? [
+                  {
+                    point: last ? other.points.at(-2)! : other.points[1],
+                    width:
+                      (THREE.MathUtils.clamp(road.width, 0.6, 20) +
+                        THREE.MathUtils.clamp(other.width, 0.6, 20)) /
+                      2,
+                  },
+                ]
+              : [];
+          }),
+    );
+    return neighbors.length === 1 ? neighbors[0] : undefined;
+  };
   const mouths: (Point & { width: number })[] = [];
   function ribbon(
     points: SceneryPoint[],
@@ -460,9 +522,11 @@ export function createScenery(
     batch: Batch,
     river: boolean,
     conesOnly = false,
+    verge = false,
+    ends: (RoadEnd | undefined)[] = [],
   ) {
     if (!Number.isFinite(rawWidth)) return;
-    const width = THREE.MathUtils.clamp(rawWidth, 0.6, river ? 40 : 20);
+    const width = THREE.MathUtils.clamp(rawWidth, 0.6, river ? 40 : verge ? 24.8 : 20);
     points = points.filter(
       (p, i) => i === 0 || Math.hypot(p[0] - points[i - 1][0], p[1] - points[i - 1][1]) >= 0.01,
     );
@@ -470,9 +534,14 @@ export function createScenery(
     const closed =
       points.length > 2 &&
       Math.hypot(points[0][0] - points.at(-1)![0], points[0][1] - points.at(-1)![1]) < 0.01;
+    const widths = points.map((_, i) => {
+      const end = i === 0 ? ends[0] : i === points.length - 1 ? ends[1] : undefined;
+      return end ? end.width + (verge ? 4.8 : 0) : width;
+    });
     const offsets = points.map(([x, z], i) => {
-      const before = points[i - 1] ?? (closed ? points.at(-2)! : points[i]);
-      const after = points[i + 1] ?? (closed ? points[1] : points[i]);
+      const before = points[i - 1] ?? (closed ? points.at(-2)! : (ends[0]?.point ?? points[i]));
+      const after = points[i + 1] ?? (closed ? points[1] : (ends[1]?.point ?? points[i]));
+      const localWidth = widths[i];
       const incoming = new THREE.Vector2(x - before[0], z - before[1]).normalize();
       const outgoing = new THREE.Vector2(after[0] - x, after[1] - z).normalize();
       if (incoming.lengthSq() === 0) incoming.copy(outgoing);
@@ -481,8 +550,8 @@ export function createScenery(
       const miter = new THREE.Vector2(-incoming.y, incoming.x).add(normal).normalize();
       const denominator = miter.dot(normal);
       // Share a bounded cross-section at each bend instead of overlapping disconnected quads.
-      if (denominator < 0.001) return normal.multiplyScalar(width / 2);
-      return miter.multiplyScalar(Math.min(width / 2 / denominator, width));
+      if (denominator < 0.001) return normal.multiplyScalar(localWidth / 2);
+      return miter.multiplyScalar(Math.min(localWidth / 2 / denominator, localWidth));
     });
     let connected = false;
     for (let i = 1; i < points.length; i++) {
@@ -494,17 +563,19 @@ export function createScenery(
         dz = (bz - az) / length;
       const a = { x: ax, z: az },
         b = { x: bx, z: bz };
-      const margin = width / 2 + 3;
+      const margin = Math.max(widths[i - 1], widths[i]) / 2 + 3;
       const segment = {
         a,
         b,
         width,
+        widthA: widths[i - 1],
+        widthB: widths[i],
         minX: Math.min(ax, bx) - margin,
         minZ: Math.min(az, bz) - margin,
         maxX: Math.max(ax, bx) + margin,
         maxZ: Math.max(az, bz) + margin,
       };
-      if (!conesOnly) {
+      if (!conesOnly && !verge) {
         // Waterway capsules share the same exclusion index as nearby roads.
         roads.add(river ? { ...segment, width: width + 2 } : segment);
       }
@@ -523,12 +594,13 @@ export function createScenery(
           y: 0,
         };
       };
+      let indexedPavement = false;
       for (let j = 0; j < steps; j++) {
         const t0 = (length * j) / steps;
         const center = side((length * (j + 0.5)) / steps, 0);
         const distance = clearance(center.x, center.z);
         if (separated(center.x, center.z)) connected = false;
-        if (!river && !separated(center.x, center.z)) {
+        if (!river && !verge && !separated(center.x, center.z)) {
           if (distance <= 0.5) connected = true;
           if (connected && distance >= width / 2 + 1.2) {
             const conePoints: Point[] = [];
@@ -558,7 +630,7 @@ export function createScenery(
         }
         if (conesOnly) continue;
         // Cone placement needs fine samples; the exact terrain projection below does not.
-        const geometrySteps = 8;
+        const geometrySteps = verge ? 1 : 8;
         if (j % geometrySteps !== 0) continue;
         const geometryEnd = (length * Math.min(j + geometrySteps, steps)) / steps;
         if (!river) {
@@ -579,16 +651,57 @@ export function createScenery(
           }
         }
         const corners = [edge(t0, -1), edge(t0, 1), edge(geometryEnd, -1), edge(geometryEnd, 1)];
-        if ([...corners, center].some((p) => roadBlocked(p.x, p.z))) continue;
+        if (river && [...corners, center].some((p) => roadBlocked(p.x, p.z))) continue;
+        if (!river && !verge && !indexedPavement) {
+          pavement.add(segment);
+          if (!separated(center.x, center.z)) junctionPavement.add(segment);
+          indexedPavement = true;
+        }
+        if (!river && !verge) {
+          for (const [a, b] of [
+            [corners[0], corners[2]],
+            [corners[1], corners[3]],
+          ]) {
+            pavementEdges.add({
+              a,
+              b,
+              width: 0,
+              minX: Math.min(a.x, b.x) - 3,
+              minZ: Math.min(a.z, b.z) - 3,
+              maxX: Math.max(a.x, b.x) + 3,
+              maxZ: Math.max(a.z, b.z) + 3,
+            });
+          }
+        }
+        if (verge) {
+          const columns = Math.ceil(width / 0.75);
+          const across = (a: Vertex, b: Vertex, t: number): Vertex => ({
+            x: THREE.MathUtils.lerp(a.x, b.x, t),
+            y: 0,
+            z: THREE.MathUtils.lerp(a.z, b.z, t),
+          });
+          for (let k = 0; k < columns; k++) {
+            const a = across(corners[0], corners[1], k / columns),
+              b = across(corners[0], corners[1], (k + 1) / columns),
+              c = across(corners[2], corners[3], k / columns),
+              d = across(corners[2], corners[3], (k + 1) / columns);
+            batch.roof(a, b, c);
+            batch.roof(b, d, c);
+          }
+          continue;
+        }
         batch.roof(corners[0], corners[1], corners[2]);
         batch.roof(corners[1], corners[3], corners[2]);
       }
     }
   }
   // Traverse both ways so a branch saved from its outer end still gets a mouth barrier.
-  for (const road of scenery.roads) {
-    ribbon(road.points, road.width, roadBatch, false);
-    ribbon([...road.points].reverse(), road.width, roadBatch, false, true);
+  for (const road of roadPaths) {
+    const points = smoothSceneryLine(road.points, road.width);
+    const ends = [roadEnd(road, false), roadEnd(road, true)];
+    ribbon(points, road.width, roadBatch, false, false, false, ends);
+    ribbon([...points].reverse(), road.width, roadBatch, false, true);
+    if (dirtMaterial) ribbon(points, road.width + 4.8, dirtBatch, false, false, true, ends);
   }
   for (const waterway of scenery.waterways)
     ribbon(waterway.points, waterway.width, riverBatch, true);
@@ -624,13 +737,48 @@ export function createScenery(
         y: positions.getY(i + j),
         z: positions.getZ(i + j),
       }));
-      if (vertices.some((p) => roadBlocked(p.x, p.z))) continue;
-      const [a, b, c] = vertices;
-      if (roadBlocked((a.x + b.x + c.x) / 3, (a.z + b.z + c.z) / 3)) continue;
-      kept.roof(a, b, c);
+      if (batch === dirtBatch) {
+        kept.roof(vertices[0], vertices[1], vertices[2]);
+      } else if (parent === layers.nearbyRoads) {
+        const distance = (p: Vertex) =>
+          separated(p.x, p.z)
+            ? 100
+            : surface.nearest(p.x, p.z).distance - (definition.width / 2 - 0.5);
+        const clipped: Vertex[] = [];
+        vertices.forEach((p, i) => {
+          const q = vertices[(i + 1) % 3],
+            dp = distance(p),
+            dq = distance(q);
+          if (dp >= 0) clipped.push(p);
+          if (dp >= 0 !== dq >= 0) {
+            const t = dp / (dp - dq);
+            clipped.push({
+              x: p.x + (q.x - p.x) * t,
+              y: p.y + (q.y - p.y) * t,
+              z: p.z + (q.z - p.z) * t,
+            });
+          }
+        });
+        for (let j = 1; j + 1 < clipped.length; j++) {
+          kept.roof(clipped[0], clipped[j], clipped[j + 1]);
+        }
+      } else {
+        if (vertices.some((p) => roadBlocked(p.x, p.z))) continue;
+        const [a, b, c] = vertices;
+        if (roadBlocked((a.x + b.x + c.x) / 3, (a.z + b.z + c.z) / 3)) continue;
+        kept.roof(a, b, c);
+      }
     }
     projected.dispose();
     if (!kept.positions.length) return;
+    if (batch === roadBatch) {
+      const positions = new Float32Array(kept.positions);
+      result.roadMesh = {
+        positions,
+        indices: Uint32Array.from({ length: positions.length / 3 }, (_, i) => i),
+      };
+      pavementSurface = new PavementSurface(result.roadMesh);
+    }
     // Long routes must not submit every surrounding road whenever one end is in view.
     const chunks = new Map<string, Batch>();
     for (let i = 0; i < kept.positions.length; i += 9) {
@@ -642,19 +790,67 @@ export function createScenery(
       for (let j = 0; j < 9; j++) chunk.positions.push(positions[i + j]);
       chunks.set(key, chunk);
     }
-    const surfaceMaterial = material(color);
+    const surfaceMaterial =
+      batch === dirtBatch && dirtMaterial
+        ? dirtMaterial
+        : parent === layers.nearbyRoads && options.createRoadMaterial
+          ? options.createRoadMaterial()
+          : material(color);
+    if (parent === layers.nearbyRoads) surfaceMaterial.flatShading = false;
     let index = 0;
     for (const chunk of chunks.values()) {
       const unindexed = chunk.geometry();
+      const positions = unindexed.getAttribute('position');
+      const uv = new Float32Array(positions.count * 2);
+      for (let i = 0; i < positions.count; i++) {
+        uv[i * 2] = positions.getX(i) / 5;
+        uv[i * 2 + 1] = positions.getZ(i) / 5;
+      }
+      unindexed.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+      if (batch === dirtBatch) {
+        unindexed.setAttribute(
+          'lateral',
+          new THREE.Float32BufferAttribute(
+            Array.from({ length: positions.count }, (_, i) => {
+              const x = positions.getX(i),
+                z = positions.getZ(i);
+              let distance = 3;
+              pavementEdges.some(x, z, (edge) => {
+                distance = Math.min(distance, segmentDistance(x, z, edge.a, edge.b));
+                return false;
+              });
+              return pavementSurface.isAsphalt({ x, z }) ? -distance : distance;
+            }),
+            1,
+          ),
+        );
+        unindexed.setAttribute(
+          'mainRoad',
+          new THREE.Float32BufferAttribute(
+            Array.from({ length: positions.count }, (_, i) => {
+              const x = positions.getX(i),
+                z = positions.getZ(i);
+              return separated(x, z) ? 3 : surface.nearest(x, z).distance - definition.width / 2;
+            }),
+            1,
+          ),
+        );
+      }
+      if (parent === layers.nearbyRoads) unindexed.deleteAttribute('normal');
       const geometry = mergeVertices(unindexed);
+      if (parent === layers.nearbyRoads) geometry.computeVertexNormals();
       unindexed.dispose();
       const mesh = new THREE.Mesh(geometry, surfaceMaterial);
       mesh.name = index++ === 0 ? name : `${name}-${index}`;
+      if (batch === dirtBatch) mesh.renderOrder = 1;
       mesh.receiveShadow = true;
       parent.add(mesh);
     }
   };
   addDraped(roadBatch, layers.nearbyRoads, 0x55575a, 'nearby-road-surfaces', 0.035);
+  addDraped(dirtBatch, layers.nearbyRoads, 0x99816b, 'nearby-road-dirt', 0.045);
+  if (dirtMaterial && !layers.nearbyRoads.getObjectByName('nearby-road-dirt'))
+    dirtMaterial.dispose();
   addDraped(riverBatch, layers.water, 0x397d89, 'draped-waterways', 0.065);
   if (waterBatch.positions.length) {
     const waterMaterial = material(0x397d89);

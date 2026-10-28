@@ -5,6 +5,10 @@ import * as THREE from 'three';
 
 let server;
 let createScenery;
+let smoothSceneryLine;
+let joinSceneryRoads;
+let normalizeCourseScenery;
+let PavementSurface;
 const groups = [];
 before(async () => {
   server = await createServer({
@@ -12,6 +16,9 @@ before(async () => {
     appType: 'custom',
   });
   ({ createScenery } = await server.ssrLoadModule('/src/scenery.ts'));
+  ({ smoothSceneryLine, joinSceneryRoads, normalizeCourseScenery } =
+    await server.ssrLoadModule('/src/scenery-data.ts'));
+  ({ PavementSurface } = await server.ssrLoadModule('/src/terrain-query.ts'));
 });
 after(async () => server?.close());
 afterEach(() => {
@@ -82,14 +89,18 @@ function terrain(ground = () => 0, road = ground) {
     contains: (x, z) => x >= -100 && x < 100 && z >= -120 && z < 120,
   };
 }
-function build(course, ground) {
-  const scenery = createScenery(course, ground);
+function build(course, ground, options) {
+  const scenery = createScenery(
+    { ...course, scenery: course.scenery && normalizeCourseScenery(course.scenery) },
+    ground,
+    options,
+  );
   groups.push(scenery.group);
   scenery.group.updateMatrixWorld(true);
   return scenery;
 }
 
-test('nearby roads share vertices and have locally culled bounds', () => {
+test('nearby roads share vertices and smooth normals and have locally culled bounds', () => {
   const data = emptyScenery();
   data.roads.push({
     points: [
@@ -99,13 +110,32 @@ test('nearby roads share vertices and have locally culled bounds', () => {
     width: 6,
   });
 
-  const result = build(definition(data), terrain());
+  const result = build(
+    definition(data),
+    terrain((x, z) => Math.sin(z / 14) * 2),
+  );
   const meshes = result.group.getObjectByName('nearbyRoads').children;
   assert.ok(meshes.length >= 2, 'long ribbons are split into spatial chunks');
   for (const mesh of meshes) {
     const geometry = mesh.geometry;
+    const positions = geometry.getAttribute('position');
+    const uv = geometry.getAttribute('uv');
+    assert.equal(uv.count, positions.count);
+    for (let i = 0; i < uv.count; i++) {
+      assert.ok(Math.abs(uv.getX(i) - positions.getX(i) / 5) < 1e-5);
+      assert.ok(Math.abs(uv.getY(i) - positions.getZ(i) / 5) < 1e-5);
+    }
     assert.ok(geometry.index, 'terrain intersections reuse shared vertices');
     assert.ok(geometry.attributes.position.count < geometry.index.count / 2);
+    const normals = geometry.getAttribute('normal');
+    assert.ok(
+      Array.from({ length: geometry.index.count / 3 }, (_, i) => {
+        const a = geometry.index.getX(i * 3),
+          b = geometry.index.getX(i * 3 + 1);
+        return Math.abs(normals.getZ(a) - normals.getZ(b)) > 1e-4;
+      }).some(Boolean),
+      'slope changes interpolate normals rather than shading each panel flat',
+    );
     geometry.computeBoundingBox();
     assert.ok(
       geometry.boundingBox.getSize(new THREE.Vector3()).z < 150,
@@ -144,8 +174,15 @@ test('road and river bends share continuous full-width joins without overlapping
       const layer = result.group.getObjectByName(river ? 'water' : 'nearbyRoads');
       const ray = new THREE.Raycaster();
       for (const [x, z] of [
-        [27, 3],
-        [73, -3],
+        ...(river
+          ? [
+              [27, 3],
+              [73, -3],
+            ]
+          : [
+              [31, -1],
+              [69, 1],
+            ]),
         [30, -20],
         [50, 0],
         [70, 30],
@@ -169,10 +206,151 @@ test('road and river bends share continuous full-width joins without overlapping
         }
       });
       assert.ok(
-        Math.abs(area - 160 * 8) < 0.01,
+        river ? Math.abs(area - 160 * 8) < 0.01 : area > 160 * 8 * 0.9 && area < 160 * 8,
         'joined strips cover the road once, without bend overlaps or gaps',
       );
     }
+});
+
+test('road smoothing rounds corners locally, preserves endpoints and is direction-independent', () => {
+  const points = [
+    [30, -60],
+    [30, 0],
+    [70, 0],
+    [70, 60],
+  ];
+  const smooth = smoothSceneryLine(points, 8);
+  assert.deepEqual(smooth[0], points[0]);
+  assert.deepEqual(smooth.at(-1), points.at(-1));
+  assert.ok(smooth.length > points.length);
+  const reverse = smoothSceneryLine(points.toReversed(), 8).toReversed();
+  smooth.forEach((p, i) => {
+    assert.ok(Math.hypot(p[0] - reverse[i][0], p[1] - reverse[i][1]) < 1e-10);
+  });
+  let maxBend = 0;
+  for (let i = 1; i < smooth.length - 1; i++) {
+    const a = new THREE.Vector2(...smooth[i]).sub(new THREE.Vector2(...smooth[i - 1])).normalize();
+    const b = new THREE.Vector2(...smooth[i + 1]).sub(new THREE.Vector2(...smooth[i])).normalize();
+    maxBend = Math.max(maxBend, Math.acos(Math.min(1, a.dot(b))));
+  }
+  assert.ok(maxBend < Math.PI / 12, 'a right-angle corner becomes gentle sampled turns');
+});
+
+test('side-road junctions meet pavement and expose a shoulder coverage mask', () => {
+  const data = emptyScenery();
+  data.roads.push({
+    points: [
+      [0, 0],
+      [60, 0],
+    ],
+    width: 6,
+  });
+  const result = build(definition(data), terrain());
+  const layer = result.group.getObjectByName('nearbyRoads');
+  const ray = new THREE.Raycaster();
+  for (const x of [3.6, 4, 5, 6, 8, 12, 30, 59]) {
+    ray.set(new THREE.Vector3(x, 10, 0.3), new THREE.Vector3(0, -1, 0));
+    assert.ok(ray.intersectObject(layer).length, 'no dropped panel between road and shoulder');
+    assert.equal(result.roadCoverage(x, 0), 1);
+  }
+  assert.equal(result.roadCoverage(8, 8), 0, 'dirt away from the mouth is untouched');
+  const workerSurface = new PavementSurface(structuredClone(result.roadMesh));
+  for (const [position, paved] of [
+    [{ x: 30, y: 0.4, z: 0 }, true],
+    [{ x: 30, y: 0.4, z: 3.2 }, false],
+    [{ x: 61, y: 0.4, z: 0 }, false],
+    [{ x: 30, y: 20, z: 0 }, false],
+  ]) {
+    assert.equal(result.isAsphalt(position), paved);
+    assert.equal(
+      workerSurface.isAsphalt(position),
+      paved,
+      'worker uses the same rendered footprint',
+    );
+  }
+  assert.ok(result.roadDistance(8, 2.8) < 0);
+  assert.ok(result.roadDistance(8, 3.2) > 0);
+  result.setVisible('nearbyRoads', false);
+  assert.equal(result.isAsphalt({ x: 30, z: 0 }), false, 'hidden roads restore terrain traction');
+  assert.ok(result.junctionCones.length > 0, 'joined pavement retains junction barriers');
+});
+
+test('road fragments are joined before smoothing, without joining branches or mutating saved data', () => {
+  const roads = [
+    {
+      points: [
+        [30, -40],
+        [30, 0],
+      ],
+      width: 6,
+    },
+    {
+      points: [
+        [70, 0],
+        [30, 0],
+      ],
+      width: 6,
+    },
+  ];
+  const saved = structuredClone(roads);
+  const joined = joinSceneryRoads(roads);
+  assert.equal(joined.length, 1);
+  assert.deepEqual(joined[0].points, [
+    [30, -40],
+    [30, 0],
+    [70, 0],
+  ]);
+  assert.deepEqual(roads, saved);
+  const whole = smoothSceneryLine(joined[0].points, 6);
+  assert.ok(
+    whole.some(([x, z]) => x > 30 && z < 0),
+    'rounding crosses the former fragment seam',
+  );
+  roads.push({
+    points: [
+      [30, 0],
+      [30, 40],
+    ],
+    width: 6,
+  });
+  assert.equal(joinSceneryRoads(roads).length, 3, 'a real junction remains separate branches');
+});
+
+test('width changes share an edge cross-section and dirt verges remain batched and optional', () => {
+  const data = emptyScenery();
+  data.roads.push(
+    {
+      points: [
+        [30, -40],
+        [30, 0],
+      ],
+      width: 4,
+    },
+    {
+      points: [
+        [30, 0],
+        [30, 40],
+      ],
+      width: 6,
+    },
+  );
+  const result = build(definition(data), terrain(), {
+    createRoadDirtMaterial: () => new THREE.MeshStandardMaterial(),
+  });
+  for (const z of [-0.05, 0, 0.05]) {
+    assert.equal(result.isAsphalt({ x: 32.4, z }), true, 'both pieces meet at the average width');
+    assert.equal(result.isAsphalt({ x: 32.6, z }), false, 'no abrupt wider rectangle at the seam');
+  }
+  assert.ok(Math.abs(result.roadDistance(32.5, 0)) < 1e-5);
+  const dirt = result.group.getObjectByName('nearby-road-dirt');
+  assert.ok(dirt);
+  assert.ok(dirt.geometry.getAttribute('lateral').array.every(Number.isFinite));
+  result.setRoadEdgeDirt(false);
+  assert.equal(dirt.visible, false);
+  assert.equal(result.group.getObjectByName('nearby-road-surfaces').visible, true);
+  assert.equal(result.isAsphalt({ x: 30, z: 0 }), true);
+  result.setRoadEdgeDirt(true);
+  assert.equal(dirt.visible, true);
 });
 
 test('sloped building shells retain courtyards and share exact rendered collider triangles', () => {

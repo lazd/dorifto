@@ -141,6 +141,39 @@ export function roadDirtMaterial(outerEdge: number, minReach: number, maxReach: 
   return material;
 }
 
+export function nearbyRoadDirtMaterial() {
+  const material = roadDirtMaterial(1.8, 1.9, 2.15);
+  if (!material) return undefined;
+  const compile = material.onBeforeCompile;
+  material.onBeforeCompile = function (shader, renderer) {
+    compile.call(this, shader, renderer);
+    shader.vertexShader = shader.vertexShader
+      .replace(
+        '#include <common>',
+        '#include <common>\nattribute float mainRoad;\nvarying float vMainRoad;',
+      )
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvMainRoad = mainRoad;');
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying float vMainRoad;')
+      .replace(
+        'float edgeDistance = DIRT_EDGE - abs(vLateral);',
+        `
+        float junctionBlend = max(1.6 - abs(vLateral - vMainRoad), 0.0) / 1.6;
+        float pavementDistance = min(vLateral, vMainRoad) -
+          junctionBlend * junctionBlend * 0.4;
+        float edgeDistance = DIRT_EDGE - pavementDistance;`,
+      )
+      .replace(
+        '#include <alphatest_fragment>',
+        `diffuseColor.a *= smoothstep(-0.3, 0.12, pavementDistance) *
+          smoothstep(0.0, 0.65, vMainRoad);
+        #include <alphatest_fragment>`,
+      );
+  };
+  material.customProgramCacheKey = () => 'nearby-road-dirt';
+  return material;
+}
+
 export function surfaceMaterial(surface: 'asphalt' | TerrainSurface, repeats = 1) {
   const scanned = surface === 'asphalt' ? undefined : terrainMaps.get(surface);
   if (scanned) {

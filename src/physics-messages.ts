@@ -46,7 +46,7 @@ export function createPhysicsInit(
     cones: THREE.Object3D[];
     cornerCones: THREE.Object3D[];
     junctionCones?: THREE.Object3D[];
-    scenery?: { collisionMesh?: TriangleMeshData };
+    scenery?: { collisionMesh?: TriangleMeshData; roadMesh?: TriangleMeshData };
     turnSignGroups: THREE.Group[];
     terrain: { physicsData(): TerrainQueryData };
   },
@@ -62,7 +62,11 @@ export function createPhysicsInit(
     bots,
     botsOnly,
     definition,
-    terrain: { ...course.terrain.physicsData(), buildingMesh: course.scenery?.collisionMesh },
+    terrain: {
+      ...course.terrain.physicsData(),
+      buildingMesh: course.scenery?.collisionMesh,
+      nearbyRoadMesh: course.scenery?.roadMesh,
+    },
     car: {
       centers: car.centers.map((center) => center.toArray()),
       radii: car.radii,

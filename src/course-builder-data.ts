@@ -2,7 +2,7 @@ import { courseRoute, type CourseDefinition } from './courses';
 import { routeLength } from './road-selection';
 import type { GPSPoint } from './track-conversion.mjs';
 import type { RoadStructureLine } from './road-structures.mjs';
-import { validateCourseScenery } from './scenery-data';
+import { normalizeCourseScenery, validateCourseScenery } from './scenery-data';
 
 export const roadBuildSteps = {
   starting: 'Starting the course builder',
@@ -43,7 +43,10 @@ export function readRoadMap(json: string): RoadMap {
     )
   )
     throw new Error('Invalid saved course');
-  if (value.scenery !== undefined) validateCourseScenery(value.scenery);
+  if (value.scenery !== undefined) {
+    validateCourseScenery(value.scenery);
+    value.scenery = normalizeCourseScenery(value.scenery);
+  }
   return value;
 }
 

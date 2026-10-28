@@ -2,9 +2,88 @@
 export type SceneryPoint = [number, number];
 export type SceneryPolygon = SceneryPoint[][];
 
+/** Join unambiguous equal-width fragments before rounding their shared corner. */
+export function joinSceneryRoads(roads: CourseScenery['roads']): CourseScenery['roads'] {
+  const remaining = roads
+    .map((road) => ({
+      ...road,
+      points: road.points.filter(
+        (p, i, all) => !i || Math.hypot(p[0] - all[i - 1][0], p[1] - all[i - 1][1]) >= 0.01,
+      ),
+    }))
+    .filter((road) => road.points.length >= 2);
+  const joined: CourseScenery['roads'] = [];
+  const near = (a: SceneryPoint, b: SceneryPoint) => Math.hypot(a[0] - b[0], a[1] - b[1]) < 0.1;
+  while (remaining.length) {
+    const road = remaining.shift()!;
+    for (const reverse of [false, true]) {
+      if (reverse) road.points.reverse();
+      while (true) {
+        const end = road.points.at(-1)!;
+        const degree = roads.reduce(
+          (count, other) =>
+            count + Number(near(end, other.points[0])) + Number(near(end, other.points.at(-1)!)),
+          0,
+        );
+        if (degree !== 2) break;
+        const matches = remaining.flatMap((other, i) =>
+          [false, true].flatMap((flip) =>
+            near(end, flip ? other.points.at(-1)! : other.points[0]) ? [{ i, flip, other }] : [],
+          ),
+        );
+        if (matches.length !== 1 || Math.abs(matches[0].other.width - road.width) > 0.01) break;
+        const { i, flip, other } = matches[0];
+        remaining.splice(i, 1);
+        const points = flip ? [...other.points].reverse() : other.points;
+        road.points.push(...points.slice(1));
+      }
+      if (reverse) road.points.reverse();
+    }
+    joined.push(road);
+  }
+  return joined;
+}
+
+/** Round local corners without moving endpoints or cutting far across mapped switchbacks. */
+export function smoothSceneryLine(points: SceneryPoint[], width: number): SceneryPoint[] {
+  const clean = points.filter(
+    (p, i) => i === 0 || Math.hypot(p[0] - points[i - 1][0], p[1] - points[i - 1][1]) >= 0.01,
+  );
+  if (clean.length < 3) return clean;
+  const result: SceneryPoint[] = [clean[0]];
+  for (let i = 1; i < clean.length - 1; i++) {
+    const a = clean[i - 1],
+      b = clean[i],
+      c = clean[i + 1];
+    const incoming = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    const outgoing = Math.hypot(c[0] - b[0], c[1] - b[1]);
+    const trim = Math.min(width * 1.5, 12, incoming / 3, outgoing / 3);
+    const start: SceneryPoint = [
+      b[0] + ((a[0] - b[0]) * trim) / incoming,
+      b[1] + ((a[1] - b[1]) * trim) / incoming,
+    ];
+    const end: SceneryPoint = [
+      b[0] + ((c[0] - b[0]) * trim) / outgoing,
+      b[1] + ((c[1] - b[1]) * trim) / outgoing,
+    ];
+    const steps = Math.max(2, Math.ceil(trim));
+    for (let j = 0; j <= steps; j++) {
+      const t = j / steps,
+        u = 1 - t;
+      result.push([
+        u * u * start[0] + 2 * u * t * b[0] + t * t * end[0],
+        u * u * start[1] + 2 * u * t * b[1] + t * t * end[1],
+      ]);
+    }
+  }
+  result.push(clean.at(-1)!);
+  return result;
+}
+
 export interface CourseScenery {
   version: 1;
   importRevision?: number;
+  roadNormalizationRevision?: number;
   buildings: { rings: SceneryPolygon; height: number }[];
   water: { rings: SceneryPolygon }[];
   waterways: { points: SceneryPoint[]; width: number }[];
@@ -13,6 +92,17 @@ export interface CourseScenery {
 }
 
 export const sceneryImportRevision = 2;
+const roadNormalizationRevision = 1;
+
+/** Separate from tile import revisions: older local maps can upgrade without a download. */
+export function normalizeCourseScenery(scenery: CourseScenery): CourseScenery {
+  if ((scenery.roadNormalizationRevision ?? 0) >= roadNormalizationRevision) return scenery;
+  return {
+    ...scenery,
+    roadNormalizationRevision,
+    roads: joinSceneryRoads(scenery.roads),
+  };
+}
 
 export type SceneryCategory = 'buildings' | 'water' | 'vegetation' | 'nearbyRoads';
 

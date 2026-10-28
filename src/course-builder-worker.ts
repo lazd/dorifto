@@ -13,7 +13,7 @@ import type { PreviewModel } from './course-builder-preview';
 import type { RoadMap, RoadDraft, RoadBuildStep } from './course-builder-data';
 import { matchRoadStructures } from './road-structures.mjs';
 import { fetchCourseScenery } from './scenery-import';
-import { sceneryImportRevision } from './scenery-data';
+import { normalizeCourseScenery, sceneryImportRevision } from './scenery-data';
 
 export interface BuildRequest {
   points: GPSPoint[];
@@ -137,6 +137,7 @@ async function build(request: BuildRequest) {
   } else if (!includeNearbyRoads && course.scenery.roads.length) {
     course.scenery = { ...course.scenery, roads: [] };
   }
+  course.scenery = normalizeCourseScenery(course.scenery);
   if (!course.attribution?.includes('OpenStreetMap'))
     course.attribution = [
       course.attribution,

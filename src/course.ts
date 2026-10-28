@@ -8,7 +8,7 @@ import {
   courseRoute,
   courseShoulderWidth,
 } from './courses';
-import { roadDirtMaterial, surfaceMaterial } from './surfaces';
+import { nearbyRoadDirtMaterial, roadDirtMaterial, surfaceMaterial } from './surfaces';
 import { CourseTerrain } from './terrain';
 import { courseTurnSignPlacements, createTurnSignFactory, type TurnSignMode } from './turn-sign';
 import { createTrainingGates } from './racing-line';
@@ -65,10 +65,63 @@ function buildCourse(scene: THREE.Group, definition: CourseDefinition, carWidth:
   terrain.grass.name = 'roadside-grass';
   scene.add(terrain.mesh);
   const scenery = createScenery(definition, terrain, {
+    createRoadMaterial: () => surfaceMaterial('asphalt'),
+    createRoadDirtMaterial: nearbyRoadDirtMaterial,
     projectGroundGeometry: (source, lift, horizontal) =>
       terrain.projectGroundGeometry(source, lift, horizontal),
   });
   scene.add(scenery.group);
+  const junctionsVisible = { value: 1 };
+  function maskJunctionMaterial(material: THREE.Material, feather = 0.25) {
+    const compile = material.onBeforeCompile;
+    const key = material.customProgramCacheKey();
+    material.onBeforeCompile = function (shader, renderer) {
+      compile.call(this, shader, renderer);
+      shader.uniforms.junctionsVisible = junctionsVisible;
+      shader.vertexShader = shader.vertexShader
+        .replace(
+          '#include <common>',
+          '#include <common>\nattribute float junction;\nvarying float vJunction;',
+        )
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvJunction = junction;');
+      shader.fragmentShader = shader.fragmentShader
+        .replace(
+          '#include <common>',
+          '#include <common>\nuniform float junctionsVisible;\nvarying float vJunction;',
+        )
+        .replace(
+          '#include <alphatest_fragment>',
+          `#include <alphatest_fragment>
+diffuseColor.a *= mix(1.0, smoothstep(-${feather.toFixed(2)}, ${feather.toFixed(2)}, vJunction), junctionsVisible);
+if (diffuseColor.a < ${material.transparent ? '0.01' : '0.5'}) discard;`,
+        );
+    };
+    material.customProgramCacheKey = () => `${key}-junctions-${feather}`;
+  }
+  function maskJunctionGeometry(geometry: THREE.BufferGeometry, margin = 0) {
+    const positions = geometry.getAttribute('position');
+    geometry.setAttribute(
+      'junction',
+      new THREE.BufferAttribute(
+        Float32Array.from(
+          { length: positions.count },
+          (_, i) => scenery.roadDistance(positions.getX(i), positions.getZ(i), true) - margin,
+        ),
+        1,
+      ),
+    );
+  }
+  const grassMask = new Float32Array(terrain.grass.count);
+  const grassMatrix = new THREE.Matrix4();
+  for (let i = 0; i < grassMask.length; i++) {
+    terrain.grass.getMatrixAt(i, grassMatrix);
+    grassMask[i] = scenery.roadDistance(grassMatrix.elements[12], grassMatrix.elements[14], true);
+  }
+  terrain.grass.geometry.setAttribute('junction', new THREE.InstancedBufferAttribute(grassMask, 1));
+  for (const material of Array.isArray(terrain.grass.material)
+    ? terrain.grass.material
+    : [terrain.grass.material])
+    maskJunctionMaterial(material);
   let trainingReverse: boolean | undefined;
   function updateTrainingGates(reverse: boolean) {
     if (trainingReverse === reverse) return;
@@ -241,7 +294,12 @@ function buildCourse(scene: THREE.Group, definition: CourseDefinition, carWidth:
     pad.receiveShadow = true;
     scene.add(pad);
   } else ribbon(0, definition.width + shoulder * 2, 0.008, asphalt);
-  for (const side of [-1, 1]) ribbon((side * definition.width) / 2, courseLineWidth, 0.016, white);
+  const edgeWhite = paint(0xe1e6df);
+  maskJunctionMaterial(edgeWhite);
+  for (const side of [-1, 1]) {
+    const edge = ribbon((side * definition.width) / 2, courseLineWidth, 0.016, edgeWhite);
+    maskJunctionGeometry(edge.geometry, courseLineWidth);
+  }
   if (definition.doubleYellow) {
     const yellow = paint(0xffd32a);
     for (const side of [-1, 1]) {
@@ -395,6 +453,7 @@ function buildCourse(scene: THREE.Group, definition: CourseDefinition, carWidth:
   const dirtMax = dirtEdge - definition.width / 2 + 0.35;
   const dirt = definition.padRadius === undefined && roadDirtMaterial(dirtEdge, dirtMin, dirtMax);
   const dirtMeshes: THREE.Mesh[] = [];
+  if (dirt) maskJunctionMaterial(dirt, 0.9);
   if (dirt)
     for (const side of [-1, 1]) {
       // From 0.6 m outside the dirt edge (feather) to past the farthest scattered pebbles.
@@ -402,6 +461,7 @@ function buildCourse(scene: THREE.Group, definition: CourseDefinition, carWidth:
       const strip = ribbon(side * (dirtEdge + 0.6 - stripWidth / 2), stripWidth, 0.04, dirt);
       strip.name = 'road-edge-dirt';
       strip.renderOrder = 1;
+      maskJunctionGeometry(strip.geometry);
       dirtMeshes.push(strip);
     }
   return {
@@ -419,6 +479,7 @@ function buildCourse(scene: THREE.Group, definition: CourseDefinition, carWidth:
       scenery.setVisible('water', settings.showWater);
       scenery.setVisible('vegetation', settings.showVegetation);
       scenery.setVisible('nearbyRoads', settings.showNearbyRoads);
+      junctionsVisible.value = settings.showNearbyRoads ? 1 : 0;
     },
     turnSignGroups,
     terrain,
@@ -427,6 +488,7 @@ function buildCourse(scene: THREE.Group, definition: CourseDefinition, carWidth:
     },
     setRoadEdgeDirt(visible: boolean) {
       for (const mesh of dirtMeshes) mesh.visible = visible;
+      scenery.setRoadEdgeDirt(visible);
     },
     setLapGates(mode: LapGateMode) {
       lapGateMesh.visible = mode !== 'off';
@@ -437,6 +499,7 @@ function buildCourse(scene: THREE.Group, definition: CourseDefinition, carWidth:
     setTurnSignMode,
     /** Drape a strip along the forward route between arc-length fractions, owned by the course. */
     drape: ribbon,
-    isAsphalt: (position: THREE.Vector3) => terrain.isAsphalt(position),
+    isAsphalt: (position: THREE.Vector3) =>
+      terrain.isAsphalt(position) || scenery.isAsphalt(position),
   };
 }

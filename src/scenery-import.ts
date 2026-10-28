@@ -3,7 +3,7 @@ import { PbfReader } from 'pbf';
 import { roadClasses } from './road-selection';
 import { courseRoute, type CourseDefinition } from './courses';
 import type { CourseScenery, SceneryPoint, SceneryPolygon } from './scenery-data';
-import { sceneryImportRevision } from './scenery-data';
+import { normalizeCourseScenery, sceneryImportRevision } from './scenery-data';
 
 const tileJsonUrl = 'https://tiles.openfreemap.org/planet';
 const zoom = 14;
@@ -708,5 +708,5 @@ export async function fetchCourseScenery(
       }
     }
   }
-  return scenery;
+  return normalizeCourseScenery(scenery);
 }
