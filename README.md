@@ -462,8 +462,11 @@ Settings > Track has independent **Buildings**, **Water**, **Trees and shrubs**,
 also removes their junction cones and collision. Junction cones remain enabled independently
 of the regular course cone-density setting.
 Nearby-road surfaces share indexed vertices and are split into spatial chunks so off-screen
-sections of long routes can be culled. Nearby-road copies aligned with the selected route
-are excluded even on bridges, while independent roads crossing beneath remain visible.
+sections of long routes can be culled. Road and waterway strips share bounded miter joins
+at bends, avoiding disconnected rectangular panels and gaps.
+Nearby-road copies aligned with the selected route
+are excluded even on bridges, including overlapping parallel carriageways, while independent
+roads crossing beneath remain visible.
 Roads and waterways are projected onto the actual
 rendered landscape triangles, including simplified distant patches, rather than the denser
 collision grid. Their surfaces and a 6 m band on either side retain native terrain detail;

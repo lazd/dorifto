@@ -463,6 +463,27 @@ export function createScenery(
   ) {
     if (!Number.isFinite(rawWidth)) return;
     const width = THREE.MathUtils.clamp(rawWidth, 0.6, river ? 40 : 20);
+    points = points.filter(
+      (p, i) => i === 0 || Math.hypot(p[0] - points[i - 1][0], p[1] - points[i - 1][1]) >= 0.01,
+    );
+    if (points.length < 2) return;
+    const closed =
+      points.length > 2 &&
+      Math.hypot(points[0][0] - points.at(-1)![0], points[0][1] - points.at(-1)![1]) < 0.01;
+    const offsets = points.map(([x, z], i) => {
+      const before = points[i - 1] ?? (closed ? points.at(-2)! : points[i]);
+      const after = points[i + 1] ?? (closed ? points[1] : points[i]);
+      const incoming = new THREE.Vector2(x - before[0], z - before[1]).normalize();
+      const outgoing = new THREE.Vector2(after[0] - x, after[1] - z).normalize();
+      if (incoming.lengthSq() === 0) incoming.copy(outgoing);
+      if (outgoing.lengthSq() === 0) outgoing.copy(incoming);
+      const normal = new THREE.Vector2(-outgoing.y, outgoing.x);
+      const miter = new THREE.Vector2(-incoming.y, incoming.x).add(normal).normalize();
+      const denominator = miter.dot(normal);
+      // Share a bounded cross-section at each bend instead of overlapping disconnected quads.
+      if (denominator < 0.001) return normal.multiplyScalar(width / 2);
+      return miter.multiplyScalar(Math.min(width / 2 / denominator, width));
+    });
     let connected = false;
     for (let i = 1; i < points.length; i++) {
       const [ax, az] = points[i - 1],
@@ -493,6 +514,15 @@ export function createScenery(
         z: az + dz * t + dx * offset,
         y: 0,
       });
+      const edge = (t: number, sign: number): Vertex => {
+        const fraction = t / length;
+        const offset = offsets[i - 1].clone().lerp(offsets[i], fraction);
+        return {
+          x: ax + dx * t + offset.x * sign,
+          z: az + dz * t + offset.y * sign,
+          y: 0,
+        };
+      };
       for (let j = 0; j < steps; j++) {
         const t0 = (length * j) / steps;
         const center = side((length * (j + 0.5)) / steps, 0);
@@ -538,21 +568,17 @@ export function createScenery(
             query.segments[
               Math.min(query.segments.length - 1, Math.floor(near.fraction * query.segments.length))
             ];
-          if (selected && near.distance < halfWidth + 0.8) {
+          const routeMargin = separated(middle.x, middle.z) ? width / 2 : 0;
+          if (selected && near.distance < halfWidth + routeMargin + 0.8) {
             const sx = selected.b.x - selected.a.x;
             const sz = selected.b.z - selected.a.z;
             const alignment = Math.abs(dx * sx + dz * sz) / Math.hypot(sx, sz);
-            // A copy of the selected bridge must not become a second road on the valley floor.
+            // Include overlapping parallel carriageways, not just centerline copies of the bridge.
             // Perpendicular roads beneath it are independent features and must remain.
             if (alignment > 0.85) continue;
           }
         }
-        const corners = [
-          side(t0, -width / 2),
-          side(t0, width / 2),
-          side(geometryEnd, -width / 2),
-          side(geometryEnd, width / 2),
-        ];
+        const corners = [edge(t0, -1), edge(t0, 1), edge(geometryEnd, -1), edge(geometryEnd, 1)];
         if ([...corners, center].some((p) => roadBlocked(p.x, p.z))) continue;
         batch.roof(corners[0], corners[1], corners[2]);
         batch.roof(corners[1], corners[3], corners[2]);

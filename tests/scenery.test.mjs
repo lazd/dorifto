@@ -125,6 +125,56 @@ test('nearby roads share vertices and have locally culled bounds', () => {
   );
 });
 
+test('road and river bends share continuous full-width joins without overlapping panels', () => {
+  const points = [
+    [30, -60],
+    [30, 0],
+    [30, 0],
+    [70, 0],
+    [70, 60],
+  ];
+  for (const river of [false, true])
+    for (const reverse of [false, true]) {
+      const data = emptyScenery();
+      data[river ? 'waterways' : 'roads'].push({
+        points: reverse ? points.toReversed() : points,
+        width: 8,
+      });
+      const result = build(definition(data), terrain());
+      const layer = result.group.getObjectByName(river ? 'water' : 'nearbyRoads');
+      const ray = new THREE.Raycaster();
+      for (const [x, z] of [
+        [27, 3],
+        [73, -3],
+        [30, -20],
+        [50, 0],
+        [70, 30],
+      ]) {
+        ray.set(new THREE.Vector3(x, 10, z), new THREE.Vector3(0, -1, 0));
+        assert.ok(
+          ray.intersectObject(layer).length,
+          'outer corners and straight sections remain covered in either direction',
+        );
+      }
+      let area = 0;
+      layer.traverse((mesh) => {
+        if (!mesh.isMesh) return;
+        const positions = mesh.geometry.getAttribute('position');
+        const indices = mesh.geometry.index;
+        for (let i = 0; i < indices.count; i += 3) {
+          const [a, b, c] = [0, 1, 2].map((j) =>
+            new THREE.Vector3().fromBufferAttribute(positions, indices.getX(i + j)),
+          );
+          area += Math.abs((b.x - a.x) * (c.z - a.z) - (b.z - a.z) * (c.x - a.x)) / 2;
+        }
+      });
+      assert.ok(
+        Math.abs(area - 160 * 8) < 0.01,
+        'joined strips cover the road once, without bend overlaps or gaps',
+      );
+    }
+});
+
 test('sloped building shells retain courtyards and share exact rendered collider triangles', () => {
   const data = emptyScenery();
   data.buildings.push({
@@ -271,11 +321,13 @@ test('branch mouth cones are deduplicated and never obstruct the selected paved 
 test('selected bridge road copies are omitted in either direction without hiding roads underneath', () => {
   for (const reverse of [false, true]) {
     const data = emptyScenery();
-    const points = [
-      [1, -90],
-      [1, 90],
-    ];
-    data.roads.push({ points: reverse ? points.toReversed() : points, width: 10 });
+    for (const x of [1, 9]) {
+      const points = [
+        [x, -90],
+        [x, 90],
+      ];
+      data.roads.push({ points: reverse ? points.toReversed() : points, width: 8 });
+    }
     const result = build(
       definition(data),
       terrain(
@@ -286,7 +338,7 @@ test('selected bridge road copies are omitted in either direction without hiding
     assert.equal(
       result.group.getObjectByName('nearbyRoads').children.length,
       0,
-      'saved vector-tile copies of the selected road do not paint asphalt below the bridge',
+      'centerline copies and parallel carriageways do not paint asphalt below the bridge',
     );
     assert.equal(result.junctionCones.length, 0);
   }
