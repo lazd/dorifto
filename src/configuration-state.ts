@@ -95,6 +95,7 @@ export interface ConfigurationState {
   cameraStyle: 'classic' | 'fpv' | 'cabin';
   cabinHeadMotion: boolean;
   mirrorResolution: 'off' | 'low' | 'medium' | 'high';
+  passengerMirror: boolean;
   pixelRatio: 'auto' | '0.5' | '0.75' | '1' | '2';
   terrainShadows: 'auto' | 'on' | 'off';
   showFps: boolean;
@@ -133,6 +134,7 @@ export function createConfigurationState(storage?: Storage) {
     speedUnit: 'mph',
     cabinHeadMotion: true,
     mirrorResolution: 'low',
+    passengerMirror: false,
     pixelRatio: 'auto',
     terrainShadows: 'auto',
     showFps: false,

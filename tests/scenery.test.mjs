@@ -99,36 +99,37 @@ test('nearby roads share vertices and have locally culled bounds', () => {
     width: 6,
   });
 
-  test('sloped building shells retain courtyards and share exact rendered collider triangles', () => {
-    const data = emptyScenery();
-    data.buildings.push({
-      rings: [square(20, -20, 40, 0), square(26, -16, 34, -4)],
-      height: 8,
-    });
-    const result = build(definition(data), terrain());
-    const meshes = result.group.getObjectByName('nearbyRoads').children;
-    assert.ok(meshes.length >= 2, 'long ribbons are split into spatial chunks');
-    for (const mesh of meshes) {
-      const geometry = mesh.geometry;
-      assert.ok(geometry.index, 'terrain intersections reuse shared vertices');
-      assert.ok(geometry.attributes.position.count < geometry.index.count / 2);
-      geometry.computeBoundingBox();
-      assert.ok(
-        geometry.boundingBox.getSize(new THREE.Vector3()).z < 150,
-        'each chunk can be culled independently',
-      );
-    }
-    const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 40);
-    camera.position.set(30, 4, -110);
-    camera.lookAt(30, 0, 0);
-    camera.updateMatrixWorld(true);
-    const frustum = new THREE.Frustum().setFromProjectionMatrix(
-      new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse),
-    );
+  const result = build(definition(data), terrain());
+  const meshes = result.group.getObjectByName('nearbyRoads').children;
+  assert.ok(meshes.length >= 2, 'long ribbons are split into spatial chunks');
+  for (const mesh of meshes) {
+    const geometry = mesh.geometry;
+    assert.ok(geometry.index, 'terrain intersections reuse shared vertices');
+    assert.ok(geometry.attributes.position.count < geometry.index.count / 2);
+    geometry.computeBoundingBox();
     assert.ok(
-      meshes.some((mesh) => !frustum.intersectsObject(mesh)),
-      'off-screen road sections are rejected by the renderer frustum',
+      geometry.boundingBox.getSize(new THREE.Vector3()).z < 150,
+      'each chunk can be culled independently',
     );
+  }
+  const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 40);
+  camera.position.set(30, 4, -110);
+  camera.lookAt(30, 0, 0);
+  camera.updateMatrixWorld(true);
+  const frustum = new THREE.Frustum().setFromProjectionMatrix(
+    new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse),
+  );
+  assert.ok(
+    meshes.some((mesh) => !frustum.intersectsObject(mesh)),
+    'off-screen road sections are rejected by the renderer frustum',
+  );
+});
+
+test('sloped building shells retain courtyards and share exact rendered collider triangles', () => {
+  const data = emptyScenery();
+  data.buildings.push({
+    rings: [square(20, -20, 40, 0), square(26, -16, 34, -4)],
+    height: 8,
   });
   const ground = (x, z) => x * 0.05 + z * 0.02;
   const result = build(definition(data), terrain(ground));
@@ -190,6 +191,10 @@ test('vegetation is deterministic, bounded and clear of shoulders, buildings, wa
     const mesh = first.group.getObjectByName(name);
     const repeat = second.group.getObjectByName(name);
     assert.ok(mesh.count > 30);
+    assert.equal(mesh.material.flatShading, false, 'foliage uses interpolated smooth normals');
+    assert.equal(mesh.material.vertexColors, true, 'foliage shading is baked into the shared mesh');
+    assert.ok(mesh.geometry.getAttribute('color').array.every(Number.isFinite));
+    assert.ok(mesh.geometry.index.count / 3 <= 160, 'each plant has a bounded geometry budget');
     assert.deepEqual(mesh.instanceMatrix.array, repeat.instanceMatrix.array);
     plants += mesh.count;
     const matrix = new THREE.Matrix4();

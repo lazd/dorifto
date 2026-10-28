@@ -46,7 +46,7 @@ export function createTurnSignPhysics(
       const start = object.position.clone();
       const rotation = object.quaternion.clone();
       offset.set(0, centerOfMassHeight, 0).applyQuaternion(rotation);
-      const body = context.createRigidBody(8, shape, start.clone().add(offset));
+      const body = context.createRigidBody(8, shape, start.clone().add(offset), false);
       body.setFriction(0.65);
       body.setRestitution(0.12);
       body.setDamping(0.08, 0.15);
@@ -63,7 +63,7 @@ export function createTurnSignPhysics(
     (index) => entries[index].active,
   );
 
-  function resetBody(entry: (typeof entries)[number]) {
+  function resetBody(entry: (typeof entries)[number], updateBounds = true) {
     transform.setIdentity();
     offset.set(0, centerOfMassHeight, 0).applyQuaternion(entry.rotation).add(entry.start);
     vector.setValue(offset.x, offset.y, offset.z);
@@ -81,7 +81,7 @@ export function createTurnSignPhysics(
     // Stay planted until a collision wakes the sign.
     entry.body.setActivationState(2);
     // Removed bodies have no broadphase proxy; updating one corrupts collision detection.
-    if (entry.active) world.updateSingleAabb(entry.body);
+    if (entry.active && updateBounds) world.updateSingleAabb(entry.body);
     entry.object.position.copy(entry.start);
     entry.object.quaternion.copy(entry.rotation);
   }
@@ -101,7 +101,7 @@ export function createTurnSignPhysics(
   }
 
   entries.forEach((entry) => {
-    resetBody(entry);
+    resetBody(entry, false);
     context.setBodyEnabled(entry.body, entry.active);
   });
   visuals.capture(true);
@@ -110,7 +110,7 @@ export function createTurnSignPhysics(
     reset() {
       syncEnabled();
       cooldowns.clear();
-      entries.forEach(resetBody);
+      entries.forEach((entry) => resetBody(entry));
     },
     beforeStep(dt: number) {
       syncEnabled();

@@ -150,7 +150,12 @@ test('hidden buildings and nearby-road cones leave no invisible colliders', (t) 
   const { physics, course } = fixture(0, 0, world);
   course.junctionCones = [course.cones[1]];
   const plugin = physics.addPlugin((context) =>
-    createConePhysics(context, { course, audio: { hitCone() {} } }),
+    createConePhysics(context, { course, initialMode: 'off', audio: { hitCone() {} } }),
+  );
+  assert.deepEqual(
+    course.cones.map((cone) => cone.visible),
+    [false, true],
+    'initial cone filtering is applied before bodies enter the collision world',
   );
   t.after(() => {
     physics.dispose();
@@ -168,6 +173,11 @@ test('hidden buildings and nearby-road cones leave no invisible colliders', (t) 
     Ammo.destroy(b);
     return hit;
   };
+  assert.equal(
+    rayHits([4, 1.2, 4.85], [6, 1.2, 4.85]),
+    false,
+    'initially hidden course cones never enter collision detection',
+  );
   assert.ok(rayHits([4, 3, 6], [8, 3, 6]));
   world.setBuildingsEnabled(false);
   assert.equal(rayHits([4, 3, 6], [8, 3, 6]), false);

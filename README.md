@@ -457,12 +457,18 @@ of the regular course cone-density setting.
 Nearby-road surfaces share indexed vertices and are split into spatial chunks so off-screen
 sections of long routes can be culled. Vegetation classification respects specific landcover
 subclasses, including scrub within a broader grass class.
+Trees and shrubs use smooth-shaded, rounded silhouettes with baked foliage color variation.
+Shared instanced meshes keep foliage to at most 160 triangles per crown, without transparent
+leaf layers, animated noise, or per-frame geometry updates.
 Edit and save an older scenery map to refresh landcover classification; Save is enabled
 when the saved scenery needs this upgrade.
 
 **Cones** can be shown everywhere (`?cones=all`), limited to corners
 (`?cones=corners`, the default), or turned off (`?cones=off`). Hidden cones are also removed
 from physics;
+Inactive roadside cones and hidden sign variants are created outside the collision world,
+avoiding expensive overlapping broadphase pairs during map loading. Enabling them later
+registers their already-positioned bodies normally.
 **Grass tufts** off (`?grass=off`) hides the decorative blades. Both help
 performance on long imported tracks, which carry hundreds of cones.
 **Road-edge dirt** off (`?road-edge-dirt=off`) hides the decorative dirt and pebble
@@ -476,6 +482,11 @@ gives nearby cabin mirrors more detail without using full-screen render targets.
 **High** (`?mirror-resolution=high`) uses drawing-buffer-resolution reflections
 for nearby mirrors. Distant cabin mirrors stay at 512×256.
 Mirrors render only in cabin view; both chase views skip mirror reflections entirely.
+Mirror passes omit mapped scenery (buildings, water, nearby roads, trees and shrubs) and
+decorative grass tufts while retaining the course, terrain, structures and vehicles.
+**Passenger-side mirror** defaults to **Off**; enable it in Settings > Video or with
+`?passenger-mirror=on`. This is the left door mirror on the right-hand-drive car.
+Disabled mirrors use the inactive silver glass and skip both reflection rendering and warmup.
 Reflection cameras exclude the car's low beams, high beams, fog beams, and interior
 point lights. Cabin ambient, gauge glow, and stereo glow illuminate only cabin view;
 chase views skip those lights. Lamp lenses and displays still show their selected state.
@@ -1274,9 +1285,10 @@ so their glow also appears in live mirrors without a separate bloom pass.
 Lit shaders compile per count of each visible light type and shadow caster, so
 every car, cabin, stereo and ghost light stays registered at zero
 intensity when off. Switching any lamp never recompiles shaders, and startup
-compiles just the chase and cabin views for the selected time of day. All three mirror render targets
+compiles just the chase and cabin views for the selected time of day. The driver and rear-view mirror render targets
 are also compiled and rendered during startup, even when starting in chase view
-or with mirrors off. The selected light and mirror settings are restored afterward;
+or with mirrors off; the passenger mirror is warmed only when its switch is enabled.
+The selected light and mirror settings are restored afterward;
 warmup does not start radio playback. Switching time of day for the first time
 compiles that sky's lighting variants, so it can briefly stutter.
 The halos are depth-tested, do not write depth, and cannot show through cars or walls.

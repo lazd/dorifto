@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { hideMirrorScenery, mirrorEnabled } from './mirror-rendering';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { Reflector } from 'three/addons/objects/Reflector.js';
 import { normalizeCarModel, carPhysicsGeometry, carCorner } from './car-geometry';
@@ -657,6 +658,7 @@ export async function loadCar(onProgress?: (fraction: number) => void) {
   // Replace the flat mirror-glass mesh with live planar reflections.
   let mirrorResolution: ConfigurationState['mirrorResolution'] = 'low';
   let mirrorsEnabled = false;
+  let passengerMirrorEnabled = false;
   const inactiveMirrorMaterial = new THREE.MeshStandardMaterial({
     color: 0xdde4ee,
     metalness: 1,
@@ -729,9 +731,12 @@ export async function loadCar(onProgress?: (fraction: number) => void) {
       const eye = new THREE.Vector3();
       const size = new THREE.Vector2();
       mirror.onBeforeRender = function (...args) {
-        if (!mirrorsEnabled) return;
+        if (
+          !mirrorEnabled(mirrorsEnabled, mirrorResolution, sideIndex === 2, passengerMirrorEnabled)
+        )
+          return;
         // Only nearby mirrors use higher resolutions; distant mirrors keep a fixed budget.
-        const [renderer, , camera] = args;
+        const [renderer, scene, camera] = args;
         reflectionCameraFor(mirror, camera);
         const close = mirror.getWorldPosition(eye).distanceToSquared(camera.position) < 2 ** 2;
         if (close && mirrorResolution === 'high') renderer.getDrawingBufferSize(size);
@@ -743,9 +748,11 @@ export async function loadCar(onProgress?: (fraction: number) => void) {
         others.forEach((other) => {
           other.visible = false;
         });
+        const restoreScenery = hideMirrorScenery(scene);
         try {
           reflect.apply(this, args);
         } finally {
+          restoreScenery();
           others.forEach((other) => {
             other.visible = true;
           });
@@ -1075,11 +1082,15 @@ export async function loadCar(onProgress?: (fraction: number) => void) {
     setMirrors(
       cameraStyle: ConfigurationState['cameraStyle'],
       resolution: ConfigurationState['mirrorResolution'],
+      passenger = false,
     ) {
       mirrorResolution = resolution;
+      passengerMirrorEnabled = passenger;
       mirrorsEnabled = cameraStyle === 'cabin' && resolution !== 'off';
-      for (const { mirror, reflectionMaterial } of mirrorMounts) {
-        mirror.material = mirrorsEnabled ? reflectionMaterial : inactiveMirrorMaterial;
+      for (const { mirror, reflectionMaterial, center } of mirrorMounts) {
+        mirror.material = mirrorEnabled(mirrorsEnabled, resolution, center.x > 0.5, passenger)
+          ? reflectionMaterial
+          : inactiveMirrorMaterial;
       }
     },
     async warmMirrors(
@@ -1091,9 +1102,11 @@ export async function loadCar(onProgress?: (fraction: number) => void) {
       const shadowAutoUpdate = renderer.shadowMap.autoUpdate;
       scene.updateMatrixWorld(true);
       camera.updateMatrixWorld(true);
+      const restoreScenery = hideMirrorScenery(scene);
       try {
         renderer.shadowMap.autoUpdate = false;
         for (const mirror of mirrors) {
+          if (mirror.material === inactiveMirrorMaterial) continue;
           const material = mirror.material;
           if (Array.isArray(material)) throw new Error('Mirror must use a single material.');
           const reflectionCamera = reflectionCameraFor(mirror, camera);
@@ -1104,6 +1117,7 @@ export async function loadCar(onProgress?: (fraction: number) => void) {
           mirror.onBeforeRender(renderer, scene, camera, mirror.geometry, material, chassis);
         }
       } finally {
+        restoreScenery();
         renderer.shadowMap.autoUpdate = shadowAutoUpdate;
         renderer.setRenderTarget(target);
       }

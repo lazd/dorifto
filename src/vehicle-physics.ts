@@ -98,7 +98,12 @@ export function createVehiclePhysics({
   let disposed = false;
   let enabled = true;
 
-  function rigidBody(mass: number, shape: AmmoFactory.btCollisionShape, position: THREE.Vector3) {
+  function rigidBody(
+    mass: number,
+    shape: AmmoFactory.btCollisionShape,
+    position: THREE.Vector3,
+    active = true,
+  ) {
     if (disposed) throw new Error('Cannot create a body in disposed vehicle physics');
     const transform = new Ammo.btTransform();
     transform.setIdentity();
@@ -109,8 +114,10 @@ export function createVehiclePhysics({
     shape.calculateLocalInertia(mass, vector);
     const info = new Ammo.btRigidBodyConstructionInfo(mass, motion, shape, vector);
     const body = new Ammo.btRigidBody(info);
-    world.addRigidBody(body);
-    enabledBodies.add(body);
+    if (active) {
+      world.addRigidBody(body);
+      enabledBodies.add(body);
+    }
     rigidBodies.set(body, motion);
     Ammo.destroy(info);
     Ammo.destroy(transform);

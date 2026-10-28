@@ -12,6 +12,7 @@ export interface PhysicsPluginContext {
     mass: number,
     shape: AmmoFactory.btCollisionShape,
     position: THREE.Vector3,
+    enabled?: boolean,
   ): AmmoFactory.btRigidBody;
   setBodyEnabled(body: AmmoFactory.btRigidBody, enabled: boolean): void;
 }

@@ -185,6 +185,41 @@ function material(color: number, vertexColors = false) {
   });
 }
 
+function foliageGeometry(shrub = false) {
+  const geometry = shrub
+    ? new THREE.SphereGeometry(1, 10, 6).scale(1.1, 0.8, 1.1).translate(0, 0.65, 0)
+    : new THREE.LatheGeometry(
+        [
+          [0, 2],
+          [1.5, 2.2],
+          [2.1, 2.8],
+          [1.65, 3.5],
+          [1.7, 4.2],
+          [1.1, 5.2],
+          [0.85, 6.1],
+          [0.35, 7.1],
+          [0, 8],
+        ].map(([radius, height]) => new THREE.Vector2(radius, height)),
+        10,
+      );
+  const positions = geometry.getAttribute('position');
+  const colors = new Float32Array(positions.count * 3);
+  const tint = new THREE.Color();
+  for (let i = 0; i < positions.count; i++) {
+    const x = positions.getX(i),
+      y = positions.getY(i),
+      z = positions.getZ(i);
+    // Bake soft foliage clumps and darker undersides once, rather than sampling noise per pixel.
+    const clump = Math.sin(x * 5 + y * 3 + Math.sin(z * 4)) * Math.cos(z * 5 - y * 2);
+    const light =
+      0.74 + 0.12 * clump + 0.12 * THREE.MathUtils.smoothstep(y, shrub ? 0 : 2, shrub ? 1.4 : 8);
+    tint.setRGB(light * 0.96, light, light * 0.88);
+    tint.toArray(colors, i * 3);
+  }
+  geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  return geometry;
+}
+
 function addBatch(
   parent: THREE.Group,
   batch: Batch,
@@ -639,12 +674,15 @@ export function createScenery(
     color: number,
     matrices: THREE.Matrix4[],
     colors: number[],
+    foliage = false,
   ) {
     if (!matrices.length) {
       geometry.dispose();
       return;
     }
-    const mesh = new THREE.InstancedMesh(geometry, material(color), matrices.length);
+    const surface = material(color, foliage);
+    surface.flatShading = false;
+    const mesh = new THREE.InstancedMesh(geometry, surface, matrices.length);
     mesh.name = name;
     const tint = new THREE.Color();
     matrices.forEach((matrix, i) => {
@@ -665,19 +703,7 @@ export function createScenery(
     trees,
     shades,
   );
-  instances(
-    'tree-crowns',
-    new THREE.ConeGeometry(2.1, 6, 7).translate(0, 5, 0),
-    0x466941,
-    trees,
-    shades,
-  );
-  instances(
-    'shrubs',
-    new THREE.IcosahedronGeometry(1, 0).scale(1.1, 0.8, 1.1).translate(0, 0.65, 0),
-    0x667847,
-    shrubs,
-    shrubShades,
-  );
+  instances('tree-crowns', foliageGeometry(), 0x466941, trees, shades, true);
+  instances('shrubs', foliageGeometry(true), 0x667847, shrubs, shrubShades, true);
   return result;
 }

@@ -236,6 +236,12 @@ async function start() {
       readMirrorResolution,
       'low',
     ),
+    passengerMirror:
+      readOption(
+        'passenger-mirror',
+        'off',
+        (value): value is 'on' | 'off' => value === 'on' || value === 'off',
+      ) === 'on',
     pixelRatio: readOption('pixel-ratio', 'auto', isPixelRatio),
     terrainShadows: readOption('terrain-shadows', 'auto', isTerrainShadows),
     showFps:
@@ -427,10 +433,10 @@ async function start() {
   car.setLighting(shownHeadlights, selectedTime);
   let appliedTime = selectedTime;
   configurationState.subscribe(
-    ({ cameraStyle, mirrorResolution }) => {
-      car.setMirrors(cameraStyle, mirrorResolution);
+    ({ cameraStyle, mirrorResolution, passengerMirror }) => {
+      car.setMirrors(cameraStyle, mirrorResolution, passengerMirror);
     },
-    ['cameraStyle', 'mirrorResolution'],
+    ['cameraStyle', 'mirrorResolution', 'passengerMirror'],
   );
   configurationState.subscribe(
     ({ timeOfDay }) => {
@@ -1289,6 +1295,7 @@ async function start() {
             ? ('track-limits' as const)
             : nextRace.mode,
       };
+      showLoading('Starting physics…');
       const next = await createCourseSession(
         { ...nextDefinition, reverse },
         undefined,
@@ -1923,8 +1930,8 @@ async function start() {
     wheel.quaternion.copy(car.wheels[i].quaternion);
   });
   function restoreLighting() {
-    const { cameraStyle, mirrorResolution } = configurationState.getState();
-    car.setMirrors(cameraStyle, mirrorResolution);
+    const { cameraStyle, mirrorResolution, passengerMirror } = configurationState.getState();
+    car.setMirrors(cameraStyle, mirrorResolution, passengerMirror);
     lighting.apply(appliedTime);
     car.setHighBeams(controls.highBeams);
     car.setFogLights(vehicleLights.fogLights);
@@ -1947,7 +1954,7 @@ async function start() {
     car.setHighBeams(true);
     car.setFogLights(true);
     car.setBraking(true);
-    const { mirrorResolution } = configurationState.getState();
+    const { mirrorResolution, passengerMirror } = configurationState.getState();
     const warmMirrorResolution = mirrorResolution === 'off' ? 'low' : mirrorResolution;
     // The sky shader only re-keys for the current lights when the background changes, so other
     // times of day compile on first switch.
@@ -1958,7 +1965,7 @@ async function start() {
     placeholderSky.needsUpdate = true;
     for (const [index, interior] of [false, true].entries()) {
       showLoading('Compiling shaders…', 0.45 + 0.2 * index);
-      car.setMirrors(interior ? 'cabin' : 'fpv', warmMirrorResolution);
+      car.setMirrors(interior ? 'cabin' : 'fpv', warmMirrorResolution, passengerMirror);
       const view = interior ? mirrorWarmupCamera : warmupCamera;
       scene.background = index % 2 ? placeholderSky : sky;
       await renderer.compileAsync(scene, view);
@@ -1968,7 +1975,7 @@ async function start() {
     scene.background = sky;
     placeholderSky.dispose();
     showLoading('Preparing rear-view mirrors…', 0.85);
-    car.setMirrors('cabin', warmMirrorResolution);
+    car.setMirrors('cabin', warmMirrorResolution, passengerMirror);
     await renderer.compileAsync(scene, mirrorWarmupCamera);
     await car.warmMirrors(renderer, scene, mirrorWarmupCamera);
     showLoading('Preparing the ghost car…', 0.95);

@@ -8,6 +8,8 @@ import {
 } from './physics-plugin';
 
 interface ConePhysicsOptions {
+  initialMode?: 'all' | 'corners' | 'off';
+  nearbyRoads?: boolean;
   course: {
     cones: THREE.Object3D[];
     cornerCones: THREE.Object3D[];
@@ -21,12 +23,27 @@ interface ConePhysicsOptions {
 
 export function createConePhysics(
   context: PhysicsPluginContext,
-  { course, audio, onHit, vehicles, onVehicleHit }: ConePhysicsOptions,
+  {
+    course,
+    audio,
+    onHit,
+    vehicles,
+    onVehicleHit,
+    initialMode = 'all',
+    nearbyRoads = true,
+  }: ConePhysicsOptions,
 ) {
   const { Ammo, world, dispatcher, vehicleBody, createRigidBody, setBodyEnabled } = context;
   const { cones } = course;
   const cornerIndices = new Set((course.cornerCones ?? []).map((cone) => cones.indexOf(cone)));
   const junctionIndices = new Set((course.junctionCones ?? []).map((cone) => cones.indexOf(cone)));
+  let enabled = initialMode !== 'off';
+  let cornerOnly = initialMode === 'corners';
+  let junctionsEnabled = nearbyRoads;
+  const isActive = (index: number) =>
+    junctionIndices.has(index)
+      ? junctionsEnabled
+      : enabled && (!cornerOnly || cornerIndices.has(index));
   const starts = cones.map((cone) => cone.position.clone());
   const rotations = cones.map((cone) => cone.quaternion.clone());
   const vector = new Ammo.btVector3(0, 0, 0);
@@ -54,8 +71,8 @@ export function createConePhysics(
   vector.setValue(0, baseHeight / 2 - centerOfMassHeight, 0);
   resetTransform.setOrigin(vector);
   shape.addChildShape(resetTransform, baseShape);
-  const bodies = cones.map((mesh) => {
-    const body = createRigidBody(3, shape, mesh.position);
+  const bodies = cones.map((mesh, index) => {
+    const body = createRigidBody(3, shape, mesh.position, false);
     const transform = body.getWorldTransform();
     const rotation = new Ammo.btQuaternion(
       mesh.quaternion.x,
@@ -66,7 +83,8 @@ export function createConePhysics(
     transform.setRotation(rotation);
     body.setCenterOfMassTransform(transform);
     body.getMotionState().setWorldTransform(transform);
-    world.updateSingleAabb(body);
+    setBodyEnabled(body, isActive(index));
+    mesh.visible = isActive(index);
     Ammo.destroy(rotation);
     body.setFriction(0.7);
     body.setRestitution(0.15);
@@ -79,13 +97,6 @@ export function createConePhysics(
   const vehiclePointer = Ammo.getPointer(vehicleBody);
   const ids = new Map(bodies.map((body, index) => [Ammo.getPointer(body), index]));
   const soundCooldowns = new Map<number, number>();
-  let enabled = true;
-  let cornerOnly = false;
-  let junctionsEnabled = true;
-  const isActive = (index: number) =>
-    junctionIndices.has(index)
-      ? junctionsEnabled
-      : enabled && (!cornerOnly || cornerIndices.has(index));
   const visuals = createPhysicsVisuals(cones, isActive);
 
   function captureVisuals(snap: boolean) {

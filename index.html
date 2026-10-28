@@ -964,13 +964,30 @@
               </div>
               <div class="field">
                 <label for="mirror-resolution">Mirror resolution</label>
-                <p id="mirror-description">Lower resolution improves performance.</p>
+                <p id="mirror-description">
+                  Lower resolution improves performance. Reflections omit buildings, water, nearby
+                  roads, trees and shrubs.
+                </p>
                 <select id="mirror-resolution" aria-describedby="mirror-description">
                   <option value="off">Off</option>
                   <option value="low">Low (512 × 256)</option>
                   <option value="medium">Medium (1024 × 512)</option>
                   <option value="high">High (full resolution)</option>
                 </select>
+              </div>
+              <div class="field">
+                <label for="passenger-mirror">Passenger-side mirror</label>
+                <p id="passenger-mirror-description">
+                  Enable the left door mirror on this right-hand-drive car. Off by default to avoid
+                  an extra reflection pass.
+                </p>
+                <input
+                  id="passenger-mirror"
+                  class="switch"
+                  type="checkbox"
+                  role="switch"
+                  aria-describedby="passenger-mirror-description"
+                />
               </div>
               <div class="field">
                 <label for="pixel-ratio">Render resolution</label>

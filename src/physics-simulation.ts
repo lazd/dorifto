@@ -245,6 +245,8 @@ export function createPhysicsSimulation(Ammo: typeof AmmoFactory, data: PhysicsI
   const trackingStatistics = vehicles.map(() => false);
   const conePhysics = physics.addPlugin((context) =>
     createConePhysics(context, {
+      initialMode: configuration.coneMode,
+      nearbyRoads: configuration.showNearbyRoads !== false,
       course: {
         cones,
         cornerCones: data.cornerCones.map((index) => cones[index]),

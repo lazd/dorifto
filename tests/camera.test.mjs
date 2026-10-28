@@ -14,6 +14,8 @@ let defaultCourseWeights;
 let DrivingControls;
 let carLightLayers;
 let inputBindings;
+let hideMirrorScenery;
+let mirrorEnabled;
 
 before(async () => {
   server = await createServer({
@@ -23,6 +25,7 @@ before(async () => {
   ({ createDrivingCamera, cabinCameraMotion, fpvCameraMotion } =
     await server.ssrLoadModule('/src/camera.ts'));
   ({ carLightLayers } = await server.ssrLoadModule('/src/car.ts'));
+  ({ hideMirrorScenery, mirrorEnabled } = await server.ssrLoadModule('/src/mirror-rendering.ts'));
   ({ DrivingControls } = await server.ssrLoadModule('/src/controls.ts'));
   ({ inputBindings } = await server.ssrLoadModule('/src/input-bindings.ts'));
   ({ courses, courseRoute } = await server.ssrLoadModule('/src/courses.ts'));
@@ -33,6 +36,40 @@ before(async () => {
 
 after(async () => {
   await server?.close();
+});
+
+test('mirror passes omit scenery and grass without changing the main view or settings', () => {
+  const scene = new THREE.Scene();
+  const scenery = new THREE.Group();
+  scenery.name = 'scenery';
+  const grass = new THREE.Group();
+  grass.name = 'roadside-grass';
+  const course = new THREE.Group();
+  scene.add(course, scenery, grass);
+  for (const visible of [true, false]) {
+    scenery.visible = visible;
+    const restore = hideMirrorScenery(scene);
+    try {
+      assert.equal(scenery.visible, false);
+      assert.equal(grass.visible, false);
+      assert.equal(course.visible, true);
+      const restoreNested = hideMirrorScenery(scene);
+      restoreNested();
+      assert.equal(scenery.visible, false);
+    } finally {
+      restore();
+    }
+    assert.equal(scenery.visible, visible);
+    assert.equal(grass.visible, true);
+  }
+  for (const cabin of [true, false])
+    for (const resolution of ['off', 'low', 'medium', 'high'])
+      for (const passenger of [true, false])
+        for (const enabled of [true, false])
+          assert.equal(
+            mirrorEnabled(cabin, resolution, passenger, enabled),
+            cabin && resolution !== 'off' && (!passenger || enabled),
+          );
 });
 
 test('only cabin view enables interior illumination, while all driving views enable headlights', () => {

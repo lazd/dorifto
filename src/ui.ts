@@ -2152,6 +2152,14 @@ export function bindGameUI(
     (mirrorResolution) => ({ mirrorResolution }),
     isMirrorResolution,
   );
+  select<'on' | 'off'>(
+    '#passenger-mirror',
+    'passenger-mirror',
+    'passengerMirror',
+    (state) => (state.passengerMirror ? 'on' : 'off'),
+    (value) => ({ passengerMirror: value === 'on' }),
+    isToggle,
+  );
   select<ConfigurationState['pixelRatio']>(
     '#pixel-ratio',
     'pixel-ratio',

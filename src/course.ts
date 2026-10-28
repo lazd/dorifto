@@ -62,6 +62,7 @@ export function createCourse(scene: THREE.Scene, definition: CourseDefinition, c
 function buildCourse(scene: THREE.Group, definition: CourseDefinition, carWidth: number) {
   const route = courseRoute({ ...definition, reverse: false });
   const terrain = new CourseTerrain(definition);
+  terrain.grass.name = 'roadside-grass';
   scene.add(terrain.mesh);
   const scenery = createScenery(definition, terrain);
   scene.add(scenery.group);

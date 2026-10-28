@@ -58,6 +58,7 @@ test('configuration and game snapshots and notifications are completely independ
   assert.equal(initialConfiguration.driveMode, 'grip');
   assert.equal(initialConfiguration.selectedTuningPresets.grip, 'grip-default');
   assert.equal(initialConfiguration.cameraStyle, 'cabin');
+  assert.equal(initialConfiguration.passengerMirror, false);
   assert.equal(initialConfiguration.showKerbs, true);
   assert.equal(initialConfiguration.showRoadEdgeDirt, true);
   assert.equal(initialConfiguration.speedUnit, 'mph');
