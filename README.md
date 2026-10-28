@@ -478,6 +478,9 @@ traction and smoke rather than dust, in both the physics worker and tire effects
 the roads restores terrain traction. Narrow dirt verges share the main road's soil shader
 and fade into grass on either side. They are terrain-projected, spatially batched, and
 controlled by the road-edge dirt setting, with no additional collision bodies.
+Their soil feathers onto the side-road asphalt rather than stopping at a hard pavement
+edge. At junctions, the main-road soil's large-scale drift is reduced and its coverage
+softened, keeping the turning blend continuous without adding meshes or draw calls.
 Verge distance follows the pavement's actual ribbon edges, with fine cross-road samples
 to avoid gaps caused by interpolating across a whole road-width triangle. Junction soil
 uses a rounded pavement-distance blend and feathers across the main shoulder instead
@@ -490,8 +493,9 @@ masks follow that widened footprint; traction follows the final rendered pavemen
 Roads still stop at the imported 300 m corridor or the supported terrain boundary; they
 are scenery, not an unlimited navigable road network.
 Nearby-road copies aligned with the selected route
-are excluded even on bridges, including overlapping parallel carriageways, while independent
-roads crossing beneath remain visible.
+are excluded on both bridges and their ground-level approaches, including overlapping
+parallel carriageways. Asphalt, dirt, and junction cones use the same width-aware
+alignment filter; independent roads crossing beneath remain visible.
 Roads and waterways are projected onto the actual
 rendered landscape triangles, including simplified distant patches, rather than the denser
 collision grid. Their surfaces and a 6 m band on either side retain native terrain detail;

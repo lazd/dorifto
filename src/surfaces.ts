@@ -142,7 +142,7 @@ export function roadDirtMaterial(outerEdge: number, minReach: number, maxReach: 
 }
 
 export function nearbyRoadDirtMaterial() {
-  const material = roadDirtMaterial(1.8, 1.9, 2.15);
+  const material = roadDirtMaterial(1.8, 1.9, 2.4);
   if (!material) return undefined;
   const compile = material.onBeforeCompile;
   material.onBeforeCompile = function (shader, renderer) {
@@ -161,9 +161,10 @@ export function nearbyRoadDirtMaterial() {
         float pavementDistance = vLateral;
         float edgeDistance = DIRT_EDGE - pavementDistance;`,
       )
+      .replace('float aa = fwidth(edgeDistance);', 'float aa = max(fwidth(edgeDistance), 0.12);')
       .replace(
         '#include <alphatest_fragment>',
-        `diffuseColor.a *= smoothstep(-0.3, 0.12, pavementDistance) *
+        `diffuseColor.a *= smoothstep(-1.0, -0.65, pavementDistance) *
           smoothstep(0.0, 0.9, vMainRoad);
         #include <alphatest_fragment>`,
       );

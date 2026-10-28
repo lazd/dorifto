@@ -95,6 +95,14 @@ function buildCourse(scene: THREE.Group, definition: CourseDefinition, carWidth:
 diffuseColor.a *= mix(1.0, smoothstep(-${feather.toFixed(2)}, ${feather.toFixed(2)}, vJunction), junctionsVisible);
 if (diffuseColor.a < ${material.transparent ? '0.01' : '0.5'}) discard;`,
         );
+      if (material.transparent) {
+        shader.fragmentShader = shader.fragmentShader.replace(
+          'float aa = fwidth(edgeDistance);',
+          `float junctionSoil = (1.0 - smoothstep(0.0, 3.0, vJunction)) * junctionsVisible;
+reach = mix(reach, mix(DIRT_MIN, DIRT_MAX, 0.5) + ragged, junctionSoil);
+float aa = max(fwidth(edgeDistance), junctionSoil * 0.15);`,
+        );
+      }
     };
     material.customProgramCacheKey = () => `${key}-junctions-${feather}`;
   }

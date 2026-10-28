@@ -325,6 +325,18 @@ export function createScenery(
   junctionExpansion = (x, z) =>
     separated(x, z) ? 0 : junctionRoadFlare(surface.nearest(x, z).distance - definition.width / 2);
   const roadBlocked = (x: number, z: number) => clearance(x, z) < 0.8 && !separated(x, z);
+  const selectedRoadCopy = (x: number, z: number, dx: number, dz: number, width: number) => {
+    const near = surface.nearest(x, z);
+    if (near.distance >= halfWidth + width / 2 + 0.8) return false;
+    const selected =
+      query.segments[
+        Math.min(query.segments.length - 1, Math.floor(near.fraction * query.segments.length))
+      ];
+    if (!selected) return false;
+    const sx = selected.b.x - selected.a.x,
+      sz = selected.b.z - selected.a.z;
+    return Math.abs(dx * sx + dz * sz) / Math.hypot(sx, sz) > 0.85;
+  };
   const obstacles = new SpatialIndex<Polygon>();
   const roads = new SpatialIndex<RoadSegment>();
   const buildingBatch = new Batch();
@@ -613,6 +625,10 @@ export function createScenery(
       for (let j = 0; j < steps; j++) {
         const t0 = (length * j) / steps;
         const center = side((length * (j + 0.5)) / steps, 0);
+        if (!river && selectedRoadCopy(center.x, center.z, dx, dz, verge ? width - 4.8 : width)) {
+          connected = false;
+          continue;
+        }
         const distance = clearance(center.x, center.z);
         if (separated(center.x, center.z)) connected = false;
         if (!river && !verge && !separated(center.x, center.z)) {
@@ -648,23 +664,6 @@ export function createScenery(
         const geometrySteps = river ? 8 : 1;
         if (j % geometrySteps !== 0) continue;
         const geometryEnd = (length * Math.min(j + geometrySteps, steps)) / steps;
-        if (!river) {
-          const middle = side((t0 + geometryEnd) / 2, 0);
-          const near = surface.nearest(middle.x, middle.z);
-          const selected =
-            query.segments[
-              Math.min(query.segments.length - 1, Math.floor(near.fraction * query.segments.length))
-            ];
-          const routeMargin = separated(middle.x, middle.z) ? width / 2 : 0;
-          if (selected && near.distance < halfWidth + routeMargin + 0.8) {
-            const sx = selected.b.x - selected.a.x;
-            const sz = selected.b.z - selected.a.z;
-            const alignment = Math.abs(dx * sx + dz * sz) / Math.hypot(sx, sz);
-            // Include overlapping parallel carriageways, not just centerline copies of the bridge.
-            // Perpendicular roads beneath it are independent features and must remain.
-            if (alignment > 0.85) continue;
-          }
-        }
         const corners = [edge(t0, -1), edge(t0, 1), edge(geometryEnd, -1), edge(geometryEnd, 1)];
         if (river && [...corners, center].some((p) => roadBlocked(p.x, p.z))) continue;
         if (!river && !verge && !indexedPavement) {

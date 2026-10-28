@@ -524,29 +524,32 @@ test('branch mouth cones are deduplicated and never obstruct the selected paved 
   assert.equal(duplicate.junctionCones.length, 0);
 });
 
-test('selected bridge road copies are omitted in either direction without hiding roads underneath', () => {
-  for (const reverse of [false, true]) {
-    const data = emptyScenery();
-    for (const x of [1, 9]) {
-      const points = [
-        [x, -90],
-        [x, 90],
-      ];
-      data.roads.push({ points: reverse ? points.toReversed() : points, width: 8 });
+test('selected road copies and parallel carriageways are omitted on bridges and ground-level approaches', () => {
+  for (const height of [0, 80]) {
+    for (const reverse of [false, true]) {
+      const data = emptyScenery();
+      for (const x of [1, 9]) {
+        const points = [
+          [x, -90],
+          [x, 90],
+        ];
+        data.roads.push({ points: reverse ? points.toReversed() : points, width: 8 });
+      }
+      const result = build(
+        definition(data),
+        terrain(
+          () => 0,
+          () => height,
+        ),
+        { createRoadDirtMaterial: () => new THREE.MeshStandardMaterial() },
+      );
+      assert.equal(
+        result.group.getObjectByName('nearbyRoads').children.length,
+        0,
+        'copies leave neither asphalt nor dirt on bridges or their approaches',
+      );
+      assert.equal(result.junctionCones.length, 0);
     }
-    const result = build(
-      definition(data),
-      terrain(
-        () => 0,
-        () => 80,
-      ),
-    );
-    assert.equal(
-      result.group.getObjectByName('nearbyRoads').children.length,
-      0,
-      'centerline copies and parallel carriageways do not paint asphalt below the bridge',
-    );
-    assert.equal(result.junctionCones.length, 0);
   }
 });
 
