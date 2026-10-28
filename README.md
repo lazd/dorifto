@@ -508,7 +508,28 @@ Nearby-road copies aligned with the selected route
 are excluded on both bridges and their ground-level approaches, including overlapping
 parallel carriageways. Asphalt, dirt, and junction cones use the same width-aware
 alignment filter; independent roads crossing beneath remain visible.
-Roads and waterways are projected onto the actual
+Nearby-road imports retain road class, bridge/tunnel, and layer tags and never merge fragments across
+class, structure, or layer boundaries. Crossing bridges use the same deck, curb, railing, and
+collision geometry as the selected road, in both the game and 3-D preview. Their height
+is interpolated from the two terrain approaches. When those approaches do not provide
+clearance over the selected road, a 6.5 m deck-surface clearance fallback raises the span
+and blends back onto connected approach roads. This is an approximation, not surveyed
+freeway elevation; layer numbers preserve ordering metadata but do not encode meters.
+Support piers are omitted near the selected road. Raised pavement does not widen the
+track's junctions, erase its paint, or place junction cones underneath. Hiding nearby roads
+also removes their structure collision. Nearby tunnel spans are omitted from surface
+scenery rather than drawn as false intersections; separate underground bores and portals
+are not reconstructed. Edit and save older maps to refresh their nearby-road structure tags.
+Major nearby roads (motorways, trunks, and primary roads) use full-width, level cross-sections
+with white edge lines and soil embankments grounded in the surrounding terrain. Their
+bridge approaches share the deck's endpoint heights across the entire pavement width,
+even when no clearance fallback is needed, and concrete abutments close the gap beneath
+each end. Embankment end caps seal the exposed soil wedges beside those abutments without
+filling the underpass. At-grade intersections still blend into the selected road; smaller roads retain
+their terrain-draped pavement and dirt verges. Older maps without road-class tags use
+the major-road treatment for widths of at least 10 m; edit and save to refresh classification.
+All this geometry is static and spatially batched; supports also have matching collision.
+Terrain-draped roads and waterways are projected onto the actual
 rendered landscape triangles, including simplified distant patches, rather than the denser
 collision grid. Their surfaces and a 6 m band on either side retain native terrain detail;
 unrelated landscape remains simplified. This changes visual tessellation, not the heightfield

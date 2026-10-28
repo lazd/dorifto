@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { after, afterEach, before, test } from 'node:test';
 import { createServer } from 'vite';
 import * as THREE from 'three';
+import AmmoFactory from 'ammojs-typed';
 
 let server;
 let createScenery;
@@ -9,6 +10,10 @@ let smoothSceneryLine;
 let joinSceneryRoads;
 let normalizeCourseScenery;
 let PavementSurface;
+let nearbyBridgeClearance;
+let nearbyRoadLift;
+let sceneryRoadProfiles;
+let validateCourseScenery;
 const groups = [];
 before(async () => {
   server = await createServer({
@@ -19,6 +24,9 @@ before(async () => {
   ({ smoothSceneryLine, joinSceneryRoads, normalizeCourseScenery } =
     await server.ssrLoadModule('/src/scenery-data.ts'));
   ({ PavementSurface } = await server.ssrLoadModule('/src/terrain-query.ts'));
+  ({ nearbyBridgeClearance, nearbyRoadLift, sceneryRoadProfiles } =
+    await server.ssrLoadModule('/src/scenery-roads.ts'));
+  ({ validateCourseScenery } = await server.ssrLoadModule('/src/scenery-data.ts'));
 });
 after(async () => server?.close());
 afterEach(() => {
@@ -646,6 +654,7 @@ test('features beyond the supported terrain grid do not become floating scenery'
     ],
     width: 6,
   });
+
   data.vegetation.push({ rings: [square(90, -80, 130, -40)], kind: 'trees' });
   const result = build(definition(data), terrain());
   assert.equal(result.collisionMesh, undefined, 'partially unsupported building is omitted');
@@ -663,4 +672,311 @@ test('features beyond the supported terrain grid do not become floating scenery'
     plants.getMatrixAt(i, matrix);
     assert.ok(new THREE.Vector3().setFromMatrixPosition(matrix).x < 98);
   }
+});
+
+test('road normalization preserves structure and layer boundaries and validates saved tags', () => {
+  const data = emptyScenery();
+  const fragment = (start, end, extra = {}) => ({
+    points: [
+      [start, 30],
+      [end, 30],
+    ],
+    width: 8,
+    ...extra,
+  });
+  data.roads = [
+    fragment(-80, -40),
+    fragment(-40, -20, { structure: 'bridge', layer: 1 }),
+    fragment(-20, 0, { structure: 'bridge', layer: 1 }),
+    fragment(0, 20, { structure: 'bridge', layer: 2 }),
+    fragment(20, 40, { structure: 'tunnel', layer: -1 }),
+  ];
+  assert.equal(normalizeCourseScenery(data).roads.length, 4);
+  validateCourseScenery(data);
+  for (const extra of [{ structure: 'motorway' }, { layer: 1.5 }]) {
+    assert.throws(
+      () =>
+        validateCourseScenery({
+          ...data,
+          roads: [fragment(0, 10, extra)],
+        }),
+      /Invalid saved course scenery/,
+    );
+  }
+});
+
+test('nearby overpasses clear the track, connect their approaches and never become junctions', () => {
+  for (const approachHeight of [0, 12]) {
+    const data = emptyScenery();
+    data.roads = [
+      {
+        points: [
+          [-90, 0],
+          [-30, 0],
+        ],
+        width: 10,
+      },
+      {
+        points: [
+          [-30, 0],
+          [30, 0],
+        ],
+        width: 10,
+        structure: 'bridge',
+        layer: 1,
+      },
+      {
+        points: [
+          [30, 0],
+          [90, 0],
+        ],
+        width: 10,
+      },
+      {
+        points: [
+          [-80, 50],
+          [80, 50],
+        ],
+        width: 10,
+        structure: 'tunnel',
+        layer: -1,
+      },
+    ];
+    const ground = terrain((x) => (Math.abs(x) >= 29 ? approachHeight : 0));
+    const result = build(definition(data), ground, {
+      projectGroundGeometry(source) {
+        const geometry = source.clone();
+        const positions = geometry.getAttribute('position');
+        for (let i = 0; i < positions.count; i++) {
+          assert.ok(positions.getY(i) < 0.1, 'raised decks bypass ground projection');
+          positions.setY(i, ground.groundHeightAt(positions.getX(i), positions.getZ(i)) + 0.035);
+        }
+        return geometry;
+      },
+    });
+    const height = Math.max(approachHeight, nearbyBridgeClearance);
+    assert.ok(result.structureMesh);
+    assert.equal(result.junctionCones.length, 0);
+    assert.equal(result.roadCoverage(0, 0), 0);
+    assert.equal(result.roadDistance(0, 0, true), 3);
+    assert.equal(result.isAsphalt({ x: 0, z: 0, y: 0 }), false);
+    assert.equal(result.isAsphalt({ x: 0, z: 0, y: height }), true);
+    assert.equal(result.isAsphalt({ x: 0, z: 50, y: 0 }), false, 'tunnel is not surface pavement');
+    const ray = new THREE.Raycaster();
+    const layer = result.group.getObjectByName('nearbyRoads');
+    for (const x of [-30.01, -29.99, 0, 29.99, 30.01]) {
+      ray.set(new THREE.Vector3(x, height + 3, 0), new THREE.Vector3(0, -1, 0));
+      const hit = ray.intersectObject(layer)[0];
+      assert.ok(hit, 'the approaches and deck remain connected at both abutments');
+      assert.ok(
+        Math.abs(hit.point.y - height) < 0.05,
+        `approach ${approachHeight}, x ${x}: ${hit.point.y} vs ${height} (${hit.object.name})`,
+      );
+    }
+    ray.set(new THREE.Vector3(0, 1, -60), new THREE.Vector3(0, 0, 1));
+    assert.equal(ray.intersectObject(layer).length, 0, 'no pier or tunnel portal blocks the track');
+    result.setVisible('nearbyRoads', false);
+    assert.equal(result.isAsphalt({ x: 0, z: 0, y: height }), false);
+  }
+});
+
+test('nearby bridge collision supports the deck and underside without blocking the track, and can be hidden', async () => {
+  const data = emptyScenery();
+  data.roads = [
+    {
+      points: [
+        [-60, 0],
+        [60, 0],
+      ],
+      width: 10,
+      structure: 'bridge',
+      layer: 1,
+    },
+  ];
+  const ground = terrain();
+  const result = build(definition(data), ground);
+  const { createPhysicsWorld, createPhysicsResources } =
+    await server.ssrLoadModule('/src/physics-world.ts');
+  const Ammo = await AmmoFactory.call({});
+  const resources = createPhysicsResources(Ammo);
+  const physics = createPhysicsWorld(Ammo, resources, {
+    ...ground.physicsData(),
+    nearbyStructureMesh: result.structureMesh,
+  });
+  const from = new Ammo.btVector3(),
+    to = new Ammo.btVector3();
+  const ray = (a, b) => {
+    from.setValue(...a);
+    to.setValue(...b);
+    const callback = new Ammo.ClosestRayResultCallback(from, to);
+    try {
+      physics.world.rayTest(from, to, callback);
+      if (callback.hasHit()) return callback.get_m_hitPointWorld().y();
+    } finally {
+      Ammo.destroy(callback);
+    }
+  };
+  try {
+    assert.ok(Math.abs(ray([0, 10, 0], [0, 4, 0]) - nearbyBridgeClearance - nearbyRoadLift) < 0.03);
+    const { bridgeDimensions } = await server.ssrLoadModule('/src/bridges.ts');
+    assert.ok(
+      Math.abs(
+        ray([0, 4, 0], [0, 10, 0]) -
+          (nearbyBridgeClearance + nearbyRoadLift - bridgeDimensions.deckThickness),
+      ) < 0.03,
+    );
+    assert.equal(ray([0, 1, -60], [0, 1, 60]), undefined);
+    physics.setNearbyRoadsEnabled(false);
+    assert.equal(ray([0, 10, 0], [0, 4, 0]), undefined);
+    physics.setNearbyRoadsEnabled(true);
+    assert.ok(ray([0, 10, 0], [0, 4, 0]) > 4);
+  } finally {
+    physics.dispose();
+    Ammo.destroy(from);
+    Ammo.destroy(to);
+  }
+});
+
+test('highway approaches meet the full bridge width on sloping terrain and have grounded roadbeds', () => {
+  const data = emptyScenery();
+  data.roads = [
+    {
+      points: [
+        [-90, 0],
+        [-30, 0],
+      ],
+      width: 12,
+      roadClass: 'trunk',
+    },
+    {
+      points: [
+        [-30, 0],
+        [30, 0],
+      ],
+      width: 12,
+      roadClass: 'trunk',
+      structure: 'bridge',
+      layer: 1,
+    },
+    {
+      points: [
+        [30, 0],
+        [90, 0],
+      ],
+      width: 12,
+      roadClass: 'trunk',
+    },
+    {
+      points: [
+        [50, 40],
+        [80, 40],
+      ],
+      width: 6,
+      roadClass: 'minor',
+    },
+  ];
+  const ground = terrain((x, z) => (Math.abs(x) >= 25 ? 8 + z * 0.5 : 0));
+  const course = definition(data);
+  const profiles = sceneryRoadProfiles(
+    data.roads,
+    ground.groundHeightAt,
+    () => 0,
+    (x) => Math.abs(x) - 5,
+    () => false,
+  );
+  assert.ok(profiles.filter((p) => p.road.roadClass === 'trunk').every((p) => p.raised));
+  assert.equal(profiles.find((p) => p.road.roadClass === 'minor').raised, false);
+  const bridge = profiles.find((p) => p.road.structure === 'bridge');
+  for (const approach of profiles.filter((p) => p.bridgeApproach)) {
+    const x = approach.points.some((p) => p[0] === -30) ? -30 : 30;
+    for (const z of [-5, 0, 5])
+      assert.ok(
+        Math.abs(bridge.heightAt(x, z) - approach.heightAt(x, z)) < 1e-5,
+        'bridge and approach cross-sections share a single elevation even without fallback lift',
+      );
+  }
+  const result = build(course, ground);
+  const layer = result.group.getObjectByName('nearbyRoads');
+  assert.ok(layer.getObjectByName('nearby-road-embankments'));
+  assert.ok(layer.getObjectByName('nearby-road-abutments'));
+  assert.ok(layer.getObjectByName('nearby-road-edge-lines'));
+  const ray = new THREE.Raycaster();
+  for (const x of [-30.01, -29.99, 29.99, 30.01]) {
+    for (const z of [-4, 0, 4]) {
+      ray.set(new THREE.Vector3(x, 20, z), new THREE.Vector3(0, -1, 0));
+      const hit = ray.intersectObject(layer)[0];
+      assert.ok(hit, 'pavement covers the entire abutment');
+      assert.ok(
+        Math.abs(hit.point.y - bridge.heightAt(x, z)) < 0.05,
+        `no floating edges or buried approach at ${x},${z}: ${hit.point.y} vs ${bridge.heightAt(x, z)} (${hit.object.name})`,
+      );
+    }
+  }
+  ray.set(new THREE.Vector3(-45, 20, -8), new THREE.Vector3(0, -1, 0));
+  assert.ok(
+    ray.intersectObject(layer.getObjectByName('nearby-road-embankments')).length,
+    'the raised approach is supported outside its pavement edge',
+  );
+  const abutment = layer.getObjectByName('nearby-road-abutments').geometry.getAttribute('position');
+  assert.ok(
+    Array.from(
+      { length: abutment.count },
+      (_, i) => abutment.getY(i) - ground.groundHeightAt(abutment.getX(i), abutment.getZ(i)),
+    ).some((d) => d < 0),
+    'abutment walls extend into the terrain rather than floating',
+  );
+  const roadbeds = layer.children.filter((mesh) => mesh.name.startsWith('nearby-road-embankments'));
+  for (const x of [-30, 30]) {
+    for (const side of [-1, 1]) {
+      let cap;
+      for (const mesh of roadbeds) {
+        const positions = mesh.geometry.getAttribute('position');
+        for (let i = 0; i < positions.count; i += 3) {
+          const vertices = [0, 1, 2].map((j) =>
+            new THREE.Vector3().fromBufferAttribute(positions, i + j),
+          );
+          if (
+            vertices.every((p) => Math.abs(p.x - x) < 1e-5) &&
+            vertices.some((p) => p.z * side > 6.4) &&
+            vertices.every((p) => p.z * side >= 6)
+          ) {
+            cap = vertices
+              .reduce((center, p) => center.add(p), new THREE.Vector3())
+              .divideScalar(3);
+          }
+        }
+      }
+      assert.ok(cap, 'both sides of each approach close against the abutment');
+      ray.set(cap.clone().add(new THREE.Vector3(2, 0, 0)), new THREE.Vector3(-1, 0, 0));
+      ray.far = 4;
+      assert.ok(
+        ray.intersectObjects(roadbeds).some((hit) => Math.abs(hit.point.x - x) < 1e-5),
+        'looking from beneath the span cannot see through the roadbed end',
+      );
+    }
+  }
+  ray.far = Infinity;
+  assert.equal(result.roadCoverage(0, 0), 0);
+  assert.equal(result.junctionCones.length, 0);
+  const junctionData = emptyScenery();
+  junctionData.roads = [
+    {
+      points: [
+        [-90, 40],
+        [90, 40],
+      ],
+      width: 12,
+      roadClass: 'primary',
+    },
+  ];
+  const junction = build(
+    definition(junctionData),
+    terrain((x, z) => x * 0.05 + z * 0.01),
+  );
+  assert.ok(
+    junction.roadCoverage(4.5, 40) > 0,
+    'at-grade highways still blend into the track shoulder',
+  );
+  assert.ok(junction.isAsphalt({ x: 8, y: 0.8, z: 40 }));
+  assert.ok(junction.junctionCones.length > 0, 'real highway intersections retain mouth barriers');
 });

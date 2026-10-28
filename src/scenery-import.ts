@@ -585,6 +585,13 @@ function decodedFeature(
     layer === 'waterway' ||
     (layer === 'transportation' && roadClasses.includes(String(properties.class)))
   ) {
+    const structure =
+      properties.brunnel === 'bridge' || properties.brunnel === 'tunnel'
+        ? properties.brunnel
+        : undefined;
+    const layerNumber = asNumber(properties.layer);
+    const roadLayer =
+      layerNumber !== undefined && Number.isInteger(layerNumber) ? layerNumber : undefined;
     const width =
       asNumber(properties.width) ??
       (layer === 'waterway'
@@ -603,12 +610,19 @@ function decodedFeature(
       const lines: LocalLine[] = [];
       clippedLine(path, bounds, routeSegments, lines);
       for (const points of lines) {
-        const key = `${layer}:${lineSignature(points)}`;
+        const key = `${layer}:${properties.class ?? ''}:${structure ?? ''}:${roadLayer ?? 0}:${lineSignature(points)}`;
         if (seenLines.has(key)) continue;
         seenLines.add(key);
         if (layer === 'waterway')
           scenery.waterways.push({ points, width: Math.max(0.5, Math.min(40, width)) });
-        else scenery.roads.push({ points, width: Math.max(1, Math.min(60, width)) });
+        else
+          scenery.roads.push({
+            points,
+            width: Math.max(1, Math.min(60, width)),
+            roadClass: String(properties.class),
+            ...(structure ? { structure } : {}),
+            ...(roadLayer !== undefined ? { layer: roadLayer } : {}),
+          });
       }
     }
   }

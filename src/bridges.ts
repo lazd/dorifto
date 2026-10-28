@@ -29,10 +29,14 @@ export function buildBridgeGeometry(
   floor: (x: number, z: number) => number,
   ground: (x: number, z: number) => number,
   projectSurface: (geometry: THREE.BufferGeometry, lift: number) => THREE.BufferGeometry,
+  options: {
+    route?: THREE.Curve<THREE.Vector3>;
+    allowPier?: (x: number, z: number) => boolean;
+  } = {},
 ): BridgeGeometry | undefined {
   const spans = definition.structures?.filter(({ type }) => type === 'bridge');
   if (!spans?.length || definition.flat) return;
-  const route = courseRoute({ ...definition, reverse: false });
+  const route = options.route ?? courseRoute({ ...definition, reverse: false });
   const length = route.getLength();
   const halfWidth = definition.width / 2 + (definition.shoulderWidth ?? courseShoulderWidth);
   const { deckThickness, edgeWidth, curbHeight, railingHeight, postSpacing, pierSpacing } =
@@ -217,6 +221,15 @@ export function buildBridgeGeometry(
     for (let i = 1; i < bays; i++) {
       const t = THREE.MathUtils.lerp(start, end, i / bays);
       const { point } = frame(t);
+      const allowPier = options.allowPier;
+      if (
+        allowPier &&
+        ![-1, 0, 1].every((side) => {
+          const p = point(side * halfWidth, 0);
+          return allowPier(p.x, p.z);
+        })
+      )
+        continue;
       for (const side of [-1, 1]) {
         const offset = side * halfWidth * 0.65;
         const p = point(offset, -deckThickness);

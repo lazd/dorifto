@@ -320,6 +320,7 @@ export function createPhysicsSimulation(
       configuration.showNearbyRoads !== false,
     );
     simulationWorld.setBuildingsEnabled(configuration.showBuildings !== false);
+    simulationWorld.setNearbyRoadsEnabled(configuration.showNearbyRoads !== false);
     groups.forEach((group, i) => {
       group.visible = input.signs[i];
     });
@@ -351,6 +352,7 @@ export function createPhysicsSimulation(
     configuration.showNearbyRoads !== false,
   );
   simulationWorld.setBuildingsEnabled(configuration.showBuildings !== false);
+  simulationWorld.setNearbyRoadsEnabled(configuration.showNearbyRoads !== false);
   reset();
 
   function handle(request: PhysicsRequest): PhysicsSnapshot {

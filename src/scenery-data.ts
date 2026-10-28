@@ -38,7 +38,14 @@ export function joinSceneryRoads(roads: CourseScenery['roads']): CourseScenery['
             near(end, flip ? other.points.at(-1)! : other.points[0]) ? [{ i, flip, other }] : [],
           ),
         );
-        if (matches.length !== 1 || Math.abs(matches[0].other.width - road.width) > 0.01) break;
+        if (
+          matches.length !== 1 ||
+          Math.abs(matches[0].other.width - road.width) > 0.01 ||
+          matches[0].other.roadClass !== road.roadClass ||
+          matches[0].other.structure !== road.structure ||
+          (matches[0].other.layer ?? 0) !== (road.layer ?? 0)
+        )
+          break;
         const { i, flip, other } = matches[0];
         remaining.splice(i, 1);
         const points = flip ? [...other.points].reverse() : other.points;
@@ -94,10 +101,16 @@ export interface CourseScenery {
   water: { rings: SceneryPolygon }[];
   waterways: { points: SceneryPoint[]; width: number }[];
   vegetation: { rings: SceneryPolygon; kind: 'trees' | 'scrub' | 'grass' }[];
-  roads: { points: SceneryPoint[]; width: number }[];
+  roads: {
+    points: SceneryPoint[];
+    width: number;
+    roadClass?: string;
+    structure?: 'bridge' | 'tunnel';
+    layer?: number;
+  }[];
 }
 
-export const sceneryImportRevision = 3;
+export const sceneryImportRevision = 5;
 
 /** Normalize decoded tile fragments once, before saving imported scenery. */
 export function normalizeCourseScenery(scenery: CourseScenery): CourseScenery {
@@ -134,7 +147,15 @@ export function validateCourseScenery(value: CourseScenery) {
     !value.vegetation.every(
       (v) => v && polygon(v.rings) && ['trees', 'scrub', 'grass'].includes(v.kind),
     ) ||
-    !value.roads.every((r) => r && line(r.points) && width(r.width))
+    !value.roads.every(
+      (r) =>
+        r &&
+        line(r.points) &&
+        width(r.width) &&
+        (r.roadClass === undefined || typeof r.roadClass === 'string') &&
+        (r.structure === undefined || r.structure === 'bridge' || r.structure === 'tunnel') &&
+        (r.layer === undefined || Number.isInteger(r.layer)),
+    )
   )
     throw new Error('Invalid saved course scenery');
 }

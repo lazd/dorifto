@@ -30,6 +30,7 @@ export interface HeightfieldData {
   groundSurface?: { heights: Float32Array; filletVertices?: Float32Array };
   bridgeMesh?: TriangleMeshData & { collisionIndices?: Uint32Array };
   buildingMesh?: TriangleMeshData;
+  nearbyStructureMesh?: TriangleMeshData;
 }
 
 export interface SurfaceSegment {

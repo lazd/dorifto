@@ -126,7 +126,10 @@ export function createPhysicsWorld(
       true,
     );
   const buildings = terrain.buildingMesh && triangleCollider(Ammo, terrain.buildingMesh);
+  const nearbyStructures =
+    terrain.nearbyStructureMesh && triangleCollider(Ammo, terrain.nearbyStructureMesh, true);
   let buildingsEnabled = true;
+  let nearbyStructuresEnabled = true;
   const heightData = resources.acquireHeightfield(contours?.heights ?? groundTerrain.heights);
   const minHeight = contours?.minHeight ?? terrain.minHeight;
   const shape = new Ammo.btHeightfieldTerrainShape(
@@ -161,6 +164,7 @@ export function createPhysicsWorld(
   if (structures) world.addRigidBody(structures.body);
   if (bridges) world.addRigidBody(bridges.body);
   if (buildings) world.addRigidBody(buildings.body);
+  if (nearbyStructures) world.addRigidBody(nearbyStructures.body);
   world.setContactAddedCallback(surfaceContactCallback(Ammo));
   const terrainBodyList = contours ? [ground, contours.body] : [ground];
   for (const body of terrainBodyList) {
@@ -178,6 +182,12 @@ export function createPhysicsWorld(
       if (enabled) world.addRigidBody(buildings.body);
       else world.removeRigidBody(buildings.body);
       buildingsEnabled = enabled;
+    },
+    setNearbyRoadsEnabled(enabled: boolean) {
+      if (!nearbyStructures || enabled === nearbyStructuresEnabled) return;
+      if (enabled) world.addRigidBody(nearbyStructures.body);
+      else world.removeRigidBody(nearbyStructures.body);
+      nearbyStructuresEnabled = enabled;
     },
     step(dt: number) {
       if (disposed) throw new Error('Cannot step a disposed physics world');
@@ -207,6 +217,10 @@ export function createPhysicsWorld(
       if (buildings) {
         if (buildingsEnabled) world.removeRigidBody(buildings.body);
         buildings.dispose();
+      }
+      if (nearbyStructures) {
+        if (nearbyStructuresEnabled) world.removeRigidBody(nearbyStructures.body);
+        nearbyStructures.dispose();
       }
       Ammo.destroy(world);
       Ammo.destroy(solver);

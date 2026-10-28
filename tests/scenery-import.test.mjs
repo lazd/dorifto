@@ -7,6 +7,7 @@ const extent = 4096;
 const metersPerDegree = (6371008.8 * Math.PI) / 180;
 let server;
 let fetchCourseScenery;
+let sceneryImportRevision;
 
 before(async () => {
   server = await createServer({
@@ -14,6 +15,7 @@ before(async () => {
     appType: 'custom',
   });
   ({ fetchCourseScenery } = await server.ssrLoadModule('/src/scenery-import.ts'));
+  ({ sceneryImportRevision } = await server.ssrLoadModule('/src/scenery-data.ts'));
 });
 
 after(async () => {
@@ -163,7 +165,7 @@ function tileFixture(tile) {
             [240, 240],
           ],
         ],
-        { class: 'primary' },
+        { class: 'primary', brunnel: 'bridge', layer: 1 },
         tile,
       ),
     ],
@@ -229,7 +231,7 @@ test('decodes supported scenery, holes, widths and clips to the terrain grid wit
   const definition = course();
   const scenery = await fetchCourseScenery(definition, true);
   assert.equal(scenery.version, 1);
-  assert.equal(scenery.importRevision, 3);
+  assert.equal(scenery.importRevision, sceneryImportRevision);
   assert.equal(scenery.buildings.length, 2);
   const building = scenery.buildings.find(({ rings }) => rings.length === 2);
   assert.equal(building.height, 12);
@@ -248,6 +250,8 @@ test('decodes supported scenery, holes, widths and clips to the terrain grid wit
   assert.equal(scenery.waterways.length, 1);
   assert.equal(scenery.waterways[0].width, 1.5);
   assert.ok(scenery.roads.length > 0);
+  assert.ok(scenery.roads.every((road) => road.structure === 'bridge' && road.layer === 1));
+  assert.ok(scenery.roads.every((road) => road.roadClass === 'primary'));
   assert.ok(maximumActive <= 4);
   const tileRequests = requests.filter((url) => url.endsWith('.pbf'));
   assert.ok(tileRequests.length > 0 && tileRequests.length <= 64);
