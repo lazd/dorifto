@@ -7,6 +7,7 @@ import {
   type CourseDefinition,
 } from './courses';
 import { CourseTerrain, projectTerrainGeometry } from './terrain';
+import { createTunnelMeshes } from './tunnels';
 
 export interface CoursePreviewColors {
   ground: string;
@@ -213,6 +214,10 @@ export function createCoursePreviewModel(
         new THREE.MeshStandardMaterial({ color: colors.ground, roughness: 1, flatShading: true }),
       ),
     );
+    if (terrain.collisionMesh)
+      group.add(
+        createTunnelMeshes(terrain.collisionMesh, { ground: colors.ground, lining: colors.road }),
+      );
     return { group, dispose: () => disposeGroup(group) };
   } catch (error) {
     disposeGroup(group);

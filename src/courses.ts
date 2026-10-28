@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { terrainBaseHeight, type TerrainRaster } from './terrain-profile';
 import type { CourseGenerationWeights } from './course-generation';
+import type { RoadStructure } from './road-structures.mjs';
 import importedCourseCatalog, { mapSizes, mapUrls } from 'virtual:course-catalog';
 
 export const startDistance = 5;
@@ -61,6 +62,8 @@ export interface CourseDefinition {
    */
   elevation?: readonly number[];
   elevationSource?: string;
+  /** Tagged bridge/tunnel spans; reserved for future structure geometry as well as elevation repair. */
+  structures?: readonly RoadStructure[];
   /** Attribution retained in exported real-world map data. */
   attribution?: string;
   terrain?: TerrainRaster;

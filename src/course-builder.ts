@@ -31,6 +31,7 @@ import { defaultTerrainTransition } from './terrain';
 import { startTextSpinner } from './text-spinner';
 import { download } from './download';
 import type { BuildRequest, BuildResponse } from './course-builder-worker';
+import { matchRoadStructures } from './road-structures.mjs';
 import './course-builder.css';
 
 const embedded =
@@ -296,10 +297,20 @@ function updateControls() {
     !!worker ||
     length < minimumRoadLength ||
     length > maximumRoadLength ||
-    (editingSnapshot !== undefined && editingSnapshot === editorSnapshot());
+    (editingSnapshot !== undefined &&
+      editingSnapshot === editorSnapshot() &&
+      !hasStructureRepair());
   notifyParent({ type: 'course-builder:controls', canSave: !buildButton.disabled });
   for (const input of [nameInput, widthInput, shoulderInput, transitionInput, centerLineInput])
     input.disabled = !!worker;
+}
+
+function hasStructureRepair() {
+  if (!editingCourse?.terrain) return false;
+  const structures = matchRoadStructures(routePoints(), graph.structureLines(), !!closingSection);
+  return (
+    structures.length > 0 && JSON.stringify(structures) !== JSON.stringify(editingCourse.structures)
+  );
 }
 
 function invalidateCourse() {
@@ -537,11 +548,14 @@ function visibleRoadSnap(position: maplibregl.Point) {
       feature.layer.type === 'line' &&
       roadClasses.includes(feature.properties.class),
   );
-  const lines = roads.flatMap(({ geometry }) =>
+  const lines = roads.flatMap(({ geometry, properties }) =>
     geometry.type === 'LineString'
-      ? [{ coordinates: geometry.coordinates }]
+      ? [{ coordinates: geometry.coordinates, brunnel: properties.brunnel }]
       : geometry.type === 'MultiLineString'
-        ? geometry.coordinates.map((coordinates: number[][]) => ({ coordinates }))
+        ? geometry.coordinates.map((coordinates: number[][]) => ({
+            coordinates,
+            brunnel: properties.brunnel,
+          }))
         : [],
   );
   const visible = new RoadGraph();
@@ -554,17 +568,22 @@ function visibleRoadSnap(position: maplibregl.Point) {
 
 function collectRoads() {
   if (!mapReady || !map.isSourceLoaded('openmaptiles')) return;
+  const previousStructures = graph.structureLines().length;
   const features = map.querySourceFeatures('openmaptiles', { sourceLayer: 'transportation' });
   const roads = features.filter((feature) => roadClasses.includes(feature.properties.class));
   graph.add(
-    roads.flatMap(({ geometry }) =>
+    roads.flatMap(({ geometry, properties }) =>
       geometry.type === 'LineString'
-        ? [{ coordinates: geometry.coordinates }]
+        ? [{ coordinates: geometry.coordinates, brunnel: properties.brunnel }]
         : geometry.type === 'MultiLineString'
-          ? geometry.coordinates.map((coordinates: number[][]) => ({ coordinates }))
+          ? geometry.coordinates.map((coordinates: number[][]) => ({
+              coordinates,
+              brunnel: properties.brunnel,
+            }))
           : [],
     ),
   );
+  if (editingCourse && graph.structureLines().length !== previousStructures) updateControls();
 }
 
 map.on('load', () => {
@@ -854,6 +873,7 @@ element<HTMLFormElement>('build-form').onsubmit = (event) => {
     buildSteps.append(item);
   }
   buildProgress('starting');
+  collectRoads();
   map.resize();
   buildDialog.showModal();
   worker.postMessage({
@@ -866,6 +886,7 @@ element<HTMLFormElement>('build-form').onsubmit = (event) => {
     draft: structuredClone({
       sections,
       closingSection,
+      structureLines: graph.structureLines(),
       resolution:
         existingCourse?.courseBuilder?.resolution ?? existingCourse?.terrain?.resolution ?? 5,
     }),
@@ -1065,6 +1086,13 @@ function seedDraftGraph() {
   graph = new RoadGraph();
   for (const part of [...sections, ...(closingSection ? [closingSection] : [])])
     graph.add([{ coordinates: part.map(({ lon, lat }) => [lon, lat]) }]);
+  if (editingCourse?.courseBuilder?.structureLines)
+    graph.add(
+      editingCourse.courseBuilder.structureLines.map(({ coordinates, type }) => ({
+        coordinates,
+        brunnel: type,
+      })),
+    );
 }
 
 function editSavedCourse() {

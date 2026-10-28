@@ -170,7 +170,22 @@ direct browser requests to OpenFreeMap and USGS, so an internet connection is ne
 - Build downloads **US-only USGS 3DEP** terrain at a fixed 5 m raster resolution with a 250 m margin and
   an automatic 1.5 m road corridor. Road elevation is sampled from the terrain
   and processed with the same conversion pipeline as the command-line importer.
-  Bridges/tunnels follow ground elevation, not road-deck heights. Missing data
+  Loaded road tiles' bridge/tunnel markers are matched to aligned route segments (not
+  overhead crossings). Across tagged spans, roadway elevation is interpolated between
+  terrain approaches with a 15 m sampling apron, then smoothed normally. This estimates
+  deck/tunnel height; tiles do not provide surveyed road heights. Spans without terrain
+  approaches on both sides (such as a route starting on a bridge) are left unchanged.
+  Structure spans and their source geometry are saved for editing. Tagged tunnels render
+  an arched bore with open portals in both the game and 3D previews. A terrain cover sampled
+  from the retained raster fills the road cut above the bore; the road floor remains on
+  the existing heightfield. Tunnel walls, ceilings, portals, and cover have matching static
+  triangle-mesh collision, shared across driving directions. Clearance is an estimate
+  (3 m sidewalls, 6.5 m at the crown), not a surveyed reconstruction of a specific tunnel.
+  The source terrain raster is unchanged, and bridges still use the existing terrain blend
+  without structure geometry. Unloaded or untagged structures
+  cannot be identified; fords and untagged dips retain existing processing.
+  Editing and saving an older course repairs newly identified spans from its saved raster
+  without downloading elevation again. Missing data
   and service failures are reported rather than replaced with flat terrain.
   Transient network/CORS failures, timeouts, HTTP 429, and server errors are retried
   three times after the initial request, with increasing delays. The browser console
@@ -212,7 +227,9 @@ direct browser requests to OpenFreeMap and USGS, so an internet connection is ne
   Rebuilding an edited map preserves its ID and replaces its original OPFS file,
   even when renamed. If only the name or basic parameters change, saving reuses
   the existing road geometry, elevation profile, and terrain without downloading
-  or converting them again; only the preview is regenerated. Changing route points
+  or converting them again; only the preview is regenerated. Newly discovered
+  bridge/tunnel spans enable **Save** and update elevation from the retained raster.
+  Changing route points
   runs the full import pipeline.
   To delete a saved course, focus its library row and press
   Delete, then confirm. OPFS requires a

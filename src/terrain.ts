@@ -5,6 +5,12 @@ import type { CourseDefinition } from './courses';
 import { surfaceMaterial, terrainNoiseGlsl } from './surfaces';
 import { terrainBaseHeight, terrainRasterSampler } from './terrain-profile';
 import {
+  buildTunnelGeometry,
+  createTunnelMeshes,
+  tunnelShoulderClearance,
+  type TunnelGeometry,
+} from './tunnels';
+import {
   TerrainSurface,
   cellTriangles,
   heightAt,
@@ -33,6 +39,7 @@ export class CourseTerrain {
   readonly warpedVertices?: Map<number, Point>;
   readonly filletVertices?: Float32Array;
   readonly filletCells?: Map<number, number[]>;
+  readonly collisionMesh?: TunnelGeometry;
   private readonly segments;
   private readonly surface: TerrainSurface;
   private readonly halfWidth: number;
@@ -126,12 +133,27 @@ export class CourseTerrain {
     const snapStart = this.halfWidth;
     const blendEnd = Math.min(this.halfWidth + 48, 50);
     const transition = definition.terrainTransition ?? defaultTerrainTransition;
+    const tunnelSpans = definition.structures?.filter(({ type }) => type === 'tunnel') ?? [];
+    const tunnelBlendStart = this.halfWidth + tunnelShoulderClearance + supportWidth;
     const surfaceHeight = (
       px: number,
       pz: number,
       near: ReturnType<typeof this.nearest>,
       start: number,
     ) => {
+      if (
+        tunnelSpans.length &&
+        near.distance < (rasterHeight ? tunnelBlendStart + transition : blendEnd)
+      ) {
+        for (const { start: from, end: to } of tunnelSpans) {
+          const approach = Math.max(from - near.fraction, near.fraction - to, 0) * length;
+          start = THREE.MathUtils.lerp(
+            start,
+            Math.max(start, tunnelBlendStart),
+            1 - THREE.MathUtils.smoothstep(approach, 0, 10),
+          );
+        }
+      }
       const base = terrainBaseHeight(px, pz);
       const hills =
         12 + 9 * Math.sin(px / 48 + 0.6) * Math.cos(pz / 61) + 5 * Math.sin((px - pz) / 83);
@@ -407,6 +429,7 @@ export class CourseTerrain {
     // Bullet needs a nonzero vertical range even for an entirely flat heightfield.
     this.minHeight = min === max ? min - 0.01 : min;
     this.maxHeight = min === max ? max + 0.01 : max;
+    this.collisionMesh = buildTunnelGeometry(definition, (x, z) => heightAt(this, x, z));
     if (!buildVisuals) {
       this.mesh = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshStandardMaterial());
       this.grass = new THREE.InstancedMesh(
@@ -707,6 +730,8 @@ export class CourseTerrain {
     tufts.receiveShadow = true;
     this.mesh.add(tufts);
     this.grass = tufts;
+    if (this.collisionMesh)
+      this.mesh.add(createTunnelMeshes(this.collisionMesh, {}, this.mesh.material));
   }
 
   private nearest(x: number, z: number) {
@@ -749,6 +774,7 @@ export class CourseTerrain {
       warpedVertices,
       filletVertices,
       filletCells,
+      collisionMesh,
       segments,
       halfWidth,
       padRadius,
@@ -767,6 +793,7 @@ export class CourseTerrain {
       warpedVertices,
       filletVertices,
       filletCells,
+      collisionMesh,
       segments,
       halfWidth,
       padRadius,

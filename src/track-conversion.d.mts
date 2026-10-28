@@ -1,5 +1,6 @@
 import type { CourseDefinition } from './courses';
 import type { GeographicRaster } from './terrain-raster.mjs';
+import type { RoadStructure } from './road-structures.mjs';
 
 export interface GPSPoint {
   lat: number;
@@ -16,6 +17,7 @@ export interface TrackSource {
     points: { dist_frac: number; altitude_m: number }[];
   };
   terrain?: GeographicRaster & { source: string; resolution: number };
+  structures?: readonly RoadStructure[];
 }
 
 export const roadImportDefaults: { width: number; doubleYellow: boolean };

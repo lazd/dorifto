@@ -1,5 +1,10 @@
 import * as THREE from 'three';
 
+export interface TriangleMeshData {
+  positions: Float32Array;
+  indices: Uint32Array;
+}
+
 export interface HeightfieldData {
   spacing: number;
   columns: number;
@@ -19,6 +24,8 @@ export interface HeightfieldData {
   filletVertices?: Float32Array;
   /** Triangle vertex indices of warped cells subdivided across the roadside wall. */
   filletCells?: Map<number, number[]>;
+  /** Additional non-heightfield surfaces, such as tunnel walls and ceilings. */
+  collisionMesh?: TriangleMeshData;
 }
 
 export interface SurfaceSegment {

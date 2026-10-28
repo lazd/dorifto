@@ -1,5 +1,6 @@
 import { geographicRasterSampler } from './terrain-raster.mjs';
 import { cleanRoadElevation } from './road-elevation.mjs';
+import { repairStructureElevation } from './road-structures.mjs';
 
 const earthRadius = 6371008.8;
 export const roadImportDefaults = { width: 8, doubleYellow: true };
@@ -159,6 +160,13 @@ export function convertTrack(data, options = {}) {
     );
     if (!closed && data.terrain) raw = cleanRoadElevation(raw, length / (count - 1));
     if (closed) smoothElevationSeam(raw, length / count);
+    if (data.structures?.length)
+      raw = repairStructureElevation(
+        raw,
+        length / (closed ? count : count - 1),
+        data.structures,
+        closed,
+      );
     // Open-road terrain samples need a wider, smoothly weighted filter, not a periodic seam.
     const radius = Math.round(settings.elevationSmoothing / 2 / (length / count));
     const smoothed = raw.map((_, i) => {
@@ -221,5 +229,6 @@ export function convertTrack(data, options = {}) {
         }
       : {}),
     ...(data.elevation?.source ? { elevationSource: data.elevation.source } : {}),
+    ...(data.structures?.length ? { structures: data.structures } : {}),
   };
 }

@@ -98,6 +98,37 @@ test('embedded builds finish without generating a preview; standalone builds inc
       );
       assert.equal(await response.json.text(), JSON.stringify(response.course));
     }
+    const middle = request.points.slice(
+      Math.floor(request.points.length * 0.35),
+      Math.ceil(request.points.length * 0.65),
+    );
+    const structureLines = [
+      { type: 'bridge', coordinates: middle.map(({ lon, lat }) => [lon, lat]) },
+    ];
+    const complete = new Promise((resolve) => {
+      globalThis.self.postMessage = (message) => {
+        if (message.type === 'complete' || message.type === 'error') resolve(message);
+      };
+    });
+    const previousFetch = globalThis.fetch;
+    try {
+      globalThis.fetch = () => assert.fail('Repairing a saved course must not fetch elevation');
+      globalThis.self.onmessage({
+        data: { ...request, draft: { ...request.draft, structureLines }, skipPreview: true },
+      });
+      const response = await complete;
+      assert.equal(response.type, 'complete', response.message);
+      assert.equal(response.course.structures.length, 1);
+      assert.equal(response.course.structures[0].type, 'bridge');
+      assert.deepEqual(response.course.points, course.points);
+      assert.deepEqual(response.course.terrain.heights, course.terrain.heights);
+      assert.notDeepEqual(response.course.elevation, course.elevation);
+      const saved = builderData.readRoadMap(await response.json.text());
+      assert.deepEqual(saved.structures, response.course.structures);
+      assert.deepEqual(builderData.restoreRoadDraft(saved).structureLines, structureLines);
+    } finally {
+      globalThis.fetch = previousFetch;
+    }
   } finally {
     if (previousSelf === undefined) delete globalThis.self;
     else globalThis.self = previousSelf;
@@ -176,6 +207,13 @@ test('vector road selection follows shared vertices, snaps endpoints, and revers
   const direct = graph.connect(from, { lon: 0.008, lat: 0 }, 2);
   assert.equal(direct.length, 2);
   assert.ok(selection.routeLength(direct) < selection.routeLength(route));
+  graph.add([
+    { coordinates: coordinates.slice(1, 3), brunnel: 'bridge' },
+    { coordinates: coordinates.slice(1, 3).toReversed(), brunnel: 'bridge' },
+    { coordinates: coordinates.slice(0, 2), brunnel: 'ford' },
+  ]);
+  assert.equal(graph.structureLines().length, 1);
+  assert.equal(graph.structureLines()[0].type, 'bridge');
 });
 
 test('vector selection rejects disconnected crossings, distant clicks, and paths over 8 km', () => {

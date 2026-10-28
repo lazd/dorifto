@@ -86,6 +86,7 @@ export function createPhysicsWorld(
   const vector = new Ammo.btVector3(0, -9.81, 0);
   world.setGravity(vector);
   const contours = (terrain.flippedCells || terrain.warpedCells) && contourCollider(Ammo, terrain);
+  const structures = terrain.collisionMesh && triangleCollider(Ammo, terrain.collisionMesh);
   const heightData = resources.acquireHeightfield(contours?.heights ?? terrain.heights);
   const minHeight = contours?.minHeight ?? terrain.minHeight;
   const shape = new Ammo.btHeightfieldTerrainShape(
@@ -117,6 +118,7 @@ export function createPhysicsWorld(
   world.addRigidBody(ground);
   Ammo.destroy(info);
   if (contours) world.addRigidBody(contours.body);
+  if (structures) world.addRigidBody(structures.body);
   world.setContactAddedCallback(terrainContactCallback(Ammo));
   const terrainBodyList = contours ? [ground, contours.body] : [ground];
   for (const body of terrainBodyList) {
@@ -145,6 +147,10 @@ export function createPhysicsWorld(
       if (contours) {
         world.removeRigidBody(contours.body);
         contours.dispose();
+      }
+      if (structures) {
+        world.removeRigidBody(structures.body);
+        structures.dispose();
       }
       Ammo.destroy(world);
       Ammo.destroy(solver);
@@ -203,6 +209,29 @@ function contourCollider(Ammo: typeof AmmoFactory, terrain: HeightfieldData) {
   // ammo.js lacks addTriangleIndices, and addIndex alone does not count triangles.
   const indexed = mesh.getIndexedMeshArray().at(0);
   indexed.set_m_numTriangles(triangles);
+  return { ...meshCollider(Ammo, mesh), heights, minHeight };
+}
+
+function triangleCollider(
+  Ammo: typeof AmmoFactory,
+  data: NonNullable<HeightfieldData['collisionMesh']>,
+) {
+  const mesh = new Ammo.btTriangleMesh(true);
+  const vector = new Ammo.btVector3();
+  for (let i = 0; i < data.positions.length; i += 3) {
+    vector.setValue(data.positions[i], data.positions[i + 1], data.positions[i + 2]);
+    mesh.findOrAddVertex(vector, false);
+  }
+  for (const index of data.indices) mesh.addIndex(index);
+  mesh
+    .getIndexedMeshArray()
+    .at(0)
+    .set_m_numTriangles(data.indices.length / 3);
+  Ammo.destroy(vector);
+  return meshCollider(Ammo, mesh);
+}
+
+function meshCollider(Ammo: typeof AmmoFactory, mesh: AmmoFactory.btTriangleMesh) {
   const shape = new Ammo.btBvhTriangleMeshShape(mesh, true, true);
   shape.setMargin(0.01);
   const transform = new Ammo.btTransform();
@@ -215,8 +244,6 @@ function contourCollider(Ammo: typeof AmmoFactory, terrain: HeightfieldData) {
   Ammo.destroy(inertia);
   Ammo.destroy(transform);
   return {
-    heights,
-    minHeight,
     body,
     dispose() {
       Ammo.destroy(body);

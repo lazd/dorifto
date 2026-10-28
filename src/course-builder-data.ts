@@ -1,6 +1,7 @@
 import { courseRoute, type CourseDefinition } from './courses';
 import { routeLength } from './road-selection';
 import type { GPSPoint } from './track-conversion.mjs';
+import type { RoadStructureLine } from './road-structures.mjs';
 
 export const roadBuildSteps = {
   starting: 'Starting the course builder',
@@ -17,6 +18,7 @@ export interface RoadDraft {
   sections: GPSPoint[][];
   closingSection?: GPSPoint[];
   resolution: number;
+  structureLines?: RoadStructureLine[];
 }
 
 export interface RoadMap extends CourseDefinition {

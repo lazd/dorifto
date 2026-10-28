@@ -1,4 +1,5 @@
 import { roadDistances, type GPSPoint } from './track-conversion.mjs';
+import type { RoadStructureLine } from './road-structures.mjs';
 
 export const maximumRoadLength = 8000;
 export const minimumRoadLength = 100;
@@ -15,6 +16,7 @@ export const roadClasses = [
 
 export interface RoadLine {
   coordinates: readonly (readonly number[])[];
+  brunnel?: string;
 }
 
 interface Edge {
@@ -137,6 +139,7 @@ export function removeRouteWaypoint(
 
 /** Connects road vertices and tile seams, not arbitrary road-interior crossings. */
 export class RoadGraph {
+  private structureSegments = new Map<string, RoadStructureLine>();
   private points = new Map<string, GPSPoint>();
   private edges = new Map<string, Edge[]>();
   private segments = new Map<string, readonly [string, string]>();
@@ -173,13 +176,18 @@ export class RoadGraph {
   }
 
   add(lines: readonly RoadLine[]) {
-    for (const { coordinates } of lines) {
+    for (const { coordinates, brunnel } of lines) {
       for (let i = 1; i < coordinates.length; i++) {
         const pair = [coordinates[i - 1], coordinates[i]].map(([lon, lat]) => ({ lon, lat }));
         if (pair.some(({ lat, lon }) => !Number.isFinite(lat) || !Number.isFinite(lon)))
           throw new Error('OpenFreeMap supplied invalid road coordinates');
         const [a, b] = pair.map((point) => this.node(point));
         const id = [a, b].sort().join('/');
+        if (a !== b && (brunnel === 'bridge' || brunnel === 'tunnel'))
+          this.structureSegments.set(`${brunnel}/${id}`, {
+            type: brunnel,
+            coordinates: [coordinates[i - 1], coordinates[i]],
+          });
         if (a === b || this.segments.has(id)) continue;
         const length = distance(this.points.get(a)!, this.points.get(b)!);
         this.edges.set(a, [...(this.edges.get(a) ?? []), { to: b, distance: length }]);
@@ -205,6 +213,10 @@ export class RoadGraph {
         }
       }
     }
+  }
+
+  structureLines() {
+    return [...this.structureSegments.values()];
   }
 
   findSnap(point: GPSPoint, tolerance: number): Snap | undefined {
