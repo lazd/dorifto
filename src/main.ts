@@ -546,6 +546,7 @@ async function start() {
       course.setRoadEdgeDirt(configurationState.getState().showRoadEdgeDirt);
       course.setScenery(configurationState.getState());
       physics = createPhysicsClient({
+        onStartupProgress: (stage) => showLoading(stage),
         race,
         bots: nextBots,
         botsOnly: nextBotsOnly,

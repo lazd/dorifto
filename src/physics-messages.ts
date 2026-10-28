@@ -249,4 +249,5 @@ export interface PhysicsSnapshot {
 
 export type PhysicsResponse =
   | PhysicsSnapshot
+  | { type: 'startup'; stage: string }
   | { type: 'error'; revision: number; message: string; stack?: string };

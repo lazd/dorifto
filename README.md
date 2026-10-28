@@ -482,6 +482,11 @@ Verge distance follows the pavement's actual ribbon edges, with fine cross-road 
 to avoid gaps caused by interpolating across a whole road-width triangle. Junction soil
 uses a rounded pavement-distance blend and feathers across the main shoulder instead
 of being cut off by a straight triangle clip.
+Side-road dirt fades out at the main road's outer paved shoulder, short of the white
+line, letting the main-road dirt overlay own the transition into the junction.
+Side-road pavement and its dirt verge flare together along a 6 m circular turning radius,
+tapering back to the mapped branch width outside the junction. Paint and main-road dirt
+masks follow that widened footprint; traction follows the final rendered pavement.
 Roads still stop at the imported 300 m corridor or the supported terrain boundary; they
 are scenery, not an unlimited navigable road network.
 Nearby-road copies aligned with the selected route
@@ -798,6 +803,12 @@ heap, including allocations the upstream build cannot explicitly free. Worker
 startup/runtime/message errors are shown through the normal fatal-error UI;
 there is no silent main-thread fallback. SharedArrayBuffer and cross-origin
 isolation headers are not required.
+Startup reports engine-module loading, engine initialization, surface indexing,
+terrain collision, bot preparation, and the first snapshot separately. The console logs
+elapsed time for each reported stage. A worker that does not return its first snapshot
+within 120 seconds is terminated with an error naming its last stage, rather than
+leaving the loading screen indefinitely. Cold Vite dependency loading can delay the
+engine-module stage even when warm physics initialization is fast.
 
 ### Physics object plugins
 

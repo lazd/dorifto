@@ -158,15 +158,13 @@ export function nearbyRoadDirtMaterial() {
       .replace(
         'float edgeDistance = DIRT_EDGE - abs(vLateral);',
         `
-        float junctionBlend = max(1.6 - abs(vLateral - vMainRoad), 0.0) / 1.6;
-        float pavementDistance = min(vLateral, vMainRoad) -
-          junctionBlend * junctionBlend * 0.4;
+        float pavementDistance = vLateral;
         float edgeDistance = DIRT_EDGE - pavementDistance;`,
       )
       .replace(
         '#include <alphatest_fragment>',
         `diffuseColor.a *= smoothstep(-0.3, 0.12, pavementDistance) *
-          smoothstep(0.0, 0.65, vMainRoad);
+          smoothstep(0.0, 0.9, vMainRoad);
         #include <alphatest_fragment>`,
       );
   };

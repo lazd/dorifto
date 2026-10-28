@@ -5,7 +5,7 @@ import type { CourseTerrain } from './terrain';
 import { projectTerrainGeometry } from './terrain';
 import { PavementSurface, TerrainSurface, type TriangleMeshData } from './terrain-query';
 import type { SceneryCategory, SceneryPoint, SceneryPolygon } from './scenery-data';
-import { smoothSceneryLine } from './scenery-data';
+import { junctionRoadFlare, smoothSceneryLine } from './scenery-data';
 
 type Point = { x: number; z: number };
 type Bounds = { minX: number; minZ: number; maxX: number; maxZ: number };
@@ -266,8 +266,10 @@ export function createScenery(
   const junctionPavement = new SpatialIndex<RoadSegment>();
   const pavementEdges = new SpatialIndex<RoadSegment>();
   let pavementSurface = new PavementSurface();
+  let junctionExpansion = (_x: number, _z: number) => 0;
   const roadDistance = (x: number, z: number, atGradeOnly = false) => {
-    let distance = 3;
+    let distance = junctionRoadFlare(0) + 3;
+    let found = false;
     (atGradeOnly ? junctionPavement : pavement).some(x, z, (s) => {
       const dx = s.b.x - s.a.x,
         dz = s.b.z - s.a.z;
@@ -277,10 +279,11 @@ export function createScenery(
         1,
       );
       const width = THREE.MathUtils.lerp(s.widthA ?? s.width, s.widthB ?? s.width, t);
+      found = true;
       distance = Math.min(distance, segmentDistance(x, z, s.a, s.b) - width / 2);
       return false;
     });
-    return distance;
+    return distance - (found ? junctionExpansion(x, z) : 0);
   };
   const result = {
     group,
@@ -319,6 +322,8 @@ export function createScenery(
       ? Math.hypot(x, z) - definition.padRadius
       : surface.nearest(x, z).distance - halfWidth;
   const separated = (x: number, z: number) => Math.abs(terrain.heightAt(x, z) - ground(x, z)) > 3;
+  junctionExpansion = (x, z) =>
+    separated(x, z) ? 0 : junctionRoadFlare(surface.nearest(x, z).distance - definition.width / 2);
   const roadBlocked = (x: number, z: number) => clearance(x, z) < 0.8 && !separated(x, z);
   const obstacles = new SpatialIndex<Polygon>();
   const roads = new SpatialIndex<RoadSegment>();
@@ -563,7 +568,7 @@ export function createScenery(
         dz = (bz - az) / length;
       const a = { x: ax, z: az },
         b = { x: bx, z: bz };
-      const margin = Math.max(widths[i - 1], widths[i]) / 2 + 3;
+      const margin = Math.max(widths[i - 1], widths[i]) / 2 + junctionRoadFlare(0) + 3;
       const segment = {
         a,
         b,
@@ -588,11 +593,21 @@ export function createScenery(
       const edge = (t: number, sign: number): Vertex => {
         const fraction = t / length;
         const offset = offsets[i - 1].clone().lerp(offsets[i], fraction);
-        return {
+        const point = {
           x: ax + dx * t + offset.x * sign,
           z: az + dz * t + offset.y * sign,
           y: 0,
         };
+        if (!river) {
+          const expansion = junctionExpansion(ax + dx * t, az + dz * t);
+          const normal = offset
+            .clone()
+            .normalize()
+            .multiplyScalar(expansion * sign);
+          point.x += normal.x;
+          point.z += normal.y;
+        }
+        return point;
       };
       let indexedPavement = false;
       for (let j = 0; j < steps; j++) {
@@ -630,7 +645,7 @@ export function createScenery(
         }
         if (conesOnly) continue;
         // Cone placement needs fine samples; the exact terrain projection below does not.
-        const geometrySteps = verge ? 1 : 8;
+        const geometrySteps = river ? 8 : 1;
         if (j % geometrySteps !== 0) continue;
         const geometryEnd = (length * Math.min(j + geometrySteps, steps)) / steps;
         if (!river) {
@@ -830,7 +845,7 @@ export function createScenery(
             Array.from({ length: positions.count }, (_, i) => {
               const x = positions.getX(i),
                 z = positions.getZ(i);
-              return separated(x, z) ? 3 : surface.nearest(x, z).distance - definition.width / 2;
+              return separated(x, z) ? 3 : surface.nearest(x, z).distance - halfWidth;
             }),
             1,
           ),

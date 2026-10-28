@@ -1,5 +1,4 @@
-import AmmoFactory from 'ammojs-typed';
-import { createPhysicsSimulation } from './physics-simulation';
+import type { createPhysicsSimulation } from './physics-simulation';
 import type { PhysicsRequest, PhysicsResponse } from './physics-messages';
 
 function respond(message: PhysicsResponse, transfer: Transferable[] = []) {
@@ -14,9 +13,18 @@ self.onmessage = ({ data }: MessageEvent<PhysicsRequest>) => {
     if (failed) return;
     try {
       if (data.type === 'init') {
+        respond({ type: 'startup', stage: 'Loading physics engine…' });
+        const [{ default: AmmoFactory }, { createPhysicsSimulation }] = await Promise.all([
+          import('ammojs-typed'),
+          import('./physics-simulation'),
+        ]);
+        respond({ type: 'startup', stage: 'Initializing physics engine…' });
         // The upstream Emscripten factory writes to its receiver.
         const Ammo = await AmmoFactory.call({});
-        simulation = createPhysicsSimulation(Ammo, data.data);
+        simulation = createPhysicsSimulation(Ammo, data.data, (stage) =>
+          respond({ type: 'startup', stage }),
+        );
+        respond({ type: 'startup', stage: 'Preparing first physics snapshot…' });
       }
       if (!simulation) throw new Error('Physics worker has not been initialized');
       const snapshot = simulation.handle(data);

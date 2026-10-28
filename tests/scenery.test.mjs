@@ -245,7 +245,19 @@ test('side-road junctions meet pavement and expose a shoulder coverage mask', ()
     ],
     width: 6,
   });
-  const result = build(definition(data), terrain());
+  const result = build(definition(data), terrain(), {
+    createRoadDirtMaterial: () => new THREE.MeshStandardMaterial(),
+  });
+  const dirt = result.group.getObjectByName('nearby-road-dirt');
+  const dirtPositions = dirt.geometry.getAttribute('position');
+  const handoff = dirt.geometry.getAttribute('mainRoad');
+  for (let i = 0; i < handoff.count; i++) {
+    if (Math.abs(dirtPositions.getX(i)) > 10) continue;
+    assert.ok(
+      Math.abs(handoff.getX(i) - (Math.abs(dirtPositions.getX(i)) - 5)) < 1e-5,
+      'side-road dirt hands off at the outer shoulder, not the white line',
+    );
+  }
   const layer = result.group.getObjectByName('nearbyRoads');
   const ray = new THREE.Raycaster();
   for (const x of [3.6, 4, 5, 6, 8, 12, 30, 59]) {
@@ -254,6 +266,22 @@ test('side-road junctions meet pavement and expose a shoulder coverage mask', ()
     assert.equal(result.roadCoverage(x, 0), 1);
   }
   assert.equal(result.roadCoverage(8, 8), 0, 'dirt away from the mouth is untouched');
+  for (const sign of [-1, 1]) {
+    assert.equal(
+      result.isAsphalt({ x: 6, z: sign * 4.3 }),
+      true,
+      'turning radius widens the pavement beyond the straight branch edge',
+    );
+    assert.equal(
+      result.isAsphalt({ x: 12, z: sign * 3.2 }),
+      false,
+      'pavement returns to the mapped branch width past the turn',
+    );
+    assert.ok(
+      result.roadDistance(6, sign * 4.3, true) < 0,
+      'paint and dirt masks follow the widened mouth',
+    );
+  }
   const workerSurface = new PavementSurface(structuredClone(result.roadMesh));
   for (const [position, paved] of [
     [{ x: 30, y: 0.4, z: 0 }, true],
@@ -269,7 +297,7 @@ test('side-road junctions meet pavement and expose a shoulder coverage mask', ()
     );
   }
   assert.ok(result.roadDistance(8, 2.8) < 0);
-  assert.ok(result.roadDistance(8, 3.2) > 0);
+  assert.ok(result.roadDistance(12, 3.2) > 0);
   result.setVisible('nearbyRoads', false);
   assert.equal(result.isAsphalt({ x: 30, z: 0 }), false, 'hidden roads restore terrain traction');
   assert.ok(result.junctionCones.length > 0, 'joined pavement retains junction barriers');

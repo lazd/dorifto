@@ -647,10 +647,27 @@ async function clientFixture(t, options = {}) {
     onError: (error) => errors.push(error),
   });
   t.after(() => client.dispose());
+  worker.onmessage({ data: { type: 'startup', stage: 'Building terrain collision…' } });
   worker.reply();
   await client.ready;
   return { fixture, worker, client, errors };
 }
+
+test('physics startup progress does not consume snapshots or affect the request queue', async (t) => {
+  const stages = [];
+  const { client, worker, errors } = await clientFixture(t, {
+    onStartupProgress: (stage) => stages.push(stage),
+  });
+  assert.deepEqual(stages, ['Building terrain collision…']);
+  client.advance(physicsStep * 4);
+  assert.equal(
+    worker.requests.length,
+    1,
+    'startup notifications do not change outstanding requests',
+  );
+  worker.reply();
+  assert.deepEqual(errors, []);
+});
 
 test('spectating swaps the full model, camera telemetry and laps without resetting or duplicating bots', async (t) => {
   const { fixture, worker, client } = await clientFixture(t, {

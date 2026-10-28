@@ -48,6 +48,7 @@ interface PhysicsClientOptions {
   audio: Pick<VehicleAudio, 'hitCone' | 'hitTurnSign'>;
   lights(): PhysicsInput['lights'];
   onError(error: Error): void;
+  onStartupProgress?(stage: string): void;
 }
 
 export function createPhysicsClient({
@@ -60,6 +61,7 @@ export function createPhysicsClient({
   audio,
   lights,
   onError,
+  onStartupProgress,
   bots = [],
   botsOnly = false,
   observedBot = 0,
@@ -183,6 +185,11 @@ export function createPhysicsClient({
     resolveReady = resolve;
     rejectReady = reject;
   });
+  let startupStage = 'Starting physics worker…';
+  const startupStarted = performance.now();
+  const startupTimer = setTimeout(() => {
+    fail(new Error(`Physics startup timed out after 120 seconds: ${startupStage}`));
+  }, 120_000);
 
   function input(): PhysicsInput {
     const { driveMode, profiles, coneMode, showBuildings, showNearbyRoads } =
@@ -214,6 +221,7 @@ export function createPhysicsClient({
   function fail(error: Error) {
     if (disposed || failed) return;
     failed = true;
+    clearTimeout(startupTimer);
     worker.terminate();
     if (!initialized) rejectReady(error);
     else onError(error);
@@ -247,6 +255,7 @@ export function createPhysicsClient({
     }
     if (!initialized) {
       initialized = true;
+      clearTimeout(startupTimer);
       interpolate(1);
       resolveReady();
     }
@@ -254,6 +263,14 @@ export function createPhysicsClient({
 
   worker.onmessage = ({ data }: MessageEvent<PhysicsResponse>) => {
     if (disposed || failed) return;
+    if (data.type === 'startup') {
+      startupStage = data.stage;
+      console.debug(
+        `[Physics startup +${((performance.now() - startupStarted) / 1000).toFixed(2)}s] ${data.stage}`,
+      );
+      onStartupProgress?.(data.stage);
+      return;
+    }
     pendingResponses--;
     const endTime = requestTimes.shift() ?? sentTime;
     if (data.type === 'error') {
@@ -617,6 +634,7 @@ export function createPhysicsClient({
     },
     dispose(restoreCarPaint = true) {
       disposed = true;
+      clearTimeout(startupTimer);
       worker.terminate();
       recycled.length = 0;
       records = [];

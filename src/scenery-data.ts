@@ -2,6 +2,13 @@
 export type SceneryPoint = [number, number];
 export type SceneryPolygon = SceneryPoint[][];
 
+/** Quarter-circle widening at the main pavement, tapering to the mapped branch width. */
+export function junctionRoadFlare(distance: number) {
+  const radius = 6;
+  const arc = radius - Math.max(0, Math.min(radius, distance));
+  return radius - Math.sqrt(Math.max(0, radius * radius - arc * arc));
+}
+
 /** Join unambiguous equal-width fragments before rounding their shared corner. */
 export function joinSceneryRoads(roads: CourseScenery['roads']): CourseScenery['roads'] {
   const remaining = roads
