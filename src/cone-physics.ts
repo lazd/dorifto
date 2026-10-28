@@ -8,7 +8,11 @@ import {
 } from './physics-plugin';
 
 interface ConePhysicsOptions {
-  course: { cones: THREE.Object3D[]; cornerCones: THREE.Object3D[] };
+  course: {
+    cones: THREE.Object3D[];
+    cornerCones: THREE.Object3D[];
+    junctionCones?: THREE.Object3D[];
+  };
   audio: Pick<VehicleAudio, 'hitCone'>;
   onHit?(id: number): void;
   vehicles?: ReadonlySet<number>;
@@ -22,6 +26,7 @@ export function createConePhysics(
   const { Ammo, world, dispatcher, vehicleBody, createRigidBody, setBodyEnabled } = context;
   const { cones } = course;
   const cornerIndices = new Set((course.cornerCones ?? []).map((cone) => cones.indexOf(cone)));
+  const junctionIndices = new Set((course.junctionCones ?? []).map((cone) => cones.indexOf(cone)));
   const starts = cones.map((cone) => cone.position.clone());
   const rotations = cones.map((cone) => cone.quaternion.clone());
   const vector = new Ammo.btVector3(0, 0, 0);
@@ -76,7 +81,11 @@ export function createConePhysics(
   const soundCooldowns = new Map<number, number>();
   let enabled = true;
   let cornerOnly = false;
-  const isActive = (index: number) => enabled && (!cornerOnly || cornerIndices.has(index));
+  let junctionsEnabled = true;
+  const isActive = (index: number) =>
+    junctionIndices.has(index)
+      ? junctionsEnabled
+      : enabled && (!cornerOnly || cornerIndices.has(index));
   const visuals = createPhysicsVisuals(cones, isActive);
 
   function captureVisuals(snap: boolean) {
@@ -115,16 +124,18 @@ export function createConePhysics(
   }
 
   return {
-    setEnabled(nextEnabled: boolean, onlyCorners = false) {
-      if (nextEnabled === enabled && onlyCorners === cornerOnly) return;
+    setEnabled(nextEnabled: boolean, onlyCorners = false, nearbyRoads = true) {
+      if (nextEnabled === enabled && onlyCorners === cornerOnly && nearbyRoads === junctionsEnabled)
+        return;
       enabled = nextEnabled;
       cornerOnly = onlyCorners;
+      junctionsEnabled = nearbyRoads;
       bodies.forEach((body, index) => {
         const active = isActive(index);
         cones[index].visible = active;
         setBodyEnabled(body, active);
       });
-      if (enabled) {
+      if (enabled || junctionsEnabled) {
         resetBodies();
         captureVisuals(true);
       }
@@ -186,5 +197,7 @@ export function createConePhysics(
       Ammo.destroy(resetTransform);
       Ammo.destroy(vector);
     },
-  } satisfies PhysicsPlugin & { setEnabled(enabled: boolean, onlyCorners?: boolean): void };
+  } satisfies PhysicsPlugin & {
+    setEnabled(enabled: boolean, onlyCorners?: boolean, nearbyRoads?: boolean): void;
+  };
 }

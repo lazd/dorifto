@@ -40,10 +40,12 @@ test('saved courses restore geographic routes and retain exact editable waypoint
     );
   }
   const editable = { ...course, courseBuilder: draft };
+  editable.courseBuilder.includeNearbyRoads = true;
   const restored = builderData.restoreRoadDraft(builderData.readRoadMap(JSON.stringify(editable)));
   assert.deepEqual(restored.sections, draft.sections);
   assert.equal(restored.closingSection, draft.closingSection);
   assert.equal(restored.resolution, draft.resolution);
+  assert.equal(restored.includeNearbyRoads, true);
   restored.sections[0][0].lat += 1;
   assert.notDeepEqual(restored, draft);
   const closed = builderData.restoreRoadDraft({ ...course, closed: true });
@@ -51,6 +53,10 @@ test('saved courses restore geographic routes and retain exact editable waypoint
   assert.match(builderData.roadMapMeta(course), /km · Open route/);
   assert.ok(builderData.roadMapThumbnail(course).split(' ').length >= course.points.length);
   assert.throws(() => builderData.readRoadMap('{"name":"bad"}'), /Invalid saved course/);
+  assert.throws(
+    () => builderData.readRoadMap(JSON.stringify({ ...course, scenery: { version: 1 } })),
+    /Invalid saved course scenery/,
+  );
   assert.throws(
     () => builderData.restoreRoadDraft({ ...course, terrain: undefined }),
     /geographic source/,
@@ -61,6 +67,15 @@ test('embedded builds finish without generating a preview; standalone builds inc
   const course = builderData.readRoadMap(
     await readFile(new URL('./fixtures/road-course.json', import.meta.url), 'utf8'),
   );
+  course.scenery = {
+    version: 1,
+    importRevision: (await server.ssrLoadModule('/src/scenery-data.ts')).sceneryImportRevision,
+    buildings: [],
+    water: [],
+    waterways: [],
+    vegetation: [],
+    roads: [],
+  };
   const messages = [];
   const previousSelf = globalThis.self;
   globalThis.self = { postMessage: (message) => messages.push(message) };

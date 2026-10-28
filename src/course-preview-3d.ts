@@ -9,6 +9,7 @@ import {
 import { CourseTerrain, projectTerrainGeometry } from './terrain';
 import { createTunnelMeshes } from './tunnels';
 import { createBridgeMeshes } from './bridges';
+import { createScenery } from './scenery';
 
 export interface CoursePreviewColors {
   ground: string;
@@ -27,11 +28,17 @@ const terrainMargin = 30;
 const roadLift = 0.15;
 
 function disposeGroup(group: THREE.Group) {
+  const geometries = new Set<THREE.BufferGeometry>();
+  const materials = new Set<THREE.Material>();
   group.traverse((object) => {
     if (!(object instanceof THREE.Mesh)) return;
-    object.geometry.dispose();
-    (object.material as THREE.Material).dispose();
+    geometries.add(object.geometry);
+    for (const material of Array.isArray(object.material) ? object.material : [object.material])
+      materials.add(material);
+    if (object instanceof THREE.InstancedMesh) object.dispose();
   });
+  geometries.forEach((geometry) => geometry.dispose());
+  materials.forEach((material) => material.dispose());
   group.clear();
 }
 
@@ -148,7 +155,7 @@ export function createCoursePreviewModel(
       );
     }
 
-    bounds.expandByScalar(terrainMargin);
+    bounds.expandByScalar(definition.scenery ? 300 : terrainMargin);
     const minX = Math.max(bounds.min.x, terrain.minX);
     const minZ = Math.max(bounds.min.y, terrain.minZ);
     let maxX = Math.min(bounds.max.x, terrain.minX + (terrain.columns - 1) * terrain.spacing);
@@ -161,11 +168,14 @@ export function createCoursePreviewModel(
     const positions: number[] = [];
     const indices: number[] = [];
     const heights = new Float32Array(columns * rows);
+    const groundHeights = new Float32Array(heights.length);
     for (let row = 0; row < rows; row++)
       for (let column = 0; column < columns; column++) {
         const x = Math.min(minX + column * cell, maxX);
         const z = Math.min(minZ + row * cell, maxZ);
-        positions.push(x, terrain.groundHeightAt(x, z), z);
+        const ground = terrain.groundHeightAt(x, z);
+        positions.push(x, ground, z);
+        groundHeights[row * columns + column] = ground;
         heights[row * columns + column] = height(x, z);
         if (row && column) {
           const i = row * columns + column;
@@ -208,19 +218,30 @@ export function createCoursePreviewModel(
       indices.push(edge[i], edge[i + 1], skirt + i, edge[i + 1], skirt + i + 1, skirt + i);
       indices.push(bottom, skirt + i, skirt + i + 1);
     }
-    group.add(
-      meshFrom(
-        positions,
-        indices,
-        new THREE.MeshStandardMaterial({ color: colors.ground, roughness: 1, flatShading: true }),
-      ),
+    const ground = meshFrom(
+      positions,
+      indices,
+      new THREE.MeshStandardMaterial({ color: colors.ground, roughness: 1, flatShading: true }),
     );
+    ground.name = 'preview-ground';
+    group.add(ground);
     if (terrain.collisionMesh)
       group.add(
         createTunnelMeshes(terrain.collisionMesh, { ground: colors.ground, lining: colors.road }),
       );
     if (terrain.bridgeMesh)
       group.add(createBridgeMeshes(terrain.bridgeMesh, { concrete: colors.road }));
+    if (definition.scenery)
+      group.add(
+        createScenery(definition, terrain, {
+          projectGroundGeometry: (source, lift) =>
+            projectTerrainGeometry(
+              { ...previewTerrain, heights: groundHeights },
+              source,
+              Math.max(lift, roadLift),
+            ),
+        }).group,
+      );
     return { group, dispose: () => disposeGroup(group) };
   } catch (error) {
     disposeGroup(group);

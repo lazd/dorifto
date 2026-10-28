@@ -2220,6 +2220,38 @@ export function bindGameUI(
     isToggle,
   );
   select<'on' | 'off'>(
+    '#show-buildings',
+    'buildings',
+    'showBuildings',
+    (state) => (state.showBuildings ? 'on' : 'off'),
+    (value) => ({ showBuildings: value === 'on' }),
+    isToggle,
+  );
+  select<'on' | 'off'>(
+    '#show-water',
+    'water',
+    'showWater',
+    (state) => (state.showWater ? 'on' : 'off'),
+    (value) => ({ showWater: value === 'on' }),
+    isToggle,
+  );
+  select<'on' | 'off'>(
+    '#show-vegetation',
+    'vegetation',
+    'showVegetation',
+    (state) => (state.showVegetation ? 'on' : 'off'),
+    (value) => ({ showVegetation: value === 'on' }),
+    isToggle,
+  );
+  select<'on' | 'off'>(
+    '#show-nearby-roads',
+    'nearby-roads',
+    'showNearbyRoads',
+    (state) => (state.showNearbyRoads ? 'on' : 'off'),
+    (value) => ({ showNearbyRoads: value === 'on' }),
+    isToggle,
+  );
+  select<'on' | 'off'>(
     '#show-kerbs',
     'kerbs',
     'showKerbs',

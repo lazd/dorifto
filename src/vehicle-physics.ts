@@ -24,7 +24,8 @@ export type PhysicsControls = Pick<
   'throttle' | 'brake' | 'reverse' | 'steer' | 'handbrake' | 'clutch'
 > &
   Partial<Pick<DrivingControls, 'shiftUp' | 'shiftDown'>>;
-export type PhysicsConfiguration = Pick<ConfigurationState, 'driveMode' | 'profiles' | 'coneMode'>;
+export type PhysicsConfiguration = Pick<ConfigurationState, 'driveMode' | 'profiles' | 'coneMode'> &
+  Partial<Pick<ConfigurationState, 'showBuildings' | 'showNearbyRoads'>>;
 export type PhysicsCar = Pick<
   Awaited<ReturnType<typeof loadCar>>,
   | 'centers'

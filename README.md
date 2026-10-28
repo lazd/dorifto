@@ -438,6 +438,28 @@ and `button-translucent` for a semi-transparent surface on any button.
 HUD and track examples are SVG illustrations, ready to be replaced with
 cropped in-game screenshots.
 
+Real-world maps also save scenery from OpenFreeMap's OpenStreetMap-derived vector tiles:
+extruded buildings, water bodies and waterways, and vegetation scattered procedurally
+inside mapped landcover areas. **Include nearby roads** in the course builder adds surrounding
+roads with the game's normal, knockable cones across junction mouths, outside the selected
+course's pavement. Scenery tiles are downloaded in a bounded corridor when saving a map;
+driving and reopening the saved map do not request scenery. Editing and saving an older map
+adds its missing scenery without downloading elevation again. Buildings use mapped heights
+where available and estimates otherwise; tree and shrub positions are deterministic estimates,
+not surveyed individual plants. Vegetation is decorative, while buildings and junction cones
+have collision. Existing OSM/OpenFreeMap attribution is retained in exported maps.
+
+Settings > Track has independent **Buildings**, **Water**, **Trees and shrubs**, and
+**Nearby roads** switches (`?buildings=off`, `?water=off`, `?vegetation=off`,
+`?nearby-roads=off`). Hiding buildings removes their collision too; hiding nearby roads
+also removes their junction cones and collision. Junction cones remain enabled independently
+of the regular course cone-density setting.
+Nearby-road surfaces share indexed vertices and are split into spatial chunks so off-screen
+sections of long routes can be culled. Vegetation classification respects specific landcover
+subclasses, including scrub within a broader grass class.
+Edit and save an older scenery map to refresh landcover classification; Save is enabled
+when the saved scenery needs this upgrade.
+
 **Cones** can be shown everywhere (`?cones=all`), limited to corners
 (`?cones=corners`, the default), or turned off (`?cones=off`). Hidden cones are also removed
 from physics;

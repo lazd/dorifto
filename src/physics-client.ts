@@ -185,7 +185,8 @@ export function createPhysicsClient({
   });
 
   function input(): PhysicsInput {
-    const { driveMode, profiles, coneMode } = configurationState.getState();
+    const { driveMode, profiles, coneMode, showBuildings, showNearbyRoads } =
+      configurationState.getState();
     return {
       controls: {
         throttle: controls.throttle,
@@ -197,7 +198,7 @@ export function createPhysicsClient({
         shiftUp: controls.shiftUp,
         shiftDown: controls.shiftDown,
       },
-      configuration: { driveMode, profiles, coneMode },
+      configuration: { driveMode, profiles, coneMode, showBuildings, showNearbyRoads },
       signs: course.turnSignGroups.map((group) => group.visible),
       lights: lights(),
     };
@@ -606,8 +607,12 @@ export function createPhysicsClient({
     interpolationAlpha,
     setCones(enabled: boolean, onlyCorners = false) {
       const corners = new Set(course.cornerCones);
+      const junctions = new Set(course.junctionCones);
+      const nearbyRoads = configurationState.getState().showNearbyRoads;
       course.cones.forEach((cone) => {
-        cone.visible = enabled && (!onlyCorners || corners.has(cone));
+        cone.visible = junctions.has(cone)
+          ? nearbyRoads
+          : enabled && (!onlyCorners || corners.has(cone));
       });
     },
     dispose(restoreCarPaint = true) {

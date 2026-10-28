@@ -245,7 +245,11 @@ export function createPhysicsSimulation(Ammo: typeof AmmoFactory, data: PhysicsI
   const trackingStatistics = vehicles.map(() => false);
   const conePhysics = physics.addPlugin((context) =>
     createConePhysics(context, {
-      course: { cones, cornerCones: data.cornerCones.map((index) => cones[index]) },
+      course: {
+        cones,
+        cornerCones: data.cornerCones.map((index) => cones[index]),
+        junctionCones: data.junctionCones?.map((index) => cones[index]),
+      },
       vehicles: new Set(vehiclePointers),
       onVehicleHit(pointer, id) {
         const index = vehiclePointers.indexOf(pointer);
@@ -297,7 +301,12 @@ export function createPhysicsSimulation(Ammo: typeof AmmoFactory, data: PhysicsI
   function applyInput(input: PhysicsInput) {
     configuration = input.configuration;
     if (!botsOnly) Object.assign(controls, input.controls);
-    conePhysics.setEnabled(configuration.coneMode !== 'off', configuration.coneMode === 'corners');
+    conePhysics.setEnabled(
+      configuration.coneMode !== 'off',
+      configuration.coneMode === 'corners',
+      configuration.showNearbyRoads !== false,
+    );
+    simulationWorld.setBuildingsEnabled(configuration.showBuildings !== false);
     groups.forEach((group, i) => {
       group.visible = input.signs[i];
     });
@@ -323,7 +332,12 @@ export function createPhysicsSimulation(Ammo: typeof AmmoFactory, data: PhysicsI
     forceSnapshot = true;
   }
 
-  conePhysics.setEnabled(configuration.coneMode !== 'off', configuration.coneMode === 'corners');
+  conePhysics.setEnabled(
+    configuration.coneMode !== 'off',
+    configuration.coneMode === 'corners',
+    configuration.showNearbyRoads !== false,
+  );
+  simulationWorld.setBuildingsEnabled(configuration.showBuildings !== false);
   reset();
 
   function handle(request: PhysicsRequest): PhysicsSnapshot {

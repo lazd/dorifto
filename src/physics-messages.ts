@@ -3,7 +3,7 @@ import type * as THREE from 'three';
 import type { DrivetrainState } from './drivetrain';
 import type { LapTimer } from './laps';
 import { frameStride, type RunRecording, type ReplayTireState } from './lap-recording';
-import type { TerrainQueryData } from './terrain-query';
+import type { TerrainQueryData, TriangleMeshData } from './terrain-query';
 import type { PhysicsCar, PhysicsConfiguration, PhysicsControls } from './vehicle-physics';
 import type { Bot, RaceBotOptions, VehicleState } from './race-bot';
 import type { RaceStanding } from './race-standings';
@@ -34,6 +34,7 @@ export interface PhysicsInit {
   };
   cones: PoseData[];
   cornerCones: number[];
+  junctionCones?: number[];
   signGroups: { visible: boolean; poses: PoseData[] }[];
   configuration: PhysicsConfiguration;
 }
@@ -44,6 +45,8 @@ export function createPhysicsInit(
   course: {
     cones: THREE.Object3D[];
     cornerCones: THREE.Object3D[];
+    junctionCones?: THREE.Object3D[];
+    scenery?: { collisionMesh?: TriangleMeshData };
     turnSignGroups: THREE.Group[];
     terrain: { physicsData(): TerrainQueryData };
   },
@@ -59,7 +62,7 @@ export function createPhysicsInit(
     bots,
     botsOnly,
     definition,
-    terrain: course.terrain.physicsData(),
+    terrain: { ...course.terrain.physicsData(), buildingMesh: course.scenery?.collisionMesh },
     car: {
       centers: car.centers.map((center) => center.toArray()),
       radii: car.radii,
@@ -68,6 +71,7 @@ export function createPhysicsInit(
     },
     cones: course.cones.map(pose),
     cornerCones: course.cornerCones.map((cone) => course.cones.indexOf(cone)),
+    junctionCones: course.junctionCones?.map((cone) => course.cones.indexOf(cone)),
     signGroups: course.turnSignGroups.map((group) => ({
       visible: group.visible,
       poses: group.children.map(pose),

@@ -248,6 +248,10 @@ async function start() {
     showGrass: readToggle('grass'),
     showKerbs: readToggle('kerbs'),
     showRoadEdgeDirt: readToggle('road-edge-dirt'),
+    showBuildings: readToggle('buildings'),
+    showWater: readToggle('water'),
+    showVegetation: readToggle('vegetation'),
+    showNearbyRoads: readToggle('nearby-roads'),
     lapGateMode: readOption('lap-gates', 'off', isLapGateMode),
     racingLineMode: readOption('race-line', 'off', isRacingLineMode),
     ghostMode: requestedGhost,
@@ -534,6 +538,7 @@ async function start() {
       course.terrain.mesh.castShadow = terrainCastsShadows();
       course.setKerbs(configurationState.getState().showKerbs);
       course.setRoadEdgeDirt(configurationState.getState().showRoadEdgeDirt);
+      course.setScenery(configurationState.getState());
       physics = createPhysicsClient({
         race,
         bots: nextBots,
@@ -579,6 +584,7 @@ async function start() {
       course.terrain.grass.visible = latest.showGrass;
       course.setKerbs(latest.showKerbs);
       course.setRoadEdgeDirt(latest.showRoadEdgeDirt);
+      course.setScenery(latest);
       const laps = physics.laps;
       const drivingCamera = createDrivingCamera(
         camera,
@@ -629,6 +635,13 @@ async function start() {
     ['turnSignMode'],
   );
   configurationState.subscribe(({ showKerbs }) => course.setKerbs(showKerbs), ['showKerbs']);
+  configurationState.subscribe(
+    (settings) => {
+      course.setScenery(settings);
+      physics.setCones(settings.coneMode !== 'off', settings.coneMode === 'corners');
+    },
+    ['showBuildings', 'showWater', 'showVegetation', 'showNearbyRoads'],
+  );
   configurationState.subscribe(
     ({ showRoadEdgeDirt }) => course.setRoadEdgeDirt(showRoadEdgeDirt),
     ['showRoadEdgeDirt'],

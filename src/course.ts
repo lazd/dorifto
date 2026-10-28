@@ -12,8 +12,9 @@ import { roadDirtMaterial, surfaceMaterial } from './surfaces';
 import { CourseTerrain } from './terrain';
 import { courseTurnSignPlacements, createTurnSignFactory, type TurnSignMode } from './turn-sign';
 import { createTrainingGates } from './racing-line';
-import type { LapGateMode } from './configuration-state';
+import type { ConfigurationState, LapGateMode } from './configuration-state';
 import { createTrainingGateGeometry, createTrainingGateMaterial } from './training-gates';
+import { createScenery } from './scenery';
 
 export const coneDimensions = {
   height: 0.595,
@@ -62,6 +63,8 @@ function buildCourse(scene: THREE.Group, definition: CourseDefinition, carWidth:
   const route = courseRoute({ ...definition, reverse: false });
   const terrain = new CourseTerrain(definition);
   scene.add(terrain.mesh);
+  const scenery = createScenery(definition, terrain);
+  scene.add(scenery.group);
   let trainingReverse: boolean | undefined;
   function updateTrainingGates(reverse: boolean) {
     if (trainingReverse === reverse) return;
@@ -112,9 +115,41 @@ function buildCourse(scene: THREE.Group, definition: CourseDefinition, carWidth:
   const shoulder = definition.shoulderWidth ?? courseShoulderWidth;
   const cones: THREE.Mesh[] = [];
   const cornerCones: THREE.Mesh[] = [];
+  const junctionCones: THREE.Mesh[] = [];
   const length = route.getLength();
   const gates = Math.ceil(length / (definition.coneSpacing ?? 6));
   const across = new THREE.Vector3();
+  function placeCone(position: THREE.Vector3) {
+    const cone = new THREE.Mesh(coneGeometry, orange);
+    cone.position.copy(position);
+    const normal = terrain.normalAt(cone.position.x, cone.position.z);
+    cone.position.y = terrain.heightAt(cone.position.x, cone.position.z);
+    cone.position.addScaledVector(normal, centerOfMassHeight);
+    cone.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), normal);
+    let clearance = 0;
+    const support = new THREE.Vector3();
+    for (const x of [-baseWidth / 2, 0, baseWidth / 2]) {
+      for (const z of [-baseWidth / 2, 0, baseWidth / 2]) {
+        support.set(x, -centerOfMassHeight, z).applyQuaternion(cone.quaternion).add(cone.position);
+        clearance = Math.max(clearance, terrain.heightAt(support.x, support.z) - support.y);
+      }
+    }
+    cone.position.y += clearance + 0.005;
+    cone.castShadow = true;
+    cone.receiveShadow = true;
+    const base = new THREE.Mesh(baseGeometry, baseMaterial);
+    base.position.y = baseHeight / 2 - centerOfMassHeight;
+    base.castShadow = true;
+    base.receiveShadow = true;
+    cone.add(base);
+    const stripe = new THREE.Mesh(stripeGeometry, stripeMaterial);
+    stripe.position.y = stripeCenter + originOffset;
+    stripe.receiveShadow = true;
+    cone.add(stripe);
+    scene.add(cone);
+    cones.push(cone);
+    return cone;
+  }
   for (let i = 0; i < gates; i++) {
     const t = i / gates;
     const distance = (i * length) / gates;
@@ -123,43 +158,14 @@ function buildCourse(scene: THREE.Group, definition: CourseDefinition, carWidth:
     const corner = courseCornerAt(route, distance);
     across.set(tangent.z, 0, -tangent.x).normalize();
     for (const side of [-1, 1]) {
-      const cone = new THREE.Mesh(coneGeometry, orange);
       // Stay on the shoulder; beyond it the ground may already be climbing a wall.
       const coneOffset =
         definition.width / 2 + Math.min(0.8 + baseWidth / Math.SQRT2 + 0.1, shoulder);
-      cone.position.copy(center).addScaledVector(across, side * coneOffset);
-      const normal = terrain.normalAt(cone.position.x, cone.position.z);
-      cone.position.y = terrain.heightAt(cone.position.x, cone.position.z);
-      cone.position.addScaledVector(normal, centerOfMassHeight);
-      cone.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), normal);
-      // Clear the whole square footprint, not just its center on curved ground.
-      let clearance = 0;
-      const support = new THREE.Vector3();
-      for (const x of [-baseWidth / 2, 0, baseWidth / 2]) {
-        for (const z of [-baseWidth / 2, 0, baseWidth / 2]) {
-          support
-            .set(x, -centerOfMassHeight, z)
-            .applyQuaternion(cone.quaternion)
-            .add(cone.position);
-          clearance = Math.max(clearance, terrain.heightAt(support.x, support.z) - support.y);
-        }
-      }
-      cone.position.y += clearance + 0.005;
-      cone.castShadow = true;
-      cone.receiveShadow = true;
-      const base = new THREE.Mesh(baseGeometry, baseMaterial);
-      base.position.y = baseHeight / 2 - centerOfMassHeight;
-      base.castShadow = true;
-      base.receiveShadow = true;
-      cone.add(base);
-      const stripe = new THREE.Mesh(stripeGeometry, stripeMaterial);
-      stripe.position.y = stripeCenter + originOffset;
-      stripe.receiveShadow = true;
-      cone.add(stripe);
-      scene.add(cone);
-      cones.push(cone);
+      const cone = placeCone(center.clone().addScaledVector(across, side * coneOffset));
       if (corner) cornerCones.push(cone);
     }
+    for (const { x, z } of scenery.junctionCones)
+      junctionCones.push(placeCone(new THREE.Vector3(x, 0, z)));
   }
 
   const paint = (color: number) =>
@@ -397,6 +403,19 @@ function buildCourse(scene: THREE.Group, definition: CourseDefinition, carWidth:
   return {
     cones,
     cornerCones,
+    junctionCones,
+    scenery,
+    setScenery(
+      settings: Pick<
+        ConfigurationState,
+        'showBuildings' | 'showWater' | 'showVegetation' | 'showNearbyRoads'
+      >,
+    ) {
+      scenery.setVisible('buildings', settings.showBuildings);
+      scenery.setVisible('water', settings.showWater);
+      scenery.setVisible('vegetation', settings.showVegetation);
+      scenery.setVisible('nearbyRoads', settings.showNearbyRoads);
+    },
     turnSignGroups,
     terrain,
     setKerbs(visible: boolean) {

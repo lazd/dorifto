@@ -90,6 +90,8 @@ export function createPhysicsWorld(
     (terrain.flippedCells || terrain.warpedCells) && contourCollider(Ammo, groundTerrain);
   const structures = terrain.collisionMesh && triangleCollider(Ammo, terrain.collisionMesh);
   const bridges = terrain.bridgeMesh && triangleCollider(Ammo, terrain.bridgeMesh);
+  const buildings = terrain.buildingMesh && triangleCollider(Ammo, terrain.buildingMesh);
+  let buildingsEnabled = true;
   const heightData = resources.acquireHeightfield(contours?.heights ?? groundTerrain.heights);
   const minHeight = contours?.minHeight ?? terrain.minHeight;
   const shape = new Ammo.btHeightfieldTerrainShape(
@@ -123,6 +125,7 @@ export function createPhysicsWorld(
   if (contours) world.addRigidBody(contours.body);
   if (structures) world.addRigidBody(structures.body);
   if (bridges) world.addRigidBody(bridges.body);
+  if (buildings) world.addRigidBody(buildings.body);
   world.setContactAddedCallback(terrainContactCallback(Ammo));
   const terrainBodyList = contours ? [ground, contours.body] : [ground];
   for (const body of terrainBodyList) {
@@ -135,6 +138,12 @@ export function createPhysicsWorld(
   return {
     world,
     dispatcher,
+    setBuildingsEnabled(enabled: boolean) {
+      if (!buildings || enabled === buildingsEnabled) return;
+      if (enabled) world.addRigidBody(buildings.body);
+      else world.removeRigidBody(buildings.body);
+      buildingsEnabled = enabled;
+    },
     step(dt: number) {
       if (disposed) throw new Error('Cannot step a disposed physics world');
       world.stepSimulation(dt, 0);
@@ -159,6 +168,10 @@ export function createPhysicsWorld(
       if (bridges) {
         world.removeRigidBody(bridges.body);
         bridges.dispose();
+      }
+      if (buildings) {
+        if (buildingsEnabled) world.removeRigidBody(buildings.body);
+        buildings.dispose();
       }
       Ammo.destroy(world);
       Ammo.destroy(solver);

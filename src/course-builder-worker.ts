@@ -12,6 +12,8 @@ import type { CoursePreviewColors } from './course-preview-3d';
 import type { PreviewModel } from './course-builder-preview';
 import type { RoadMap, RoadDraft, RoadBuildStep } from './course-builder-data';
 import { matchRoadStructures } from './road-structures.mjs';
+import { fetchCourseScenery } from './scenery-import';
+import { sceneryImportRevision } from './scenery-data';
 
 export interface BuildRequest {
   points: GPSPoint[];
@@ -125,6 +127,23 @@ async function build(request: BuildRequest) {
       'OpenStreetMap contributors (ODbL): https://www.openstreetmap.org/copyright; vector tiles by OpenFreeMap; elevation: USGS 3DEP';
   }
   course.courseBuilder = request.draft;
+  const includeNearbyRoads = request.draft.includeNearbyRoads ?? false;
+  if (
+    course.scenery?.importRevision !== sceneryImportRevision ||
+    (includeNearbyRoads && !request.existingCourse?.courseBuilder?.includeNearbyRoads)
+  ) {
+    progress('scenery');
+    course.scenery = await fetchCourseScenery(course, includeNearbyRoads);
+  } else if (!includeNearbyRoads && course.scenery.roads.length) {
+    course.scenery = { ...course.scenery, roads: [] };
+  }
+  if (!course.attribution?.includes('OpenStreetMap'))
+    course.attribution = [
+      course.attribution,
+      'OpenStreetMap contributors (ODbL): https://www.openstreetmap.org/copyright; vector tiles by OpenFreeMap',
+    ]
+      .filter(Boolean)
+      .join('; ');
   const json = new Blob([JSON.stringify(course)], { type: 'application/json' });
   if (request.skipPreview) {
     self.postMessage({ type: 'complete', course, json } satisfies BuildResponse);

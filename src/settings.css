@@ -50,6 +50,10 @@
   border-top: var(--line) solid var(--color-border);
 }
 
+.illustrated-setting > .field:only-child {
+  grid-column: 1 / -1;
+}
+
 .setting-illustration {
   --illustration-road: #43525b;
   --illustration-line: #c0c8bc;

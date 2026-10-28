@@ -106,6 +106,10 @@ export interface ConfigurationState {
   showGrass: boolean;
   showKerbs: boolean;
   showRoadEdgeDirt: boolean;
+  showBuildings: boolean;
+  showWater: boolean;
+  showVegetation: boolean;
+  showNearbyRoads: boolean;
   lapGateMode: LapGateMode;
   racingLineMode: 'off' | 'full' | 'lane';
   turnSignMode: TurnSignMode;
@@ -137,6 +141,10 @@ export function createConfigurationState(storage?: Storage) {
     showGrass: true,
     showKerbs: true,
     showRoadEdgeDirt: true,
+    showBuildings: true,
+    showWater: true,
+    showVegetation: true,
+    showNearbyRoads: true,
     lapGateMode: 'off',
     racingLineMode: 'off',
     turnSignMode: 'several',

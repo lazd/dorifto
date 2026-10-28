@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { terrainBaseHeight, type TerrainRaster } from './terrain-profile';
 import type { CourseGenerationWeights } from './course-generation';
 import type { RoadStructure } from './road-structures.mjs';
+import type { CourseScenery } from './scenery-data';
 import importedCourseCatalog, { mapSizes, mapUrls } from 'virtual:course-catalog';
 
 export const startDistance = 5;
@@ -67,6 +68,7 @@ export interface CourseDefinition {
   /** Attribution retained in exported real-world map data. */
   attribution?: string;
   terrain?: TerrainRaster;
+  scenery?: CourseScenery;
 }
 
 /** Periodic heights for circuits; slope-continuous, monotone heights for open roads. */

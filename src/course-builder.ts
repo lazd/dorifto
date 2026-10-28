@@ -32,6 +32,7 @@ import { startTextSpinner } from './text-spinner';
 import { download } from './download';
 import type { BuildRequest, BuildResponse } from './course-builder-worker';
 import { matchRoadStructures } from './road-structures.mjs';
+import { sceneryImportRevision } from './scenery-data';
 import './course-builder.css';
 
 const embedded =
@@ -65,6 +66,7 @@ const widthInput = element<HTMLInputElement>('width');
 const transitionInput = element<HTMLInputElement>('terrain-transition');
 const centerLineInput = element<HTMLInputElement>('center-line');
 const shoulderInput = element<HTMLInputElement>('shoulder-width');
+const nearbyRoadsInput = element<HTMLInputElement>('nearby-roads');
 const clearButton = element<HTMLButtonElement>('clear');
 const locationForm = element<HTMLFormElement>('location-form');
 const locationInput = element<HTMLInputElement>('location');
@@ -284,6 +286,7 @@ function editorSnapshot() {
     shoulderWidth: Number(shoulderInput.value),
     terrainTransition: Number(transitionInput.value),
     doubleYellow: centerLineInput.checked,
+    includeNearbyRoads: nearbyRoadsInput.checked,
   });
 }
 
@@ -301,12 +304,20 @@ function updateControls() {
       editingSnapshot === editorSnapshot() &&
       !hasStructureRepair());
   notifyParent({ type: 'course-builder:controls', canSave: !buildButton.disabled });
-  for (const input of [nameInput, widthInput, shoulderInput, transitionInput, centerLineInput])
+  for (const input of [
+    nameInput,
+    widthInput,
+    shoulderInput,
+    transitionInput,
+    centerLineInput,
+    nearbyRoadsInput,
+  ])
     input.disabled = !!worker;
 }
 
 function hasStructureRepair() {
   if (!editingCourse?.terrain) return false;
+  if (editingCourse.scenery?.importRevision !== sceneryImportRevision) return true;
   const structures = matchRoadStructures(routePoints(), graph.structureLines(), !!closingSection);
   return (
     structures.length > 0 && JSON.stringify(structures) !== JSON.stringify(editingCourse.structures)
@@ -887,6 +898,7 @@ element<HTMLFormElement>('build-form').onsubmit = (event) => {
       sections,
       closingSection,
       structureLines: graph.structureLines(),
+      includeNearbyRoads: nearbyRoadsInput.checked,
       resolution:
         existingCourse?.courseBuilder?.resolution ?? existingCourse?.terrain?.resolution ?? 5,
     }),
@@ -1109,6 +1121,7 @@ function editSavedCourse() {
     widthInput.value = String(saved.width);
     shoulderInput.value = String(saved.shoulderWidth ?? courseShoulderWidth);
     centerLineInput.checked = !!saved.doubleYellow;
+    nearbyRoadsInput.checked = draft.includeNearbyRoads ?? !!saved.scenery?.roads.length;
     transitionInput.value = String(saved.terrainTransition ?? defaultTerrainTransition);
     editingSnapshot = editorSnapshot();
     editingRouteSnapshot = routeSnapshot();
@@ -1137,6 +1150,7 @@ element<HTMLButtonElement>('new-course').onclick = () => {
   widthInput.value = widthInput.defaultValue;
   shoulderInput.value = shoulderInput.defaultValue;
   centerLineInput.checked = true;
+  nearbyRoadsInput.checked = true;
   transitionInput.value = transitionInput.defaultValue;
   seedDraftGraph();
   updateRoute();
@@ -1224,7 +1238,14 @@ window.addEventListener('pagehide', () => {
   previewWorker?.terminate();
 });
 
-for (const input of [nameInput, widthInput, shoulderInput, transitionInput, centerLineInput]) {
+for (const input of [
+  nameInput,
+  widthInput,
+  shoulderInput,
+  transitionInput,
+  centerLineInput,
+  nearbyRoadsInput,
+]) {
   input.addEventListener('input', () => {
     if (course) {
       invalidateCourse();

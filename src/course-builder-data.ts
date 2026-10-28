@@ -2,12 +2,14 @@ import { courseRoute, type CourseDefinition } from './courses';
 import { routeLength } from './road-selection';
 import type { GPSPoint } from './track-conversion.mjs';
 import type { RoadStructureLine } from './road-structures.mjs';
+import { validateCourseScenery } from './scenery-data';
 
 export const roadBuildSteps = {
   starting: 'Starting the course builder',
   terrain: 'Downloading USGS terrain elevation data',
   corridor: 'Downloading high-resolution USGS road elevation data',
   course: 'Sampling road elevation and building the course',
+  scenery: 'Downloading nearby roads, buildings, water and vegetation',
   preview: 'Building the 3D terrain preview',
   saving: 'Saving the course on this device',
 } as const;
@@ -19,6 +21,7 @@ export interface RoadDraft {
   closingSection?: GPSPoint[];
   resolution: number;
   structureLines?: RoadStructureLine[];
+  includeNearbyRoads?: boolean;
 }
 
 export interface RoadMap extends CourseDefinition {
@@ -40,6 +43,7 @@ export function readRoadMap(json: string): RoadMap {
     )
   )
     throw new Error('Invalid saved course');
+  if (value.scenery !== undefined) validateCourseScenery(value.scenery);
   return value;
 }
 

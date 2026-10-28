@@ -136,6 +136,59 @@ function fixture(slopeX = 0, slopeZ = 0, simulationWorld) {
   return { physics, course, laps, hits, car, controls, configurationState };
 }
 
+test('hidden buildings and nearby-road cones leave no invisible colliders', (t) => {
+  const setup = fixture();
+  setup.physics.dispose();
+  const building = new THREE.BoxGeometry(2, 4, 2).translate(6, 2, 6);
+  const world = createPhysicsWorld(Ammo, createPhysicsResources(Ammo), {
+    ...setup.course.terrain,
+    buildingMesh: {
+      positions: building.getAttribute('position').array,
+      indices: Uint32Array.from(building.index.array),
+    },
+  });
+  const { physics, course } = fixture(0, 0, world);
+  course.junctionCones = [course.cones[1]];
+  const plugin = physics.addPlugin((context) =>
+    createConePhysics(context, { course, audio: { hitCone() {} } }),
+  );
+  t.after(() => {
+    physics.dispose();
+    world.dispose();
+    building.dispose();
+  });
+  const rayHits = (from, to) => {
+    const a = new Ammo.btVector3(...from);
+    const b = new Ammo.btVector3(...to);
+    const ray = new Ammo.ClosestRayResultCallback(a, b);
+    world.world.rayTest(a, b, ray);
+    const hit = ray.hasHit();
+    Ammo.destroy(ray);
+    Ammo.destroy(a);
+    Ammo.destroy(b);
+    return hit;
+  };
+  assert.ok(rayHits([4, 3, 6], [8, 3, 6]));
+  world.setBuildingsEnabled(false);
+  assert.equal(rayHits([4, 3, 6], [8, 3, 6]), false);
+  world.setBuildingsEnabled(true);
+  assert.ok(rayHits([4, 3, 6], [8, 3, 6]));
+  plugin.setEnabled(false);
+  assert.deepEqual(
+    course.cones.map((cone) => cone.visible),
+    [false, true],
+  );
+  assert.ok(rayHits([7, 1.2, 5], [9, 1.2, 5]), 'junction cones survive course cones off');
+  plugin.setEnabled(false, false, false);
+  assert.equal(course.cones[1].visible, false);
+  assert.equal(rayHits([7, 1.2, 5], [9, 1.2, 5]), false);
+  plugin.setEnabled(true, true, true);
+  assert.deepEqual(
+    course.cones.map((cone) => cone.visible),
+    [true, true],
+  );
+});
+
 test('shared vehicles integrate once, collide, and can be independently removed', (t) => {
   const setup = fixture();
   setup.physics.dispose();
