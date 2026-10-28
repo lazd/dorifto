@@ -1,8 +1,8 @@
 import { courseRoute, type CourseDefinition } from './courses';
-import { routeLength } from './road-selection';
+import { cleanRoadRoute, routeLength } from './road-selection';
 import type { GPSPoint } from './track-conversion.mjs';
 import type { RoadStructureLine } from './road-structures.mjs';
-import { normalizeCourseScenery, validateCourseScenery } from './scenery-data';
+import { validateCourseScenery } from './scenery-data';
 
 export const roadBuildSteps = {
   starting: 'Starting the course builder',
@@ -18,10 +18,24 @@ export type RoadBuildStep = keyof typeof roadBuildSteps;
 
 export interface RoadDraft {
   sections: GPSPoint[][];
+  /** Snapped user-selected waypoint positions, not samples of the exported centerline. */
+  waypoints?: GPSPoint[];
   closingSection?: GPSPoint[];
   resolution: number;
   structureLines?: RoadStructureLine[];
   includeNearbyRoads?: boolean;
+}
+
+export function roadDraftPoints(draft: RoadDraft): GPSPoint[] {
+  return cleanRoadRoute(
+    [...draft.sections, ...(draft.closingSection ? [draft.closingSection] : [])].flatMap(
+      (points, i) => (i ? points.slice(1) : points),
+    ),
+  );
+}
+
+export function roadDraftWaypoints(draft: RoadDraft): GPSPoint[] {
+  return draft.sections.map((section) => ({ ...section.at(-1)! }));
 }
 
 export interface RoadMap extends CourseDefinition {
@@ -45,7 +59,6 @@ export function readRoadMap(json: string): RoadMap {
     throw new Error('Invalid saved course');
   if (value.scenery !== undefined) {
     validateCourseScenery(value.scenery);
-    value.scenery = normalizeCourseScenery(value.scenery);
   }
   return value;
 }

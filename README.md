@@ -470,9 +470,8 @@ panels, allowing side roads to continue through the shoulder. Junction coverage 
 dirt, edge paint, and grass; hiding nearby roads restores those details. These masks and
 curves are generated once at map load, with no per-frame geometry work.
 Unambiguous equal-width road fragments and repeated points are normalized by the importer,
-before saving, avoiding square seams at tile/way boundaries. Older saved and bundled maps
-run the same versioned local migration when loaded, without downloading tiles; the migrated
-geometry is retained on the next save. Rendering only rounds the normalized centerlines.
+before saving, avoiding square seams at tile/way boundaries. Existing maps must be reimported;
+there is no load-time migration. Rendering only rounds the normalized centerlines.
 Connected width changes share a tapered cross-section rather than
 a square step. Nearby pavement uses its rendered triangle footprint for asphalt
 traction and smoke rather than dust, in both the physics worker and tire effects; hiding
@@ -931,6 +930,30 @@ Imported point-to-point routes (`closed: false`) appear under **Roads** with a
 finish lines sit 45 m in from each end, so the full starting grid lines up on
 pavement behind the start line and cars have room to brake past the finish. The
 same two lines serve both driving directions.
+To refresh bundled geographic maps in place, use:
+
+```sh
+npm run reimport-maps                                  # scenery only, all bundled maps
+npm run reimport-maps -- src/tracks/newtown-road*.json  # selected maps
+npm run reimport-maps -- --full                        # also rebuild terrain and elevation
+```
+
+The script normalizes road fragments during scenery import, processes maps sequentially,
+and replaces each JSON file atomically after that map succeeds. It stops on errors; already
+completed maps remain updated. Scenery-only imports preserve routes, terrain, and settings.
+Full imports use the same build pipeline as the browser course builder, with its saved
+waypoints and routed sections, structure matching, 5 m USGS terrain and high-resolution
+road corridor, elevation repair, and scenery importer. New builder saves explicitly store
+the selected waypoint positions alongside the routed sections. Older builder drafts retain
+their exact section endpoints as waypoints; exported centerlines are never used to guess
+waypoints during full reimports. Maps without builder data must be recreated in the builder;
+`--full` lists them before downloading or updating any maps. Map IDs, metadata,
+and settings are retained. The saved builder's nearby-road inclusion choice is respected;
+otherwise existing scenery determines inclusion, defaulting to enabled for maps without scenery.
+Generated circuits (closed maps without builder data) are skipped in both modes, even
+when explicitly selected. Browser-built closed loops remain eligible. Non-geographic maps
+are skipped in the default batch. Browser-saved maps are not modified.
+
 `npm run import-road -- <slug> "<road name>" "<location query>"` first
 looks up the freeform location with OpenStreetMap's geocoding API, then queries Overpass for
 the named road within the returned bounding box. It writes a compatible source

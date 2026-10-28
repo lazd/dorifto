@@ -10,7 +10,6 @@ import {
   removeRouteWaypoint,
   validateImportRoute,
   closeRoadLoop,
-  cleanRoadRoute,
 } from './road-selection';
 import { CourseBuilderPreview } from './course-builder-preview';
 import { courseBuilderTheme } from './course-builder-map';
@@ -21,6 +20,7 @@ import {
   restoreRoadDraft,
   roadMapMeta,
   roadBuildSteps,
+  roadDraftPoints,
   type RoadBuildStep,
   type RoadMap,
 } from './course-builder-data';
@@ -159,11 +159,7 @@ function report(error: unknown) {
 }
 
 function routePoints() {
-  return cleanRoadRoute(
-    [...sections, ...(closingSection ? [closingSection] : [])].flatMap((points, i) =>
-      i === 0 ? points : points.slice(1),
-    ),
-  );
+  return roadDraftPoints({ sections, closingSection, resolution: 5 });
 }
 
 maplibregl.setWorkerUrl(mapWorkerUrl);

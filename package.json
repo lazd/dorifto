@@ -12,6 +12,7 @@
     "wheel:init": "node scripts/initialize-t300.mjs",
     "import-track": "node scripts/import-track.mjs",
     "import-road": "node scripts/import-road.mjs",
+    "reimport-maps": "node scripts/reimport-maps.mjs",
     "train:bot": "node scripts/optimize-race-bot.mjs --preset grip-default --generations 30",
     "train:bot:resume": "npm run train:bot -- --resume",
     "train:drift": "node scripts/optimize-drift-bot.mjs --preset drift-default --generations 20",

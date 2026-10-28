@@ -83,7 +83,6 @@ export function smoothSceneryLine(points: SceneryPoint[], width: number): Scener
 export interface CourseScenery {
   version: 1;
   importRevision?: number;
-  roadNormalizationRevision?: number;
   buildings: { rings: SceneryPolygon; height: number }[];
   water: { rings: SceneryPolygon }[];
   waterways: { points: SceneryPoint[]; width: number }[];
@@ -91,15 +90,12 @@ export interface CourseScenery {
   roads: { points: SceneryPoint[]; width: number }[];
 }
 
-export const sceneryImportRevision = 2;
-const roadNormalizationRevision = 1;
+export const sceneryImportRevision = 3;
 
-/** Separate from tile import revisions: older local maps can upgrade without a download. */
+/** Normalize decoded tile fragments once, before saving imported scenery. */
 export function normalizeCourseScenery(scenery: CourseScenery): CourseScenery {
-  if ((scenery.roadNormalizationRevision ?? 0) >= roadNormalizationRevision) return scenery;
   return {
     ...scenery,
-    roadNormalizationRevision,
     roads: joinSceneryRoads(scenery.roads),
   };
 }

@@ -229,7 +229,7 @@ test('decodes supported scenery, holes, widths and clips to the terrain grid wit
   const definition = course();
   const scenery = await fetchCourseScenery(definition, true);
   assert.equal(scenery.version, 1);
-  assert.equal(scenery.roadNormalizationRevision, 1);
+  assert.equal(scenery.importRevision, 3);
   assert.equal(scenery.buildings.length, 2);
   const building = scenery.buildings.find(({ rings }) => rings.length === 2);
   assert.equal(building.height, 12);

@@ -63,7 +63,7 @@ test('saved courses restore geographic routes and retain exact editable waypoint
   );
 });
 
-test('older scenery normalizes on read and stays normalized when saved again', async () => {
+test('reading saved scenery preserves its data without a local migration', async () => {
   const source = JSON.parse(
     await readFile(new URL('./fixtures/road-course.json', import.meta.url), 'utf8'),
   );
@@ -93,24 +93,7 @@ test('older scenery normalizes on read and stays normalized when saved again', a
     ],
   };
   const course = builderData.readRoadMap(JSON.stringify(source));
-  assert.equal(course.scenery.roads.length, 1);
-  assert.deepEqual(course.scenery.roads[0].points, [
-    [30, -40],
-    [30, 0],
-    [70, 0],
-  ]);
-  assert.equal(course.scenery.roadNormalizationRevision, 1);
-  assert.equal(
-    course.scenery.importRevision,
-    source.scenery.importRevision,
-    'no tile refresh required',
-  );
-  assert.deepEqual(
-    builderData.readRoadMap(JSON.stringify(course)),
-    course,
-    'migration is idempotent',
-  );
-  assert.equal(source.scenery.roads.length, 2, 'source is not modified');
+  assert.deepEqual(course.scenery, source.scenery);
 });
 
 test('embedded builds finish without generating a preview; standalone builds include it', async () => {

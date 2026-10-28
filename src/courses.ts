@@ -3,7 +3,6 @@ import { terrainBaseHeight, type TerrainRaster } from './terrain-profile';
 import type { CourseGenerationWeights } from './course-generation';
 import type { RoadStructure } from './road-structures.mjs';
 import type { CourseScenery } from './scenery-data';
-import { normalizeCourseScenery } from './scenery-data';
 import importedCourseCatalog, { mapSizes, mapUrls } from 'virtual:course-catalog';
 
 export const startDistance = 5;
@@ -568,7 +567,6 @@ export async function loadCourseDefinition(
       const course: CourseDefinition = JSON.parse(chunks.join(''));
       if (course.id !== definition.id || !Array.isArray(course.points) || !course.terrain)
         throw new Error(`Invalid map data for ${definition.name}`);
-      if (course.scenery) course.scenery = normalizeCourseScenery(course.scenery);
       report(1);
       return course;
     })();
