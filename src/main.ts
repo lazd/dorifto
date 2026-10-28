@@ -699,7 +699,7 @@ async function start() {
   };
   let recordLoad = 0;
   const results = createRunResults({
-    restart: reset,
+    restart: () => reset('Restart selected in results'),
     replay: startReplay,
     speedUnit: () => configurationState.getState().speedUnit,
   });
@@ -902,7 +902,7 @@ async function start() {
     minimap.setCourse(next);
     spawn = nextSpawn;
     drivingCamera = nextCamera;
-    reset();
+    reset('Course layout changed');
     physics.setCourseDirection(nextSpawn, next);
     lastTime = 0;
     storageKey = replayStorageKey(next);
@@ -1016,7 +1016,14 @@ async function start() {
 
   ui.setBotSettingsHandler(applyBotSettings);
 
-  function reset() {
+  function reset(reason: string) {
+    const { x, y, z } = car.chassis.position;
+    console.log(`[Car reset] ${reason}`, {
+      position: { x, y, z },
+      terrainHeight: terrain.groundHeightAt(x, z),
+      course: activeDefinition.name,
+      raceMode: raceOptions.mode,
+    });
     controls.clear();
     audio.reset();
     physics.reset();
@@ -1058,7 +1065,7 @@ async function start() {
     for (const record of physics.takeRecords()) {
       if (!replay && !physics.resetting) recordStep(record);
     }
-    if (results.open || replay || !run || !run.count) reset();
+    if (results.open || replay || !run || !run.count) reset('User requested reset');
     else showResults();
   }
 
@@ -1076,7 +1083,7 @@ async function start() {
     ) {
       await applyBotSettings(recording.race.bots, recording.race.botsOnly);
     }
-    reset();
+    reset('Replay started');
     replay = { recording, time };
     physics.startReplay(recording, time);
     recording.read(time, playbackFrame);
@@ -1122,7 +1129,7 @@ async function start() {
 
   function pressLapRecorder() {
     if (changingCourse) return;
-    if (replay) reset();
+    if (replay) reset('Replay stopped');
     else if (run?.started) stopRecording(run);
     else if (selectedRun) void playSavedRun(selectedRun);
   }
@@ -1248,7 +1255,7 @@ async function start() {
     if (!replay) return null;
     const { recording } = replay;
     if (replay.time >= recording.duration) {
-      reset();
+      reset('Replay finished');
       return null;
     }
     physics.advance(dt);
@@ -1891,13 +1898,12 @@ async function start() {
                       : 'driving',
       },
     });
-    if (
-      !replaying &&
-      (!terrain.contains(car.chassis.position.x, car.chassis.position.z) ||
-        car.chassis.position.y <
-          terrain.heightAt(car.chassis.position.x, car.chassis.position.z) - 5)
-    )
-      reset();
+    if (!replaying) {
+      const { x, y, z } = car.chassis.position;
+      if (!terrain.contains(x, z)) reset('Car left terrain bounds');
+      else if (y < terrain.groundHeightAt(x, z) - 5)
+        reset('Car fell more than 5 meters below terrain');
+    }
     const sceneDepth = tireEffects.captureDepth(
       renderer,
       scene,
@@ -1909,7 +1915,7 @@ async function start() {
     ghost.renderGlow(renderer, camera, sceneDepth);
   }
 
-  reset();
+  reset('Initial spawn');
   showLoading('Loading your record lap…', 0.4);
   await Promise.all([refreshRecordLap(), refreshRealDriver()]);
   const warmupCamera = camera.clone();
