@@ -481,15 +481,27 @@ controlled by the road-edge dirt setting, with no additional collision bodies.
 Their soil feathers onto the side-road asphalt rather than stopping at a hard pavement
 edge. At junctions, the main-road soil's large-scale drift is reduced and its coverage
 softened, keeping the turning blend continuous without adding meshes or draw calls.
+Both use low-frequency edge drift and a minimum 14 cm feather, with translucent dirt
+crumbs fading beyond the edge rather than forming opaque, jagged clumps.
 Verge distance follows the pavement's actual ribbon edges, with fine cross-road samples
 to avoid gaps caused by interpolating across a whole road-width triangle. Junction soil
 uses a rounded pavement-distance blend and feathers across the main shoulder instead
 of being cut off by a straight triangle clip.
-Side-road dirt fades out at the main road's outer paved shoulder, short of the white
-line, letting the main-road dirt overlay own the transition into the junction.
+Side-road dirt feathers across the main road's outer paved shoulder, stopping short
+of the white line. Around the turning radius it reaches another 45 cm inward so it
+overlaps the main-road soil rather than leaving a gap between the overlays.
+Side-road soil reaches full opacity at the outer paved shoulder, before the main-road
+overlay fades away. Its inward handoff stays within the shoulder so the two fades
+do not expose a crescent of pavement beneath the dirt.
 Side-road pavement and its dirt verge flare together along a 6 m circular turning radius,
 tapering back to the mapped branch width outside the junction. Paint and main-road dirt
 masks follow that widened footprint; traction follows the final rendered pavement.
+Junction dirt masks measure distance to the same ribbon edges as the side-road soil,
+not rounded centerline end caps. Main-road soil strips gain cross-width samples near
+junctions so their masks follow the curve instead of cutting across a broad triangle;
+away from junctions they retain their original tessellation.
+Main-road dirt geometry excludes saved bridge and tunnel spans, including their exact
+start/end boundaries; ground-level side roads underneath retain their own verges.
 Roads still stop at the imported 300 m corridor or the supported terrain boundary; they
 are scenery, not an unlimited navigable road network.
 Nearby-road copies aligned with the selected route
@@ -1149,6 +1161,10 @@ only supports a fixed diagonal at grid positions, so flipped and snapped cells a
 sunk below the heightfield and covered by a triangle-mesh collider with the rendered
 triangulation. Terrain contacts use the smoothed surface normal rather than the
 triangle's, so cars scrape along walls instead of snagging on internal triangle edges.
+Bridge curbs and rails also use face-aligned contact normals to avoid triangle-edge
+snags. Rail collision uses a continuous envelope around the posts and rail gaps so
+glancing bumper contacts slide along the railing instead of hooking a post; deck,
+underside, end caps, and support collisions are retained.
 Rendering and physics use the same surface. Non-raster terrain keeps its existing
 wider transition and smoothing. Existing courses retain 1.6 m shoulders unless
 re-imported with `--shoulder-width`.

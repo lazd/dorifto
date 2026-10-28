@@ -317,6 +317,77 @@ test('imported road width and optional double-yellow lines reach the terrain-dra
   } finally {
     course.dispose();
   }
+  const { Texture, TextureLoader } = await import('three');
+  const { loadTerrainSurfaces, nearbyRoadDirtMaterial } =
+    await server.ssrLoadModule('/src/surfaces.ts');
+  const loadAsync = TextureLoader.prototype.loadAsync;
+  const textures = [];
+  TextureLoader.prototype.loadAsync = async () => {
+    const texture = new Texture();
+    textures.push(texture);
+    return texture;
+  };
+  try {
+    await loadTerrainSurfaces();
+  } finally {
+    TextureLoader.prototype.loadAsync = loadAsync;
+  }
+  t.after(() => textures.forEach((texture) => texture.dispose()));
+  for (const shoulder of [0.2, 2]) {
+    const soil = nearbyRoadDirtMaterial(shoulder);
+    try {
+      assert.ok(Number(soil.defines.DIRT_HANDOFF) <= shoulder);
+      const shader = {
+        uniforms: {},
+        vertexShader: '#include <common>\n#include <begin_vertex>',
+        fragmentShader: '#include <common>\n#include <map_fragment>\n#include <alphatest_fragment>',
+      };
+      soil.onBeforeCompile(shader, {});
+      assert.ok(
+        shader.fragmentShader.includes('smoothstep(-DIRT_HANDOFF, 0.0, vMainRoad)'),
+        'side soil finishes its fade at the shoulder instead of beyond the main soil overlay',
+      );
+    } finally {
+      soil.dispose();
+    }
+  }
+  const structures = [
+    { type: 'bridge', start: 0.213, end: 0.387 },
+    { type: 'tunnel', start: 0.601, end: 0.79 },
+  ];
+  const structured = createCourse(
+    scene,
+    {
+      ...imported,
+      flat: true,
+      points: [
+        [0, -100],
+        [0, 100],
+      ],
+      structures,
+    },
+    1.8,
+  );
+  try {
+    const strips = scene.getObjectsByProperty('name', 'road-edge-dirt');
+    assert.equal(strips.length, 2);
+    for (const strip of strips) {
+      const positions = strip.geometry.getAttribute('position');
+      assert.ok(positions.count > 0, 'dirt remains on the approaches');
+      for (let i = 0; i < positions.count; i += 3) {
+        const fractions = [0, 1, 2].map((j) => (positions.getZ(i + j) + 100) / 200);
+        const low = Math.min(...fractions),
+          high = Math.max(...fractions);
+        for (const { start, end } of structures)
+          assert.ok(
+            high <= start + 1e-6 || low >= end - 1e-6,
+            'no dirt triangle crosses a bridge or tunnel boundary',
+          );
+      }
+    }
+  } finally {
+    structured.dispose();
+  }
 });
 
 test('real driver recordings and open-road gates trim to the stretch both cover', async () => {

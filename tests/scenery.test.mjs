@@ -266,6 +266,14 @@ test('side-road junctions meet pavement and expose a shoulder coverage mask', ()
     assert.equal(result.roadCoverage(x, 0), 1);
   }
   assert.equal(result.roadCoverage(8, 8), 0, 'dirt away from the mouth is untouched');
+  assert.ok(
+    result.roadDistance(-4, 0, true) > 0,
+    'the branch endpoint does not erase dirt on the opposite side of the main road',
+  );
+  assert.ok(
+    result.roadDistance(6, 4.8, true) > 0,
+    'the dirt transition stays outside the actual widened pavement edge',
+  );
   for (const sign of [-1, 1]) {
     assert.equal(
       result.isAsphalt({ x: 6, z: sign * 4.3 }),

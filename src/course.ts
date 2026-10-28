@@ -66,7 +66,8 @@ function buildCourse(scene: THREE.Group, definition: CourseDefinition, carWidth:
   scene.add(terrain.mesh);
   const scenery = createScenery(definition, terrain, {
     createRoadMaterial: () => surfaceMaterial('asphalt'),
-    createRoadDirtMaterial: nearbyRoadDirtMaterial,
+    createRoadDirtMaterial: () =>
+      nearbyRoadDirtMaterial(definition.shoulderWidth ?? courseShoulderWidth),
     projectGroundGeometry: (source, lift, horizontal) =>
       terrain.projectGroundGeometry(source, lift, horizontal),
   });
@@ -97,10 +98,10 @@ if (diffuseColor.a < ${material.transparent ? '0.01' : '0.5'}) discard;`,
         );
       if (material.transparent) {
         shader.fragmentShader = shader.fragmentShader.replace(
-          'float aa = fwidth(edgeDistance);',
+          'float aa = max(fwidth(edgeDistance), DIRT_FEATHER);',
           `float junctionSoil = (1.0 - smoothstep(0.0, 3.0, vJunction)) * junctionsVisible;
 reach = mix(reach, mix(DIRT_MIN, DIRT_MAX, 0.5) + ragged, junctionSoil);
-float aa = max(fwidth(edgeDistance), junctionSoil * 0.15);`,
+float aa = max(fwidth(edgeDistance), max(DIRT_FEATHER, junctionSoil * 0.15));`,
         );
       }
     };
@@ -246,18 +247,31 @@ float aa = max(fwidth(edgeDistance), junctionSoil * 0.15);`,
     from = 0,
     to = 1,
     relativeLateral = false,
+    columns = 1,
+    excludeStructures = false,
   ) {
     const positions: number[] = [];
     const uvs: number[] = [];
     const lateral: number[] = [];
     const steps = Math.max(1, Math.ceil((to - from) * segments));
-    for (let i = 0; i <= steps; i++) {
-      const t = THREE.MathUtils.lerp(from, to, i / steps);
+    const fractions = Array.from({ length: steps + 1 }, (_, i) =>
+      THREE.MathUtils.lerp(from, to, i / steps),
+    );
+    if (excludeStructures) {
+      fractions.push(
+        ...(definition.structures ?? []).flatMap(({ start, end }) =>
+          [start, end].filter((t) => t > from && t < to),
+        ),
+      );
+      fractions.sort((a, b) => a - b);
+    }
+    for (const t of fractions) {
       const center = route.getPointAt(t);
       const tangent = route.getTangentAt(t);
       across.set(tangent.z, 0, -tangent.x).normalize();
       const centerOffset = typeof offset === 'number' ? offset : offset(t);
-      for (const edge of [-width / 2, width / 2]) {
+      for (let column = 0; column <= columns; column++) {
+        const edge = width * (column / columns - 0.5);
         const point = center.clone().addScaledVector(across, centerOffset + edge);
         positions.push(point.x, height, point.z);
         uvs.push(point.x / 5, point.z / 5);
@@ -265,9 +279,40 @@ float aa = max(fwidth(edgeDistance), junctionSoil * 0.15);`,
       }
     }
     const indices: number[] = [];
-    for (let i = 0; i < steps; i++) {
-      const j = i * 2;
-      indices.push(j, j + 2, j + 1, j + 1, j + 2, j + 3);
+    for (let i = 0; i < fractions.length - 1; i++) {
+      if (fractions[i + 1] - fractions[i] < 1e-8) continue;
+      const middle = (fractions[i] + fractions[i + 1]) / 2;
+      if (
+        excludeStructures &&
+        definition.structures?.some(({ start, end }) => middle >= start && middle <= end)
+      )
+        continue;
+      const nearJunction =
+        columns > 1 &&
+        [i, i + 1].some((row) => {
+          const start = row * (columns + 1) * 3;
+          const end = start + columns * 3;
+          return (
+            scenery.roadDistance(
+              (positions[start] + positions[end]) / 2,
+              (positions[start + 2] + positions[end + 2]) / 2,
+              true,
+            ) <
+            width / 2 + 0.5
+          );
+        });
+      const stride = nearJunction ? 1 : columns;
+      for (let column = 0; column < columns; column += stride) {
+        const j = i * (columns + 1) + column;
+        indices.push(
+          j,
+          j + columns + 1,
+          j + stride,
+          j + stride,
+          j + columns + 1,
+          j + columns + 1 + stride,
+        );
+      }
     }
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
@@ -466,7 +511,17 @@ float aa = max(fwidth(edgeDistance), junctionSoil * 0.15);`,
     for (const side of [-1, 1]) {
       // From 0.6 m outside the dirt edge (feather) to past the farthest scattered pebbles.
       const stripWidth = dirtMax + 1.8;
-      const strip = ribbon(side * (dirtEdge + 0.6 - stripWidth / 2), stripWidth, 0.04, dirt);
+      const strip = ribbon(
+        side * (dirtEdge + 0.6 - stripWidth / 2),
+        stripWidth,
+        0.04,
+        dirt,
+        0,
+        1,
+        false,
+        Math.ceil(stripWidth / 0.5),
+        true,
+      );
       strip.name = 'road-edge-dirt';
       strip.renderOrder = 1;
       maskJunctionGeometry(strip.geometry);

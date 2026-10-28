@@ -76,6 +76,7 @@ export function roadDirtMaterial(outerEdge: number, minReach: number, maxReach: 
     DIRT_EDGE: outerEdge.toFixed(3),
     DIRT_MIN: minReach.toFixed(3),
     DIRT_MAX: maxReach.toFixed(3),
+    DIRT_FEATHER: '0.14',
   };
   material.onBeforeCompile = (shader) => {
     shader.vertexShader = shader.vertexShader
@@ -95,13 +96,12 @@ export function roadDirtMaterial(outerEdge: number, minReach: number, maxReach: 
         '#include <map_fragment>',
         `vec2 roadWorld = vMapUv * 0.6 * 5.0;
         float edgeDistance = DIRT_EDGE - abs(vLateral);
-        float drift = terrainNoise(roadWorld * 0.7) * 0.65 +
-          terrainNoise(roadWorld * 3.1 + vec2(4.7, 1.3)) * 0.35;
-        // Ragged at several scales so the edge never reads as a smooth curve.
-        float ragged = (terrainNoise(roadWorld * 7.0) - 0.5) * 0.12 +
-          (terrainNoise(roadWorld * 23.0 + vec2(9.2, 3.4)) - 0.5) * 0.06;
+        float drift = terrainNoise(roadWorld * 0.35) * 0.8 +
+          terrainNoise(roadWorld * 1.4 + vec2(4.7, 1.3)) * 0.2;
+        float ragged = (terrainNoise(roadWorld * 7.0) - 0.5) * 0.06 +
+          (terrainNoise(roadWorld * 23.0 + vec2(9.2, 3.4)) - 0.5) * 0.02;
         float reach = DIRT_MIN + 0.15 + drift * drift * (DIRT_MAX - DIRT_MIN - 0.15) + ragged;
-        float aa = fwidth(edgeDistance);
+        float aa = max(fwidth(edgeDistance), DIRT_FEATHER);
         float cover = 1.0 - smoothstep(reach - aa - 0.03, reach + aa, edgeDistance);
         float beyond = edgeDistance - reach;
         // Crumbs cling to the edge, thinning out within ~30 cm.
@@ -122,6 +122,7 @@ export function roadDirtMaterial(outerEdge: number, minReach: number, maxReach: 
         float pebble = step(ph.w, 0.5 * scatter * scatter) *
           (1.0 - smoothstep(pebbleRadius - pebbleWidth, pebbleRadius + pebbleWidth,
             length(pebbleOffset)));
+        clumps *= 0.35 * (1.0 - smoothstep(0.0, 0.3, beyond));
         cover = max(cover, max(pebble, clumps));
         // Fade out past the edge so the overlay blends into the terrain's own dirt, and as
         // roadside walls curve up from the pavement, where a horizontal fade reads as a line.
@@ -141,9 +142,13 @@ export function roadDirtMaterial(outerEdge: number, minReach: number, maxReach: 
   return material;
 }
 
-export function nearbyRoadDirtMaterial() {
+export function nearbyRoadDirtMaterial(shoulderWidth = 0.6) {
   const material = roadDirtMaterial(1.8, 1.9, 2.4);
   if (!material) return undefined;
+  material.defines = {
+    ...material.defines,
+    DIRT_HANDOFF: Math.max(0.01, Math.min(0.6, shoulderWidth)).toFixed(3),
+  };
   const compile = material.onBeforeCompile;
   material.onBeforeCompile = function (shader, renderer) {
     compile.call(this, shader, renderer);
@@ -161,11 +166,16 @@ export function nearbyRoadDirtMaterial() {
         float pavementDistance = vLateral;
         float edgeDistance = DIRT_EDGE - pavementDistance;`,
       )
-      .replace('float aa = fwidth(edgeDistance);', 'float aa = max(fwidth(edgeDistance), 0.12);')
+      .replace(
+        'float aa = max(fwidth(edgeDistance), DIRT_FEATHER);',
+        `float turningSoil = 1.0 - smoothstep(0.0, 6.0, vMainRoad);
+reach += turningSoil * 0.45;
+float aa = max(fwidth(edgeDistance), DIRT_FEATHER);`,
+      )
       .replace(
         '#include <alphatest_fragment>',
-        `diffuseColor.a *= smoothstep(-1.0, -0.65, pavementDistance) *
-          smoothstep(0.0, 0.9, vMainRoad);
+        `diffuseColor.a *= smoothstep(-1.0 - turningSoil * 0.45, -0.65, pavementDistance) *
+          smoothstep(-DIRT_HANDOFF, 0.0, vMainRoad);
         #include <alphatest_fragment>`,
       );
   };

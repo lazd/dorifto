@@ -262,28 +262,19 @@ export function createScenery(
   ) as Record<SceneryCategory, THREE.Group>;
   const junctionCones: Point[] = [];
   let roadsVisible = true;
-  const pavement = new SpatialIndex<RoadSegment>();
-  const junctionPavement = new SpatialIndex<RoadSegment>();
   const pavementEdges = new SpatialIndex<RoadSegment>();
+  const junctionEdges = new SpatialIndex<RoadSegment>();
   let pavementSurface = new PavementSurface();
   let junctionExpansion = (_x: number, _z: number) => 0;
   const roadDistance = (x: number, z: number, atGradeOnly = false) => {
-    let distance = junctionRoadFlare(0) + 3;
-    let found = false;
-    (atGradeOnly ? junctionPavement : pavement).some(x, z, (s) => {
-      const dx = s.b.x - s.a.x,
-        dz = s.b.z - s.a.z;
-      const t = THREE.MathUtils.clamp(
-        ((x - s.a.x) * dx + (z - s.a.z) * dz) / (dx * dx + dz * dz),
-        0,
-        1,
-      );
-      const width = THREE.MathUtils.lerp(s.widthA ?? s.width, s.widthB ?? s.width, t);
-      found = true;
-      distance = Math.min(distance, segmentDistance(x, z, s.a, s.b) - width / 2);
+    let distance = 3;
+    (atGradeOnly ? junctionEdges : pavementEdges).some(x, z, (edge) => {
+      distance = Math.min(distance, segmentDistance(x, z, edge.a, edge.b));
       return false;
     });
-    return distance - (found ? junctionExpansion(x, z) : 0);
+    return pavementSurface.isAsphalt({ x, z }) && (!atGradeOnly || !separated(x, z))
+      ? -distance
+      : distance;
   };
   const result = {
     group,
@@ -322,6 +313,31 @@ export function createScenery(
       ? Math.hypot(x, z) - definition.padRadius
       : surface.nearest(x, z).distance - halfWidth;
   const separated = (x: number, z: number) => Math.abs(terrain.heightAt(x, z) - ground(x, z)) > 3;
+  const pavementClearance = (p: Point) =>
+    separated(p.x, p.z) ? 100 : surface.nearest(p.x, p.z).distance - (definition.width / 2 - 0.5);
+  const addPavementEdge = (a: Point, b: Point) => {
+    const da = pavementClearance(a),
+      db = pavementClearance(b);
+    if (da < 0 && db < 0) return;
+    if (da < 0 !== db < 0) {
+      const t = da / (da - db);
+      const intersection = { x: a.x + (b.x - a.x) * t, z: a.z + (b.z - a.z) * t };
+      if (da < 0) a = intersection;
+      else b = intersection;
+    }
+    if (Math.hypot(a.x - b.x, a.z - b.z) < 0.001) return;
+    const edge = {
+      a,
+      b,
+      width: 0,
+      minX: Math.min(a.x, b.x) - 3,
+      minZ: Math.min(a.z, b.z) - 3,
+      maxX: Math.max(a.x, b.x) + 3,
+      maxZ: Math.max(a.z, b.z) + 3,
+    };
+    pavementEdges.add(edge);
+    if (!separated((a.x + b.x) / 2, (a.z + b.z) / 2)) junctionEdges.add(edge);
+  };
   junctionExpansion = (x, z) =>
     separated(x, z) ? 0 : junctionRoadFlare(surface.nearest(x, z).distance - definition.width / 2);
   const roadBlocked = (x: number, z: number) => clearance(x, z) < 0.8 && !separated(x, z);
@@ -621,7 +637,6 @@ export function createScenery(
         }
         return point;
       };
-      let indexedPavement = false;
       for (let j = 0; j < steps; j++) {
         const t0 = (length * j) / steps;
         const center = side((length * (j + 0.5)) / steps, 0);
@@ -666,26 +681,16 @@ export function createScenery(
         const geometryEnd = (length * Math.min(j + geometrySteps, steps)) / steps;
         const corners = [edge(t0, -1), edge(t0, 1), edge(geometryEnd, -1), edge(geometryEnd, 1)];
         if (river && [...corners, center].some((p) => roadBlocked(p.x, p.z))) continue;
-        if (!river && !verge && !indexedPavement) {
-          pavement.add(segment);
-          if (!separated(center.x, center.z)) junctionPavement.add(segment);
-          indexedPavement = true;
-        }
         if (!river && !verge) {
           for (const [a, b] of [
             [corners[0], corners[2]],
             [corners[1], corners[3]],
           ]) {
-            pavementEdges.add({
-              a,
-              b,
-              width: 0,
-              minX: Math.min(a.x, b.x) - 3,
-              minZ: Math.min(a.z, b.z) - 3,
-              maxX: Math.max(a.x, b.x) + 3,
-              maxZ: Math.max(a.z, b.z) + 3,
-            });
+            addPavementEdge(a, b);
           }
+          if (!closed && i === 1 && j === 0 && !ends[0]) addPavementEdge(corners[0], corners[1]);
+          if (!closed && i === points.length - 1 && j === steps - 1 && !ends[1])
+            addPavementEdge(corners[2], corners[3]);
         }
         if (verge) {
           const columns = Math.ceil(width / 0.75);
@@ -754,11 +759,9 @@ export function createScenery(
       if (batch === dirtBatch) {
         kept.roof(vertices[0], vertices[1], vertices[2]);
       } else if (parent === layers.nearbyRoads) {
-        const distance = (p: Vertex) =>
-          separated(p.x, p.z)
-            ? 100
-            : surface.nearest(p.x, p.z).distance - (definition.width / 2 - 0.5);
+        const distance = pavementClearance;
         const clipped: Vertex[] = [];
+        const intersections: Vertex[] = [];
         vertices.forEach((p, i) => {
           const q = vertices[(i + 1) % 3],
             dp = distance(p),
@@ -766,13 +769,16 @@ export function createScenery(
           if (dp >= 0) clipped.push(p);
           if (dp >= 0 !== dq >= 0) {
             const t = dp / (dp - dq);
-            clipped.push({
+            const intersection = {
               x: p.x + (q.x - p.x) * t,
               y: p.y + (q.y - p.y) * t,
               z: p.z + (q.z - p.z) * t,
-            });
+            };
+            clipped.push(intersection);
+            intersections.push(intersection);
           }
         });
+        if (intersections.length === 2) addPavementEdge(intersections[0], intersections[1]);
         for (let j = 1; j + 1 < clipped.length; j++) {
           kept.roof(clipped[0], clipped[j], clipped[j + 1]);
         }
@@ -828,12 +834,7 @@ export function createScenery(
             Array.from({ length: positions.count }, (_, i) => {
               const x = positions.getX(i),
                 z = positions.getZ(i);
-              let distance = 3;
-              pavementEdges.some(x, z, (edge) => {
-                distance = Math.min(distance, segmentDistance(x, z, edge.a, edge.b));
-                return false;
-              });
-              return pavementSurface.isAsphalt({ x, z }) ? -distance : distance;
+              return roadDistance(x, z);
             }),
             1,
           ),
