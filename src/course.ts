@@ -165,9 +165,9 @@ function buildCourse(scene: THREE.Group, definition: CourseDefinition, carWidth:
       const cone = placeCone(center.clone().addScaledVector(across, side * coneOffset));
       if (corner) cornerCones.push(cone);
     }
-    for (const { x, z } of scenery.junctionCones)
-      junctionCones.push(placeCone(new THREE.Vector3(x, 0, z)));
   }
+  for (const { x, z } of scenery.junctionCones)
+    junctionCones.push(placeCone(new THREE.Vector3(x, 0, z)));
 
   const paint = (color: number) =>
     new THREE.MeshStandardMaterial({ color, roughness: 0.75, side: THREE.DoubleSide });
