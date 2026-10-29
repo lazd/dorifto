@@ -470,7 +470,7 @@ when retrying, and reports the failing service explicitly.
 Scenery tile downloads also retry transient failures once, retaining successful cached tiles.
 Same-level crossings join as continuous widened pavement. Ground
 roads share smoothed elevation corridors and junction heights, with course banking faded out
-near junctions. Pavement footprints are unioned before generating exterior dirt verges, and
+near junctions. Pavement footprints are unioned, and
 buildings overlapping ground pavement are omitted from rendering and collision.
 Only mapped stop controls generate octagonal STOP signs and terrain-conforming stop bars.
 Stops mapped on the junction control all incoming approaches (including four-way stops);
@@ -513,33 +513,14 @@ there is no load-time migration. Rendering only rounds the normalized centerline
 Connected width changes share a tapered cross-section rather than
 a square step. Nearby pavement uses its rendered triangle footprint for asphalt
 traction and smoke rather than dust, in both the physics worker and tire effects; hiding
-the roads restores terrain traction. Narrow dirt verges share the main road's soil shader
-and fade into grass on either side. They are terrain-projected, spatially batched, and
-controlled by the road-edge dirt setting, with no additional collision bodies.
-Their soil feathers onto the side-road asphalt rather than stopping at a hard pavement
-edge. At junctions, the main-road soil's large-scale drift is reduced and its coverage
-softened, keeping the turning blend continuous without adding meshes or draw calls.
-Both use low-frequency edge drift and a minimum 14 cm feather, with translucent dirt
-crumbs fading beyond the edge rather than forming opaque, jagged clumps.
-Verge distance follows the pavement's actual ribbon edges, with fine cross-road samples
-to avoid gaps caused by interpolating across a whole road-width triangle. Junction soil
-uses a rounded pavement-distance blend and feathers across the main shoulder instead
-of being cut off by a straight triangle clip.
-Side-road dirt feathers across the main road's outer paved shoulder, stopping short
-of the white line. Around the turning radius it reaches another 45 cm inward so it
-overlaps the main-road soil rather than leaving a gap between the overlays.
-Side-road soil reaches full opacity at the outer paved shoulder, before the main-road
-overlay fades away. Its inward handoff stays within the shoulder so the two fades
-do not expose a crescent of pavement beneath the dirt.
-Side-road pavement and its dirt verge flare together along a 6 m circular turning radius,
-tapering back to the mapped branch width outside the junction. Paint and main-road dirt
-masks follow that widened footprint; traction follows the final rendered pavement.
-Junction dirt masks measure distance to the same ribbon edges as the side-road soil,
-not rounded centerline end caps. Main-road soil strips gain cross-width samples near
-junctions so their masks follow the curve instead of cutting across a broad triangle;
-away from junctions they retain their original tessellation.
-Main-road dirt geometry excludes saved bridge and tunnel spans, including their exact
-start/end boundaries; ground-level side roads underneath retain their own verges.
+the roads restores terrain traction.
+Roadside dirt adds no meshes. The terrain shader draws the dirt verge beside both the
+course and nearby roads, using per-vertex distance to the nearest pavement edge. The
+spill onto the road is drawn by the asphalt, paint, kerb, and start/finish shaders
+themselves from a shared patch (`addRoadDirt` in `surfaces.ts`), driven by each vertex's
+distance from the pavement edge. It fades with surface slope and is masked at junctions,
+on bridge decks, and inside saved bridge and tunnel spans. Side-road spill hands off
+across the main road's outer shoulder so the two never stack.
 Roads still stop at the imported 300 m corridor or the supported terrain boundary; they
 are scenery, not an unlimited navigable road network.
 Nearby-road copies aligned with the selected route
@@ -594,8 +575,8 @@ avoiding expensive overlapping broadphase pairs during map loading. Enabling the
 registers their already-positioned bodies normally.
 **Grass tufts** off (`?grass=off`) hides the decorative blades. Both help
 performance on long imported tracks, which carry hundreds of cones.
-**Road-edge dirt** off (`?road-edge-dirt=off`) hides the decorative dirt and pebble
-strips along the pavement without changing grip or collisions. It defaults to on
+**Road-edge dirt** off (`?road-edge-dirt=off`) hides the decorative dirt and pebbles
+spilled onto the pavement without changing grip or collisions. It defaults to on
 and can be toggled live in Settings > Track.
 **Kerbs** off (`?kerbs=off`) hides the red/white inside-corner kerbs. They default
 to on and can be toggled live in Settings > Track without changing grip or collisions.
@@ -1832,9 +1813,9 @@ vertex-color stripes or artificial rock strata.
 Terrain uses ambientCG Rock030, Ground037, and Grass004 CC0 scanned materials,
 with separate 1024px color, OpenGL normal, and roughness maps. Soil blends into
 rock on steep slopes and grass on gentler ground. A ragged brown dirt verge runs
-2.5–5 m out from the pavement and washes 0.1–0.9 m onto the asphalt's outer edge in
-drifts and loose grains, drawn as a transparent overlay above edge lines, kerbs, and the
-start/finish line so the paving edge isn't a clean line. Rock is tinted tan so cut banks read as earth rather
+2.5–5 m out from the pavement. The road shaders wash it onto the asphalt's outer edge,
+edge lines, kerbs, and the start/finish line in drifts and loose grains, so the paving
+edge isn't a clean line. Rock is tinted tan so cut banks read as earth rather
 than gray stone. Maps load before the first course;
 download failures stop loading with the normal startup error rather than silently
 substituting textures. Headless training retains procedural surfaces without image loading.

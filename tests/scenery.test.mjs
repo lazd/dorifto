@@ -257,16 +257,14 @@ test('side-road junctions meet pavement and expose a shoulder coverage mask', ()
     ],
     width: 6,
   });
-  const result = build(definition(data), terrain(), {
-    createRoadDirtMaterial: () => new THREE.MeshStandardMaterial(),
-  });
-  const dirt = result.group.getObjectByName('nearby-road-dirt');
-  const dirtPositions = dirt.geometry.getAttribute('position');
-  const handoff = dirt.geometry.getAttribute('mainRoad');
+  const result = build(definition(data), terrain(), { addRoadDirt: () => true });
+  const surface = result.group.getObjectByName('nearby-road-surfaces').geometry;
+  const surfacePositions = surface.getAttribute('position');
+  const handoff = surface.getAttribute('mainRoad');
   for (let i = 0; i < handoff.count; i++) {
-    if (Math.abs(dirtPositions.getX(i)) > 10) continue;
+    if (Math.abs(surfacePositions.getX(i)) > 10) continue;
     assert.ok(
-      Math.abs(handoff.getX(i) - (Math.abs(dirtPositions.getX(i)) - 5)) < 1e-5,
+      Math.abs(handoff.getX(i) - (Math.abs(surfacePositions.getX(i)) - 5)) < 1e-5,
       'side-road dirt hands off at the outer shoulder, not the white line',
     );
   }
@@ -421,7 +419,7 @@ test('connected pavement excludes internal dirt, overlapping buildings and parki
   ];
   const ground = (x, z) => x * 0.13 + z * 0.07;
   const result = build(definition(data), terrain(ground), {
-    createRoadDirtMaterial: () => new THREE.MeshStandardMaterial(),
+    addRoadDirt: () => true,
   });
   assert.equal(result.stopSignGroup.children.length, 1, 'parking lots never receive signs');
   assert.equal(
@@ -441,19 +439,6 @@ test('connected pavement excludes internal dirt, overlapping buildings and parki
           Math.abs(positions.getY(i) - ground(positions.getX(i), positions.getZ(i)) - 0.075) < 1e-5,
           'each stop-bar vertex lies on the ground, not a constant-height floating plane',
         );
-    }
-    if (!object.name.startsWith('nearby-road-dirt')) return;
-    const positions = object.geometry.getAttribute('position'),
-      index = object.geometry.getIndex();
-    for (let i = 0; i < index.count; i += 3) {
-      const points = [0, 1, 2].map((j) =>
-        new THREE.Vector3().fromBufferAttribute(positions, index.getX(i + j)),
-      );
-      const center = points.reduce((p, q) => p.add(q), new THREE.Vector3()).divideScalar(3);
-      assert.ok(
-        result.roadDistance(center.x, center.z) >= -1.5,
-        `dirt only overlaps the union's edge spill band, even at crossings and parking entrances: ${center.toArray()}`,
-      );
     }
   });
 });
@@ -761,23 +746,14 @@ test('width changes share an edge cross-section and dirt verges remain batched a
       width: 6,
     },
   );
-  const result = build(definition(data), terrain(), {
-    createRoadDirtMaterial: () => new THREE.MeshStandardMaterial(),
-  });
+  const result = build(definition(data), terrain(), { addRoadDirt: () => true });
   for (const z of [-0.05, 0, 0.05]) {
     assert.equal(result.isAsphalt({ x: 32.4, z }), true, 'both pieces meet at the average width');
     assert.equal(result.isAsphalt({ x: 32.6, z }), false, 'no abrupt wider rectangle at the seam');
   }
   assert.ok(Math.abs(result.roadDistance(32.5, 0)) < 1e-5);
-  const dirt = result.group.getObjectByName('nearby-road-dirt');
-  assert.ok(dirt);
-  assert.ok(dirt.geometry.getAttribute('lateral').array.every(Number.isFinite));
-  result.setRoadEdgeDirt(false);
-  assert.equal(dirt.visible, false);
-  assert.equal(result.group.getObjectByName('nearby-road-surfaces').visible, true);
-  assert.equal(result.isAsphalt({ x: 30, z: 0 }), true);
-  result.setRoadEdgeDirt(true);
-  assert.equal(dirt.visible, true);
+  const surface = result.group.getObjectByName('nearby-road-surfaces');
+  assert.ok(surface.geometry.getAttribute('lateral').array.every(Number.isFinite));
 });
 
 test('sloped building shells retain courtyards and share exact rendered collider triangles', () => {
@@ -940,7 +916,7 @@ test('selected road copies and parallel carriageways are omitted on bridges and 
           () => 0,
           () => height,
         ),
-        { createRoadDirtMaterial: () => new THREE.MeshStandardMaterial() },
+        { addRoadDirt: () => true },
       );
       assert.equal(
         result.group.getObjectByName('nearbyRoads').children.length,

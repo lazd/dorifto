@@ -317,9 +317,8 @@ test('imported road width and optional double-yellow lines reach the terrain-dra
   } finally {
     course.dispose();
   }
-  const { Texture, TextureLoader } = await import('three');
-  const { loadTerrainSurfaces, nearbyRoadDirtMaterial } =
-    await server.ssrLoadModule('/src/surfaces.ts');
+  const { MeshStandardMaterial, Texture, TextureLoader } = await import('three');
+  const { loadTerrainSurfaces, addNearbyRoadDirt } = await server.ssrLoadModule('/src/surfaces.ts');
   const loadAsync = TextureLoader.prototype.loadAsync;
   const textures = [];
   TextureLoader.prototype.loadAsync = async () => {
@@ -334,8 +333,9 @@ test('imported road width and optional double-yellow lines reach the terrain-dra
   }
   t.after(() => textures.forEach((texture) => texture.dispose()));
   for (const shoulder of [0.2, 2]) {
-    const soil = nearbyRoadDirtMaterial(shoulder);
+    const soil = new MeshStandardMaterial();
     try {
+      assert.ok(addNearbyRoadDirt(soil, { value: 1 }, shoulder));
       assert.ok(Number(soil.defines.DIRT_HANDOFF) <= shoulder);
       const shader = {
         uniforms: {},
@@ -369,22 +369,29 @@ test('imported road width and optional double-yellow lines reach the terrain-dra
     1.8,
   );
   try {
-    const strips = scene.getObjectsByProperty('name', 'road-edge-dirt');
-    assert.equal(strips.length, 2);
-    for (const strip of strips) {
-      const positions = strip.geometry.getAttribute('position');
-      assert.ok(positions.count > 0, 'dirt remains on the approaches');
-      for (let i = 0; i < positions.count; i += 3) {
-        const fractions = [0, 1, 2].map((j) => (positions.getZ(i + j) + 100) / 200);
-        const low = Math.min(...fractions),
-          high = Math.max(...fractions);
-        for (const { start, end } of structures)
-          assert.ok(
-            high <= start + 1e-6 || low >= end - 1e-6,
-            'no dirt triangle crosses a bridge or tunnel boundary',
+    let marked = 0;
+    scene.traverse((object) => {
+      const structure = object.geometry?.getAttribute('structure');
+      if (!structure) return;
+      const positions = object.geometry.getAttribute('position');
+      for (let i = 0; i < positions.count; i++) {
+        const fraction = (positions.getZ(i) + 100) / 200;
+        const inside = structures.some(
+          ({ start, end }) => fraction > start + 0.01 && fraction < end - 0.01,
+        );
+        const outside = structures.every(
+          ({ start, end }) => fraction < start - 0.01 || fraction > end + 0.01,
+        );
+        if (inside) marked++;
+        if (inside || outside)
+          assert.equal(
+            structure.getX(i),
+            inside ? 1 : 0,
+            'dirt spill stops at bridges and tunnels',
           );
       }
-    }
+    });
+    assert.ok(marked > 0, 'structure spans are marked on the road surfaces');
   } finally {
     structured.dispose();
   }
