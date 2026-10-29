@@ -915,7 +915,7 @@ export function createScenery(
     );
     if (points.length < 2) return;
     const cachedExpansion =
-      usesProfilePoints && points.length === profile.points.length
+      usesProfilePoints && !completeMap && points.length === profile.points.length
         ? expansionSamplesFor(profile)
         : undefined;
     const closed =
@@ -997,7 +997,8 @@ export function createScenery(
           z: az + dz * t + offset.y * sign,
           y: 0,
         };
-        if (!river && atGrade(point.x, point.z)) {
+        // Complete maps union their pavement, so junction corners come from the mapped geometry.
+        if (!river && !completeMap && atGrade(point.x, point.z)) {
           const centerX = ax + dx * t;
           const centerZ = az + dz * t;
           const sampleIndex = Math.round((t / length) * steps);

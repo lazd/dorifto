@@ -643,11 +643,10 @@ test('complete-map intersections join roads without inventing stop controls', ()
   assert.equal(result.junctionCones.length, 0, 'complete-map junctions remain open to traffic');
   assert.ok(result.group.getObjectByName('nearby-road-centerlines'));
   assert.equal(result.isAsphalt({ x: 50, z: 0 }), true);
-  assert.equal(result.isAsphalt({ x: 53.5, z: 7 }), true, 'the branch flares into the junction');
-  assert.equal(result.isAsphalt({ x: 54.8, z: 7 }), false, 'the flare tapers to the mapped width');
+  assert.equal(result.isAsphalt({ x: 53.5, z: 7 }), false, 'branches keep their mapped width');
   const workerSurface = new PavementSurface(structuredClone(result.roadMesh));
   assert.equal(workerSurface.isAsphalt({ x: 50, z: 0 }), true);
-  assert.equal(workerSurface.isAsphalt({ x: 53.5, z: 7 }), true);
+  assert.equal(workerSurface.isAsphalt({ x: 50, z: 7 }), true);
   controlled.setVisible('nearbyRoads', false);
   assert.equal(signs.visible, false, 'road controls follow nearby-road visibility');
   controlled.setVisible('nearbyRoads', true);
