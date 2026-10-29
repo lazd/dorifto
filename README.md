@@ -560,6 +560,9 @@ At ground-road merges, the full approach width follows the displayed terrain and
 the continuing road's outer dirt boundary; asphalt lift remains visual-only.
 Approach ribbons include interior samples so baked edge dirt stays at the shoulders
 instead of interpolating across the full road width.
+Terrain-projected pavement adaptively adds samples where interpolated shoulder dirt
+would spill into the road. Refinement is static, limited to the dirt transition, and
+preserves the original surface planes and collision.
 Pavement texture offsets remain visual only: bridge and approach collision stays at the
 roadbed level, avoiding a raised asphalt lip where it meets ground-road collision.
 Staggered spans, different layers and vertically separated bridges remain independent.
@@ -571,8 +574,9 @@ are not reconstructed. Edit and save older maps to refresh their nearby-road str
 Road class alone never elevates a road or creates a bridge. Ground highways share the same
 smoothed surface as small roads. Ground junctions share a graded plane aligned with the
 through road, easing into branch grades over 30 m rather than blending uphill terrain
-into bumps across the intersection. Each road contributes its nearest profile once,
-independent of how densely its map nodes are sampled. Inside junction corners receive
+into bumps across the intersection. Outside junctions, the closest width-aware road
+profile controls the full cross-section, without influence from distant uphill roads
+or the density of map nodes. Inside junction corners receive
 tangent circular pavement fillets, shared by asphalt, dirt boundaries, and road coverage.
 Four-lane two-way highways and closely spaced, oppositely
 directed major carriageways receive a low modeled center divide, interrupted at intersecting

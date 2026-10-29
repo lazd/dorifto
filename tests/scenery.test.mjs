@@ -74,10 +74,9 @@ const definition = (scenery = emptyScenery()) => ({
   scenery,
 });
 
-function terrain(ground = () => 0, road = ground) {
-  const spacing = 2,
-    columns = 101,
-    rows = 121,
+function terrain(ground = () => 0, road = ground, spacing = 2) {
+  const columns = Math.ceil(200 / spacing) + 1,
+    rows = Math.ceil(240 / spacing) + 1,
     minX = -100,
     minZ = -120;
   const heights = Float32Array.from({ length: columns * rows }, (_, i) =>
@@ -165,6 +164,72 @@ test('nearby roads share vertices and smooth normals and have locally culled bou
   assert.ok(
     meshes.some((mesh) => !frustum.intersectsObject(mesh)),
     'off-screen road sections are rejected by the renderer frustum',
+  );
+});
+
+test('coarse terrain cannot interpolate shoulder dirt across diagonal road interiors', () => {
+  const data = emptyScenery();
+  data.bounds = { minX: -100, minZ: -120, maxX: 100, maxZ: 120 };
+  data.roads = [
+    {
+      points: [
+        [20, -80],
+        [70, 80],
+      ],
+      width: 6,
+    },
+  ];
+  const ground = (x, z) => x * 0.01 + z * 0.02;
+  const result = build(definition(data), terrain(ground, ground, 5), { addRoadDirt: () => true });
+  const meshes = result.group
+    .getObjectByName('nearbyRoads')
+    .children.filter((mesh) => mesh.name.startsWith('nearby-road-surfaces'));
+  const ray = new THREE.Raycaster();
+  const length = Math.hypot(50, 160);
+  for (let t = 0.05; t < 0.95; t += 0.01) {
+    const x = 20 + 50 * t,
+      z = -80 + 160 * t;
+    ray.set(new THREE.Vector3(x, 10, z), new THREE.Vector3(0, -1, 0));
+    const hit = ray.intersectObjects(meshes)[0];
+    assert.ok(hit, 'the centerline remains paved');
+    const geometry = hit.object.geometry;
+    const { a, b, c } = hit.face;
+    const weights = new THREE.Triangle()
+      .setFromAttributeAndIndices(geometry.getAttribute('position'), a, b, c)
+      .getBarycoord(hit.point, new THREE.Vector3());
+    const lateral = geometry.getAttribute('lateral');
+    const distance =
+      lateral.getX(a) * weights.x + lateral.getX(b) * weights.y + lateral.getX(c) * weights.z;
+    assert.ok(distance <= -1, `dirt stays out of the road interior at ${t}: ${distance}`);
+    assert.ok(
+      Math.abs(hit.point.y - ground(x, z) - nearbyRoadLift) < 1e-5,
+      'mask refinement preserves the projected driving plane',
+    );
+    for (const offset of [-2.75, 2.75]) {
+      ray.set(
+        new THREE.Vector3(x - (160 / length) * offset, 10, z + (50 / length) * offset),
+        new THREE.Vector3(0, -1, 0),
+      );
+      const edge = ray.intersectObjects(meshes)[0];
+      assert.ok(edge, 'the shoulder remains paved');
+      const geometry = edge.object.geometry;
+      const { a, b, c } = edge.face;
+      const weights = new THREE.Triangle()
+        .setFromAttributeAndIndices(geometry.getAttribute('position'), a, b, c)
+        .getBarycoord(edge.point, new THREE.Vector3());
+      const lateral = geometry.getAttribute('lateral');
+      const interpolated =
+        lateral.getX(a) * weights.x + lateral.getX(b) * weights.y + lateral.getX(c) * weights.z;
+      assert.ok(
+        Math.abs(interpolated - result.roadDistance(edge.point.x, edge.point.z)) < 0.15,
+        'refinement retains dirt at the actual shoulder',
+      );
+    }
+  }
+  const triangles = meshes.reduce((n, mesh) => n + mesh.geometry.index.count / 3, 0);
+  assert.ok(
+    triangles < (result.roadMesh.indices.length / 3) * 4,
+    'adaptive sampling avoids uniformly subdividing the pavement',
   );
 });
 
@@ -567,6 +632,15 @@ test('all road corridors smooth elevations and share unbanked junction surfaces'
       );
     }
   }
+  const parallel = new SceneryRoadSurface(
+    [roads[0], { ...roads[0], width: 4, points: roads[0].points.map(([, z]) => [15, z]) }],
+    hillside,
+  );
+  for (const x of [28, 30, 32])
+    assert.ok(
+      Math.abs(parallel.heightAt(x, 40, hillside(x, 40)) - hillside(30, 40)) < 1e-8,
+      'an uphill neighboring road cannot lift or bank the driven road',
+    );
   const data = emptyScenery();
   data.roads = roads;
   const courseTerrain = new CourseTerrain(definition(data), false);

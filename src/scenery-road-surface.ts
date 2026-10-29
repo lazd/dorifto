@@ -151,9 +151,9 @@ export class SceneryRoadSurface {
   }
 
   heightAt(x: number, z: number, ground: number) {
-    // A width-weighted local blend gives overlapping corridors one surface, not stacked decks.
-    let sum = 0,
-      weights = 0,
+    // Keep a road's full cross-section on its own profile, not a blend with uphill neighbors.
+    let profileHeight = ground,
+      closest = Infinity,
       blend = 0;
     for (const segments of this.cells
       .get(`${Math.floor(x / 32)},${Math.floor(z / 32)}`)
@@ -175,13 +175,14 @@ export class SceneryRoadSurface {
       const distance = nearest;
       const influence = 1 - MathUtils.smoothstep(distance, width / 2 + 7, width / 2 + 20);
       if (!influence) continue;
-      const weight = influence / (1 + distance * distance);
-      sum += height * weight;
-      weights += weight;
-      blend = Math.max(blend, influence);
+      const score = distance / (width / 2 + 7);
+      if (score >= closest) continue;
+      closest = score;
+      blend = influence;
+      profileHeight = height;
     }
-    if (!weights) return ground;
-    let height = sum / weights,
+    if (!blend) return ground;
+    let height = profileHeight,
       junctionSum = 0,
       junctionWeights = 0,
       junctionBlend = 0;

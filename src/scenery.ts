@@ -1748,6 +1748,74 @@ export function createScenery(
   ) => {
     if (options.addRoadDirt?.(material)) setRoadDirtAttributes(geometries);
   };
+  const refineRoadDirt = (batch: Batch) => {
+    // Sample the shader's transition range, splitting on the original planes, not the terrain.
+    type Sample = Vertex & { dirt: number };
+    const sample = (p: Vertex): Sample => ({
+      ...p,
+      dirt: roadDistance(p.x, p.z),
+    });
+    const error = (actual: number, interpolated: number) =>
+      Math.abs(
+        THREE.MathUtils.clamp(actual, -1.5, 0) - THREE.MathUtils.clamp(interpolated, -1.5, 0),
+      );
+    const middle = (a: Sample, b: Sample) =>
+      sample({
+        x: (a.x + b.x) / 2,
+        y: (a.y + b.y) / 2,
+        z: (a.z + b.z) / 2,
+      });
+    const result = new Batch();
+    const refine = (a: Sample, b: Sample, c: Sample, depth: number) => {
+      if (depth === 8) {
+        result.roof(a, b, c);
+        return;
+      }
+      const ab = middle(a, b),
+        bc = middle(b, c),
+        ca = middle(c, a);
+      const errors = [
+        error(ab.dirt, (a.dirt + b.dirt) / 2),
+        error(bc.dirt, (b.dirt + c.dirt) / 2),
+        error(ca.dirt, (c.dirt + a.dirt) / 2),
+      ];
+      const worst = Math.max(...errors);
+      if (worst > 0.05) {
+        if (errors[0] === worst) {
+          refine(a, ab, c, depth + 1);
+          refine(ab, b, c, depth + 1);
+        } else if (errors[1] === worst) {
+          refine(a, b, bc, depth + 1);
+          refine(a, bc, c, depth + 1);
+        } else {
+          refine(a, b, ca, depth + 1);
+          refine(ca, b, c, depth + 1);
+        }
+        return;
+      }
+      const center = sample({
+        x: (a.x + b.x + c.x) / 3,
+        y: (a.y + b.y + c.y) / 3,
+        z: (a.z + b.z + c.z) / 3,
+      });
+      if (error(center.dirt, (a.dirt + b.dirt + c.dirt) / 3) > 0.05) {
+        refine(a, b, center, depth + 1);
+        refine(b, c, center, depth + 1);
+        refine(c, a, center, depth + 1);
+      } else result.roof(a, b, c);
+    };
+    for (let i = 0; i < batch.positions.length; i += 9) {
+      const vertices = [0, 3, 6].map((j) =>
+        sample({
+          x: batch.positions[i + j],
+          y: batch.positions[i + j + 1],
+          z: batch.positions[i + j + 2],
+        }),
+      );
+      refine(vertices[0], vertices[1], vertices[2], 0);
+    }
+    return result;
+  };
   const addDraped = (
     batch: Batch,
     parent: THREE.Group,
@@ -1847,7 +1915,15 @@ export function createScenery(
     let deckMaterial: THREE.MeshStandardMaterial | undefined;
     if (parent === layers.nearbyRoads) surfaceMaterial.flatShading = false;
     let index = 0;
-    for (const chunk of kept.chunks()) {
+    const dirt =
+      (batch === roadBatch || batch === raisedBatch) && options.addRoadDirt?.(surfaceMaterial);
+    for (let chunk of kept.chunks()) {
+      const elevated =
+        batch === raisedBatch &&
+        chunk.positions.every(
+          (_, i, p) => i % 3 !== 0 || Math.abs(p[i + 1] - ground(p[i], p[i + 2])) >= 0.5,
+        );
+      if (dirt && !elevated) chunk = refineRoadDirt(chunk);
       const unindexed = chunk.geometry();
       const positions = unindexed.getAttribute('position');
       const uv = new Float32Array(positions.count * 2);
@@ -1860,11 +1936,6 @@ export function createScenery(
       const geometry = mergeVertices(unindexed);
       if (parent === layers.nearbyRoads) geometry.computeVertexNormals();
       unindexed.dispose();
-      const elevated =
-        batch === raisedBatch &&
-        chunk.positions.every(
-          (_, i, p) => i % 3 !== 0 || Math.abs(p[i + 1] - ground(p[i], p[i + 2])) >= 0.5,
-        );
       if (elevated && !deckMaterial) {
         deckMaterial = options.createRoadMaterial?.() ?? material(color);
         deckMaterial.flatShading = false;
@@ -1876,7 +1947,7 @@ export function createScenery(
       if (!elevated) geometries.push(geometry);
     }
     if (geometries.length) {
-      if (batch === roadBatch || batch === raisedBatch) addRoadDirt(surfaceMaterial, geometries);
+      if (dirt) setRoadDirtAttributes(geometries);
     } else surfaceMaterial.dispose();
   };
   addDraped(roadBatch, layers.nearbyRoads, 0x55575a, 'nearby-road-surfaces', 0.035);
