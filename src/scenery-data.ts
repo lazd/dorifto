@@ -217,6 +217,80 @@ export function sceneryJunctions(roads: CourseScenery['roads']) {
   return new Set([...owners].filter(([, set]) => set.size > 1).map(([key]) => key));
 }
 
+/** Smooth continuous road fragments together, retaining their shared junction anchors. */
+export function smoothSceneryRoads(roads: CourseScenery['roads']) {
+  type Road = CourseScenery['roads'][number];
+  const junctions = sceneryJunctions(roads);
+  const ends = new Map<string, { road: Road; last: boolean }[]>();
+  const interiors = new Set<string>();
+  for (const road of roads) {
+    for (const point of road.points.slice(1, -1)) interiors.add(sceneryPointKey(point));
+    for (const last of [false, true]) {
+      const key = sceneryPointKey(last ? road.points.at(-1)! : road.points[0]);
+      const bucket = ends.get(key) ?? [];
+      bucket.push({ road, last });
+      ends.set(key, bucket);
+    }
+  }
+  const result = new Map<Road, SceneryPoint[]>();
+  const visited = new Set<Road>();
+  for (const road of roads) {
+    if (visited.has(road)) continue;
+    visited.add(road);
+    if (road.structure) {
+      result.set(road, smoothSceneryLine(road.points, road.width, junctions));
+      continue;
+    }
+    const chain = [{ road, reverse: false }];
+    const extend = (last: boolean) => {
+      while (true) {
+        const member = last ? chain.at(-1)! : chain[0];
+        const point = last !== member.reverse ? member.road.points.at(-1)! : member.road.points[0];
+        const key = sceneryPointKey(point),
+          bucket = ends.get(key)!;
+        if (bucket.length !== 2 || interiors.has(key)) break;
+        const next = bucket.find((end) => end.road !== member.road);
+        if (
+          !next ||
+          visited.has(next.road) ||
+          next.road.structure ||
+          (next.road.layer ?? 0) !== (member.road.layer ?? 0)
+        )
+          break;
+        visited.add(next.road);
+        const entry = { road: next.road, reverse: last ? next.last : !next.last };
+        if (last) chain.push(entry);
+        else chain.unshift(entry);
+      }
+    };
+    extend(false);
+    extend(true);
+    const points = chain.flatMap(({ road, reverse }, i) => {
+      const points = reverse ? [...road.points].reverse() : road.points;
+      return i ? points.slice(1) : points;
+    });
+    const rounded = smoothSceneryLine(
+      points,
+      Math.max(...chain.map(({ road }) => road.width)),
+      junctions,
+    );
+    if (chain.length === 1) {
+      result.set(road, rounded);
+      continue;
+    }
+    let from = 0;
+    for (const { road, reverse } of chain) {
+      const key = sceneryPointKey(reverse ? road.points[0] : road.points.at(-1)!);
+      const to = rounded.findIndex((point, i) => i > from && sceneryPointKey(point) === key);
+      if (to < 0) throw new Error('Smoothed road lost a fragment endpoint');
+      const points = rounded.slice(from, to + 1);
+      result.set(road, reverse ? points.reverse() : points);
+      from = to;
+    }
+  }
+  return result;
+}
+
 export interface CourseScenery {
   version: 1;
   importRevision?: number;

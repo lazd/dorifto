@@ -556,6 +556,20 @@ connected approaches follow the adjusted endpoints and grade without changing th
 Approaches use half-meter samples and a quintic transition to ease into the deck grade.
 Their final heading and full-width cross-section match the deck before blending back
 into the mapped bend, preventing open seams at the pavement edges.
+Approach widths taper over their length to the aligned continuing road, including
+multi-arm merges, rather than narrowing abruptly at the final source node.
+Paint follows the same interpolated cross-sections as pavement. White edge lines only
+follow exposed pavement boundaries, not internal merge edges; junction interiors remain
+clear of centerlines and lane arrows. Multilane one-way roads have per-lane arrows and
+dashed separators. Compatible degree-two road fragments share their dash phase, including
+partial dashes at fragment ends.
+Degree-two road fragments are rounded as one continuous line before splitting back at
+their shared anchors, so lane-count changes do not introduce heading kinks. Median
+placement uses the displayed tapered widths of both carriageways.
+Width transitions receive meter-spaced samples near fragment ends, independent of how
+sparsely the original straight road was mapped.
+Bridge and approach markings project onto the rendered pavement triangles rather than
+being reclassified as ground paint near the abutments.
 At ground-road merges, the full approach width follows the displayed terrain and shares
 the continuing road's outer dirt boundary; asphalt lift remains visual-only.
 Approach ribbons include interior samples so baked edge dirt stays at the shoulders
@@ -578,8 +592,10 @@ smoothed surface as small roads. Ground junctions share a graded plane aligned w
 through road, easing into branch grades over 30 m rather than blending uphill terrain
 into bumps across the intersection. Junction grading only affects its connected roads,
 so hillside intersections cannot lift an unrelated highway below. Outside junctions, the closest width-aware road
-profile controls the full cross-section, without influence from distant uphill roads
-or the density of map nodes. Inside junction corners receive
+profile controls the full cross-section and its two-meter support, without influence from
+distant uphill roads or the density of map nodes. Beyond that protected roadbed, nearby
+grade fields blend continuously before returning to the original terrain, avoiding sharp
+nearest-road ownership creases between neighboring roads. Inside junction corners receive
 tangent circular pavement fillets, shared by asphalt, dirt boundaries, and road coverage.
 Four-lane two-way highways and closely spaced, oppositely
 directed major carriageways receive a narrow, sloped concrete Jersey barrier with yellow
@@ -604,7 +620,7 @@ rendered landscape triangles, including simplified distant patches, rather than 
 collision grid. Their surfaces and a 6 m band on either side retain native terrain detail;
 unrelated landscape remains simplified. This changes visual tessellation, not the heightfield
 or collision. Separately, Complete maps locally refine terrain cells where coarse interpolation
-disagrees with road grades or river channels, with matching collision and crack-free neighboring
+disagrees with road grades, their full terrain-blending banks, or river channels, with matching collision and crack-free neighboring
 cells, so adjacent uphill roads cannot push triangles into pavement. Rivers occupy channels
 one meter below the original local surface, with gradual six-meter banks. Ground-road pavement
 and its immediate support remain intact; that protection stops at bridge abutments rather than
@@ -981,6 +997,8 @@ live in `src/turn-sign.ts`.
 
 Several/Many use at most 8 m between signs and at least three per turn.
 Longer bends receive more signs, and reverse courses have their own runs.
+Placements whose posts or board edges overlap course pavement or nearby mapped roads
+are omitted, including their collision bodies, so intersecting roads remain clear.
 Existing `?signs=on` links map to Several. Inactive density/direction groups
 are hidden and removed from physics; switching modes restores the selected
 signs to their placed poses.

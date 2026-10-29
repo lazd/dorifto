@@ -1,9 +1,10 @@
 import * as THREE from 'three';
 import type { CourseScenery, SceneryPoint } from './scenery-data';
-import { sceneryJunctions, smoothSceneryLine } from './scenery-data';
+import { sceneryPointKey, smoothSceneryRoads } from './scenery-data';
 
 export const nearbyBridgeClearance = 6.5;
 export const nearbyRoadLift = 0.035;
+export const nearbyRoadTaperLength = 20;
 
 export function isMajorSceneryRoad(road: CourseScenery['roads'][number]) {
   return road.roadClass
@@ -191,11 +192,25 @@ export function sceneryRoadProfiles(
   includeTunnels = false,
 ) {
   const bridges = roads.filter((road) => road.structure === 'bridge');
-  const junctions = sceneryJunctions(roads);
+  const roundedRoads = smoothSceneryRoads(roads);
+  const endpointWidths = new Map<string, Set<number>>();
+  const endpointKey = (road: CourseScenery['roads'][number], point: SceneryPoint) =>
+    `${road.layer ?? 0}:${sceneryPointKey(point)}`;
+  for (const road of roads)
+    for (const point of [road.points[0], road.points.at(-1)!]) {
+      const key = endpointKey(road, point),
+        widths = endpointWidths.get(key) ?? new Set<number>();
+      widths.add(road.width);
+      endpointWidths.set(key, widths);
+    }
   const profiles = roads
     .filter((road) => includeTunnels || road.structure !== 'tunnel')
     .map((road) => {
-      const rounded = smoothSceneryLine(road.points, road.width, junctions);
+      const rounded = roundedRoads.get(road)!;
+      const roundedCurve = new SceneryRoadCurve(rounded);
+      const taperEnds = [road.points[0], road.points.at(-1)!].map(
+        (point) => endpointWidths.get(endpointKey(road, point))!.size > 1,
+      );
       const major = isMajorSceneryRoad(road);
       const needsProfile =
         road.structure === 'bridge' ||
@@ -210,19 +225,37 @@ export function sceneryRoadProfiles(
       for (let i = 1; i < rounded.length; i++) {
         const a = rounded[i - 1],
           b = rounded[i];
-        const steps = needsProfile
-          ? Math.max(
-              1,
-              Math.ceil(
-                Math.hypot(b[0] - a[0], b[1] - a[1]) / (road.structure === 'bridge' ? 2 : 0.5),
-              ),
-            )
-          : 1;
-        for (let j = 1; j <= steps; j++)
-          points.push([
-            THREE.MathUtils.lerp(a[0], b[0], j / steps),
-            THREE.MathUtils.lerp(a[1], b[1], j / steps),
-          ]);
+        const from = roundedCurve.distances[i - 1],
+          to = roundedCurve.distances[i];
+        const cuts = [from, to];
+        for (const boundary of [
+          taperEnds[0] ? nearbyRoadTaperLength : 0,
+          taperEnds[1]
+            ? roundedCurve.getLength() - nearbyRoadTaperLength
+            : roundedCurve.getLength(),
+        ])
+          if (boundary > from && boundary < to) cuts.push(boundary);
+        cuts.sort((a, b) => a - b);
+        for (let part = 1; part < cuts.length; part++) {
+          const start = cuts[part - 1],
+            end = cuts[part],
+            middle = (start + end) / 2;
+          const taper =
+            (taperEnds[0] && middle < nearbyRoadTaperLength) ||
+            (taperEnds[1] && roundedCurve.getLength() - middle < nearbyRoadTaperLength);
+          const spacing = needsProfile
+            ? road.structure === 'bridge'
+              ? 2
+              : 0.5
+            : taper
+              ? 1
+              : Infinity;
+          const steps = Math.max(1, Math.ceil((end - start) / spacing));
+          for (let j = 1; j <= steps; j++) {
+            const t = (THREE.MathUtils.lerp(start, end, j / steps) - from) / (to - from);
+            points.push([THREE.MathUtils.lerp(a[0], b[0], t), THREE.MathUtils.lerp(a[1], b[1], t)]);
+          }
+        }
       }
 
       const curve = new SceneryRoadCurve(points);

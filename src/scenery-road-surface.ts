@@ -5,12 +5,12 @@ import {
   sceneryJunctions,
   sceneryPointKey,
   smoothAlong,
-  smoothSceneryLine,
+  smoothSceneryRoads,
   type CourseScenery,
 } from './scenery-data';
 
 type Sample = { x: number; z: number; height: number; distance: number };
-type EndPlane = { x: number; z: number; dx: number; dz: number };
+type EndPlane = { x: number; z: number; dx: number; dz: number; distance: number };
 type Segment = { a: Sample; b: Sample; width: number; endPlanes: EndPlane[] };
 type Anchor = Sample & {
   slopeX: number;
@@ -21,6 +21,7 @@ type Anchor = Sample & {
 };
 type Junction = Anchor & { inner: number; roads: ReadonlySet<number> };
 const junctionReach = 30;
+export const sceneryRoadBlendReach = 20;
 
 /** A common unbanked surface for ground roads, including their shared junction heights. */
 export class SceneryRoadSurface {
@@ -29,6 +30,7 @@ export class SceneryRoadSurface {
 
   constructor(roads: CourseScenery['roads'], height: (x: number, z: number) => number) {
     const junctions = sceneryJunctions(roads);
+    const roundedRoads = smoothSceneryRoads(roads);
     const bridgeEnds = new Set(
       roads
         .filter((road) => road.structure === 'bridge')
@@ -38,7 +40,7 @@ export class SceneryRoadSurface {
     const lines = roads
       .filter((road) => !road.structure)
       .map((road, roadIndex) => {
-        const points = smoothSceneryLine(road.points, road.width, junctions);
+        const points = roundedRoads.get(road)!;
         const samples: Sample[] = [{ x: points[0][0], z: points[0][1], height: 0, distance: 0 }];
         for (let i = 1; i < points.length; i++) {
           const [ax, az] = points[i - 1],
@@ -96,6 +98,7 @@ export class SceneryRoadSurface {
             {
               x: point.x,
               z: point.z,
+              distance: point.distance,
               dx: (point.x - neighbor.x) / length,
               dz: (point.z - neighbor.z) / length,
             },
@@ -122,8 +125,20 @@ export class SceneryRoadSurface {
       for (let i = 1; i < samples.length; i++) {
         const a = samples[i - 1],
           b = samples[i];
-        const segment = { a, b, width, endPlanes: lines[line].endPlanes };
-        const radius = width / 2 + 20;
+        const segment = {
+          a,
+          b,
+          width,
+          endPlanes: lines[line].endPlanes.filter(
+            (plane) =>
+              Math.min(
+                Math.abs(a.distance - plane.distance),
+                Math.abs(b.distance - plane.distance),
+              ) <
+              width / 2,
+          ),
+        };
+        const radius = width / 2 + sceneryRoadBlendReach;
         for (
           let x = Math.floor((Math.min(a.x, b.x) - radius) / 32);
           x <= Math.floor((Math.max(a.x, b.x) + radius) / 32);
@@ -204,7 +219,29 @@ export class SceneryRoadSurface {
     let profileHeight = ground,
       closest = Infinity,
       blend = 0,
-      closestRoad = -1;
+      closestEdge = Infinity,
+      surroundingHeight = 0,
+      surroundingWeight = 0,
+      surroundingBlend = 0;
+    const junctions = this.junctionCells.get(`${Math.floor(x / 32)},${Math.floor(z / 32)}`) ?? [];
+    const junctionHeight = (roadIndex: number, profile: number) => {
+      let sum = 0,
+        weights = 0,
+        blend = 0;
+      for (const junction of junctions) {
+        if (!junction.roads.has(roadIndex)) continue;
+        const distance = Math.hypot(x - junction.x, z - junction.z);
+        const weight = 1 - MathUtils.smoothstep(distance, junction.inner, junctionReach);
+        sum +=
+          (junction.height +
+            (x - junction.x) * junction.slopeX +
+            (z - junction.z) * junction.slopeZ) *
+          weight;
+        weights += weight;
+        blend = Math.max(blend, weight);
+      }
+      return weights ? MathUtils.lerp(profile, sum / weights, blend) : profile;
+    };
     for (const [roadIndex, segments] of this.cells
       .get(`${Math.floor(x / 32)},${Math.floor(z / 32)}`)
       ?.entries() ?? []) {
@@ -223,35 +260,26 @@ export class SceneryRoadSurface {
         height = MathUtils.lerp(a.height, b.height, t);
       }
       const distance = nearest;
-      const influence = 1 - MathUtils.smoothstep(distance, width / 2 + 7, width / 2 + 20);
+      const influence =
+        1 - MathUtils.smoothstep(distance, width / 2 + 7, width / 2 + sceneryRoadBlendReach);
       if (!influence) continue;
-      const score = distance / (width / 2 + 7);
+      const edge = distance - width / 2;
+      height = junctionHeight(roadIndex, height);
+      // Outside the protected roadbed, continuous distance weights avoid nearest-road cliffs.
+      const weight = influence / Math.max(0.001, edge - 2) ** 2;
+      surroundingHeight += height * weight;
+      surroundingWeight += weight;
+      surroundingBlend = Math.max(surroundingBlend, influence);
+      closestEdge = Math.min(closestEdge, edge);
+      const score = edge <= 2 ? distance / (width / 2 + 2) - 1 : distance / (width / 2 + 7);
       if (score >= closest) continue;
       closest = score;
-      closestRoad = roadIndex;
       blend = influence;
       profileHeight = height;
     }
     if (!blend) return ground;
-    let height = profileHeight,
-      junctionSum = 0,
-      junctionWeights = 0,
-      junctionBlend = 0;
-    for (const junction of this.junctionCells.get(`${Math.floor(x / 32)},${Math.floor(z / 32)}`) ??
-      []) {
-      if (!junction.roads.has(closestRoad)) continue;
-      const distance = Math.hypot(x - junction.x, z - junction.z);
-      const weight = 1 - MathUtils.smoothstep(distance, junction.inner, junctionReach);
-      junctionSum +=
-        (junction.height +
-          (x - junction.x) * junction.slopeX +
-          (z - junction.z) * junction.slopeZ) *
-        weight;
-      junctionWeights += weight;
-      junctionBlend = Math.max(junctionBlend, weight);
-    }
-    if (junctionWeights)
-      height = MathUtils.lerp(height, junctionSum / junctionWeights, junctionBlend);
-    return MathUtils.lerp(ground, height, blend);
+    if (closestEdge > 2)
+      return MathUtils.lerp(ground, surroundingHeight / surroundingWeight, surroundingBlend);
+    return MathUtils.lerp(ground, profileHeight, blend);
   }
 }

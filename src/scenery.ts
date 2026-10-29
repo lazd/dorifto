@@ -6,7 +6,12 @@ import { projectTerrainGeometry } from './terrain';
 import { PavementSurface, TerrainSurface, type TriangleMeshData } from './terrain-query';
 import type { SceneryCategory, SceneryPoint, SceneryPolygon } from './scenery-data';
 import { junctionRoadFlare, sceneryJunctions, sceneryPointKey } from './scenery-data';
-import { nearbyRoadLift, sceneryBridgeGroups, sceneryRoadProfiles } from './scenery-roads';
+import {
+  nearbyRoadLift,
+  nearbyRoadTaperLength,
+  sceneryBridgeGroups,
+  sceneryRoadProfiles,
+} from './scenery-roads';
 import { riverWaterLift } from './scenery-river-channels';
 import { buildBridgeGeometry, createBridgeMeshes } from './bridges';
 import { createStopSignFactory } from './turn-sign';
@@ -773,9 +778,18 @@ export function createScenery(
     if (!tunnel) tunnelBatches.set(batch, (tunnel = new Batch()));
     return tunnel;
   };
+  const raisedPaintBatches = new Map<Batch, Batch>();
+  const paintBatch = (batch: Batch, profile: RoadProfile) => {
+    if (!profile.bridgeApproach && profile.road.structure !== 'bridge')
+      return profileBatch(batch, profile);
+    let raised = raisedPaintBatches.get(batch);
+    if (!raised) raisedPaintBatches.set(batch, (raised = new Batch()));
+    return raised;
+  };
   type IndexedRoadSegment = RoadSegment & {
     profile: RoadProfile;
     profileIndex: number;
+    distance: number;
   };
   type RoadIntersection = {
     point: Point;
@@ -799,6 +813,7 @@ export function createScenery(
         maxZ: Math.max(az, bz),
         profile,
         profileIndex,
+        distance: profile.curve.distances[i - 1],
       });
     }
   }
@@ -806,7 +821,7 @@ export function createScenery(
     const reach = definition.width / 2;
     let distance = reach;
     let section: RoadCrossSection | undefined;
-    for (const { a, b, profile } of roadSegments.query({
+    for (const { a, b, profile, distance: along } of roadSegments.query({
       minX: position.x - reach,
       maxX: position.x + reach,
       minZ: position.z - reach,
@@ -829,7 +844,7 @@ export function createScenery(
       section = {
         position: point,
         tangent: { x: (sign * dx) / length, z: (sign * dz) / length },
-        width: THREE.MathUtils.clamp(profile.road.width, 0.6, 20),
+        width: roadWidthAt(profile, along + t * length),
       };
     }
     return section;
@@ -994,27 +1009,83 @@ export function createScenery(
   if (stopSignGroup.children.length) layers.nearbyRoads.add(stopSignGroup);
   const roadPaths = profiles.map(({ road }) => road);
   type RoadEnd = { point: SceneryPoint; width: number };
-  const roadEnd = ({ road, points }: RoadProfile, end: boolean): RoadEnd | undefined => {
+  const findRoadEnd = (profile: RoadProfile, end: boolean): RoadEnd | undefined => {
+    const { road, points } = profile;
     const p = end ? points.at(-1)! : points[0];
+    const height = profile.raised ? profile.heightAt(...p) : ground(...p);
     const neighbors = profiles.flatMap((other) =>
       other.road === road
         ? []
         : [false, true].flatMap((last) => {
             const q = last ? other.points.at(-1)! : other.points[0];
-            return Math.hypot(p[0] - q[0], p[1] - q[1]) < 0.1
+            return Math.hypot(p[0] - q[0], p[1] - q[1]) < 0.1 &&
+              Math.abs(height - (other.raised ? other.heightAt(...q) : ground(...q))) < 0.5
               ? [
                   {
                     point: last ? other.points.at(-2)! : other.points[1],
-                    width:
-                      (THREE.MathUtils.clamp(road.width, 0.6, 20) +
-                        THREE.MathUtils.clamp(other.road.width, 0.6, 20)) /
-                      2,
+                    width: THREE.MathUtils.clamp(
+                      road.structure === 'bridge'
+                        ? road.width
+                        : other.road.structure === 'bridge'
+                          ? other.road.width
+                          : profile.bridgeApproach && !other.bridgeApproach
+                            ? other.road.width
+                            : other.bridgeApproach && !profile.bridgeApproach
+                              ? road.width
+                              : (road.width + other.road.width) / 2,
+                      0.6,
+                      20,
+                    ),
                   },
                 ]
               : [];
           }),
     );
-    return neighbors.length === 1 ? neighbors[0] : undefined;
+    if (neighbors.length === 1) return neighbors[0];
+    const inside = end ? points.at(-2)! : points[1];
+    const dx = p[0] - inside[0],
+      dz = p[1] - inside[1];
+    const length = Math.hypot(dx, dz);
+    const aligned = neighbors
+      .map((neighbor) => ({
+        ...neighbor,
+        alignment:
+          ((neighbor.point[0] - p[0]) * dx + (neighbor.point[1] - p[1]) * dz) /
+          (Math.hypot(neighbor.point[0] - p[0], neighbor.point[1] - p[1]) * length),
+      }))
+      .filter(({ alignment }) => alignment > 0.85)
+      .sort((a, b) => b.alignment - a.alignment);
+    return aligned[0];
+  };
+  const roadEnds = new Map<RoadProfile, (RoadEnd | undefined)[]>();
+  const roadCrossSections = new Map<RoadProfile, { widths: number[]; offsets: THREE.Vector2[] }>();
+  const roadEnd = (profile: RoadProfile, last: boolean) => {
+    let ends = roadEnds.get(profile);
+    if (!ends) {
+      ends = [findRoadEnd(profile, false), findRoadEnd(profile, true)];
+      roadEnds.set(profile, ends);
+    }
+    return ends[last ? 1 : 0];
+  };
+  const roadWidthAt = (profile: RoadProfile, distance: number) => {
+    const sections = roadCrossSections.get(profile);
+    if (sections) {
+      const { i, t } = profile.curve.segment(distance / profile.curve.getLength());
+      return THREE.MathUtils.lerp(sections.widths[i - 1], sections.widths[i], t);
+    }
+    const width = THREE.MathUtils.clamp(profile.road.width, 0.6, 20);
+    const total = profile.curve.getLength();
+    const start = roadEnd(profile, false)?.width ?? width;
+    const end = roadEnd(profile, true)?.width ?? width;
+    const reach = Math.min(
+      profile.bridgeApproach ? 40 : nearbyRoadTaperLength,
+      start !== width && end !== width ? total / 2 : total,
+    );
+    return (
+      width +
+      (start - width) * (1 - THREE.MathUtils.smoothstep(distance, 0, reach)) +
+      (end - width) * (1 - THREE.MathUtils.smoothstep(total - distance, 0, reach))
+    );
   };
   const mouths: (Point & { width: number })[] = [];
   function ribbon(
@@ -1042,6 +1113,7 @@ export function createScenery(
       points.length > 2 &&
       Math.hypot(points[0][0] - points.at(-1)![0], points[0][1] - points.at(-1)![1]) < 0.01;
     const widths = points.map((_, i) => {
+      if (usesProfilePoints) return roadWidthAt(profile, profile.curve.distances[i]);
       const end = i === 0 ? ends[0] : i === points.length - 1 ? ends[1] : undefined;
       return end ? end.width : width;
     });
@@ -1060,6 +1132,8 @@ export function createScenery(
       if (denominator < 0.001) return normal.multiplyScalar(localWidth / 2);
       return miter.multiplyScalar(Math.min(localWidth / 2 / denominator, localWidth));
     });
+    if (usesProfilePoints && points.length === profile.points.length)
+      roadCrossSections.set(profile, { widths, offsets });
     let connected = false;
     for (let i = 1; i < points.length; i++) {
       const [ax, az] = points[i - 1],
@@ -1264,22 +1338,6 @@ export function createScenery(
             addPavementEdge(corners[0], corners[2]);
             addPavementEdge(corners[1], corners[3]);
           }
-          if (
-            profile.major &&
-            (separated(center.x, center.z) || clearance(center.x, center.z) >= 0)
-          ) {
-            for (const sign of [-1, 1]) {
-              const from = sign < 0 ? 0.6 / width : 1 - 0.72 / width;
-              const to = from + 0.12 / width;
-              const a = across(corners[0], corners[1], from, 0.02);
-              const b = across(corners[0], corners[1], to, 0.02);
-              const c = across(corners[2], corners[3], from, 0.02);
-              const d = across(corners[2], corners[3], to, 0.02);
-              const markings = profileBatch(markingBatch, profile);
-              markings.roof(a, b, c);
-              markings.roof(b, d, c);
-            }
-          }
           if (profile.road.structure !== 'bridge') {
             for (const side of [0, 1]) {
               const a = corners[side],
@@ -1466,6 +1524,7 @@ export function createScenery(
     for (let distance = 2; distance < length - 2; distance += 2) {
       const center = curve.getPointAt(distance / length);
       const tangent = curve.getTangentAt(distance / length);
+      const width = roadWidthAt(profile, distance);
       let medianX = center.x,
         medianZ = center.z,
         medianWidth = 0;
@@ -1502,7 +1561,8 @@ export function createScenery(
           const x = segment.a.x + dx * t,
             z = segment.a.z + dz * t;
           const separation = Math.hypot(x - center.x, z - center.z);
-          const gap = separation - (road.width + other.road.width) / 2;
+          const otherWidth = roadWidthAt(other, segment.distance + t * size);
+          const gap = separation - (width + otherWidth) / 2;
           if (gap < 0.6 || gap > 12 || separation >= closest) continue;
           const acrossX = x - center.x,
             acrossZ = z - center.z;
@@ -1537,7 +1597,7 @@ export function createScenery(
             medianWidth = 0;
             continue;
           }
-          const offset = (road.width / 2 + gap / 2) / separation;
+          const offset = (width / 2 + gap / 2) / separation;
           medianX = center.x + (x - center.x) * offset;
           medianZ = center.z + (z - center.z) * offset;
           medianWidth = Math.min(3, gap - 0.3);
@@ -1688,7 +1748,7 @@ export function createScenery(
     profile: RoadProfile,
     batch: Batch,
     distance: number,
-    lateral: number,
+    lateral: number | ((distance: number) => number),
     length: number,
     width: number,
   ) => {
@@ -1696,6 +1756,14 @@ export function createScenery(
     const centerAt = (at: number) =>
       profile.curve.getPointAt(THREE.MathUtils.clamp(at / total, 0, 1));
     const normalAt = (at: number) => {
+      const sections = roadCrossSections.get(profile);
+      if (sections) {
+        const { i, t } = profile.curve.segment(at / total);
+        return sections.offsets[i - 1]
+          .clone()
+          .lerp(sections.offsets[i], t)
+          .multiplyScalar(2 / roadWidthAt(profile, at));
+      }
       const tangent = profile.curve.getTangentAt(THREE.MathUtils.clamp(at / total, 0, 1));
       return new THREE.Vector2(-tangent.z, tangent.x);
     };
@@ -1705,9 +1773,15 @@ export function createScenery(
     const b = centerAt(bDistance);
     const aNormal = normalAt(aDistance);
     const bNormal = normalAt(bDistance);
-    const offsetPoint = (center: THREE.Vector3, normal: THREE.Vector2, side: number): Vertex => {
-      const x = center.x + normal.x * (lateral + (side * width) / 2);
-      const z = center.z + normal.y * (lateral + (side * width) / 2);
+    const offsetPoint = (
+      center: THREE.Vector3,
+      normal: THREE.Vector2,
+      side: number,
+      at: number,
+    ): Vertex => {
+      const offset = typeof lateral === 'function' ? lateral(at) : lateral;
+      const x = center.x + normal.x * (offset + (side * width) / 2);
+      const z = center.z + normal.y * (offset + (side * width) / 2);
       const raised =
         profile.road.structure === 'bridge' ||
         profile.bridgeApproach ||
@@ -1718,10 +1792,10 @@ export function createScenery(
         y: (raised ? profile.heightAt(x, z) : ground(x, z)) + 0.075,
       };
     };
-    const aLeft = offsetPoint(a, aNormal, -1);
-    const aRight = offsetPoint(a, aNormal, 1);
-    const bLeft = offsetPoint(b, bNormal, -1);
-    const bRight = offsetPoint(b, bNormal, 1);
+    const aLeft = offsetPoint(a, aNormal, -1, aDistance);
+    const aRight = offsetPoint(a, aNormal, 1, aDistance);
+    const bLeft = offsetPoint(b, bNormal, -1, bDistance);
+    const bRight = offsetPoint(b, bNormal, 1, bDistance);
     batch.roof(aLeft, aRight, bLeft);
     batch.roof(aRight, bRight, bLeft);
   };
@@ -1729,15 +1803,132 @@ export function createScenery(
     [profile.points[0], profile.points.at(-1)!].some(
       ([x, z]) => Math.hypot(x - point.x, z - point.z) < 1,
     );
-  // The course and crossing roads keep their own markings; another road's paint stops at their pavement.
+  const paintJunctions = new SpatialIndex<Bounds & { x: number; z: number; radius: number }>();
+  const junctionArms = new Map<string, { point: SceneryPoint; arms: Set<string>; width: number }>();
+  for (const profile of profiles)
+    for (let i = 0; i < profile.road.points.length; i++) {
+      const point = profile.road.points[i],
+        key = sceneryPointKey(point);
+      const junction = junctionArms.get(key) ?? { point, arms: new Set<string>(), width: 0 };
+      for (const neighbor of [profile.road.points[i - 1], profile.road.points[i + 1]])
+        if (neighbor) junction.arms.add(sceneryPointKey(neighbor));
+      junction.width = Math.max(junction.width, Math.min(20, profile.road.width));
+      junctionArms.set(key, junction);
+    }
+  for (const {
+    point: [x, z],
+    arms,
+    width,
+  } of junctionArms.values()) {
+    if (arms.size < 3) continue;
+    const radius = width / 2 + 0.5;
+    paintJunctions.add({
+      x,
+      z,
+      radius,
+      minX: x - radius,
+      maxX: x + radius,
+      minZ: z - radius,
+      maxZ: z + radius,
+    });
+  }
+  // Keep junction interiors clear; degree-two road fragments remain continuous.
   const paintCovered = (profile: RoadProfile, x: number, z: number) =>
     (!separated(x, z) && surface.nearest(x, z).distance < definition.width / 2 + 0.5) ||
+    paintJunctions.some(
+      x,
+      z,
+      (junction) =>
+        Math.hypot(x - junction.x, z - junction.z) < junction.radius &&
+        (!profile.raised || Math.abs(profile.heightAt(x, z) - ground(x, z) - nearbyRoadLift) < 0.5),
+    ) ||
     (junctionsByRoad.get(profile) ?? []).some(
       ({ small, large, point }) =>
         small === profile &&
         !nearEnd(large, point) &&
         Math.hypot(x - point.x, z - point.z) < Math.min(20, large.road.width) / 2 + 0.5,
     );
+  const laneCount = (profile: RoadProfile) =>
+    Math.max(1, Math.round(profile.road.lanes ?? profile.road.width / 3.25));
+  const paintEnds = new Map<string, { profile: RoadProfile; last: boolean }[]>();
+  const paintEndKey = (profile: RoadProfile, last: boolean) =>
+    sceneryPointKey(last ? profile.points.at(-1)! : profile.points[0]);
+  for (const profile of profiles)
+    for (const last of [false, true]) {
+      const key = paintEndKey(profile, last);
+      const ends = paintEnds.get(key) ?? [];
+      ends.push({ profile, last });
+      paintEnds.set(key, ends);
+    }
+  const paintPhases = new Map<RoadProfile, { phase: number; direction: number }>();
+  for (const root of profiles) {
+    if (paintPhases.has(root)) continue;
+    paintPhases.set(root, { phase: 0, direction: 1 });
+    const pending = [root];
+    while (pending.length) {
+      const profile = pending.pop()!;
+      const { phase, direction } = paintPhases.get(profile)!;
+      for (const last of [false, true]) {
+        const key = paintEndKey(profile, last),
+          ends = paintEnds.get(key)!;
+        if (ends.length !== 2 || (junctionArms.get(key)?.arms.size ?? 2) !== 2) continue;
+        const other = ends.find((end) => end.profile !== profile);
+        if (
+          !other ||
+          paintPhases.has(other.profile) ||
+          laneCount(profile) !== laneCount(other.profile) ||
+          profile.road.centerline !== other.profile.road.centerline ||
+          (profile.road.oneway === undefined) !== (other.profile.road.oneway === undefined)
+        )
+          continue;
+        const nextDirection = direction * (last === other.last ? -1 : 1);
+        const sharedPhase = phase + (last ? direction * profile.curve.getLength() : 0);
+        paintPhases.set(other.profile, {
+          phase: sharedPhase - (other.last ? nextDirection * other.profile.curve.getLength() : 0),
+          direction: nextDirection,
+        });
+        pending.push(other.profile);
+      }
+    }
+  }
+  const paintLine = (
+    profile: RoadProfile,
+    batch: Batch,
+    lateral: number | ((distance: number) => number),
+    dashed: boolean,
+  ) => {
+    const length = profile.curve.getLength();
+    const intervals: [number, number][] = [];
+    if (dashed) {
+      const { phase, direction } = paintPhases.get(profile)!;
+      const end = phase + direction * length;
+      for (
+        let dash = Math.floor(Math.min(phase, end) / 12);
+        dash <= Math.floor(Math.max(phase, end) / 12);
+        dash++
+      ) {
+        const a = direction * (dash * 12 - phase);
+        const b = direction * (dash * 12 + 3 - phase);
+        const start = Math.max(0, Math.min(a, b)),
+          finish = Math.min(length, Math.max(a, b));
+        if (finish > start) intervals.push([start, finish]);
+      }
+    } else intervals.push([0, length]);
+    for (const [start, finish] of intervals)
+      for (let distance = start; distance < finish; distance += 2) {
+        const size = Math.min(2, finish - distance);
+        const center = profile.curve.getPointAt((distance + size / 2) / length);
+        if (paintCovered(profile, center.x, center.z)) continue;
+        paintRoadStrip(
+          profile,
+          paintBatch(batch, profile),
+          distance + size / 2,
+          lateral,
+          size,
+          0.12,
+        );
+      }
+  };
   for (const profile of profiles) {
     const { road, curve } = profile;
     const length = curve.getLength();
@@ -1750,52 +1941,53 @@ export function createScenery(
           road.oneway === 1 ? 1 : -1,
         );
         const normal = new THREE.Vector2(-direction.y, direction.x);
-        const outline = [
-          [-2, -0.14],
-          [0.5, -0.14],
-          [0.5, -0.6],
-          [2, 0],
-          [0.5, 0.6],
-          [0.5, 0.14],
-          [-2, 0.14],
-        ].map(([forward, side]) => {
-          const x = center.x + direction.x * forward + normal.x * side;
-          const z = center.z + direction.y * forward + normal.y * side;
-          const raised =
-            road.structure === 'bridge' ||
-            profile.bridgeApproach ||
-            (profile.raised && Math.abs(profile.heightAt(x, z) - ground(x, z)) > 2.5);
-          return {
-            x,
-            z,
-            y: (raised ? profile.heightAt(x, z) : ground(x, z)) + 0.075,
-          };
-        });
-        const triangles = THREE.ShapeUtils.triangulateShape(
-          outline.map((p) => new THREE.Vector2(p.x, p.z)),
-          [],
-        );
-        for (const [a, b, c] of triangles)
-          profileBatch(directionBatch, profile).roof(outline[a], outline[b], outline[c]);
+        for (let lane = 0; lane < laneCount(profile); lane++) {
+          const laneOffset =
+            roadWidthAt(profile, distance) * ((lane + 0.5) / laneCount(profile) - 0.5);
+          const outline = [
+            [-2, -0.14],
+            [0.5, -0.14],
+            [0.5, -0.6],
+            [2, 0],
+            [0.5, 0.6],
+            [0.5, 0.14],
+            [-2, 0.14],
+          ].map(([forward, side]) => {
+            const x = center.x + direction.x * forward + normal.x * (side + laneOffset);
+            const z = center.z + direction.y * forward + normal.y * (side + laneOffset);
+            const raised =
+              road.structure === 'bridge' ||
+              profile.bridgeApproach ||
+              (profile.raised && Math.abs(profile.heightAt(x, z) - ground(x, z)) > 2.5);
+            return {
+              x,
+              z,
+              y: (raised ? profile.heightAt(x, z) : ground(x, z)) + 0.075,
+            };
+          });
+          const triangles = THREE.ShapeUtils.triangulateShape(
+            outline.map((p) => new THREE.Vector2(p.x, p.z)),
+            [],
+          );
+          for (const [a, b, c] of triangles)
+            paintBatch(directionBatch, profile).roof(outline[a], outline[b], outline[c]);
+        }
       }
     } else if (road.centerline) {
       const dashed = road.centerline === 'dashed-yellow';
-      for (const lateral of dashed ? [0] : [-0.14, 0.14]) {
-        for (let distance = 0; distance < length; distance += 2) {
-          if (dashed && (distance % 12 >= 3 || distance + 2 > length)) continue;
-          const center = curve.getPointAt(Math.min(1, (distance + 1) / length));
-          if (paintCovered(profile, center.x, center.z)) continue;
-          paintRoadStrip(
-            profile,
-            profileBatch(centerlineBatch, profile),
-            distance + 1,
-            lateral,
-            2,
-            0.12,
-          );
-        }
-      }
+      for (const lateral of dashed ? [0] : [-0.14, 0.14])
+        paintLine(profile, centerlineBatch, lateral, dashed);
     }
+    if (road.oneway !== undefined || (road.lanes && road.lanes > 2 && road.lanes % 2 === 0))
+      for (let lane = 1; lane < laneCount(profile); lane++) {
+        if (road.oneway === undefined && lane * 2 === laneCount(profile)) continue;
+        paintLine(
+          profile,
+          markingBatch,
+          (at) => roadWidthAt(profile, at) * (lane / laneCount(profile) - 0.5),
+          true,
+        );
+      }
   }
   for (const waterway of scenery.waterways)
     ribbon(waterway.points, waterway.width, riverBatch, true);
@@ -1880,6 +2072,31 @@ export function createScenery(
     for (const ring of rings)
       for (let i = 1; i < ring.length; i++)
         addPavementEdge({ x: ring[i - 1][0], z: ring[i - 1][1] }, { x: ring[i][0], z: ring[i][1] });
+  for (const profile of profiles) {
+    if (!profile.major) continue;
+    const length = profile.curve.getLength();
+    for (let distance = 0; distance < length; distance += 2) {
+      const size = Math.min(2, length - distance);
+      const at = (distance + size / 2) / length;
+      const center = profile.curve.getPointAt(at);
+      const tangent = profile.curve.getTangentAt(at);
+      for (const sign of [-1, 1]) {
+        const lateral = sign * (roadWidthAt(profile, distance + size / 2) / 2 - 0.66);
+        const x = center.x - tangent.z * lateral,
+          z = center.z + tangent.x * lateral;
+        if (profile.road.structure !== 'bridge' && edgeDistance(pavementEdges, x, z, 2) > 1)
+          continue;
+        paintRoadStrip(
+          profile,
+          paintBatch(markingBatch, profile),
+          distance + size / 2,
+          (at) => sign * (roadWidthAt(profile, at) / 2 - 0.66),
+          size,
+          0.12,
+        );
+      }
+    }
+  }
   buildBuildings();
   const groundQuery = query.groundSurface
     ? {
@@ -2181,6 +2398,20 @@ export function createScenery(
       if (onDeck(vertices[0])) deckPaint.roof(vertices[0], vertices[1], vertices[2]);
       else groundPaint.roof(...(vertices.map((p) => ({ ...p, y: 0 })) as [Vertex, Vertex, Vertex]));
     }
+    const raised = raisedPaintBatches.get(batch);
+    if (raised)
+      for (let i = 0; i < raised.positions.length; i += 9) {
+        const vertices = [0, 3, 6].flatMap((j) => {
+          const point = {
+            x: raised.positions[i + j],
+            y: raised.positions[i + j + 1],
+            z: raised.positions[i + j + 2],
+          };
+          const height = raisedPavement.heightAt(point) ?? pavementSurface.heightAt(point);
+          return height === undefined ? [] : [{ ...point, y: height + 0.075 - nearbyRoadLift }];
+        });
+        if (vertices.length === 3) deckPaint.roof(vertices[0], vertices[1], vertices[2]);
+      }
     batch.positions = deckPaint.positions;
     appendTunnelBatch(batch, batch, 0.075);
     if (!groundPaint.positions.length) return;

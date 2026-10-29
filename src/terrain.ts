@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { SceneryRoadSurface } from './scenery-road-surface';
+import { SceneryRoadSurface, sceneryRoadBlendReach } from './scenery-road-surface';
 import { SceneryRiverChannels } from './scenery-river-channels';
 import { terrainVisualIndices } from './terrain-visual-indices';
 import { courseProfileHeight, courseRoute, courseShoulderWidth } from './courses';
@@ -591,8 +591,8 @@ export class CourseTerrain {
         this.filletCells = new Map([...cells].filter(([, indices]) => indices.length > 6));
       }
     }
-    if (overlay && roadSurface) {
-      // Resolve conflicting road grades locally instead of letting a coarse triangle lift pavement.
+    if (overlay && (roadSurface || riverChannels)) {
+      // Resolve road grades and riverbanks locally instead of bridging them with coarse triangles.
       const refined = new Set<number>();
       const cellWidth = this.columns - 1;
       const steps = 4;
@@ -601,7 +601,8 @@ export class CourseTerrain {
           const cx = this.minX + (x + 0.5) * this.spacing;
           const cz = this.minZ + (z + 0.5) * this.spacing;
           if (
-            roadSurface.pavementDistance(cx, cz) > this.spacing * Math.SQRT2 &&
+            (roadSurface?.pavementDistance(cx, cz) ?? Infinity) >
+              sceneryRoadBlendReach + this.spacing * Math.SQRT2 &&
             !riverChannels?.near(cx, cz, this.spacing * Math.SQRT2)
           )
             continue;

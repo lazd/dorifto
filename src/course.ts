@@ -11,7 +11,12 @@ import {
 } from './courses';
 import { addNearbyRoadDirt, addRoadDirt, surfaceMaterial } from './surfaces';
 import { CourseTerrain } from './terrain';
-import { courseTurnSignPlacements, createTurnSignFactory, type TurnSignMode } from './turn-sign';
+import {
+  courseTurnSignPlacements,
+  createTurnSignFactory,
+  turnSignDimensions,
+  type TurnSignMode,
+} from './turn-sign';
 import { createTrainingGates } from './racing-line';
 import type { ConfigurationState, LapGateMode } from './configuration-state';
 import { createTrainingGateGeometry, createTrainingGateMaterial } from './training-gates';
@@ -465,10 +470,19 @@ if (diffuseColor.a < ${material.transparent ? '0.01' : '0.5'}) discard;`,
         across,
         -direction * (definition.width / 2 + Math.min(3.5, shoulder)),
       );
+      position.y = terrain.heightAt(position.x, position.z);
+      if (
+        [-1, 0, 1].some((side) => {
+          const sample = position
+            .clone()
+            .addScaledVector(across, (side * turnSignDimensions.boardWidth) / 2);
+          return terrain.isAsphalt(sample) || scenery.isAsphalt(sample);
+        })
+      )
+        continue;
 
       const sign = createSign(direction);
       sign.position.copy(position);
-      sign.position.y = terrain.heightAt(position.x, position.z);
       sign.rotation.y = Math.atan2(-tangent.x, -tangent.z);
       group.add(sign);
     }

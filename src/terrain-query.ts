@@ -69,7 +69,11 @@ export class PavementSurface {
   }
 
   isAsphalt(position: { x: number; y?: number; z: number }) {
-    if (!this.mesh) return false;
+    return this.heightAt(position) !== undefined;
+  }
+
+  heightAt(position: { x: number; y?: number; z: number }) {
+    if (!this.mesh) return;
     const { positions: p, indices } = this.mesh;
     for (const i of this.buckets.get(
       `${Math.floor(position.x / 16)},${Math.floor(position.z / 16)}`,
@@ -89,9 +93,8 @@ export class PavementSurface {
       const v = (bx * z - bz * x) / determinant;
       if (u < -1e-5 || v < -1e-5 || u + v > 1.00001) continue;
       const height = p[a + 1] + u * (p[b + 1] - p[a + 1]) + v * (p[c + 1] - p[a + 1]);
-      if (position.y === undefined || Math.abs(position.y - height) < 2) return true;
+      if (position.y === undefined || Math.abs(position.y - height) < 2) return height;
     }
-    return false;
   }
 }
 
