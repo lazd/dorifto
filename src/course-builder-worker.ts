@@ -7,7 +7,7 @@ import type { PreviewModel } from './course-builder-preview';
 export type { BuildRequest } from './course-build';
 export type BuildResponse =
   | { type: 'progress'; step: RoadBuildStep; detail?: string; state?: RoadBuildState }
-  | { type: 'complete'; course: RoadMap; json: Blob; model?: PreviewModel }
+  | { type: 'complete'; course: RoadMap; json: Blob }
   | { type: 'preview'; model: PreviewModel }
   | { type: 'error'; message: string };
 
@@ -18,38 +18,21 @@ self.onmessage = (
 ) => {
   const request = event.data;
   const run = async () => {
-    const previewOnly = 'type' in request;
-    const course = previewOnly
-      ? request.course
-      : await buildRoadCourse(request, {
-          progress: (step, detail, state) =>
-            self.postMessage({ type: 'progress', step, detail, state } satisfies BuildResponse),
-        });
-    const json = new Blob([JSON.stringify(course)], { type: 'application/json' });
-    if (!previewOnly && request.skipPreview) {
+    if (!('type' in request)) {
+      const course = await buildRoadCourse(request, {
+        progress: (step, detail, state) =>
+          self.postMessage({ type: 'progress', step, detail, state } satisfies BuildResponse),
+      });
+      const json = new Blob([JSON.stringify(course)], { type: 'application/json' });
       self.postMessage({ type: 'complete', course, json } satisfies BuildResponse);
       return;
     }
-    if (!previewOnly)
-      self.postMessage({ type: 'progress', step: 'preview' } satisfies BuildResponse);
-    const preview = createCoursePreviewModel(course, request.colors, 512);
+    const preview = createCoursePreviewModel(request.course, request.colors, 512);
     try {
-      if (!previewOnly)
-        self.postMessage({
-          type: 'progress',
-          step: 'preview',
-          state: 'complete',
-        } satisfies BuildResponse);
-      self.postMessage(
-        previewOnly
-          ? ({ type: 'preview', model: preview.group.toJSON() } satisfies BuildResponse)
-          : ({
-              type: 'complete',
-              course,
-              json,
-              model: preview.group.toJSON(),
-            } satisfies BuildResponse),
-      );
+      self.postMessage({
+        type: 'preview',
+        model: preview.group.toJSON(),
+      } satisfies BuildResponse);
     } finally {
       preview.dispose();
     }

@@ -11,7 +11,7 @@ import {
   validateImportRoute,
   closeRoadLoop,
 } from './road-selection';
-import { CourseBuilderPreview } from './course-builder-preview';
+import { CourseBuilderPreview, type PreviewModel } from './course-builder-preview';
 import { courseBuilderTheme } from './course-builder-map';
 import { createLocationSearch } from './course-builder-search';
 import { importRoadMap, listRoadMaps, openRoadMaps, storeRoadMap } from './course-builder-storage';
@@ -31,6 +31,12 @@ import { coursePreviewSvg } from './course-preview';
 import { defaultTerrainTransition } from './terrain';
 import { startTextSpinner } from './text-spinner';
 import { createBuildProgress } from './course-build-progress';
+import {
+  compressEditorDraft,
+  editorDraftURL,
+  readEditorDraft,
+  type EditorDraft,
+} from './course-builder-url';
 import { download } from './download';
 import type { BuildRequest, BuildResponse } from './course-builder-worker';
 import { matchRoadStructures } from './road-structures.mjs';
@@ -130,6 +136,9 @@ let editingFilename: string | undefined;
 let editingSnapshot: string | undefined;
 let editingRouteSnapshot: string | undefined;
 let editingCourse: RoadMap | undefined;
+let restoringURL = true;
+let urlVersion = 0;
+let lastURLDraft: string | undefined;
 let previewWorker: Worker | undefined;
 let previewVersion = 0;
 let stopPreviewSpinner: (() => void) | undefined;
@@ -336,6 +345,62 @@ function editorSnapshot() {
   });
 }
 
+function currentEditorDraft(): EditorDraft {
+  return {
+    draft: {
+      sections,
+      closingSection,
+      resolution:
+        editingCourse?.courseBuilder?.resolution ?? editingCourse?.terrain?.resolution ?? 5,
+      definition: mapDefinition(),
+      completeMapDimensions: { ...mapDimensions },
+      structureLines: graph.structureLines(),
+    },
+    name: nameInput.value,
+    width: widthInput.value,
+    shoulderWidth: shoulderInput.value,
+    terrainTransition: transitionInput.value,
+    doubleYellow: centerLineInput.checked,
+  };
+}
+
+function persistEditorURL() {
+  if (restoringURL || view === 'library') return;
+  const json = JSON.stringify(currentEditorDraft());
+  if (lastURLDraft === json) return;
+  const version = ++urlVersion;
+  try {
+    // Preserve the draft synchronously, even if reload happens before compression finishes.
+    history.replaceState(null, '', editorDraftURL(new URL(location.href), json, editingId));
+    lastURLDraft = json;
+    void compressEditorDraft(json).then((compressed) => {
+      if (version !== urlVersion) return;
+      try {
+        history.replaceState(
+          null,
+          '',
+          editorDraftURL(new URL(location.href), compressed, editingId),
+        );
+      } catch (error) {
+        report(error);
+      }
+    }, report);
+  } catch (error) {
+    report(new Error('Could not preserve the draft in the URL.', { cause: error }));
+  }
+}
+
+function navigateBuilder(editor: boolean) {
+  if (restoringURL) return;
+  ++urlVersion;
+  lastURLDraft = undefined;
+  const url = new URL(location.href);
+  url.searchParams.delete('draft');
+  url.searchParams.delete('edit');
+  url.searchParams.set('view', editor ? 'create' : 'manager');
+  history.pushState(null, '', url);
+}
+
 function updateControls() {
   const points = routePoints();
   const length = routeLength(points);
@@ -365,6 +430,7 @@ function updateControls() {
     mapDefinitionInput,
   ])
     input.disabled = !!worker;
+  persistEditorURL();
 }
 
 function hasStructureRepair() {
@@ -418,6 +484,15 @@ function setView(next: View) {
   element('empty-library').hidden = next !== 'library' || savedMaps.length > 0;
   if (next === 'library' && !savedMaps.length) inspection.hidden = true;
   status.hidden = next !== 'editor';
+  if (next === 'library' && !restoringURL) {
+    ++urlVersion;
+    lastURLDraft = undefined;
+    const url = new URL(location.href);
+    url.searchParams.set('view', 'manager');
+    url.searchParams.delete('draft');
+    url.searchParams.delete('edit');
+    history.replaceState(null, '', url);
+  }
 }
 
 function updatePreviewInfo() {
@@ -917,6 +992,12 @@ function cancelBuild() {
   if (!worker) return;
   saveController?.abort();
   finishBuild();
+  if (courseSaved) {
+    setView('library');
+    updatePreviewInfo();
+    confirmAction('Preview cancelled. Your course is saved on this device.');
+    return;
+  }
   course = undefined;
   courseJSON = undefined;
   showMap();
@@ -974,72 +1055,95 @@ element<HTMLFormElement>('build-form').onsubmit = (event) => {
     return;
   }
   const activeWorker = worker;
+  let saveError: string | undefined;
+  const completeBuild = (model?: PreviewModel) => {
+    if (!course) throw new Error('The course builder did not return a course.');
+    if (courseSaved) buildProgress('complete');
+    finishBuild();
+    if (courseSaved && embedded) {
+      notifyParent({ type: 'course-builder:saved', id: course.id });
+      return;
+    }
+    if (courseSaved) {
+      setView('library');
+      updatePreviewInfo();
+      for (const item of element('saved').querySelectorAll<HTMLButtonElement>('.selection-item')) {
+        const active = item.dataset.id === selectedId;
+        item.setAttribute('aria-selected', String(active));
+        item.tabIndex = active ? 0 : -1;
+      }
+    } else showPreview();
+    if (model)
+      preview = new CourseBuilderPreview(
+        element('preview'),
+        model,
+        { ...theme.preview, background: theme.palette.surface },
+        `Interactive 3D terrain preview of ${course.name}`,
+      );
+    guide();
+    if (saveError)
+      notify(
+        `Could not save your map on this device: ${saveError} Press Play to download and keep it.`,
+        true,
+      );
+  };
+  const failBuild = (error: Error) => {
+    if (courseSaved) {
+      completeBuild();
+      notify(`Your course is saved, but its 3D preview could not be built: ${error.message}`, true);
+    } else {
+      finishBuild();
+      showMap();
+      report(error);
+    }
+  };
   worker.onmessage = async (message: MessageEvent<BuildResponse>) => {
     if (worker !== activeWorker) return;
     const response = message.data;
     if (response.type === 'progress') buildProgress(response.step, response.detail, response.state);
     else {
       if (response.type === 'error') {
-        finishBuild();
-        showMap();
-        report(new Error(response.message));
+        failBuild(new Error(response.message));
+      } else if (response.type === 'preview') {
+        try {
+          buildProgress('preview', undefined, 'complete');
+          completeBuild(response.model);
+        } catch (error) {
+          failBuild(error instanceof Error ? error : new Error(String(error)));
+        }
       } else if (response.type === 'complete') {
         try {
           course = response.course;
           courseJSON = response.json;
           saveController = new AbortController();
           buildProgress('saving');
-          const saveError = await saveCourse(response.course, response.json, saveController.signal);
+          saveError = await saveCourse(response.course, response.json, saveController.signal);
           if (worker !== activeWorker) return;
           courseSaved = !saveError;
-          if (courseSaved) buildProgress('complete');
+          if (courseSaved) buildProgress('saving', undefined, 'complete');
           if (courseSaved) {
             editingId = response.course.id;
             selectedId = response.course.id;
             editingFilename = savedMaps.find((item) => item.course.id === editingId)?.handle.name;
           }
-          finishBuild();
-          if (courseSaved && embedded) {
-            notifyParent({ type: 'course-builder:saved', id: response.course.id });
-            return;
+          if (courseSaved && embedded) completeBuild();
+          else {
+            buildProgress('preview');
+            activeWorker.postMessage({
+              type: 'preview',
+              course: response.course,
+              colors: theme.preview,
+            });
           }
-          if (courseSaved) {
-            setView('library');
-            updatePreviewInfo();
-            for (const item of element('saved').querySelectorAll<HTMLButtonElement>(
-              '.selection-item',
-            )) {
-              const active = item.dataset.id === selectedId;
-              item.setAttribute('aria-selected', String(active));
-              item.tabIndex = active ? 0 : -1;
-            }
-          } else showPreview();
-          if (response.model)
-            preview = new CourseBuilderPreview(
-              element('preview'),
-              response.model,
-              { ...theme.preview, background: theme.palette.surface },
-              `Interactive 3D terrain preview of ${response.course.name}`,
-            );
-          guide();
-          if (saveError)
-            notify(
-              `Could not save your map on this device: ${saveError} Press Play to download and keep it.`,
-              true,
-            );
         } catch (error) {
-          finishBuild();
-          showMap();
-          report(error);
+          failBuild(error instanceof Error ? error : new Error(String(error)));
         }
       }
     }
   };
   worker.onerror = (error) => {
     error.preventDefault();
-    finishBuild();
-    showMap();
-    report(
+    failBuild(
       new Error(
         error.message?.trim() ||
           'The course builder worker could not load or stopped unexpectedly. The app may have been updated or its static host may be unavailable. Reload the page and select your route again, then retry.',
@@ -1047,9 +1151,7 @@ element<HTMLFormElement>('build-form').onsubmit = (event) => {
     );
   };
   worker.onmessageerror = () => {
-    finishBuild();
-    showMap();
-    report(
+    failBuild(
       new Error('The course builder returned unreadable data. Try building the course again.'),
     );
   };
@@ -1068,7 +1170,13 @@ element<HTMLFormElement>('build-form').onsubmit = (event) => {
     const item = document.createElement('li');
     item.dataset.step = key;
     item.dataset.label = existingCourse && key === 'course' ? 'Updating course settings' : label;
-    item.textContent = item.dataset.label;
+    const content = document.createElement('span');
+    content.className = 'build-step-content';
+    const labelElement = document.createElement('span');
+    labelElement.className = 'build-step-label';
+    labelElement.textContent = item.dataset.label;
+    content.append(labelElement);
+    item.append(content);
     const indicator = document.createElement('span');
     indicator.className = 'build-step-indicator';
     indicator.setAttribute('aria-hidden', 'true');
@@ -1100,7 +1208,6 @@ element<HTMLFormElement>('build-form').onsubmit = (event) => {
     doubleYellow: centerLineInput.checked,
     colors: theme.preview,
     closed: !!closingSection,
-    skipPreview: embedded,
   } satisfies BuildRequest);
   updateControls();
 };
@@ -1334,6 +1441,7 @@ function editSavedCourse() {
   try {
     const draft = restoreRoadDraft(course);
     const saved = course;
+    navigateBuilder(true);
     editingId = saved.id;
     editingFilename = savedMaps.find((item) => item.course.id === saved.id)?.handle.name;
     stopLibraryPreview();
@@ -1360,6 +1468,7 @@ function editSavedCourse() {
 }
 
 element<HTMLButtonElement>('new-course').onclick = () => {
+  navigateBuilder(true);
   stopLibraryPreview();
   nameCopiedToSearch = false;
   editingId = undefined;
@@ -1384,7 +1493,10 @@ element<HTMLButtonElement>('new-course').onclick = () => {
 };
 element<HTMLButtonElement>('cancel-edit').onclick = () => {
   if (embedded) notifyParent({ type: 'course-builder:cancel' });
-  else void showLibrary();
+  else {
+    navigateBuilder(false);
+    void showLibrary();
+  }
 };
 
 async function saveCourse(builtCourse: RoadMap, json: Blob, signal: AbortSignal) {
@@ -1425,6 +1537,68 @@ async function openEmbeddedEditor() {
   }
 }
 
+async function restoreBuilderURL() {
+  restoringURL = true;
+  ++urlVersion;
+  lastURLDraft = undefined;
+  try {
+    const params = new URLSearchParams(location.search);
+    const encoded = params.get('draft');
+    const draft = encoded ? await readEditorDraft(encoded) : undefined;
+    if (
+      draft ||
+      params.get('view') === 'create' ||
+      params.get('view') === 'edit' ||
+      params.has('edit') ||
+      embedded
+    ) {
+      await openEmbeddedEditor();
+      if (draft) {
+        sections = draft.draft.sections;
+        closingSection = draft.draft.closingSection;
+        mapDimensions = { ...(draft.draft.completeMapDimensions ?? defaultCompleteMapDimensions) };
+        nameInput.value = draft.name;
+        widthInput.value = draft.width;
+        shoulderInput.value = draft.shoulderWidth;
+        transitionInput.value = draft.terrainTransition;
+        centerLineInput.checked = draft.doubleYellow;
+        mapDefinitionInput.value = roadMapDefinition(draft.draft);
+        seedDraftGraph();
+        if (draft.draft.structureLines)
+          graph.add(
+            draft.draft.structureLines.map(({ coordinates, type }) => ({
+              coordinates,
+              brunnel: type,
+            })),
+          );
+        hasLocated = !!sections.length;
+        updateRoute();
+        if (sections.length) {
+          const bounds = new maplibregl.LngLatBounds();
+          routePoints().forEach(({ lon, lat }) => bounds.extend([lon, lat]));
+          map.fitBounds(bounds, { padding: 70, maxZoom: 16, duration: 0 });
+        }
+      }
+    } else await showLibrary();
+  } catch (error) {
+    setView('editor');
+    report(error);
+    return;
+  } finally {
+    restoringURL = false;
+  }
+  persistEditorURL();
+}
+
+window.addEventListener('popstate', () => {
+  restoringURL = true;
+  if (worker) {
+    saveController?.abort();
+    finishBuild();
+  }
+  void restoreBuilderURL();
+});
+
 if (embedded) {
   window.addEventListener('message', (event: MessageEvent<unknown>) => {
     if (
@@ -1441,13 +1615,13 @@ if (embedded) {
   const mapLoaded = mapReady
     ? Promise.resolve()
     : new Promise<void>((resolve) => map.once('load', () => resolve()));
-  void Promise.all([openEmbeddedEditor(), mapLoaded]).then(() => {
+  void Promise.all([restoreBuilderURL(), mapLoaded]).then(() => {
     requestAnimationFrame(() => {
       notifyParent({ type: 'course-builder:ready' });
       updateControls();
     });
   });
-} else void showLibrary();
+} else void restoreBuilderURL();
 
 window.addEventListener('pagehide', () => {
   hideHover();

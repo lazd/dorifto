@@ -131,6 +131,9 @@ direct browser requests to OpenFreeMap and USGS, so an internet connection is ne
   or **+ New course** to start a new one. **Cancel** returns to the library without
   changing the saved course. **Save** stays disabled until the route, name, or settings
   differ from the opened course, and disables again if all changes are reverted.
+  The URL tracks manager/create/edit views and stores a compressed draft query parameter.
+  Reloading or reopening that URL restores routed selections, loop closure, and editor settings.
+  Browser Back/Forward navigates between the manager and editor without rerouting selected roads.
   When opened standalone (outside an iframe), **Download** next to **Edit** exports
   the selected course JSON. **Play** currently also downloads the selected course JSON.
   Use **Import** beside the Course builder title to restore a downloaded JSON into

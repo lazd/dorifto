@@ -40,7 +40,6 @@ export interface BuildRequest {
   doubleYellow: boolean;
   colors: CoursePreviewColors;
   closed: boolean;
-  skipPreview: boolean;
 }
 
 interface BuildOptions {
@@ -54,7 +53,7 @@ interface BuildOptions {
 }
 
 export async function buildRoadCourse(
-  request: Omit<BuildRequest, 'colors' | 'skipPreview'>,
+  request: Omit<BuildRequest, 'colors'>,
   {
     rebuildTerrain = false,
     refreshScenery = false,

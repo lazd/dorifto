@@ -405,6 +405,40 @@ input.switch::before {
   height: 1em;
   flex: none;
 }
+.build-step-content {
+  flex: 1;
+  min-width: 0;
+  padding-block: var(--space-1);
+  overflow-wrap: anywhere;
+}
+.build-step-retry {
+  color: var(--color-muted);
+  font-weight: 400;
+  white-space: nowrap;
+}
+.build-step-progress {
+  display: block;
+  width: 100%;
+  height: var(--space-1);
+  margin-block: var(--space-2) var(--space-1);
+  margin-inline: 0;
+  appearance: none;
+  border: 0;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--color-border);
+  color: var(--color-accent);
+  accent-color: var(--color-accent);
+}
+.build-step-progress::-webkit-progress-bar {
+  background: var(--color-border);
+}
+.build-step-progress::-webkit-progress-value {
+  background: var(--color-accent);
+}
+.build-step-progress::-moz-progress-bar {
+  background: var(--color-accent);
+}
 .build-step-indicator .text-spinner-frame {
   font-size: 1.25em;
 }

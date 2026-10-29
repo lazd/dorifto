@@ -9,6 +9,7 @@ let selection;
 let createLocationSearch;
 let builderData;
 let completeMap;
+let builderURL;
 before(async () => {
   server = await createServer({
     server: { middlewareMode: true, hmr: false, ws: false, watch: null },
@@ -18,6 +19,53 @@ before(async () => {
   ({ createLocationSearch } = await server.ssrLoadModule('/src/course-builder-search.ts'));
   builderData = await server.ssrLoadModule('/src/course-builder-data.ts');
   completeMap = await server.ssrLoadModule('/src/complete-map.ts');
+  builderURL = await server.ssrLoadModule('/src/course-builder-url.ts');
+});
+
+test('editor URLs preserve exact routed sections and settings through compression', async () => {
+  const course = builderData.readRoadMap(
+    await readFile(new URL('./fixtures/road-course.json', import.meta.url), 'utf8'),
+  );
+  const value = {
+    draft: {
+      ...builderData.restoreRoadDraft(course),
+      definition: 'complete-map',
+      completeMapDimensions: completeMap.defaultCompleteMapDimensions,
+    },
+    name: 'Road & hills / test',
+    width: '8',
+    shoulderWidth: '2',
+    terrainTransition: '2',
+    doubleYellow: true,
+  };
+  const raw = JSON.stringify(value);
+  const expected = JSON.parse(raw);
+  const compressed = await builderURL.compressEditorDraft(raw);
+  assert.ok(compressed.length < raw.length);
+  assert.deepEqual(await builderURL.readEditorDraft(compressed), expected);
+  assert.deepEqual(await builderURL.readEditorDraft(raw), expected);
+  const url = builderURL.editorDraftURL(
+    new URL('https://example.test/course-builder.html?embedded=1'),
+    compressed,
+    course.id,
+  );
+  assert.equal(url.searchParams.get('view'), 'edit');
+  assert.equal(url.searchParams.get('edit'), course.id);
+  assert.equal(url.searchParams.get('embedded'), '1');
+  assert.deepEqual(await builderURL.readEditorDraft(url.searchParams.get('draft')), expected);
+  const created = builderURL.editorDraftURL(url, compressed);
+  assert.equal(created.searchParams.get('view'), 'create');
+  assert.equal(created.searchParams.has('edit'), false);
+  await assert.rejects(builderURL.readEditorDraft('{"draft":{}}'), /invalid course draft/);
+  await assert.rejects(
+    builderURL.readEditorDraft(
+      JSON.stringify({
+        ...value,
+        draft: { ...value.draft, sections: [[{ lat: NaN, lon: -121 }]] },
+      }),
+    ),
+    /invalid course draft/,
+  );
 });
 
 test('complete-map selections default to a square and allow rectangles within the area limit', () => {
@@ -179,7 +227,7 @@ test('reading saved scenery preserves its data without a local migration', async
   assert.deepEqual(course.scenery, source.scenery);
 });
 
-test('embedded builds finish without generating a preview; standalone builds include it', async () => {
+test('builds return savable course data before a separately requested preview', async () => {
   const course = builderData.readRoadMap(
     await readFile(new URL('./fixtures/road-course.json', import.meta.url), 'utf8'),
   );
@@ -211,24 +259,32 @@ test('embedded builds finish without generating a preview; standalone builds inc
       colors: { ground: '#333333', road: '#888888', start: '#ffffff' },
       closed: false,
     };
-    for (const skipPreview of [true, false]) {
-      messages.length = 0;
-      const complete = new Promise((resolve) => {
-        globalThis.self.postMessage = (message) => {
-          messages.push(message);
-          if (message.type === 'complete' || message.type === 'error') resolve(message);
-        };
-      });
-      globalThis.self.onmessage({ data: { ...request, skipPreview } });
-      const response = await complete;
-      assert.equal(response.type, 'complete', response.message);
-      assert.equal(!!response.model, !skipPreview);
-      assert.equal(
-        messages.some((message) => message.step === 'preview'),
-        !skipPreview,
-      );
-      assert.equal(await response.json.text(), JSON.stringify(response.course));
-    }
+    const built = new Promise((resolve) => {
+      globalThis.self.postMessage = (message) => {
+        messages.push(message);
+        if (message.type === 'complete' || message.type === 'error') resolve(message);
+      };
+    });
+    globalThis.self.onmessage({ data: request });
+    const response = await built;
+    assert.equal(response.type, 'complete', response.message);
+    assert.equal(response.model, undefined);
+    assert.equal(
+      messages.some((message) => message.step === 'preview'),
+      false,
+    );
+    assert.equal(await response.json.text(), JSON.stringify(response.course));
+    const preview = new Promise((resolve) => {
+      globalThis.self.postMessage = (message) => {
+        if (message.type === 'preview' || message.type === 'error') resolve(message);
+      };
+    });
+    globalThis.self.onmessage({
+      data: { type: 'preview', course: response.course, colors: request.colors },
+    });
+    const previewResponse = await preview;
+    assert.equal(previewResponse.type, 'preview', previewResponse.message);
+    assert.ok(previewResponse.model);
     const middle = request.points.slice(
       Math.floor(request.points.length * 0.35),
       Math.ceil(request.points.length * 0.65),
@@ -245,7 +301,7 @@ test('embedded builds finish without generating a preview; standalone builds inc
     try {
       globalThis.fetch = () => assert.fail('Repairing a saved course must not fetch elevation');
       globalThis.self.onmessage({
-        data: { ...request, draft: { ...request.draft, structureLines }, skipPreview: true },
+        data: { ...request, draft: { ...request.draft, structureLines } },
       });
       const response = await complete;
       assert.equal(response.type, 'complete', response.message);

@@ -1263,7 +1263,7 @@ export async function fetchCourseScenery(
     request.onRetry = () => progress('network', request.retry, request.state);
     request.onRetry();
   }
-  progress('scenery', 'Decoding vector scenery', 'active');
+  progress('scenery', '', 'active');
   const scenery: CourseScenery = {
     version: 1,
     importRevision: sceneryImportRevision,
