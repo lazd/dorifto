@@ -307,6 +307,10 @@ if (diffuseColor.a < ${material.transparent ? '0.01' : '0.5'}) discard;`,
     scene.add(mesh);
     return mesh;
   }
+  // Complete maps pave only the course's tunnels; mapped roads pave everything else.
+  const pavedSpans = overlay
+    ? (definition.structures?.filter(({ type }) => type === 'tunnel') ?? [])
+    : [{ start: 0, end: 1 }];
   const asphalt = surfaceMaterial('asphalt');
   const asphaltDirt = addDirt(asphalt);
   if (asphaltDirt) maskJunctionMaterial(asphalt);
@@ -329,26 +333,38 @@ if (diffuseColor.a < ${material.transparent ? '0.01' : '0.5'}) discard;`,
     pad.name = 'skidpad-asphalt';
     pad.receiveShadow = true;
     scene.add(pad);
-  } else if (!overlay) {
-    const road = ribbon(0, definition.width + shoulder * 2, 0.008, asphalt);
-    if (asphaltDirt) maskJunctionGeometry(road.geometry);
-  }
+  } else
+    for (const { start, end } of pavedSpans) {
+      const road = ribbon(0, definition.width + shoulder * 2, 0.008, asphalt, start, end);
+      if (asphaltDirt) maskJunctionGeometry(road.geometry);
+    }
   const edgeWhite = paint(0xe1e6df);
   addDirt(edgeWhite);
   maskJunctionMaterial(edgeWhite, 0.25);
-  for (const side of overlay ? [] : [-1, 1]) {
-    const edge = ribbon((side * definition.width) / 2, courseLineWidth, 0.016, edgeWhite);
-    maskJunctionGeometry(edge.geometry, courseLineWidth);
-  }
-  if (definition.doubleYellow && !overlay) {
-    const yellow = paint(0xffd32a);
+  for (const { start, end } of pavedSpans)
     for (const side of [-1, 1]) {
-      const line = ribbon(side * courseLineWidth, courseLineWidth, 0.016, yellow);
-      line.name = 'double-yellow-center-line';
+      const edge = ribbon(
+        (side * definition.width) / 2,
+        courseLineWidth,
+        0.016,
+        edgeWhite,
+        start,
+        end,
+      );
+      maskJunctionGeometry(edge.geometry, courseLineWidth);
     }
+  if (definition.doubleYellow) {
+    const yellow = paint(0xffd32a);
+    for (const { start, end } of pavedSpans)
+      for (const side of [-1, 1]) {
+        const line = ribbon(side * courseLineWidth, courseLineWidth, 0.016, yellow, start, end);
+        line.name = 'double-yellow-center-line';
+      }
   }
   const columns = Math.ceil(definition.width / 0.5);
   const tileWidth = definition.width / columns;
+  // Complete map paints the course over scenery pavement and its markings, which sit higher.
+  const gateLift = overlay ? 0.09 : 0.02;
   const gateTiles = new THREE.Group();
   gateTiles.name = 'start-finish-lines';
   scene.add(gateTiles);
@@ -373,7 +389,7 @@ if (diffuseColor.a < ${material.transparent ? '0.01' : '0.5'}) discard;`,
             .copy(start)
             .addScaledVector(across, -definition.width / 2 + (column + 0.5) * tileWidth)
             .addScaledVector(startTangent, row * 0.5)
-            .setY(0.02);
+            .setY(gateLift);
           tile.updateMatrix();
           const geometry = tile.geometry.clone().applyMatrix4(tile.matrix);
           const corners = geometry.getAttribute('position');
@@ -389,7 +405,7 @@ if (diffuseColor.a < ${material.transparent ? '0.01' : '0.5'}) discard;`,
             ),
           );
           tile.geometry.dispose();
-          tile.geometry = terrain.projectGeometry(geometry, 0.02);
+          tile.geometry = terrain.projectGeometry(geometry, gateLift);
           geometry.dispose();
           tile.position.set(0, 0, 0);
           tile.rotation.set(0, 0, 0);

@@ -5,6 +5,19 @@ import type { TriangleMeshData } from './terrain-query';
 
 export const tunnelShoulderClearance = 0.5;
 
+/**
+ * Half-width of the mountain cover over a tunnel bore. Ground cut around the bore on a grid of
+ * `spacing` stays flat for one cell diagonal past the bore and rises within another, so the cover
+ * reaches a third cell diagonal out to land on untouched ground.
+ */
+export function tunnelCoverWidth(definition: CourseDefinition, spacing = 0) {
+  const halfWidth = definition.width / 2 + (definition.shoulderWidth ?? courseShoulderWidth);
+  return Math.max(
+    halfWidth + (definition.terrainTransition ?? 12) + 6,
+    halfWidth + tunnelShoulderClearance + 3 * spacing * Math.SQRT2,
+  );
+}
+
 export interface TunnelGeometry extends TriangleMeshData {
   liningCount: number;
 }
@@ -13,6 +26,7 @@ export interface TunnelGeometry extends TriangleMeshData {
 export function buildTunnelGeometry(
   definition: CourseDefinition,
   floor: (x: number, z: number) => number,
+  spacing = 0,
 ): TunnelGeometry | undefined {
   const spans = definition.structures?.filter(({ type }) => type === 'tunnel');
   if (!spans?.length || definition.flat) return;
@@ -20,7 +34,7 @@ export function buildTunnelGeometry(
   const length = route.getLength();
   const halfWidth = definition.width / 2 + (definition.shoulderWidth ?? courseShoulderWidth);
   const boreWidth = halfWidth + tunnelShoulderClearance;
-  const coverWidth = halfWidth + (definition.terrainTransition ?? 12) + 6;
+  const coverWidth = tunnelCoverWidth(definition, spacing);
   const ground = definition.terrain ? terrainRasterSampler(definition.terrain) : floor;
   const elevationScale = definition.elevationScale ?? 1;
   const wallHeight = 3;

@@ -130,6 +130,7 @@ export function createPhysicsSimulation(
     data.terrain.segments,
     data.terrain.halfWidth,
     data.terrain.padRadius,
+    data.terrain.asphaltSpans,
   );
   progress('Indexing road surfaces…');
   const nearbyPavement = new PavementSurface(data.terrain.nearbyRoadMesh);

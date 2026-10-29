@@ -43,6 +43,8 @@ export interface TerrainQueryData extends HeightfieldData {
   segments: SurfaceSegment[];
   halfWidth: number;
   padRadius?: number;
+  /** Route fractions where the course is paved; all of it when omitted. */
+  asphaltSpans?: { start: number; end: number }[];
   nearbyRoadMesh?: TriangleMeshData;
 }
 
@@ -100,6 +102,7 @@ export class TerrainSurface {
     private readonly segments: SurfaceSegment[],
     private readonly halfWidth: number,
     private readonly padRadius?: number,
+    private readonly asphaltSpans?: { start: number; end: number }[],
   ) {
     segments.forEach(({ a, b }, i) => {
       for (
@@ -158,7 +161,12 @@ export class TerrainSurface {
 
   isAsphalt(position: { x: number; z: number }) {
     if (this.padRadius !== undefined) return Math.hypot(position.x, position.z) <= this.padRadius;
-    return this.nearest(position.x, position.z).distance <= this.halfWidth;
+    const near = this.nearest(position.x, position.z);
+    return (
+      near.distance <= this.halfWidth &&
+      (!this.asphaltSpans ||
+        this.asphaltSpans.some(({ start, end }) => near.fraction >= start && near.fraction <= end))
+    );
   }
 }
 

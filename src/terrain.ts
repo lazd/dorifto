@@ -54,7 +54,7 @@ export class CourseTerrain {
   private readonly segments;
   private readonly surface: TerrainSurface;
   private readonly halfWidth: number;
-  private readonly asphaltHalfWidth: number;
+  private readonly asphaltSpans?: { start: number; end: number }[];
   private readonly padRadius?: number;
   private readonly groundQuery?: HeightfieldData;
   private groundTriangles?: ReturnType<typeof terrainGeometryTriangles>;
@@ -137,9 +137,16 @@ export class CourseTerrain {
     this.minZ = Math.floor(minZ / this.spacing) * this.spacing;
     this.columns = Math.ceil((maxX - this.minX) / this.spacing) + 1;
     this.rows = Math.ceil((maxZ - this.minZ) / this.spacing) + 1;
-    // Overlaid courses drive on the roads' rendered pavement, not their own asphalt corridor.
-    this.asphaltHalfWidth = overlay ? -1 : this.halfWidth;
-    this.surface = new TerrainSurface(this.segments, this.asphaltHalfWidth, this.padRadius);
+    const tunnelSpans = definition.structures?.filter(({ type }) => type === 'tunnel') ?? [];
+    // Overlaid courses drive on the roads' rendered pavement, except through their own tunnels,
+    // where the mapped tunnel roads have no ground surface.
+    this.asphaltSpans = overlay ? tunnelSpans : undefined;
+    this.surface = new TerrainSurface(
+      this.segments,
+      this.halfWidth,
+      this.padRadius,
+      this.asphaltSpans,
+    );
     this.heights = new Float32Array(this.columns * this.rows);
     const positions = new Float32Array(this.heights.length * 3);
     const elevationScale = definition.elevationScale ?? 1;
@@ -158,17 +165,41 @@ export class CourseTerrain {
     const snapStart = this.halfWidth;
     const blendEnd = Math.min(this.halfWidth + 48, 50);
     const transition = definition.terrainTransition ?? defaultTerrainTransition;
-    const tunnelSpans = definition.structures?.filter(({ type }) => type === 'tunnel') ?? [];
     const bridgeSpans = definition.structures?.filter(({ type }) => type === 'bridge') ?? [];
     const structureSpans = [...tunnelSpans, ...bridgeSpans];
     const structureBlendStart =
       this.halfWidth + Math.max(tunnelShoulderClearance, bridgeDimensions.edgeWidth) + supportWidth;
+    // Complete maps cut only the course's own tunnel bores into the ground, close enough to
+    // the bore and portals that the tunnel's mountain cover hides the entire cut.
+    const tunnelCut = (near: ReturnType<typeof this.nearest>) => {
+      if (!overlay || !tunnelSpans.length) return 0;
+      // Every triangle touching the bore stays flat; the cut then rises within one more cell.
+      const bore = this.halfWidth + tunnelShoulderClearance + supportWidth;
+      const lateral = 1 - THREE.MathUtils.smoothstep(near.distance, bore, bore + supportWidth);
+      if (!lateral) return 0;
+      return tunnelSpans.reduce(
+        (cut, { start, end }) =>
+          Math.max(
+            cut,
+            lateral *
+              (1 -
+                THREE.MathUtils.smoothstep(
+                  Math.max(start - near.fraction, near.fraction - end) * length,
+                  -this.spacing,
+                  0,
+                )),
+          ),
+        0,
+      );
+    };
     const courseSurfaceHeight = (
       px: number,
       pz: number,
       near: ReturnType<typeof this.nearest>,
       start: number,
     ) => {
+      const tunnel = overlay ? tunnelCut(near) : 1;
+      if (!tunnel) return (rasterHeight?.(px, pz, near.distance) ?? 0) * elevationScale;
       if (
         structureSpans.length &&
         near.distance < (rasterHeight ? structureBlendStart + transition : blendEnd)
@@ -199,14 +230,14 @@ export class CourseTerrain {
         : surroundings
           ? surroundings(px, pz) + 0.35 * (hills - 12)
           : base + hills;
-      if (overlay) return ground * elevationScale;
       const rise = ground * elevationScale - road;
       const end = rasterHeight
         ? start + Math.min(transition, Math.max(Math.abs(rise), minTerrainTransition))
         : blendEnd;
-      return definition.flat
+      const height = definition.flat
         ? 0
         : road + rise * THREE.MathUtils.smoothstep(near.distance, start, end);
+      return overlay ? THREE.MathUtils.lerp(ground * elevationScale, height, tunnel) : height;
     };
     const roadSurface =
       definition.scenery?.roads.length && !definition.flat
@@ -225,9 +256,12 @@ export class CourseTerrain {
     ) => {
       const height = courseSurfaceHeight(x, z, near, start);
       if (!roadSurface) return height;
-      const blend = overlay
-        ? 1
-        : THREE.MathUtils.smoothstep(near.distance, this.halfWidth + 7, this.halfWidth + 20);
+      const corridor = THREE.MathUtils.smoothstep(
+        near.distance,
+        this.halfWidth + 7,
+        this.halfWidth + 20,
+      );
+      const blend = overlay ? 1 - tunnelCut(near) : corridor;
       return THREE.MathUtils.lerp(height, roadSurface.heightAt(x, z, height), blend);
     };
     const vertex = (
@@ -237,11 +271,12 @@ export class CourseTerrain {
       near = this.nearest(px, pz),
       start = blendStart,
     ) => {
-      roadDistances[i] = overlay
-        ? farFromCourse
-        : this.padRadius !== undefined
-          ? Math.hypot(px, pz) - this.padRadius
-          : near.distance - this.halfWidth;
+      roadDistances[i] =
+        overlay && !tunnelCut(near)
+          ? farFromCourse
+          : this.padRadius !== undefined
+            ? Math.hypot(px, pz) - this.padRadius
+            : near.distance - this.halfWidth;
       this.heights[i] = surfaceHeight(px, pz, near, start);
       smoothingWeights[i] = THREE.MathUtils.smoothstep(
         near.distance,
@@ -525,8 +560,13 @@ export class CourseTerrain {
     this.minHeight = min === max ? min - 0.01 : min;
     this.maxHeight = min === max ? max + 0.01 : max;
     if (this.groundSurface) this.groundQuery = { ...this, ...this.groundSurface };
-    const structureDefinition = overlay ? { ...definition, structures: undefined } : definition;
-    this.collisionMesh = buildTunnelGeometry(structureDefinition, (x, z) => heightAt(this, x, z));
+    // Scenery roads provide a complete map's bridges; only the course's own tunnels remain.
+    const structureDefinition = overlay ? { ...definition, structures: tunnelSpans } : definition;
+    this.collisionMesh = buildTunnelGeometry(
+      structureDefinition,
+      (x, z) => heightAt(this, x, z),
+      overlay ? this.spacing : 0,
+    );
     this.bridgeMesh = buildBridgeGeometry(
       structureDefinition,
       (x, z) => heightAt(this, x, z),
@@ -905,7 +945,8 @@ export class CourseTerrain {
       groundSurface,
       bridgeMesh,
       segments,
-      asphaltHalfWidth,
+      halfWidth,
+      asphaltSpans,
       padRadius,
     } = this;
     return {
@@ -926,7 +967,8 @@ export class CourseTerrain {
       groundSurface,
       bridgeMesh,
       segments,
-      halfWidth: asphaltHalfWidth,
+      halfWidth,
+      asphaltSpans,
       padRadius,
     };
   }
