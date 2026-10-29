@@ -1,8 +1,10 @@
 import { MathUtils } from 'three';
 import { cleanRoadElevation, roadElevationSmoothing } from './road-elevation.mjs';
 import {
+  anchorCorrections,
   sceneryJunctions,
   sceneryPointKey,
+  smoothAlong,
   smoothSceneryLine,
   type CourseScenery,
   type SceneryPoint,
@@ -28,7 +30,7 @@ export class SceneryRoadSurface {
           const [ax, az] = points[i - 1],
             [bx, bz] = points[i];
           const length = Math.hypot(bx - ax, bz - az);
-          const steps = Math.max(1, Math.ceil(length / 2));
+          const steps = Math.max(1, Math.ceil(length / 2 - 1e-6));
           const start = samples.at(-1)!.distance;
           for (let j = 1; j <= steps; j++)
             samples.push({
@@ -38,39 +40,15 @@ export class SceneryRoadSurface {
               height: 0,
             });
         }
-        const length = samples.at(-1)!.distance;
+        const distances = samples.map((p) => p.distance);
+        const length = distances.at(-1)!;
         const spacing = length / Math.max(1, samples.length - 1);
         const raw = cleanRoadElevation(
           samples.map((p) => height(p.x, p.z)),
           spacing || 1,
         );
-        // Same Gaussian as course profiles; ends reflect through the endpoint to keep their grade.
-        const reach = roadElevationSmoothing * 3;
-        const smoothed = samples.map((sample, i) => {
-          let sum = 0,
-            weight = 0;
-          const add = (offset: number, value: number) => {
-            const w = Math.exp(-0.5 * (offset / roadElevationSmoothing) ** 2);
-            sum += value * w;
-            weight += w;
-          };
-          const contribute = (j: number) => {
-            add(samples[j].distance - sample.distance, raw[j]);
-            const before = -samples[j].distance - sample.distance;
-            if (j > 0 && before >= -reach) add(before, 2 * raw[0] - raw[j]);
-            const after = 2 * length - samples[j].distance - sample.distance;
-            if (j < samples.length - 1 && after <= reach) add(after, 2 * raw.at(-1)! - raw[j]);
-          };
-          for (let j = i; j >= 0 && sample.distance - samples[j].distance <= reach; j--)
-            contribute(j);
-          for (
-            let j = i + 1;
-            j < samples.length && samples[j].distance - sample.distance <= reach;
-            j++
-          )
-            contribute(j);
-          return sum / weight;
-        });
+        // Same Gaussian as course profiles.
+        const smoothed = smoothAlong(raw, distances, roadElevationSmoothing);
         for (let i = 0; i < samples.length; i++) {
           samples[i].height = smoothed[i];
           const key = sceneryPointKey([samples[i].x, samples[i].z]);
@@ -89,21 +67,15 @@ export class SceneryRoadSurface {
       ]),
     );
     for (const { samples, width } of lines) {
-      const corrections = samples.flatMap((p) => {
-        const target = targets.get(sceneryPointKey([p.x, p.z]));
-        return target === undefined ? [] : [{ distance: p.distance, delta: target - p.height }];
-      });
-      for (const sample of samples) {
-        let delta = 0,
-          weight = 0;
-        for (const correction of corrections) {
-          const w =
-            1 - MathUtils.smoothstep(Math.abs(sample.distance - correction.distance), 0, 25);
-          delta += correction.delta * w;
-          weight += w;
-        }
-        if (weight) sample.height += delta / Math.max(1, weight);
-      }
+      const deltas = anchorCorrections(
+        samples.map((p) => p.distance),
+        samples.flatMap((p) => {
+          const target = targets.get(sceneryPointKey([p.x, p.z]));
+          return target === undefined ? [] : [{ distance: p.distance, delta: target - p.height }];
+        }),
+        25,
+      );
+      samples.forEach((sample, i) => (sample.height += deltas[i]));
       for (let i = 1; i < samples.length; i++) {
         const a = samples[i - 1],
           b = samples[i];

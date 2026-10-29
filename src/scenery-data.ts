@@ -64,7 +64,66 @@ export function joinSceneryRoads(roads: CourseScenery['roads']): CourseScenery['
   return joined;
 }
 
-/** Round local corners without moving endpoints or cutting far across mapped switchbacks. */
+/**
+ * Gaussian smoothing by distance along a line. Ends reflect through the endpoints, so endpoint
+ * values and their local grade are kept.
+ */
+export function smoothAlong(values: number[], distances: number[], sigma: number) {
+  const reach = sigma * 3;
+  const cutoff = Math.exp(-4.5);
+  const length = distances.at(-1)!;
+  const first = values[0],
+    last = values.at(-1)!;
+  return values.map((_, i) => {
+    const at = distances[i];
+    let sum = 0,
+      weight = 0;
+    const add = (offset: number, value: number) => {
+      // Tapered to zero at the reach, so samples landing on the cutoff can't bias the result.
+      const w = Math.max(0, Math.exp(-0.5 * (offset / sigma) ** 2) - cutoff);
+      sum += value * w;
+      weight += w;
+    };
+    const contribute = (j: number) => {
+      add(distances[j] - at, values[j]);
+      const before = -distances[j] - at;
+      if (j > 0 && before >= -reach) add(before, 2 * first - values[j]);
+      const after = 2 * length - distances[j] - at;
+      if (j < values.length - 1 && after <= reach) add(after, 2 * last - values[j]);
+    };
+    for (let j = i; j >= 0 && at - distances[j] <= reach; j--) contribute(j);
+    for (let j = i + 1; j < values.length && distances[j] - at <= reach; j++) contribute(j);
+    return sum / weight;
+  });
+}
+
+/** Offsets that fade out from each anchor, averaged where anchors' reaches overlap. */
+export function anchorCorrections(
+  distances: number[],
+  anchors: { distance: number; delta: number }[],
+  reach: number,
+) {
+  return distances.map((distance) => {
+    let delta = 0,
+      weight = 0;
+    for (const anchor of anchors) {
+      const w = 1 - smoothstep(Math.abs(distance - anchor.distance), 0, reach);
+      delta += anchor.delta * w;
+      weight += w;
+    }
+    return weight ? delta / Math.max(1, weight) : 0;
+  });
+}
+
+const smoothstep = (x: number, min: number, max: number) => {
+  const t = Math.min(1, Math.max(0, (x - min) / (max - min)));
+  return t * t * (3 - 2 * t);
+};
+
+/**
+ * Smooth mapped corners into continuous curves. OSM digitizes bends as dense nodes, so the
+ * line is resampled and blurred by arc length, then pulled back onto its ends and junctions.
+ */
 export function smoothSceneryLine(
   points: SceneryPoint[],
   width: number,
@@ -74,38 +133,51 @@ export function smoothSceneryLine(
     (p, i) => i === 0 || Math.hypot(p[0] - points[i - 1][0], p[1] - points[i - 1][1]) >= 0.01,
   );
   if (clean.length < 3) return clean;
-  const result: SceneryPoint[] = [clean[0]];
-  for (let i = 1; i < clean.length - 1; i++) {
-    const a = clean[i - 1],
-      b = clean[i],
-      c = clean[i + 1];
-    if (junctions?.has(sceneryPointKey(b))) {
-      result.push(b);
-      continue;
+  const sigma = Math.min(Math.max(width, 3), 10);
+  const reach = sigma * 3;
+  const spacing = Math.min(2, sigma / 3);
+  const samples: SceneryPoint[] = [clean[0]];
+  const distances = [0];
+  const nodes = [0];
+  for (let i = 1; i < clean.length; i++) {
+    const [ax, az] = clean[i - 1],
+      [bx, bz] = clean[i];
+    const length = Math.hypot(bx - ax, bz - az);
+    const steps = Math.max(1, Math.ceil(length / spacing - 1e-6));
+    const start = distances.at(-1)!;
+    for (let j = 1; j < steps; j++) {
+      samples.push([ax + ((bx - ax) * j) / steps, az + ((bz - az) * j) / steps]);
+      distances.push(start + (length * j) / steps);
     }
-    const incoming = Math.hypot(b[0] - a[0], b[1] - a[1]);
-    const outgoing = Math.hypot(c[0] - b[0], c[1] - b[1]);
-    const trim = Math.min(width * 1.5, 12, incoming / 3, outgoing / 3);
-    const start: SceneryPoint = [
-      b[0] + ((a[0] - b[0]) * trim) / incoming,
-      b[1] + ((a[1] - b[1]) * trim) / incoming,
-    ];
-    const end: SceneryPoint = [
-      b[0] + ((c[0] - b[0]) * trim) / outgoing,
-      b[1] + ((c[1] - b[1]) * trim) / outgoing,
-    ];
-    const steps = Math.max(2, Math.ceil(trim));
-    for (let j = 0; j <= steps; j++) {
-      const t = j / steps,
-        u = 1 - t;
-      result.push([
-        u * u * start[0] + 2 * u * t * b[0] + t * t * end[0],
-        u * u * start[1] + 2 * u * t * b[1] + t * t * end[1],
-      ]);
-    }
+    samples.push(clean[i]);
+    distances.push(start + length);
+    nodes.push(samples.length - 1);
   }
-  result.push(clean.at(-1)!);
-  return result;
+  const pinned = nodes.slice(1, -1).filter((i) => junctions?.has(sceneryPointKey(samples[i])));
+  const axes = [0, 1].map((axis) => {
+    const raw = samples.map((p) => p[axis]);
+    const smooth = smoothAlong(raw, distances, sigma);
+    const corrections = anchorCorrections(
+      distances,
+      pinned.map((i) => ({ distance: distances[i], delta: raw[i] - smooth[i] })),
+      reach,
+    );
+    return smooth.map((value, i) => value + corrections[i]);
+  });
+  for (const i of [0, ...pinned, samples.length - 1]) [axes[0][i], axes[1][i]] = samples[i];
+  // Straight runs away from every bend are unchanged by the blur, so they need no samples.
+  const keep = samples.map((_, i) => i === 0 || i === samples.length - 1);
+  for (const node of nodes.slice(1, -1))
+    for (const step of [-1, 1])
+      for (
+        let i = node;
+        i >= 0 &&
+        i < samples.length &&
+        Math.abs(distances[i] - distances[node]) <= reach + spacing + 1e-6;
+        i += step
+      )
+        keep[i] = true;
+  return samples.flatMap((_, i) => (keep[i] ? [[axes[0][i], axes[1][i]] as SceneryPoint] : []));
 }
 
 export const sceneryPointKey = ([x, z]: SceneryPoint) => `${x.toFixed(2)},${z.toFixed(2)}`;

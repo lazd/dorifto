@@ -497,8 +497,11 @@ also removes their road collision and stop signs. Junction cones remain enabled 
 of the regular course cone-density setting in corridor mode.
 Nearby-road surfaces share indexed vertices and are split into spatial chunks so off-screen
 sections of long routes can be culled. Road and waterway strips share bounded miter joins
-at bends, avoiding disconnected rectangular panels and gaps. Nearby-road corners are rounded
-locally (up to 12 m) without moving endpoints; their asphalt uses the main road's surface
+at bends, avoiding disconnected rectangular panels and gaps. OpenStreetMap digitizes bends as
+dense nodes, so nearby-road centerlines are resampled and smoothed by arc length with a Gaussian
+sized to the road width (3–10 m), then pulled back onto their endpoints and shared junction
+nodes. Mapped corners become continuous curves while connections stay exact; straight runs away
+from bends keep only their endpoints. Their asphalt uses the main road's surface
 material. Junction triangles are clipped at the main pavement rather than dropped in whole
 panels, allowing side roads to continue through the shoulder. Junction coverage interrupts
 dirt, edge paint, and grass; hiding nearby roads restores those details. These masks and
