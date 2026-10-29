@@ -500,8 +500,9 @@ sections of long routes can be culled. Road and waterway strips share bounded mi
 at bends, avoiding disconnected rectangular panels and gaps. OpenStreetMap digitizes bends as
 dense nodes, so nearby-road centerlines are resampled and smoothed by arc length with a Gaussian
 sized to the road width (3–10 m), then pulled back onto their endpoints and shared junction
-nodes. Mapped corners become continuous curves while connections stay exact; straight runs away
-from bends keep only their endpoints. Their asphalt uses the main road's surface
+nodes. Mapped corners become continuous curves while connections stay exact; the result is
+simplified to the fewest points that stay within 2 cm of the curve, so dense mapped bends don't
+multiply draped road geometry. Their asphalt uses the main road's surface
 material. Junction triangles are clipped at the main pavement rather than dropped in whole
 panels, allowing side roads to continue through the shoulder. Junction coverage interrupts
 dirt, edge paint, and grass; hiding nearby roads restores those details. These masks and

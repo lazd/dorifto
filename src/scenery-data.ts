@@ -165,19 +165,40 @@ export function smoothSceneryLine(
     return smooth.map((value, i) => value + corrections[i]);
   });
   for (const i of [0, ...pinned, samples.length - 1]) [axes[0][i], axes[1][i]] = samples[i];
-  // Straight runs away from every bend are unchanged by the blur, so they need no samples.
-  const keep = samples.map((_, i) => i === 0 || i === samples.length - 1);
-  for (const node of nodes.slice(1, -1))
-    for (const step of [-1, 1])
-      for (
-        let i = node;
-        i >= 0 &&
-        i < samples.length &&
-        Math.abs(distances[i] - distances[node]) <= reach + spacing + 1e-6;
-        i += step
-      )
-        keep[i] = true;
-  return samples.flatMap((_, i) => (keep[i] ? [[axes[0][i], axes[1][i]] as SceneryPoint] : []));
+  // Keep only the samples needed to hold the smoothed curve within 2 cm, so dense OSM bends
+  // don't multiply the draped road geometry.
+  const smoothed = samples.map((_, i): SceneryPoint => [axes[0][i], axes[1][i]]);
+  const anchors = [0, ...pinned, samples.length - 1];
+  const keep = samples.map(() => false);
+  for (const i of anchors) keep[i] = true;
+  const spans = anchors.slice(1).map((to, i): [number, number] => [anchors[i], to]);
+  while (spans.length) {
+    const [from, to] = spans.pop()!;
+    const a = smoothed[from],
+      b = smoothed[to];
+    const deviations: number[] = [];
+    for (let i = from + 1; i < to; i++) deviations.push(segmentDistance(smoothed[i], a, b));
+    const worst = Math.max(0, ...deviations);
+    if (worst <= 0.02) continue;
+    // Splitting at every tied sample keeps the result independent of travel direction.
+    const splits = [from];
+    deviations.forEach((d, i) => {
+      if (d >= worst - 1e-9) splits.push(from + 1 + i);
+    });
+    splits.push(to);
+    for (let i = 1; i < splits.length; i++) {
+      keep[splits[i]] = true;
+      spans.push([splits[i - 1], splits[i]]);
+    }
+  }
+  return smoothed.filter((_, i) => keep[i]);
+}
+
+function segmentDistance([x, z]: SceneryPoint, [ax, az]: SceneryPoint, [bx, bz]: SceneryPoint) {
+  const dx = bx - ax,
+    dz = bz - az;
+  const t = Math.min(1, Math.max(0, ((x - ax) * dx + (z - az) * dz) / (dx * dx + dz * dz || 1)));
+  return Math.hypot(x - ax - t * dx, z - az - t * dz);
 }
 
 export const sceneryPointKey = ([x, z]: SceneryPoint) => `${x.toFixed(2)},${z.toFixed(2)}`;
