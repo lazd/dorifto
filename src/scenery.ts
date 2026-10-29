@@ -9,12 +9,14 @@ import { junctionRoadFlare } from './scenery-data';
 import { sceneryRoadProfiles } from './scenery-roads';
 import { buildBridgeGeometry, createBridgeMeshes } from './bridges';
 import { createStopSignFactory } from './turn-sign';
+import * as polygonClipping from './polygon-boolean';
 
 type Point = { x: number; z: number };
 type Bounds = { minX: number; minZ: number; maxX: number; maxZ: number };
 type Polygon = Bounds & { rings: SceneryPolygon };
 type RoadSegment = Bounds & { a: Point; b: Point; width: number; widthA?: number; widthB?: number };
 type Vertex = Point & { y: number };
+type MultiPolygon = SceneryPolygon[];
 
 export interface SceneryOptions {
   createRoadMaterial?: () => THREE.MeshStandardMaterial;
@@ -186,6 +188,7 @@ function clipToBounds(points: Point[], bounds: Bounds) {
 class Batch {
   positions: number[] = [];
   colors: number[] = [];
+  outlines?: SceneryPolygon[];
 
   triangle(a: Vertex, b: Vertex, c: Vertex, color?: THREE.Color) {
     this.positions.push(a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z);
@@ -193,7 +196,9 @@ class Batch {
   }
 
   roof(a: Vertex, b: Vertex, c: Vertex, color?: THREE.Color) {
-    if ((b.z - a.z) * (c.x - a.x) - (b.x - a.x) * (c.z - a.z) < 0) this.triangle(a, c, b, color);
+    const area = (b.z - a.z) * (c.x - a.x) - (b.x - a.x) * (c.z - a.z);
+    if (Math.abs(area) < 1e-8) return;
+    if (area < 0) this.triangle(a, c, b, color);
     else this.triangle(a, b, c, color);
   }
 
@@ -219,6 +224,72 @@ class Batch {
     geometry.computeVertexNormals();
     geometry.computeBoundingSphere();
     return geometry;
+  }
+}
+
+function pavementFootprint(batch: Batch): MultiPolygon {
+  if (batch.outlines) {
+    const polygons = batch.outlines
+      .map((rings) =>
+        rings.map((ring) =>
+          ring.filter((p, i) => {
+            const a = ring[(i + ring.length - 1) % ring.length],
+              b = ring[(i + 1) % ring.length];
+            return Math.abs((p[0] - a[0]) * (b[1] - p[1]) - (p[1] - a[1]) * (b[0] - p[0])) > 1e-8;
+          }),
+        ),
+      )
+      .filter((rings) => rings[0].length >= 3);
+    return polygons.length ? polygonClipping.union(polygons) : [];
+  }
+  const chunks: MultiPolygon[] = [];
+  for (const chunk of batch.chunks()) {
+    const triangles: MultiPolygon = [];
+    for (let i = 0; i < chunk.positions.length; i += 9) {
+      const p = chunk.positions;
+      const ring: SceneryPoint[] = [0, 3, 6].map((j) => [p[i + j], p[i + j + 2]]);
+      if (
+        Math.abs(
+          (ring[1][0] - ring[0][0]) * (ring[2][1] - ring[0][1]) -
+            (ring[1][1] - ring[0][1]) * (ring[2][0] - ring[0][0]),
+        ) > 1e-8
+      )
+        triangles.push([ring]);
+    }
+    if (triangles.length) chunks.push(polygonClipping.union(triangles));
+  }
+  return chunks.length ? polygonClipping.union(chunks[0], ...chunks.slice(1)) : [];
+}
+
+function fillFootprint(batch: Batch, footprint: MultiPolygon) {
+  batch.positions.length = 0;
+  for (const rings of footprint) {
+    const shape = polygon(rings);
+    if (!shape) continue;
+    const { points, triangles } = triangulate(shape);
+    for (const [a, b, c] of triangles) {
+      const triangle = [points[a], points[b], points[c]];
+      const minX = Math.min(...triangle.map((p) => p.x)),
+        maxX = Math.max(...triangle.map((p) => p.x));
+      const minZ = Math.min(...triangle.map((p) => p.z)),
+        maxZ = Math.max(...triangle.map((p) => p.z));
+      // Bound the terrain-projection search even for kilometer-long diagonal ribbons.
+      for (let x = Math.floor(minX / 128); x <= Math.floor(maxX / 128); x++)
+        for (let z = Math.floor(minZ / 128); z <= Math.floor(maxZ / 128); z++) {
+          const clipped = clipToBounds(triangle, {
+            minX: x * 128,
+            maxX: (x + 1) * 128,
+            minZ: z * 128,
+            maxZ: (z + 1) * 128,
+          });
+          for (let i = 1; i + 1 < clipped.length; i++)
+            batch.roof(
+              { ...clipped[0], y: 0 },
+              { ...clipped[i], y: 0 },
+              { ...clipped[i + 1], y: 0 },
+            );
+        }
+    }
   }
 }
 
@@ -303,8 +374,8 @@ export function createScenery(
   const stopSignGroup = new THREE.Group();
   stopSignGroup.name = 'nearby-road-stop-signs';
   let roadsVisible = true;
-  const pavementEdges = new SpatialIndex<RoadSegment>();
-  const junctionEdges = new SpatialIndex<RoadSegment>();
+  let pavementEdges = new SpatialIndex<RoadSegment>();
+  let junctionEdges = new SpatialIndex<RoadSegment>();
   let pavementSurface = new PavementSurface();
   let raisedPavement = new PavementSurface();
   let hasRaisedPavement = false;
@@ -393,7 +464,11 @@ export function createScenery(
   const roadBlocked = (x: number, z: number) => clearance(x, z) < 0.8 && !separated(x, z);
   const selectedRoadCopy = (x: number, z: number, dx: number, dz: number, width: number) => {
     const near = surface.nearest(x, z);
-    if (near.distance >= halfWidth + width / 2 + 0.8) return false;
+    if (
+      near.distance >=
+      (completeMap ? Math.min(definition.width, width) / 4 : halfWidth + width / 2 + 0.8)
+    )
+      return false;
     const selected =
       query.segments[
         Math.min(query.segments.length - 1, Math.floor(near.fraction * query.segments.length))
@@ -404,77 +479,88 @@ export function createScenery(
     return Math.abs(dx * sx + dz * sz) / Math.hypot(sx, sz) > 0.85;
   };
   const obstacles = new SpatialIndex<Polygon>();
+  const groundAreas = new SpatialIndex<Polygon>();
   const roads = new SpatialIndex<RoadSegment>();
   const buildingBatch = new Batch();
+  const buildings = scenery.buildings;
+  let groundFootprint: MultiPolygon = [];
 
-  for (const building of scenery.buildings) {
-    const shape = polygon(building.rings);
-    // A cut-off building would expose its interior; omit footprints beyond supported terrain.
-    if (
-      !shape ||
-      !Number.isFinite(building.height) ||
-      shape.rings.some((ring) => ring.some(([x, z]) => !terrain.contains(x, z)))
-    )
-      continue;
-    obstacles.add({
-      ...shape,
-      minX: shape.minX - 3,
-      minZ: shape.minZ - 3,
-      maxX: shape.maxX + 3,
-      maxZ: shape.maxZ + 3,
-    });
-    const rings = shape.rings.map((ring, hole) => {
-      const points = ring.map(([x, z]) => new THREE.Vector2(x, z));
-      if (THREE.ShapeUtils.isClockWise(points) !== hole > 0) points.reverse();
-      const sampled: Point[] = [];
-      points.forEach((a, i) => {
-        const b = points[(i + 1) % points.length];
-        const count = Math.min(256, Math.max(1, Math.ceil(a.distanceTo(b) / 3)));
-        for (let j = 0; j < count; j++)
-          sampled.push({
-            x: THREE.MathUtils.lerp(a.x, b.x, j / count),
-            z: THREE.MathUtils.lerp(a.y, b.y, j / count),
-          });
+  function buildBuildings() {
+    for (const building of buildings) {
+      const shape = polygon(building.rings);
+      // A cut-off building would expose its interior; omit footprints beyond supported terrain.
+      if (
+        !shape ||
+        !Number.isFinite(building.height) ||
+        shape.rings.some((ring) => ring.some(([x, z]) => !terrain.contains(x, z)))
+      )
+        continue;
+      if (
+        groundAreas
+          .query(shape)
+          .some((area) => polygonClipping.intersection([shape.rings], [area.rings]).length)
+      )
+        continue;
+      obstacles.add({
+        ...shape,
+        minX: shape.minX - 3,
+        minZ: shape.minZ - 3,
+        maxX: shape.maxX + 3,
+        maxZ: shape.maxZ + 3,
       });
-      return sampled;
-    });
-    let base = -Infinity;
-    for (const ring of rings) for (const p of ring) base = Math.max(base, ground(p.x, p.z));
-    const roof = base + THREE.MathUtils.clamp(building.height, 2, 150);
-    const tone = Math.abs(Math.sin(shape.minX * 0.13 + shape.minZ * 0.37));
-    const wall = new THREE.Color().setHSL(0.08 + tone * 0.035, 0.12, 0.55 + tone * 0.18);
-    const roofColor = new THREE.Color().setHSL(0.035, 0.16, 0.27 + tone * 0.12);
-    for (const ring of rings)
-      ring.forEach((a, i) => {
-        const b = ring[(i + 1) % ring.length];
-        const bottomA = { ...a, y: ground(a.x, a.z) - 0.15 };
-        const bottomB = { ...b, y: ground(b.x, b.z) - 0.15 };
-        const topA = { ...a, y: roof },
-          topB = { ...b, y: roof };
-        buildingBatch.triangle(bottomA, topA, topB, wall);
-        buildingBatch.triangle(bottomA, topB, bottomB, wall);
+      const rings = shape.rings.map((ring, hole) => {
+        const points = ring.map(([x, z]) => new THREE.Vector2(x, z));
+        if (THREE.ShapeUtils.isClockWise(points) !== hole > 0) points.reverse();
+        const sampled: Point[] = [];
+        points.forEach((a, i) => {
+          const b = points[(i + 1) % points.length];
+          const count = Math.min(256, Math.max(1, Math.ceil(a.distanceTo(b) / 3)));
+          for (let j = 0; j < count; j++)
+            sampled.push({
+              x: THREE.MathUtils.lerp(a.x, b.x, j / count),
+              z: THREE.MathUtils.lerp(a.y, b.y, j / count),
+            });
+        });
+        return sampled;
       });
-    const { points, triangles } = triangulate(shape);
-    for (const [a, b, c] of triangles)
-      buildingBatch.roof(
-        { ...points[a], y: roof },
-        { ...points[b], y: roof },
-        { ...points[c], y: roof },
-        roofColor,
-      );
-  }
-  if (buildingBatch.positions.length) {
-    const mesh = addBatch(
-      layers.buildings,
-      buildingBatch,
-      material(0xffffff, true),
-      'building-shells',
-    )!;
-    const positions = mesh.geometry.getAttribute('position').array as Float32Array;
-    result.collisionMesh = {
-      positions,
-      indices: Uint32Array.from({ length: positions.length / 3 }, (_, i) => i),
-    };
+      let base = -Infinity;
+      for (const ring of rings) for (const p of ring) base = Math.max(base, ground(p.x, p.z));
+      const roof = base + THREE.MathUtils.clamp(building.height, 2, 150);
+      const tone = Math.abs(Math.sin(shape.minX * 0.13 + shape.minZ * 0.37));
+      const wall = new THREE.Color().setHSL(0.08 + tone * 0.035, 0.12, 0.55 + tone * 0.18);
+      const roofColor = new THREE.Color().setHSL(0.035, 0.16, 0.27 + tone * 0.12);
+      for (const ring of rings)
+        ring.forEach((a, i) => {
+          const b = ring[(i + 1) % ring.length];
+          const bottomA = { ...a, y: ground(a.x, a.z) - 0.15 };
+          const bottomB = { ...b, y: ground(b.x, b.z) - 0.15 };
+          const topA = { ...a, y: roof },
+            topB = { ...b, y: roof };
+          buildingBatch.triangle(bottomA, topA, topB, wall);
+          buildingBatch.triangle(bottomA, topB, bottomB, wall);
+        });
+      const { points, triangles } = triangulate(shape);
+      for (const [a, b, c] of triangles)
+        buildingBatch.roof(
+          { ...points[a], y: roof },
+          { ...points[b], y: roof },
+          { ...points[c], y: roof },
+          roofColor,
+        );
+    }
+    if (buildingBatch.positions.length) {
+      const mesh = addBatch(
+        layers.buildings,
+        buildingBatch,
+        material(0xffffff, true),
+        'building-shells',
+      )!;
+      const positions = mesh.geometry.getAttribute('position').array as Float32Array;
+      result.collisionMesh = {
+        positions,
+        indices: Uint32Array.from({ length: positions.length / 3 }, (_, i) => i),
+      };
+    }
   }
 
   const waterBatch = new Batch();
@@ -578,6 +664,7 @@ export function createScenery(
     centerlineBatch = new Batch(),
     directionBatch = new Batch(),
     stopLineBatch = new Batch(),
+    medianBatch = new Batch(),
     abutmentBatch = new Batch(),
     dirtBatch = new Batch(),
     riverBatch = new Batch();
@@ -587,6 +674,7 @@ export function createScenery(
     (x, z) => terrain.heightAt(x, z),
     (x, z) => surface.nearest(x, z).distance - halfWidth,
     selectedRoadCopy,
+    completeMap,
   );
   type RoadProfile = (typeof profiles)[number];
   type IndexedRoadSegment = RoadSegment & { profile: RoadProfile; profileIndex: number };
@@ -666,8 +754,7 @@ export function createScenery(
         ? other.profile.heightAt(hit.point.x, hit.point.z)
         : ground(hit.point.x, hit.point.z) + 0.035;
       if (Math.abs(segmentHeight - otherHeight) > 2.5) continue;
-      const small = lowerPriorityRoad(segment.profile, other.profile);
-      if (!small) continue;
+      const small = lowerPriorityRoad(segment.profile, other.profile) ?? segment.profile;
       const large = small === segment.profile ? other.profile : segment.profile;
       const smallSegment = small === segment.profile ? segment : other;
       const smallTangent = new THREE.Vector2(
@@ -687,9 +774,11 @@ export function createScenery(
   }
   const junctionsByRoad = new Map<RoadProfile, RoadIntersection[]>();
   for (const intersection of intersections) {
-    const junctions = junctionsByRoad.get(intersection.small) ?? [];
-    junctions.push(intersection);
-    junctionsByRoad.set(intersection.small, junctions);
+    for (const profile of [intersection.small, intersection.large]) {
+      const junctions = junctionsByRoad.get(profile) ?? [];
+      junctions.push(intersection);
+      junctionsByRoad.set(profile, junctions);
+    }
   }
   const junctionExpansionSamples = new Map<RoadProfile, Float32Array[]>();
   const expansionSamplesFor = (profile: RoadProfile) => {
@@ -717,7 +806,11 @@ export function createScenery(
               Math.max(
                 0,
                 Math.hypot(x - junction.point.x, z - junction.point.z) -
-                  Math.min(20, junction.large.road.width) / 2,
+                  Math.min(
+                    20,
+                    (junction.small === profile ? junction.large : junction.small).road.width,
+                  ) /
+                    2,
               ),
             ),
           );
@@ -728,39 +821,32 @@ export function createScenery(
     junctionExpansionSamples.set(profile, samples);
     return samples;
   };
-  if (completeMap && intersections.length) {
+  if (scenery.stopSigns?.length) {
     const createStopSign = createStopSignFactory();
-    for (const { point, small, large, tangent } of intersections) {
-      const stopDistance = Math.min(20, large.road.width) / 2 + 1.5;
-      const flare = junctionRoadFlare(1.5);
-      const stopWidth = Math.min(20, small.road.width) + flare * 2;
-      for (const side of [-1, 1]) {
-        const x = point.x + tangent.x * side * stopDistance;
-        const z = point.z + tangent.z * side * stopDistance;
-        if (!terrain.contains(x, z)) continue;
-        const inboundX = -tangent.x * side;
-        const inboundZ = -tangent.z * side;
-        const rightX = -inboundZ;
-        const rightZ = inboundX;
-        const halfWidth = Math.min(20, small.road.width) / 2 + flare;
-        const signX = x + rightX * (halfWidth + 1.1);
-        const signZ = z + rightZ * (halfWidth + 1.1);
-        const y = ground(x, z) + 0.06;
-        const nx = tangent.z;
-        const nz = -tangent.x;
-        const a = { x: x - (nx * stopWidth) / 2, y, z: z - (nz * stopWidth) / 2 };
-        const b = { x: x + (nx * stopWidth) / 2, y, z: z + (nz * stopWidth) / 2 };
-        const lineDepth = 0.45;
-        const c = { x: a.x + inboundX * lineDepth, y, z: a.z + inboundZ * lineDepth };
-        const d = { x: b.x + inboundX * lineDepth, y, z: b.z + inboundZ * lineDepth };
-        stopLineBatch.roof(a, b, c);
-        stopLineBatch.roof(b, d, c);
-        if (!terrain.contains(signX, signZ)) continue;
-        const sign = createStopSign();
-        sign.position.set(signX, ground(signX, signZ), signZ);
-        sign.rotation.y = Math.atan2(-inboundX, -inboundZ);
-        stopSignGroup.add(sign);
-      }
+    for (const control of scenery.stopSigns) {
+      const [x, z] = control.point;
+      if (!terrain.contains(x, z)) continue;
+      if (scenery.parking?.some(({ rings }) => inside(x, z, polygon(rings)!))) continue;
+      const [inboundX, inboundZ] = control.direction;
+      const rightX = -inboundZ;
+      const rightZ = inboundX;
+      const halfWidth = Math.min(20, control.width) / 2;
+      const signX = x + rightX * (halfWidth + 1.1);
+      const signZ = z + rightZ * (halfWidth + 1.1);
+      const y = ground(x, z) + 0.06;
+      const left = control.oneway ? -halfWidth : 0;
+      const a = { x: x + rightX * left, y, z: z + rightZ * left };
+      const b = { x: x + rightX * halfWidth, y, z: z + rightZ * halfWidth };
+      const lineDepth = 0.45;
+      const c = { x: a.x + inboundX * lineDepth, y, z: a.z + inboundZ * lineDepth };
+      const d = { x: b.x + inboundX * lineDepth, y, z: b.z + inboundZ * lineDepth };
+      stopLineBatch.roof(a, b, c);
+      stopLineBatch.roof(b, d, c);
+      if (!terrain.contains(signX, signZ)) continue;
+      const sign = createStopSign();
+      sign.position.set(signX, ground(signX, signZ), signZ);
+      sign.rotation.y = Math.atan2(-inboundX, -inboundZ);
+      stopSignGroup.add(sign);
     }
   }
   if (stopSignGroup.children.length) layers.nearbyRoads.add(stopSignGroup);
@@ -865,6 +951,18 @@ export function createScenery(
         roads.add(river ? { ...segment, width: width + 2 } : segment);
       }
       const steps = Math.min(8192, Math.ceil(length / 2));
+      let outlineBatch: Batch | undefined;
+      let left: SceneryPoint[] = [],
+        right: SceneryPoint[] = [];
+      const finishOutline = () => {
+        if (outlineBatch && left.length > 1) {
+          outlineBatch.outlines ??= [];
+          outlineBatch.outlines.push([[...left, ...right.reverse()]]);
+        }
+        left = [];
+        right = [];
+        outlineBatch = undefined;
+      };
       const side = (t: number, offset: number): Vertex => ({
         x: ax + dx * t - dz * offset,
         z: az + dz * t + dx * offset,
@@ -915,13 +1013,17 @@ export function createScenery(
         const t0 = (length * j) / steps;
         const center = side((length * (j + 0.5)) / steps, 0);
         const elevated = elevation && !atGrade(center.x, center.z);
-        if (elevated && verge) continue;
+        if (elevated && verge) {
+          finishOutline();
+          continue;
+        }
         if (
           !river &&
           !elevated &&
           selectedRoadCopy(center.x, center.z, dx, dz, verge ? width - 4.8 : width)
         ) {
           connected = false;
+          finishOutline();
           continue;
         }
         const distance = clearance(center.x, center.z);
@@ -972,21 +1074,20 @@ export function createScenery(
           if (!closed && i === points.length - 1 && j === steps - 1 && !ends[1])
             addPavementEdge(corners[2], corners[3]);
         }
-        if (verge) {
-          const columns = Math.ceil(width / 0.75);
-          const across = (a: Vertex, b: Vertex, t: number): Vertex => ({
-            x: THREE.MathUtils.lerp(a.x, b.x, t),
-            y: 0,
-            z: THREE.MathUtils.lerp(a.z, b.z, t),
-          });
-          for (let k = 0; k < columns; k++) {
-            const a = across(corners[0], corners[1], k / columns),
-              b = across(corners[0], corners[1], (k + 1) / columns),
-              c = across(corners[2], corners[3], k / columns),
-              d = across(corners[2], corners[3], (k + 1) / columns);
-            batch.roof(a, b, c);
-            batch.roof(b, d, c);
+        if (!river) {
+          const target = !verge && elevation && !elevated ? roadBatch : batch;
+          if (outlineBatch !== target) finishOutline();
+          outlineBatch = target;
+          if (!left.length) {
+            left.push([corners[0].x, corners[0].z]);
+            right.push([corners[1].x, corners[1].z]);
           }
+          left.push([corners[2].x, corners[2].z]);
+          right.push([corners[3].x, corners[3].z]);
+        }
+        if (verge) {
+          batch.roof(corners[0], corners[1], corners[2]);
+          batch.roof(corners[1], corners[3], corners[2]);
           continue;
         }
         const target = elevation && !elevated ? roadBatch : batch;
@@ -1060,6 +1161,7 @@ export function createScenery(
           }
         }
       }
+      finishOutline();
     }
   }
   // Traverse both ways so a branch saved from its outer end still gets a mouth barrier.
@@ -1072,6 +1174,7 @@ export function createScenery(
   };
   for (const profile of profiles) {
     const { road } = profile;
+    if (profile.selected) continue;
     if (profile.raised) {
       const ends = [roadEnd(road, false), roadEnd(road, true)];
       ribbon(profile.points, road.width, raisedBatch, false, false, false, ends, profile);
@@ -1143,6 +1246,109 @@ export function createScenery(
     if (dirtMaterial)
       ribbon(points, road.width + 4.8, dirtBatch, false, false, true, ends, profile);
   }
+  for (const [profileIndex, profile] of profiles.entries()) {
+    const { road, curve } = profile;
+    if (
+      road.structure ||
+      profile.bridgeApproach ||
+      !['motorway', 'trunk', 'primary', 'secondary'].includes(road.roadClass ?? '')
+    )
+      continue;
+    const length = curve.getLength();
+    for (let distance = 2; distance < length - 2; distance += 2) {
+      const center = curve.getPointAt(distance / length);
+      const tangent = curve.getTangentAt(distance / length);
+      let medianX = center.x,
+        medianZ = center.z,
+        medianWidth = 0;
+      if (!road.oneway && (road.lanes ?? 0) >= 4) medianWidth = 1;
+      else if (road.oneway) {
+        let closest = Infinity;
+        for (const segment of roadSegments.query({
+          minX: center.x - 30,
+          maxX: center.x + 30,
+          minZ: center.z - 30,
+          maxZ: center.z + 30,
+        })) {
+          const other = segment.profile;
+          if (
+            other === profile ||
+            other.road.structure ||
+            other.bridgeApproach ||
+            !other.road.oneway ||
+            other.road.roadClass !== road.roadClass ||
+            (other.road.layer ?? 0) !== (road.layer ?? 0)
+          )
+            continue;
+          const dx = segment.b.x - segment.a.x,
+            dz = segment.b.z - segment.a.z;
+          const size = Math.hypot(dx, dz);
+          if (!size) continue;
+          if (((tangent.x * dx + tangent.z * dz) / size) * road.oneway * other.road.oneway > -0.95)
+            continue;
+          const t = THREE.MathUtils.clamp(
+            ((center.x - segment.a.x) * dx + (center.z - segment.a.z) * dz) / (size * size),
+            0,
+            1,
+          );
+          const x = segment.a.x + dx * t,
+            z = segment.a.z + dz * t;
+          const separation = Math.hypot(x - center.x, z - center.z);
+          const gap = separation - (road.width + other.road.width) / 2;
+          if (gap < 0.6 || gap > 12 || separation >= closest) continue;
+          closest = separation;
+          if (profileIndex > segment.profileIndex) {
+            medianWidth = 0;
+            continue;
+          }
+          const offset = (road.width / 2 + gap / 2) / separation;
+          medianX = center.x + (x - center.x) * offset;
+          medianZ = center.z + (z - center.z) * offset;
+          medianWidth = Math.min(3, gap - 0.3);
+        }
+      }
+      if (!medianWidth) continue;
+      const crossingRoad = roadSegments
+        .query({ minX: medianX - 20, maxX: medianX + 20, minZ: medianZ - 20, maxZ: medianZ + 20 })
+        .some((segment) => {
+          if (
+            segment.profile === profile ||
+            segment.profile.road.structure ||
+            (segment.profile.road.layer ?? 0) !== (road.layer ?? 0)
+          )
+            return false;
+          const dx = segment.b.x - segment.a.x,
+            dz = segment.b.z - segment.a.z;
+          const size = Math.hypot(dx, dz);
+          if (!size || Math.abs((tangent.x * dx + tangent.z * dz) / size) > 0.85) return false;
+          return segmentDistance(medianX, medianZ, segment.a, segment.b) < segment.width / 2 + 5;
+        });
+      if (crossingRoad || !terrain.contains(medianX, medianZ)) continue;
+      const corners = [-1, 1].flatMap((along) =>
+        [-1, 1].map((side) => {
+          const x = medianX + tangent.x * along + (tangent.z * side * medianWidth) / 2;
+          const z = medianZ + tangent.z * along - (tangent.x * side * medianWidth) / 2;
+          return { x, z, y: ground(x, z) + 0.22 };
+        }),
+      );
+      if (corners.some((p) => !terrain.contains(p.x, p.z))) continue;
+      medianBatch.roof(corners[0], corners[1], corners[2]);
+      medianBatch.roof(corners[1], corners[3], corners[2]);
+      for (const [a, b] of [
+        [0, 1],
+        [1, 3],
+        [3, 2],
+        [2, 0],
+      ]) {
+        const p = corners[a],
+          q = corners[b];
+        const lowerP = { ...p, y: p.y - 0.2 },
+          lowerQ = { ...q, y: q.y - 0.2 };
+        medianBatch.triangle(p, lowerP, q);
+        medianBatch.triangle(q, lowerP, lowerQ);
+      }
+    }
+  }
   const paintRoadStrip = (
     profile: RoadProfile,
     batch: Batch,
@@ -1184,25 +1390,39 @@ export function createScenery(
     batch.roof(aLeft, aRight, bLeft);
     batch.roof(aRight, bRight, bLeft);
   };
+  const nearEnd = (profile: RoadProfile, point: Point) =>
+    [profile.points[0], profile.points.at(-1)!].some(
+      ([x, z]) => Math.hypot(x - point.x, z - point.z) < 1,
+    );
+  // The course and crossing roads keep their own markings; another road's paint stops at their pavement.
+  const paintCovered = (profile: RoadProfile, x: number, z: number) =>
+    (!separated(x, z) && surface.nearest(x, z).distance < definition.width / 2 + 0.5) ||
+    (junctionsByRoad.get(profile) ?? []).some(
+      ({ small, large, point }) =>
+        small === profile &&
+        !nearEnd(large, point) &&
+        Math.hypot(x - point.x, z - point.z) < Math.min(20, large.road.width) / 2 + 0.5,
+    );
   for (const profile of profiles) {
     const { road, curve } = profile;
     const length = curve.getLength();
     if (road.oneway !== undefined) {
       for (let distance = 18; distance < length - 3; distance += 36) {
         const center = curve.getPointAt(distance / length);
+        if (paintCovered(profile, center.x, center.z)) continue;
         const tangent = curve.getTangentAt(distance / length);
         const direction = new THREE.Vector2(tangent.x, tangent.z).multiplyScalar(
           road.oneway === 1 ? 1 : -1,
         );
         const normal = new THREE.Vector2(-direction.y, direction.x);
         const outline = [
-          [-1.4, -0.08],
-          [0.15, -0.08],
-          [0.15, -0.42],
-          [1.35, 0],
-          [0.15, 0.42],
-          [0.15, 0.08],
-          [-1.4, 0.08],
+          [-2, -0.14],
+          [0.5, -0.14],
+          [0.5, -0.6],
+          [2, 0],
+          [0.5, 0.6],
+          [0.5, 0.14],
+          [-2, 0.14],
         ].map(([forward, side]) => {
           const x = center.x + direction.x * forward + normal.x * side;
           const z = center.z + direction.y * forward + normal.y * side;
@@ -1216,14 +1436,19 @@ export function createScenery(
             y: (raised ? profile.heightAt(x, z) : ground(x, z)) + 0.075,
           };
         });
-        for (let i = 1; i + 1 < outline.length; i++)
-          directionBatch.roof(outline[0], outline[i], outline[i + 1]);
+        const triangles = THREE.ShapeUtils.triangulateShape(
+          outline.map((p) => new THREE.Vector2(p.x, p.z)),
+          [],
+        );
+        for (const [a, b, c] of triangles) directionBatch.roof(outline[a], outline[b], outline[c]);
       }
     } else if (road.centerline) {
       const dashed = road.centerline === 'dashed-yellow';
       for (const lateral of dashed ? [0] : [-0.14, 0.14]) {
         for (let distance = 0; distance < length; distance += 2) {
           if (dashed && (distance % 12 >= 3 || distance + 2 > length)) continue;
+          const center = curve.getPointAt(Math.min(1, (distance + 1) / length));
+          if (paintCovered(profile, center.x, center.z)) continue;
           paintRoadStrip(profile, centerlineBatch, distance + 1, lateral, 2, 0.12);
         }
       }
@@ -1231,6 +1456,60 @@ export function createScenery(
   }
   for (const waterway of scenery.waterways)
     ribbon(waterway.points, waterway.width, riverBatch, true);
+  for (const area of scenery.parking ?? []) {
+    const shape = polygon(area.rings);
+    if (!shape) continue;
+    roadBatch.outlines ??= [];
+    roadBatch.outlines.push(shape.rings);
+    obstacles.add({
+      ...shape,
+      minX: shape.minX - 3,
+      minZ: shape.minZ - 3,
+      maxX: shape.maxX + 3,
+      maxZ: shape.maxZ + 3,
+    });
+    const { points, triangles } = triangulate(shape);
+    for (const [a, b, c] of triangles)
+      roadBatch.roof({ ...points[a], y: 0 }, { ...points[b], y: 0 }, { ...points[c], y: 0 });
+  }
+  const pavement = pavementFootprint(roadBatch);
+  fillFootprint(roadBatch, pavement);
+  const selectedFootprint = new Batch();
+  for (let i = 0; i < query.segments.length; i += 5) {
+    const a = query.segments[i].a;
+    const b = query.segments[Math.min(i + 4, query.segments.length - 1)].b;
+    if (separated((a.x + b.x) / 2, (a.z + b.z) / 2)) continue;
+    const length = Math.hypot(b.x - a.x, b.z - a.z);
+    if (!length) continue;
+    const nx = ((b.z - a.z) / length) * halfWidth,
+      nz = (-(b.x - a.x) / length) * halfWidth;
+    const leftA = { x: a.x - nx, z: a.z - nz, y: 0 },
+      rightA = { x: a.x + nx, z: a.z + nz, y: 0 };
+    const leftB = { x: b.x - nx, z: b.z - nz, y: 0 },
+      rightB = { x: b.x + nx, z: b.z + nz, y: 0 };
+    selectedFootprint.roof(leftA, rightA, leftB);
+    selectedFootprint.roof(rightA, rightB, leftB);
+  }
+  groundFootprint = polygonClipping.union(pavement, pavementFootprint(selectedFootprint));
+  for (const batch of [roadBatch, selectedFootprint])
+    for (let i = 0; i < batch.positions.length; i += 9) {
+      const shape = polygon([
+        [0, 3, 6].map((j) => [batch.positions[i + j], batch.positions[i + j + 2]]),
+      ]);
+      if (shape) groundAreas.add(shape);
+    }
+  if (dirtBatch.positions.length)
+    fillFootprint(
+      dirtBatch,
+      polygonClipping.difference(pavementFootprint(dirtBatch), groundFootprint),
+    );
+  pavementEdges = new SpatialIndex<RoadSegment>();
+  junctionEdges = new SpatialIndex<RoadSegment>();
+  for (const rings of pavement)
+    for (const ring of rings)
+      for (let i = 1; i < ring.length; i++)
+        addPavementEdge({ x: ring[i - 1][0], z: ring[i - 1][1] }, { x: ring[i][0], z: ring[i][1] });
+  buildBuildings();
   const groundQuery = query.groundSurface
     ? {
         ...query,
@@ -1379,6 +1658,38 @@ export function createScenery(
   };
   addDraped(roadBatch, layers.nearbyRoads, 0x55575a, 'nearby-road-surfaces', 0.035);
   addDraped(raisedBatch, layers.nearbyRoads, 0x55575a, 'nearby-road-decks', 0.035);
+  const drapePaint = (batch: Batch) => {
+    const groundPaint = new Batch(),
+      deckPaint = new Batch();
+    for (let i = 0; i < batch.positions.length; i += 9) {
+      const vertices = [0, 3, 6].map((j) => ({
+        x: batch.positions[i + j],
+        y: batch.positions[i + j + 1],
+        z: batch.positions[i + j + 2],
+      }));
+      const p = vertices[0];
+      if (raisedPavement.isAsphalt(p) && Math.abs(p.y - ground(p.x, p.z)) > 0.15)
+        deckPaint.roof(vertices[0], vertices[1], vertices[2]);
+      else groundPaint.roof(...(vertices.map((p) => ({ ...p, y: 0 })) as [Vertex, Vertex, Vertex]));
+    }
+    batch.positions = deckPaint.positions;
+    if (!groundPaint.positions.length) return;
+    const source = groundPaint.geometry();
+    let projected: THREE.BufferGeometry;
+    try {
+      projected = options.projectGroundGeometry
+        ? options.projectGroundGeometry(source, 0.075)
+        : projectTerrainGeometry(groundQuery, source, 0.075);
+    } finally {
+      source.dispose();
+    }
+    const positions = projected.getAttribute('position');
+    for (let i = 0; i < positions.count; i++)
+      batch.positions.push(positions.getX(i), positions.getY(i), positions.getZ(i));
+    projected.dispose();
+  };
+  for (const batch of [markingBatch, centerlineBatch, directionBatch, stopLineBatch])
+    drapePaint(batch);
   for (const [batch, color, name] of [
     [roadbedBatch, 0x84775f, 'nearby-road-embankments'],
     [abutmentBatch, 0xa39e91, 'nearby-road-abutments'],
@@ -1386,6 +1697,7 @@ export function createScenery(
     [centerlineBatch, 0xf0c928, 'nearby-road-centerlines'],
     [directionBatch, 0xe9e9e4, 'nearby-road-oneway-arrows'],
     [stopLineBatch, 0xe9e9e4, 'nearby-road-stop-lines'],
+    [medianBatch, 0xa39e91, 'nearby-road-medians'],
   ] as const) {
     if (!batch.positions.length) continue;
     const surfaceMaterial = material(color);

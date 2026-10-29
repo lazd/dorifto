@@ -16,6 +16,17 @@
   min-height: 0;
 }
 
+.selection-group-link {
+  margin-left: var(--space-2);
+  color: var(--color-accent);
+  font-weight: normal;
+}
+
+.selection-group-link[aria-disabled='true'] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .selection-library {
   position: relative;
   display: flex;

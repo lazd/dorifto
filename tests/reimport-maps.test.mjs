@@ -37,9 +37,9 @@ test('scenery refresh preserves all map data and respects the nearby-road select
   course.courseBuilder = { includeNearbyRoads: false };
   const original = structuredClone(course);
   const result = await reimportMap(course, {
-    fetchScenery: async (map, includeRoads) => {
+    fetchScenery: async (map, definition) => {
       assert.strictEqual(map, course);
-      assert.equal(includeRoads, false);
+      assert.equal(definition, 'course');
       return scenery;
     },
     raster() {
@@ -50,8 +50,8 @@ test('scenery refresh preserves all map data and respects the nearby-road select
   assert.deepEqual(course, original);
   const withoutDraft = { ...course, courseBuilder: undefined };
   await reimportMap(withoutDraft, {
-    fetchScenery: async (_, includeRoads) => {
-      assert.equal(includeRoads, true);
+    fetchScenery: async (_, definition) => {
+      assert.equal(definition, 'nearby-roads');
       return scenery;
     },
   });
@@ -85,11 +85,11 @@ test('full refresh rebuilds terrain and elevation without overwriting map identi
       return undefined;
     },
     fetchScenery: async (map) => {
-      assert.equal(detailFetched, true);
       assert.notDeepEqual(map.elevation, course.elevation);
       return scenery;
     },
   });
+  assert.equal(detailFetched, true);
   assert.equal(result.id, course.id);
   assert.equal(result.coneSpacing, course.coneSpacing);
   assert.equal(result.venueName, course.venueName);
@@ -174,4 +174,42 @@ test('full reimport and browser builds use identical saved draft input and outpu
     { ...options, rebuildTerrain: true, refreshScenery: true },
   );
   assert.deepEqual(rebuilt, browser);
+});
+
+test('complete-map builds request the OpenStreetMap network before downloading terrain', async (t) => {
+  const course = await fixture();
+  const draft = { ...restoreRoadDraft(course), definition: 'complete-map', structureLines: [] };
+  const requests = [];
+  t.mock.method(globalThis, 'fetch', (input) => {
+    requests.push(String(input));
+    return new Promise(() => {});
+  });
+  let network;
+  await buildRoadCourse(
+    {
+      points: roadDraftPoints(draft),
+      draft,
+      existingCourse: course,
+      name: course.name,
+      width: course.width,
+      shoulderWidth: 1.6,
+      terrainTransition: 8,
+      doubleYellow: false,
+      closed: !!draft.closingSection,
+    },
+    {
+      raster: async () => {
+        assert.match(requests.join(), /api\/interpreter/, 'Overpass overlaps terrain download');
+        return { ...course.terrain, detail: undefined };
+      },
+      detail: async () => undefined,
+      fetchScenery: async (_, definition, options) => {
+        assert.equal(definition, 'complete-map');
+        network = options.network;
+        return scenery;
+      },
+    },
+  );
+  assert.ok(network?.elements instanceof Promise, 'scenery reuses the in-flight request');
+  assert.equal(requests.length, 1);
 });

@@ -1,4 +1,5 @@
 import type { CourseDefinition } from './courses';
+import { readRoadMap } from './course-builder-data';
 
 declare global {
   interface FileSystemDirectoryHandle {
@@ -55,4 +56,20 @@ export async function listRoadMaps(directory: FileSystemDirectoryHandle) {
     if (handle.kind === 'file' && handle.name.endsWith('.json')) files.push(handle);
   }
   return files.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export async function importRoadMap(file: File) {
+  const imported = readRoadMap(await file.text());
+  const directory = await openRoadMaps();
+  let existing: { name: string; courseName: string } | undefined;
+  for (const handle of await listRoadMaps(directory)) {
+    const course = readRoadMap(await (await handle.getFile()).text());
+    if (course.id === imported.id) {
+      existing = { name: handle.name, courseName: course.name };
+      break;
+    }
+  }
+  if (existing && !window.confirm(`Replace ${existing.courseName} with ${imported.name}?`)) return;
+  await storeRoadMap(directory, imported, file, existing?.name);
+  return imported;
 }

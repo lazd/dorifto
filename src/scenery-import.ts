@@ -18,6 +18,10 @@ const completeRoadClasses = new Set([
 const maxTiles = 64;
 const concurrency = 4;
 const timeoutMs = 12_000;
+const overpassEndpoints = [
+  'https://overpass.private.coffee/api/interpreter',
+  'https://overpass-api.de/api/interpreter',
+];
 const metersPerDegree = (6371008.8 * Math.PI) / 180;
 const maxTileCacheSize = 128;
 
@@ -28,6 +32,55 @@ type VectorProperties = Record<string, number | string | boolean>;
 
 const tileBytes = new Map<string, Promise<ArrayBuffer>>();
 let tileTemplate: Promise<string> | undefined;
+
+class RetryableSceneryError extends Error {}
+
+async function downloadScenery<T>(
+  urls: string[],
+  label: string,
+  timeout: number,
+  read: (response: Response) => Promise<T>,
+  init: RequestInit = {},
+  onRetry?: (attempt: number, total: number) => void,
+): Promise<T> {
+  let failure: unknown;
+  for (const [attempt, url] of urls.entries()) {
+    if (attempt) onRetry?.(attempt + 1, urls.length);
+    try {
+      const response = await fetch(url, { ...init, signal: AbortSignal.timeout(timeout) });
+      if (!response.ok) {
+        const message = `${label} request failed (${response.status}).`;
+        if (response.status === 408 || response.status === 429 || response.status >= 500)
+          throw new RetryableSceneryError(message);
+        throw new Error(message);
+      }
+      return await read(response);
+    } catch (error) {
+      const timedOut =
+        error instanceof Error && ['TimeoutError', 'AbortError'].includes(error.name);
+      const retryable =
+        timedOut || error instanceof TypeError || error instanceof RetryableSceneryError;
+      const reason = timedOut
+        ? `timed out after ${timeout / 1000} seconds`
+        : error instanceof Error
+          ? error.message
+          : String(error);
+      failure = new Error(`${label}: ${reason} (${new URL(url).hostname}).`, { cause: error });
+      if (!retryable) throw failure;
+      if (attempt + 1 < urls.length) {
+        console.warn(
+          `${label} download failed; retrying with ${new URL(urls[attempt + 1]).hostname}.`,
+          failure,
+        );
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
+    }
+  }
+  throw new Error(
+    `${label} could not be downloaded after ${urls.length} attempts. ${failure instanceof Error ? failure.message : ''} Please wait a moment and try saving again.`,
+    { cause: failure },
+  );
+}
 
 function localToLatLon(course: CourseDefinition, [x, z]: SceneryPoint) {
   const terrain = course.terrain!;
@@ -428,9 +481,12 @@ function tilesForMapBounds(course: CourseDefinition, bounds: Bounds): Tile[] {
 async function fetchTileTemplate(): Promise<string> {
   if (!tileTemplate) {
     tileTemplate = (async () => {
-      const response = await fetch(tileJsonUrl, { signal: AbortSignal.timeout(timeoutMs) });
-      if (!response.ok) throw new Error(`OpenFreeMap TileJSON failed (${response.status}).`);
-      const metadata = (await response.json()) as { tiles?: string[] };
+      const metadata = await downloadScenery(
+        [tileJsonUrl, tileJsonUrl],
+        'OpenFreeMap tile metadata',
+        timeoutMs,
+        (response) => response.json() as Promise<{ tiles?: string[] }>,
+      );
       if (
         !metadata.tiles?.[0] ||
         !['{z}', '{x}', '{y}'].every((key) => metadata.tiles![0].includes(key))
@@ -449,10 +505,9 @@ function loadTile(url: string): Promise<ArrayBuffer> {
   let result = tileBytes.get(url);
   if (!result) {
     result = (async () => {
-      const response = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
-      if (!response.ok)
-        throw new Error(`OpenFreeMap tile request failed (${response.status}): ${url}`);
-      return response.arrayBuffer();
+      return downloadScenery([url, url], 'OpenFreeMap scenery tile', timeoutMs, (response) =>
+        response.arrayBuffer(),
+      );
     })();
     tileBytes.set(url, result);
     while (tileBytes.size > maxTileCacheSize) tileBytes.delete(tileBytes.keys().next().value!);
@@ -479,7 +534,10 @@ async function loadTiles(tiles: Tile[], template: string) {
       try {
         responses.set(tile.key, await loadTile(url));
       } catch (error) {
-        throw new Error(`Could not acquire scenery tile ${tile.key}.`, { cause: error });
+        throw new Error(
+          `Could not acquire scenery tile ${tile.key}: ${error instanceof Error ? error.message : String(error)}`,
+          { cause: error },
+        );
       }
     }
   });
@@ -578,6 +636,342 @@ function geometryToLocal(
   );
 }
 
+export interface OsmElement {
+  type: 'node' | 'way' | 'relation';
+  id: number;
+  lat?: number;
+  lon?: number;
+  nodes?: number[];
+  geometry?: { lat: number; lon: number }[];
+  tags?: Record<string, string>;
+  members?: { role: string; geometry?: { lat: number; lon: number }[] }[];
+}
+
+export interface GeoBox {
+  south: number;
+  west: number;
+  north: number;
+  east: number;
+}
+
+export interface MappedNetworkRequest {
+  elements: Promise<OsmElement[]>;
+  /** Attempt label such as "(2/2)" once the download has been retried. */
+  retry?: string;
+  onRetry?: () => void;
+}
+
+const osmTags = [
+  'highway',
+  'oneway',
+  'junction',
+  'lanes',
+  'layer',
+  'width',
+  'service',
+  'bridge',
+  'tunnel',
+  'amenity',
+  'parking',
+  'stop',
+  'direction',
+  'stop:direction',
+];
+
+async function fetchMappedNetwork(
+  { south, west, north, east }: GeoBox,
+  onRetry: (attempt: number, total: number) => void,
+) {
+  // Geometry and node ids come from a tagless `skel` output; `convert` adds only the tags we read.
+  const tags = osmTags.map((key) => `"${key}"=t["${key}"]`).join(',');
+  const query = `[out:json][timeout:25][bbox:${south},${west},${north},${east}];way["highway"~"^(motorway|trunk|primary|secondary|tertiary|residential|unclassified|living_street|service|track)(_link)?$"]->.roads;(.roads;node(w.roads)["highway"="stop"];nwr["amenity"="parking"];)->.all;.all out skel geom qt;.all convert tags ::id=id(),"osm:type"=type(),${tags};out qt;`;
+  const elements = await downloadScenery(
+    overpassEndpoints,
+    'OpenStreetMap road network',
+    45_000,
+    async (response) => {
+      const data = (await response.json()) as {
+        elements?: (OsmElement | { type: 'tags'; id: number; tags: Record<string, string> })[];
+        remark?: string;
+      };
+      if (data.remark) {
+        if (/timed? out|timeout|too busy|rate|quota|out of memory/i.test(data.remark))
+          throw new RetryableSceneryError(data.remark);
+        throw new Error(`OpenStreetMap road network response failed: ${data.remark}`);
+      }
+      if (!Array.isArray(data.elements))
+        throw new Error('OpenStreetMap road network response is missing elements.');
+      return data.elements;
+    },
+    { method: 'POST', body: new URLSearchParams({ data: query }) },
+    onRetry,
+  );
+  const tagsById = new Map<string, Record<string, string>>();
+  for (const element of elements) {
+    if (element.type !== 'tags') continue;
+    const { 'osm:type': type, ...values } = element.tags;
+    tagsById.set(
+      `${type}/${element.id}`,
+      Object.fromEntries(Object.entries(values).filter(([, value]) => value !== '')),
+    );
+  }
+  return elements.flatMap((element) => {
+    if (element.type === 'tags') return [];
+    const tags = tagsById.get(`${element.type}/${element.id}`);
+    return [tags ? { ...element, tags: { ...element.tags, ...tags } } : element];
+  });
+}
+
+/** Start the Complete map OpenStreetMap download; it only needs the geographic map square. */
+export function requestMappedNetwork(box: GeoBox): MappedNetworkRequest {
+  const request: MappedNetworkRequest = {} as MappedNetworkRequest;
+  request.elements = fetchMappedNetwork(box, (attempt, total) => {
+    request.retry = `(${attempt}/${total})`;
+    request.onRetry?.();
+  });
+  // Callers may fail earlier stages before awaiting; the rejection is still observed when awaited.
+  request.elements.catch(() => {});
+  return request;
+}
+
+function mappedNetworkScenery(
+  course: CourseDefinition,
+  bounds: Bounds,
+  elements: readonly OsmElement[],
+) {
+  const data = { elements };
+  const roads: CourseScenery['roads'] = [];
+  const parking: NonNullable<CourseScenery['parking']> = [];
+  const stopSigns: NonNullable<CourseScenery['stopSigns']> = [];
+  const local = (p: { lat: number; lon: number }) => latLonToLocal(course, p.lat, p.lon);
+  const ways = data.elements.filter(
+    (e) => e.type === 'way' && e.tags?.highway && e.geometry?.length && e.nodes?.length,
+  );
+  const widths = new Map<number, number>();
+  const neighbors = new Map<number, Set<number>>();
+  const incident = new Map<number, OsmElement[]>();
+  const oneWay = (way: OsmElement): -1 | 1 | undefined => {
+    const tags = way.tags!;
+    if (tags.oneway === '-1') return -1;
+    if (tags.oneway === 'no' || tags.oneway === '0') return;
+    if (
+      ['yes', '1', 'true'].includes(tags.oneway) ||
+      tags.junction === 'roundabout' ||
+      tags.highway === 'motorway'
+    )
+      return 1;
+  };
+  for (const way of ways) {
+    const tags = way.tags!;
+    const mappedLanes = asNumber(tags.lanes);
+    const lanes =
+      mappedLanes !== undefined &&
+      Number.isInteger(mappedLanes) &&
+      mappedLanes > 0 &&
+      mappedLanes <= 20
+        ? mappedLanes
+        : undefined;
+    const layer = asNumber(tags.layer);
+    const oneway = oneWay(way);
+    const roadClass = tags.highway.replace(/_link$/, '');
+    const width = Math.max(
+      2,
+      Math.min(
+        60,
+        asNumber(tags.width) ??
+          (lanes && Number.isInteger(lanes)
+            ? lanes * 3.25
+            : ({
+                motorway: oneway ? 7 : 14,
+                trunk: oneway ? 7 : 12,
+                primary: 10,
+                secondary: 8,
+                tertiary: 7,
+                service: 4,
+                track: 3,
+              }[roadClass] ?? 6)),
+      ),
+    );
+    widths.set(way.id, width);
+    const lines: LocalLine[] = [];
+    clippedLine(way.geometry!.map(local), bounds, [], lines, Infinity);
+    for (const points of lines)
+      roads.push({
+        points,
+        width,
+        roadClass,
+        ...(oneway ? { oneway } : {}),
+        ...(!oneway && !['service', 'track', 'living_street'].includes(roadClass)
+          ? {
+              centerline: ['primary', 'secondary', 'trunk'].includes(roadClass)
+                ? ('double-yellow' as const)
+                : ('dashed-yellow' as const),
+            }
+          : {}),
+        ...(lanes && Number.isInteger(lanes) && lanes <= 20 ? { lanes } : {}),
+        ...(tags.service ? { service: tags.service } : {}),
+        ...(tags.bridge && tags.bridge !== 'no'
+          ? { structure: 'bridge' as const }
+          : tags.tunnel && tags.tunnel !== 'no'
+            ? { structure: 'tunnel' as const }
+            : {}),
+        ...(layer !== undefined && Number.isInteger(layer) ? { layer } : {}),
+      });
+    way.nodes!.forEach((id, i, nodes) => {
+      const adjacent = neighbors.get(id) ?? new Set<number>();
+      if (i) adjacent.add(nodes[i - 1]);
+      if (i + 1 < nodes.length) adjacent.add(nodes[i + 1]);
+      neighbors.set(id, adjacent);
+      const connected = incident.get(id) ?? [];
+      connected.push(way);
+      incident.set(id, connected);
+    });
+  }
+  for (const element of data.elements) {
+    if (element.tags?.amenity !== 'parking') continue;
+    if (['underground', 'multi-storey', 'rooftop'].includes(element.tags.parking)) continue;
+    const paths =
+      element.type === 'way'
+        ? [{ role: 'outer', geometry: element.geometry }]
+        : (element.members ?? []);
+    const rings: { role: string; points: SceneryPoint[] }[] = [];
+    for (const path of paths) {
+      if (!path.geometry?.length) continue;
+      let points = path.geometry.map(local);
+      let joined = true;
+      while (joined) {
+        joined = false;
+        for (let i = 0; i < rings.length; i++) {
+          if (rings[i].role !== path.role) continue;
+          const other = rings[i].points;
+          const near = (a: SceneryPoint, b: SceneryPoint) =>
+            Math.hypot(a[0] - b[0], a[1] - b[1]) < 0.01;
+          if (near(points.at(-1)!, other[0])) points.push(...other.slice(1));
+          else if (near(points.at(-1)!, other.at(-1)!))
+            points.push(...other.slice(0, -1).reverse());
+          else if (near(points[0], other.at(-1)!)) points = [...other.slice(0, -1), ...points];
+          else if (near(points[0], other[0])) points = [...other.slice(1).reverse(), ...points];
+          else continue;
+          rings.splice(i, 1);
+          joined = true;
+          break;
+        }
+      }
+      rings.push({ role: path.role, points });
+    }
+    const closed = rings.filter(
+      ({ points }) =>
+        points.length >= 4 &&
+        Math.hypot(points[0][0] - points.at(-1)![0], points[0][1] - points.at(-1)![1]) < 0.01,
+    );
+    if (closed.length !== rings.length)
+      console.warn(
+        `OSM parking area ${element.id} contains incomplete rings; only closed areas can be modeled.`,
+      );
+    for (const outer of closed.filter((r) => r.role !== 'inner')) {
+      const holes = closed.filter(
+        (r) => r.role === 'inner' && pointInRing(r.points[0], outer.points),
+      );
+      const clipped = [outer, ...holes]
+        .map((r) => clipRing(r.points, bounds))
+        .filter((r) => r.length >= 4);
+      if (clipped.length) parking.push({ rings: clipped });
+    }
+  }
+  const seen = new Set<string>();
+  for (const node of data.elements) {
+    if (node.type !== 'node' || node.tags?.highway !== 'stop') continue;
+    for (const way of incident.get(node.id) ?? []) {
+      if (
+        way.tags!.service === 'parking_aisle' ||
+        (way.tags!.bridge && way.tags!.bridge !== 'no') ||
+        (way.tags!.tunnel && way.tags!.tunnel !== 'no')
+      )
+        continue;
+      const i = way.nodes!.indexOf(node.id);
+      const points = way.geometry!.map(local);
+      const isJunction = (neighbors.get(node.id)?.size ?? 0) > 2;
+      if (isJunction && node.tags.stop === 'minor') {
+        console.warn(
+          `OSM stop node ${node.id} does not identify controlled approaches; not guessing priority.`,
+        );
+        continue;
+      }
+      let direction: string | undefined = node.tags.direction ?? node.tags['stop:direction'];
+      if (!isJunction && direction !== 'forward' && direction !== 'backward') {
+        const junctions = way.nodes!.flatMap((id, j) =>
+          (neighbors.get(id)?.size ?? 0) > 2 ? [j] : [],
+        );
+        let nearest = Infinity;
+        let nextNearest = Infinity;
+        for (const j of junctions) {
+          let distance = 0;
+          for (let k = Math.min(i, j) + 1; k <= Math.max(i, j); k++)
+            distance += Math.hypot(
+              points[k][0] - points[k - 1][0],
+              points[k][1] - points[k - 1][1],
+            );
+          if (distance < nearest && distance <= 60) {
+            nextNearest = nearest;
+            nearest = distance;
+            direction = j > i ? 'forward' : 'backward';
+          } else nextNearest = Math.min(nextNearest, distance);
+        }
+        if (nextNearest - nearest < 1) direction = undefined;
+      }
+      if (!isJunction && direction !== 'forward' && direction !== 'backward') {
+        console.warn(
+          `OSM stop node ${node.id} has no unambiguous approach; not inventing a stop direction.`,
+        );
+        continue;
+      }
+      for (const travel of [-1, 1] as const) {
+        if (oneWay(way) && oneWay(way) !== travel) continue;
+        if (!isJunction && (direction === 'forward' ? 1 : -1) !== travel) continue;
+        const at = points[i];
+        const after = points[i + travel];
+        const from =
+          points[i - travel] ??
+          (!isJunction && after ? [2 * at[0] - after[0], 2 * at[1] - after[1]] : undefined);
+        if (!from) continue;
+        const length = Math.hypot(at[0] - from[0], at[1] - from[1]);
+        if (length < 0.01) continue;
+        const heading: SceneryPoint = [(at[0] - from[0]) / length, (at[1] - from[1]) / length];
+        const crossingWidth = Math.max(
+          4,
+          ...(incident.get(node.id) ?? [])
+            .filter((w) => w !== way)
+            .map((w) => widths.get(w.id) ?? 4),
+        );
+        const inset = isJunction ? Math.min(length * 0.8, crossingWidth / 2 + 1.5) : 0;
+        const point: SceneryPoint = [at[0] - heading[0] * inset, at[1] - heading[1] * inset];
+        if (
+          point[0] < bounds.minX ||
+          point[0] > bounds.maxX ||
+          point[1] < bounds.minZ ||
+          point[1] > bounds.maxZ ||
+          parking.some(
+            (p) =>
+              pointInRing(point, p.rings[0]) &&
+              !p.rings.slice(1).some((r) => pointInRing(point, r)),
+          )
+        )
+          continue;
+        const key = `${node.id}:${way.nodes![i - travel]}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        stopSigns.push({
+          point,
+          direction: heading,
+          width: widths.get(way.id)!,
+          ...(oneWay(way) ? { oneway: true } : {}),
+        });
+      }
+    }
+  }
+  return { roads, parking, stopSigns };
+}
+
 function decodedFeature(
   layer: string,
   properties: VectorProperties,
@@ -605,7 +999,7 @@ function decodedFeature(
       const rings = polygon
         .map((ring) => clipRing(ring, bounds))
         .filter((ring) => ring.length >= 4) as SceneryPolygon;
-      if (rings.length && polygonNearRoute(rings, route, routeSegments)) {
+      if (rings.length && (completeMap || polygonNearRoute(rings, route, routeSegments))) {
         const key = polygonSignature(rings);
         if (!seenPolygons.has(key)) {
           seenPolygons.add(key);
@@ -635,7 +1029,8 @@ function decodedFeature(
       const rings = polygon
         .map((ring) => clipRing(ring, bounds))
         .filter((ring) => ring.length >= 4) as SceneryPolygon;
-      if (!rings.length || !polygonNearRoute(rings, route, routeSegments)) continue;
+      if (!rings.length || (!completeMap && !polygonNearRoute(rings, route, routeSegments)))
+        continue;
       const key = `${layer === 'water' ? 'water' : vegetationKind}:${polygonSignature(rings)}`;
       if (seenPolygons.has(key)) continue;
       seenPolygons.add(key);
@@ -698,13 +1093,7 @@ function decodedFeature(
           }[String(properties.class)] ?? 5));
     for (const path of paths) {
       const lines: LocalLine[] = [];
-      clippedLine(
-        path,
-        bounds,
-        routeSegments,
-        lines,
-        completeMap && layer === 'transportation' ? Infinity : corridor,
-      );
+      clippedLine(path, bounds, routeSegments, lines, completeMap ? Infinity : corridor);
       for (const points of lines) {
         const key = `${layer}:${properties.class ?? ''}:${structure ?? ''}:${roadLayer ?? 0}:${oneway ?? 0}:${lineSignature(points)}`;
         if (seenLines.has(key)) continue;
@@ -733,6 +1122,14 @@ function decodedFeature(
 export async function fetchCourseScenery(
   course: CourseDefinition,
   mode: boolean | MapDefinition,
+  {
+    progress = () => {},
+    network,
+  }: {
+    progress?: (step: 'network', detail?: string) => void;
+    /** Complete map download already started from the geographic map square. */
+    network?: MappedNetworkRequest;
+  } = {},
 ): Promise<CourseScenery> {
   const definition: MapDefinition =
     typeof mode === 'boolean' ? (mode ? 'nearby-roads' : 'course') : mode;
@@ -757,13 +1154,29 @@ export async function fetchCourseScenery(
   const routeSegments = segmentsOf(route);
   const mapBounds = completeMap ? completeMapBounds(course) : undefined;
   const tiles = mapBounds ? tilesForMapBounds(course, mapBounds) : tilesForRoute(course, route);
-  const template = await fetchTileTemplate();
-  const tileData = await loadTiles(tiles, template);
   const bounds = mapBounds
     ? intersectBounds(terrainBounds(course), mapBounds)
     : intersectBounds(terrainBounds(course), terrainGridBounds(course));
   if (bounds.minX >= bounds.maxX || bounds.minZ >= bounds.maxZ)
     throw new Error('Course scenery bounds do not overlap the supported terrain grid.');
+  if (completeMap && !network) {
+    const a = localToLatLon(course, [bounds.minX, bounds.minZ]);
+    const b = localToLatLon(course, [bounds.maxX, bounds.maxZ]);
+    network = requestMappedNetwork({
+      south: Math.min(a.lat, b.lat),
+      west: Math.min(a.lon, b.lon),
+      north: Math.max(a.lat, b.lat),
+      east: Math.max(a.lon, b.lon),
+    });
+  }
+  const tileData = await loadTiles(tiles, await fetchTileTemplate());
+  let mapped: ReturnType<typeof mappedNetworkScenery> | undefined;
+  if (completeMap && network) {
+    const request = network;
+    request.onRetry = () => progress('network', request.retry);
+    request.onRetry();
+    mapped = mappedNetworkScenery(course, bounds, await request.elements);
+  }
   const scenery: CourseScenery = {
     version: 1,
     importRevision: sceneryImportRevision,
@@ -834,5 +1247,6 @@ export async function fetchCourseScenery(
       }
     }
   }
+  if (mapped) Object.assign(scenery, mapped);
   return normalizeCourseScenery(scenery);
 }

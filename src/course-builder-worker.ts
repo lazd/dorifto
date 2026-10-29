@@ -6,7 +6,7 @@ import type { PreviewModel } from './course-builder-preview';
 
 export type { BuildRequest } from './course-build';
 export type BuildResponse =
-  | { type: 'progress'; step: RoadBuildStep }
+  | { type: 'progress'; step: RoadBuildStep; detail?: string }
   | { type: 'complete'; course: RoadMap; json: Blob; model?: PreviewModel }
   | { type: 'preview'; model: PreviewModel }
   | { type: 'error'; message: string };
@@ -22,7 +22,8 @@ self.onmessage = (
     const course = previewOnly
       ? request.course
       : await buildRoadCourse(request, {
-          progress: (step) => self.postMessage({ type: 'progress', step } satisfies BuildResponse),
+          progress: (step, detail) =>
+            self.postMessage({ type: 'progress', step, detail } satisfies BuildResponse),
         });
     const json = new Blob([JSON.stringify(course)], { type: 'application/json' });
     if (!previewOnly && request.skipPreview) {

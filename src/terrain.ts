@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { SceneryRoadSurface } from './scenery-road-surface';
 import { terrainVisualIndices } from './terrain-visual-indices';
 import { courseProfileHeight, courseRoute, courseShoulderWidth } from './courses';
 import type { CourseDefinition } from './courses';
@@ -154,7 +155,7 @@ export class CourseTerrain {
     const structureSpans = [...tunnelSpans, ...bridgeSpans];
     const structureBlendStart =
       this.halfWidth + Math.max(tunnelShoulderClearance, bridgeDimensions.edgeWidth) + supportWidth;
-    const surfaceHeight = (
+    const courseSurfaceHeight = (
       px: number,
       pz: number,
       near: ReturnType<typeof this.nearest>,
@@ -197,6 +198,30 @@ export class CourseTerrain {
       return definition.flat
         ? 0
         : road + rise * THREE.MathUtils.smoothstep(near.distance, start, end);
+    };
+    const roadSurface =
+      definition.scenery?.roads.length && !definition.flat
+        ? new SceneryRoadSurface(definition.scenery.roads, (x, z) =>
+            courseSurfaceHeight(x, z, this.nearest(x, z), blendStart),
+          )
+        : undefined;
+    if (roadSurface)
+      for (const segment of this.segments)
+        segment.bank *= roadSurface.bankingWeight(segment.a.x, segment.a.z);
+    const surfaceHeight = (
+      x: number,
+      z: number,
+      near: ReturnType<typeof this.nearest>,
+      start: number,
+    ) => {
+      const height = courseSurfaceHeight(x, z, near, start);
+      if (!roadSurface) return height;
+      const blend = THREE.MathUtils.smoothstep(
+        near.distance,
+        this.halfWidth + 7,
+        this.halfWidth + 20,
+      );
+      return THREE.MathUtils.lerp(height, roadSurface.heightAt(x, z, height), blend);
     };
     const vertex = (
       i: number,

@@ -251,6 +251,77 @@ function tileFromUrl(url) {
   return { z: Number(z), x: Number(x), y: Number(y) };
 }
 
+function osmFixture() {
+  const local = ([x, z]) => ({
+    lat: 40 + z / metersPerDegree,
+    lon: -120 - x / course().terrain.metersPerLongitude,
+  });
+  const way = (id, nodes, points, tags) => ({
+    type: 'way',
+    id,
+    nodes,
+    geometry: points.map(local),
+    tags,
+  });
+  // Mirrors the Overpass response: tagless geometry, then `convert`ed tag elements with blanks.
+  const elements = [
+    way(
+      100,
+      [1, 2, 3],
+      [
+        [300, 0],
+        [400, 0],
+        [500, 0],
+      ],
+      { highway: 'primary', lanes: '4' },
+    ),
+    way(
+      101,
+      [4, 2, 5],
+      [
+        [400, -100],
+        [400, 0],
+        [400, 100],
+      ],
+      { highway: 'residential' },
+    ),
+    { type: 'node', id: 2, ...local([400, 0]), tags: { highway: 'stop', stop: 'all' } },
+    way(
+      102,
+      [6, 7, 8],
+      [
+        [450, 80],
+        [480, 80],
+        [500, 80],
+      ],
+      { highway: 'service', service: 'parking_aisle' },
+    ),
+    { type: 'node', id: 7, ...local([480, 80]), tags: { highway: 'stop' } },
+    way(
+      103,
+      [9, 10, 11, 12, 9],
+      [
+        [450, 60],
+        [520, 60],
+        [520, 110],
+        [450, 110],
+        [450, 60],
+      ],
+      { amenity: 'parking', parking: 'surface' },
+    ),
+  ];
+  return {
+    elements: [
+      ...elements.map(({ tags: _, ...element }) => element),
+      ...elements.map(({ type, id, tags }) => ({
+        type: 'tags',
+        id,
+        tags: { 'osm:type': type, width: '', ...tags },
+      })),
+    ],
+  };
+}
+
 test('decodes supported scenery, holes, widths and clips to the terrain grid with cached bounded requests', async (t) => {
   const requests = [];
   let active = 0;
@@ -260,6 +331,7 @@ test('decodes supported scenery, holes, widths and clips to the terrain grid wit
     requests.push(url);
     if (url === 'https://tiles.openfreemap.org/planet')
       return Response.json({ tiles: ['https://tiles.example/{z}/{x}/{y}.pbf'] });
+    if (url.includes('/api/interpreter')) return Response.json(osmFixture());
     active++;
     maximumActive = Math.max(maximumActive, active);
     await new Promise((resolve) => setTimeout(resolve, 2));
@@ -324,6 +396,70 @@ test('decodes supported scenery, holes, widths and clips to the terrain grid wit
   const complete = await fetchCourseScenery(definition, 'complete-map');
   assert.equal(complete.bounds.maxX - complete.bounds.minX, 2000);
   assert.equal(complete.bounds.maxZ - complete.bounds.minZ, 2000);
+  assert.equal(complete.roads.length, 3, 'precise OSM roads replace tile road fragments');
+  assert.equal(complete.roads.find((r) => r.roadClass === 'primary').lanes, 4);
+  assert.equal(complete.parking.length, 1);
+  assert.equal(
+    complete.stopSigns.length,
+    4,
+    'an explicitly mapped all-way stop controls all four approaches',
+  );
+  assert.ok(complete.stopSigns.every((s) => Math.hypot(...s.direction) > 0.999));
+});
+
+test('complete maps surface OSM service failures instead of inventing traffic controls', async (t) => {
+  const requests = [];
+  t.mock.method(console, 'warn', () => {});
+  t.mock.method(globalThis, 'fetch', async (input) => {
+    if (String(input).includes('/api/interpreter')) {
+      requests.push(String(input));
+      return new Response('Unavailable', { status: 503 });
+    }
+    return new Response(tileFixture(tileFromUrl(String(input))));
+  });
+  await assert.rejects(
+    fetchCourseScenery(course(), 'complete-map'),
+    /OpenStreetMap road network could not be downloaded after 2 attempts.*503/,
+  );
+  assert.equal(
+    new Set(requests).size,
+    2,
+    'server failures switch providers, not endlessly retry one server',
+  );
+});
+
+test('complete maps retry timed-out OSM lookups on another provider and identify the download stage', async (t) => {
+  const requests = [],
+    progress = [];
+  t.mock.method(console, 'warn', () => {});
+  t.mock.method(globalThis, 'fetch', async (input) => {
+    const url = String(input);
+    if (url.includes('/api/interpreter')) {
+      requests.push(url);
+      if (requests.length === 1) throw new DOMException('signal timed out', 'TimeoutError');
+      return Response.json(osmFixture());
+    }
+    return new Response(tileFixture(tileFromUrl(url)));
+  });
+  const result = await fetchCourseScenery(course(), 'complete-map', {
+    progress: (stage, detail) => progress.push([stage, detail]),
+  });
+  assert.equal(result.stopSigns.length, 4);
+  assert.deepEqual(progress.at(-1), ['network', '(2/2)'], 'retries show the attempt count');
+  assert.equal(new Set(requests).size, 2);
+});
+
+test('exhausted OSM timeouts identify the provider instead of returning a raw abort error', async (t) => {
+  t.mock.method(console, 'warn', () => {});
+  t.mock.method(globalThis, 'fetch', async (input) => {
+    if (String(input).includes('/api/interpreter'))
+      throw new DOMException('signal timed out', 'TimeoutError');
+    return new Response(tileFixture(tileFromUrl(String(input))));
+  });
+  await assert.rejects(
+    fetchCourseScenery(course(), 'complete-map'),
+    /OpenStreetMap road network could not be downloaded after 2 attempts.*timed out after 45 seconds.*overpass-api.de/,
+  );
 });
 
 test('rejects routes exceeding the vector tile budget before making network requests', async (t) => {

@@ -32,6 +32,10 @@ body {
   padding: var(--space-4) 0 var(--space-5) 0;
 }
 .panel > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
   flex: none;
   padding-bottom: var(--space-3);
   padding-inline: var(--space-4);

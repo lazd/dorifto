@@ -14,6 +14,8 @@ let nearbyBridgeClearance;
 let nearbyRoadLift;
 let sceneryRoadProfiles;
 let validateCourseScenery;
+let SceneryRoadSurface;
+let CourseTerrain;
 const groups = [];
 before(async () => {
   server = await createServer({
@@ -27,6 +29,8 @@ before(async () => {
   ({ nearbyBridgeClearance, nearbyRoadLift, sceneryRoadProfiles } =
     await server.ssrLoadModule('/src/scenery-roads.ts'));
   ({ validateCourseScenery } = await server.ssrLoadModule('/src/scenery-data.ts'));
+  ({ SceneryRoadSurface } = await server.ssrLoadModule('/src/scenery-road-surface.ts'));
+  ({ CourseTerrain } = await server.ssrLoadModule('/src/terrain.ts'));
 });
 after(async () => server?.close());
 afterEach(() => {
@@ -361,14 +365,222 @@ test('road markings show inferred centerlines and mapped one-way directions', ()
     Array.from({ length: arrowPositions.count }, (_, i) => i).some(
       (i) =>
         Math.abs(arrowPositions.getX(i) - 60) < 1e-4 &&
-        Math.abs(arrowPositions.getZ(i) + 28.35) < 1e-4,
+        Math.abs(arrowPositions.getZ(i) + 29) < 1e-4,
     ),
     'negative one-way direction reverses the arrow against the source geometry',
   );
   assert.equal(result.group.getObjectByName('stop-sign'), undefined);
+  let area = 0;
+  result.group.traverse((object) => {
+    if (!object.name.startsWith('nearby-road-oneway-arrows')) return;
+    const arrowPositions = object.geometry.getAttribute('position');
+    for (let i = 0; i < arrowPositions.count; i += 3) {
+      const [a, b, c] = [0, 1, 2].map((j) =>
+        new THREE.Vector3().fromBufferAttribute(arrowPositions, i + j),
+      );
+      area += Math.abs((b.x - a.x) * (c.z - a.z) - (b.z - a.z) * (c.x - a.x)) / 2;
+    }
+  });
+  assert.ok(
+    Math.abs(area - 3.2) < 1e-4,
+    `concave arrows are triangulated once, without overlapping fans: ${area}`,
+  );
 });
 
-test('complete-map intersections widen minor roads and add stop lines and physical STOP signs', () => {
+test('connected pavement excludes internal dirt, overlapping buildings and parking-lot controls', () => {
+  const data = emptyScenery();
+  data.bounds = { minX: -100, minZ: -100, maxX: 100, maxZ: 100 };
+  data.roads = [
+    {
+      points: [
+        [50, -70],
+        [50, 0],
+        [50, 70],
+      ],
+      width: 8,
+      roadClass: 'secondary',
+    },
+    {
+      points: [
+        [20, 0],
+        [50, 0],
+        [85, 0],
+      ],
+      width: 4,
+      roadClass: 'residential',
+    },
+  ];
+  data.parking = [{ rings: [square(60, -8, 85, 20)] }];
+  data.buildings = [
+    { rings: [square(48, 25, 55, 35)], height: 6 },
+    { rings: [square(75, -45, 85, -35)], height: 6 },
+  ];
+  data.stopSigns = [
+    { point: [50, -8], direction: [0, 1], width: 8 },
+    { point: [70, 5], direction: [1, 0], width: 4 },
+  ];
+  const ground = (x, z) => x * 0.13 + z * 0.07;
+  const result = build(definition(data), terrain(ground), {
+    createRoadDirtMaterial: () => new THREE.MeshStandardMaterial(),
+  });
+  assert.equal(result.stopSignGroup.children.length, 1, 'parking lots never receive signs');
+  assert.equal(
+    result.isAsphalt({ x: 70, z: 15 }),
+    true,
+    'the entire mapped parking area is drivable',
+  );
+  assert.ok(
+    result.collisionMesh.positions.every((_, i, positions) => i % 3 !== 0 || positions[i] > 70),
+    'buildings overlapping roadway are omitted from visuals and collision',
+  );
+  result.group.traverse((object) => {
+    if (object.name.startsWith('nearby-road-stop-lines')) {
+      const positions = object.geometry.getAttribute('position');
+      for (let i = 0; i < positions.count; i++)
+        assert.ok(
+          Math.abs(positions.getY(i) - ground(positions.getX(i), positions.getZ(i)) - 0.075) < 1e-5,
+          'each stop-bar vertex lies on the ground, not a constant-height floating plane',
+        );
+    }
+    if (!object.name.startsWith('nearby-road-dirt')) return;
+    const positions = object.geometry.getAttribute('position'),
+      index = object.geometry.getIndex();
+    for (let i = 0; i < index.count; i += 3) {
+      const points = [0, 1, 2].map((j) =>
+        new THREE.Vector3().fromBufferAttribute(positions, index.getX(i + j)),
+      );
+      const center = points.reduce((p, q) => p.add(q), new THREE.Vector3()).divideScalar(3);
+      assert.ok(
+        result.roadDistance(center.x, center.z) >= -0.001,
+        `dirt is outside the union, even at crossings and parking entrances: ${center.toArray()}`,
+      );
+    }
+  });
+});
+
+test('ground highways stay grounded and medians open at intersections, including divided carriageways', () => {
+  for (const divided of [false, true]) {
+    const data = emptyScenery();
+    data.bounds = { minX: -100, minZ: -100, maxX: 100, maxZ: 100 };
+    data.roads = divided
+      ? [
+          {
+            points: [
+              [35, -90],
+              [35, 90],
+            ],
+            width: 6,
+            roadClass: 'primary',
+            oneway: 1,
+            lanes: 2,
+          },
+          {
+            points: [
+              [45, -90],
+              [45, 90],
+            ],
+            width: 6,
+            roadClass: 'primary',
+            oneway: -1,
+            lanes: 2,
+          },
+        ]
+      : [
+          {
+            points: [
+              [40, -90],
+              [40, 90],
+            ],
+            width: 14,
+            roadClass: 'primary',
+            lanes: 4,
+          },
+        ];
+    data.roads.push({
+      points: [
+        [15, 0],
+        [80, 0],
+      ],
+      width: 6,
+      roadClass: 'residential',
+    });
+    const result = build(definition(data), terrain());
+    assert.equal(
+      result.group.getObjectByName('nearby-road-decks'),
+      undefined,
+      'road class alone never raises a bridge',
+    );
+    const medians = result.group
+      .getObjectByName('nearbyRoads')
+      .children.filter((o) => o.name.startsWith('nearby-road-medians'));
+    assert.ok(medians.length);
+    const ray = new THREE.Raycaster(new THREE.Vector3(40, 10, 40), new THREE.Vector3(0, -1, 0));
+    assert.ok(ray.intersectObjects(medians).length, 'the center divide is modeled');
+    ray.ray.origin.z = 0;
+    assert.equal(
+      ray.intersectObjects(medians).length,
+      0,
+      'the median never blocks an intersecting road',
+    );
+    assert.equal(result.isAsphalt({ x: divided ? 45 : 40, z: 40 }), true);
+    assert.equal(result.stopSignGroup.children.length, 0);
+  }
+});
+
+test('all road corridors smooth elevations and share unbanked junction surfaces', () => {
+  const roads = [
+    {
+      points: [
+        [30, -80],
+        [30, 0],
+        [30, 80],
+      ],
+      width: 6,
+    },
+    {
+      points: [
+        [10, 0],
+        [30, 0],
+        [90, 0],
+      ],
+      width: 4,
+    },
+  ];
+  const ground = (x, z) => x * 0.05 + z * 0.1 + Math.sin(z * 0.8) * 2;
+  const roadSurface = new SceneryRoadSurface(roads, ground);
+  const reversed = new SceneryRoadSurface(
+    roads.map((r) => ({ ...r, points: r.points.toReversed() })),
+    ground,
+  );
+  let rawRoughness = 0,
+    smoothRoughness = 0;
+  const at = (z) => roadSurface.heightAt(30, z, ground(30, z));
+  for (let z = -60; z < -20; z++) {
+    rawRoughness += Math.abs(ground(30, z - 1) - 2 * ground(30, z) + ground(30, z + 1));
+    smoothRoughness += Math.abs(at(z - 1) - 2 * at(z) + at(z + 1));
+    assert.ok(Math.abs(at(z) - reversed.heightAt(30, z, ground(30, z))) < 1e-8);
+  }
+  assert.ok(
+    smoothRoughness < rawRoughness * 0.15,
+    'side-road elevation noise is filtered, not just its horizontal shape',
+  );
+  assert.equal(roadSurface.bankingWeight(30, 0), 0);
+  assert.equal(roadSurface.bankingWeight(30, 50), 1);
+  assert.ok(
+    Math.abs(roadSurface.heightAt(28, 50, 0) - roadSurface.heightAt(32, 50, 0)) < 1e-8,
+    'the full cross-section is unbanked away from intersections',
+  );
+  const data = emptyScenery();
+  data.roads = roads;
+  const courseTerrain = new CourseTerrain(definition(data), false);
+  assert.ok(Number.isFinite(courseTerrain.heightAt(30, 50)));
+  courseTerrain.mesh.geometry.dispose();
+  courseTerrain.mesh.material.dispose();
+  courseTerrain.grass.geometry.dispose();
+  courseTerrain.grass.material.dispose();
+});
+
+test('complete-map intersections join roads without inventing stop controls', () => {
   const data = emptyScenery();
   data.bounds = { minX: -1000, minZ: -1000, maxX: 1000, maxZ: 1000 };
   data.roads.push(
@@ -392,8 +604,14 @@ test('complete-map intersections widen minor roads and add stop lines and physic
     },
   );
   const result = build(definition(data), terrain());
-  const signs = result.stopSignGroup;
-  assert.equal(signs.children.length, 2, 'both minor-road approaches receive a sign');
+  assert.equal(result.stopSignGroup.children.length, 0, 'road width does not imply a stop sign');
+  data.stopSigns = [
+    { point: [50, -8], direction: [0, 1], width: 6 },
+    { point: [50, 8], direction: [0, -1], width: 6 },
+  ];
+  const controlled = build(definition(data), terrain());
+  const signs = controlled.stopSignGroup;
+  assert.equal(signs.children.length, 2, 'only mapped approaches receive a sign');
   assert.ok(signs.children.every((sign) => sign.name === 'stop-sign'));
   assert.ok(
     signs.children.every(
@@ -408,7 +626,7 @@ test('complete-map intersections widen minor roads and add stop lines and physic
     );
   }
   const stopLines = [];
-  result.group.traverse((object) => {
+  controlled.group.traverse((object) => {
     if (object.name.startsWith('nearby-road-stop-lines')) stopLines.push(object);
   });
   assert.equal(stopLines.length, 2);
@@ -416,7 +634,7 @@ test('complete-map intersections widen minor roads and add stop lines and physic
     const positions = line.geometry.getAttribute('position');
     const xs = Array.from({ length: positions.count }, (_, i) => positions.getX(i));
     const zs = Array.from({ length: positions.count }, (_, i) => positions.getZ(i));
-    assert.ok(Math.max(...xs) - Math.min(...xs) > 9, 'stop bars cross the minor road');
+    assert.ok(Math.max(...xs) - Math.min(...xs) >= 3, 'stop bars cross the incoming lane only');
     assert.ok(
       Math.max(...zs) - Math.min(...zs) < 0.5,
       `stop bars are perpendicular to travel: ${zs.join(', ')}`,
@@ -430,13 +648,14 @@ test('complete-map intersections widen minor roads and add stop lines and physic
   const workerSurface = new PavementSurface(structuredClone(result.roadMesh));
   assert.equal(workerSurface.isAsphalt({ x: 50, z: 0 }), true);
   assert.equal(workerSurface.isAsphalt({ x: 53.5, z: 7 }), true);
-  result.setVisible('nearbyRoads', false);
+  controlled.setVisible('nearbyRoads', false);
   assert.equal(signs.visible, false, 'road controls follow nearby-road visibility');
-  result.setVisible('nearbyRoads', true);
+  controlled.setVisible('nearbyRoads', true);
   assert.equal(signs.visible, true);
 
   const gradeSeparated = structuredClone(data);
   gradeSeparated.roads[0].layer = 1;
+  gradeSeparated.stopSigns = [];
   const overpass = build(definition(gradeSeparated), terrain());
   assert.equal(
     overpass.stopSignGroup.children.length,
@@ -485,6 +704,44 @@ test('road fragments are joined before smoothing, without joining branches or mu
     width: 6,
   });
   assert.equal(joinSceneryRoads(roads).length, 3, 'a real junction remains separate branches');
+});
+
+test('one-way fragments join only when their actual travel directions agree', () => {
+  const roads = [
+    {
+      points: [
+        [30, -40],
+        [30, 0],
+      ],
+      width: 6,
+      oneway: 1,
+    },
+    {
+      points: [
+        [60, 0],
+        [30, 0],
+      ],
+      width: 6,
+      oneway: -1,
+    },
+  ];
+  const joined = joinSceneryRoads(roads);
+  assert.equal(joined.length, 1);
+  assert.deepEqual(joined[0].points, [
+    [30, -40],
+    [30, 0],
+    [60, 0],
+  ]);
+  assert.equal(joined[0].oneway, 1);
+  assert.deepEqual(
+    roads[1].points,
+    [
+      [60, 0],
+      [30, 0],
+    ],
+    'normalization does not mutate saved ways',
+  );
+  assert.equal(joinSceneryRoads([roads[0], { ...roads[1], oneway: 1 }]).length, 2);
 });
 
 test('width changes share an edge cross-section and dirt verges remain batched and optional', () => {

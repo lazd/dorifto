@@ -18,7 +18,7 @@ import {
   type RoadBuildStep,
 } from './course-builder-data';
 import { matchRoadStructures } from './road-structures.mjs';
-import { fetchCourseScenery } from './scenery-import';
+import { fetchCourseScenery, requestMappedNetwork } from './scenery-import';
 import { sceneryImportRevision } from './scenery-data';
 import { completeMapSize } from './scenery-data';
 
@@ -65,12 +65,12 @@ function fitsCompleteMap(points: readonly GPSPoint[]) {
   );
 }
 
-function completeMapSquarePoints(points: readonly GPSPoint[]): GPSPoint[] {
+function completeMapSquarePoints(points: readonly GPSPoint[], padding = 0): GPSPoint[] {
   const bounds = completeMapCoordinates(points);
   if (!bounds) throw new Error('Complete-map terrain requires selected course points.');
   const centerX = (bounds.minX + bounds.maxX) / 2;
   const centerZ = (bounds.minZ + bounds.maxZ) / 2;
-  const half = completeMapSize / 2;
+  const half = completeMapSize / 2 + padding;
   return [
     [-half, -half],
     [half, -half],
@@ -85,7 +85,7 @@ function completeMapSquarePoints(points: readonly GPSPoint[]): GPSPoint[] {
 interface BuildOptions {
   rebuildTerrain?: boolean;
   refreshScenery?: boolean;
-  progress?: (step: RoadBuildStep) => void;
+  progress?: (step: RoadBuildStep, detail?: string) => void;
   raster?: typeof fetchTerrainRaster;
   detail?: typeof fetchTerrainDetail;
   fetchScenery?: typeof fetchCourseScenery;
@@ -159,6 +159,23 @@ export async function buildRoadCourse(
     : request.existingCourse?.scenery?.roads.length
       ? 'nearby-roads'
       : 'course';
+  const fetchesScenery =
+    refreshScenery ||
+    request.existingCourse?.scenery?.importRevision !== sceneryImportRevision ||
+    definition !== previousDefinition;
+  // The Overpass query is the slowest download, so start it alongside terrain using a padded square.
+  const square =
+    definition === 'complete-map' && fetchesScenery
+      ? completeMapSquarePoints(request.points, 50)
+      : undefined;
+  const network = square
+    ? requestMappedNetwork({
+        south: Math.min(...square.map(({ lat }) => lat)),
+        west: Math.min(...square.map(({ lon }) => lon)),
+        north: Math.max(...square.map(({ lat }) => lat)),
+        east: Math.max(...square.map(({ lon }) => lon)),
+      })
+    : undefined;
   const needsTerrainRebuild =
     rebuildTerrain || (definition === 'complete-map' && previousDefinition !== 'complete-map');
   const terrainRebuilt = !request.existingCourse || needsTerrainRebuild;
@@ -225,14 +242,10 @@ export async function buildRoadCourse(
     definition,
     includeNearbyRoads,
   };
-  if (
-    refreshScenery ||
-    course.scenery?.importRevision !== sceneryImportRevision ||
-    definition !== previousDefinition
-  ) {
+  if (fetchesScenery) {
     progress('scenery');
-    course.scenery = await fetchScenery(course, definition);
-  } else if (!includeNearbyRoads && course.scenery.roads.length) {
+    course.scenery = await fetchScenery(course, definition, { progress, network });
+  } else if (!includeNearbyRoads && course.scenery?.roads.length) {
     course.scenery = { ...course.scenery, roads: [] };
   }
   if (definition === 'complete-map' && terrainRebuilt) {
@@ -284,7 +297,10 @@ export async function reimportRoadCourse(
       : 'nearby-roads';
   if (!full) {
     const fetchScenery = options.fetchScenery ?? fetchCourseScenery;
-    return { ...course, scenery: await fetchScenery(course, definition) };
+    return {
+      ...course,
+      scenery: await fetchScenery(course, definition, { progress: options.progress }),
+    };
   }
   if (!course.courseBuilder)
     throw new Error(

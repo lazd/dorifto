@@ -131,7 +131,12 @@ direct browser requests to OpenFreeMap and USGS, so an internet connection is ne
   or **+ New course** to start a new one. **Cancel** returns to the library without
   changing the saved course. **Save** stays disabled until the route, name, or settings
   differ from the opened course, and disables again if all changes are reverted.
-  **Play** currently downloads the selected course JSON.
+  When opened standalone (outside an iframe), **Download** next to **Edit** exports
+  the selected course JSON. **Play** currently also downloads the selected course JSON.
+  Use **Import** beside the Course builder title to restore a downloaded JSON into
+  the library. Importing an existing course asks before replacing its saved copy.
+  Race setup also has an **Import** link beside **Your tracks**, which imports and
+  previews a downloaded course without starting a race.
 - Search using the floating bar over the map, enter latitude/longitude, or pan the OpenStreetMap
   map. Place searches go directly to Nominatim on submission (no autocomplete),
   are limited to one request per second, and reuse results within the page session.
@@ -454,13 +459,31 @@ Real-world maps also save scenery from OpenFreeMap's OpenStreetMap-derived vecto
 extruded buildings, water bodies and waterways, and vegetation scattered procedurally
 inside mapped landcover areas. **Nearby roads** adds surrounding roads in the route corridor;
 **Complete map** treats mapped roads across the 2 × 2 km selection square as drivable
-network and does not place junction-mouth cones across that network. Same-level crossings
-join as widened pavement; the smaller road receives stop lines and octagonal STOP signs.
-One-way arrows use the mapped direction. Yellow centerlines are inferred from road class
+network and does not place junction-mouth cones across that network. Complete map downloads
+precise road geometry, lane counts, stop nodes, and surface-parking areas from OpenStreetMap
+via Overpass when saving. The query starts alongside the terrain download and requests only
+the tags the importer reads. Failed network requests are reported rather than replaced with
+inferred traffic controls. Overpass requests use Private.coffee first and retry an unavailable
+or timed-out service once with the main Overpass provider. Each attempt has a 45-second
+budget; the builder identifies this download stage, shows the attempt (for example "(2/2)")
+when retrying, and reports the failing service explicitly.
+Scenery tile downloads also retry transient failures once, retaining successful cached tiles.
+Same-level crossings join as continuous widened pavement. Ground
+roads share smoothed elevation corridors and junction heights, with course banking faded out
+near junctions. Pavement footprints are unioned before generating exterior dirt verges, and
+buildings overlapping ground pavement are omitted from rendering and collision.
+Only mapped stop controls generate octagonal STOP signs and terrain-conforming stop bars.
+Stops mapped on the junction control all incoming approaches (including four-way stops);
+approach stops use their mapped direction, or an unambiguous nearby connected junction.
+Ambiguous directions are reported in the console and omitted, not guessed from road width.
+Parking aisles and parking areas do not receive stop signs. Closed surface-parking polygons,
+including multipolygon holes, become drivable pavement; underground and multi-storey parking
+are not modeled as ground lots. Missing OSM data remains missing, so controls are not exhaustive.
+One-way arrows use the mapped direction and a non-overlapping arrow outline. Yellow centerlines are inferred from road class
 (double yellow for primary/secondary, dashed yellow for lower classes), since the map data
 does not reliably provide pavement paint; these markings are estimates, not surveyed facts.
 Traffic signals are not currently generated.
-Scenery tiles are downloaded in a bounded corridor or square when saving a map;
+Scenery data is downloaded in a bounded corridor or square when saving a map;
 driving and reopening the saved map do not request scenery. Editing and saving an older map
 adds its missing scenery without downloading elevation again. Buildings use mapped heights
 where available and estimates otherwise; tree and shrub positions are deterministic estimates,
@@ -517,7 +540,8 @@ Roads still stop at the imported 300 m corridor or the supported terrain boundar
 are scenery, not an unlimited navigable road network.
 Nearby-road copies aligned with the selected route
 are excluded on both bridges and their ground-level approaches, including overlapping
-parallel carriageways. Asphalt, dirt, and junction cones use the same width-aware
+parallel carriageways in Nearby roads mode. Complete map retains distinct carriageways.
+Asphalt, dirt, and junction cones use the same width-aware
 alignment filter; independent roads crossing beneath remain visible.
 Nearby-road imports retain road class, bridge/tunnel, and layer tags and never merge fragments across
 class, structure, or layer boundaries. Crossing bridges use the same deck, curb, railing, and
@@ -531,14 +555,18 @@ track's junctions, erase its paint, or place junction cones underneath. Hiding n
 also removes their structure collision. Nearby tunnel spans are omitted from surface
 scenery rather than drawn as false intersections; separate underground bores and portals
 are not reconstructed. Edit and save older maps to refresh their nearby-road structure tags.
-Major nearby roads (motorways, trunks, and primary roads) use full-width, level cross-sections
-with white edge lines and soil embankments grounded in the surrounding terrain. Their
+Road class alone never elevates a road or creates a bridge. Ground highways share the same
+smoothed surface as small roads. Four-lane two-way highways and closely spaced, oppositely
+directed major carriageways receive a low modeled center divide, interrupted at intersecting
+roads. This median is an approximation, not a surveyed barrier design. Tagged bridges retain
+their full-width level deck cross-sections, white edge lines, and grounded approach embankments. Their
 bridge approaches share the deck's endpoint heights across the entire pavement width,
 even when no clearance fallback is needed, and concrete abutments close the gap beneath
 each end. Embankment end caps seal the exposed soil wedges beside those abutments without
-filling the underpass. At-grade intersections still blend into the selected road; smaller roads retain
-their terrain-draped pavement and dirt verges. Older maps without road-class tags use
-the major-road treatment for widths of at least 10 m; edit and save to refresh classification.
+filling the underpass. Bridge approaches match the deck's endpoint elevation and grade before
+smoothly returning to ground. Parallel carriageways do not trigger the crossing-clearance fallback.
+Edit and save existing Complete maps to import the precise road network, mapped stops, lanes,
+and parking areas; reopening a saved map does not make Overpass requests.
 All this geometry is static and spatially batched; supports also have matching collision.
 Terrain-draped roads and waterways are projected onto the actual
 rendered landscape triangles, including simplified distant patches, rather than the denser

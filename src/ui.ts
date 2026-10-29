@@ -17,6 +17,7 @@ import { CourseBuilderPreview } from './course-builder-preview';
 import type { BuildResponse } from './course-builder-worker';
 import { startTextSpinner } from './text-spinner';
 import { download } from './download';
+import { importRoadMap } from './course-builder-storage';
 import { browserStorage } from './browser-storage';
 import {
   courseDirectionRecords,
@@ -631,7 +632,7 @@ export interface CoursePickerActions {
 }
 
 const courseGroups = [
-  { id: 'stored', label: 'Your tracks', badge: 'Saved' },
+  { id: 'stored', label: 'Your courses', badge: 'Saved' },
   { id: 'current', label: 'Current layout', badge: 'Unsaved' },
   { id: 'roads', label: 'Roads', badge: 'Road' },
   { id: 'racetracks', label: 'Racetracks', badge: 'Racetrack' },
@@ -701,6 +702,34 @@ export function bindCoursePicker(
   const picker = element<HTMLDialogElement>('#course-picker-dialog');
   const pickerError = bindText('#course-picker-error');
   const list = element('#course-list');
+  const importInput = element<HTMLInputElement>('#course-import-file');
+  const importLink = document.createElement('a');
+  importLink.href = '#';
+  importLink.className = 'selection-group-link';
+  importLink.textContent = 'Import';
+  importLink.addEventListener('click', (event) => {
+    event.preventDefault();
+    if (!changing) importInput.click();
+  });
+  importInput.addEventListener('change', async () => {
+    const file = importInput.files?.[0];
+    importInput.value = '';
+    if (!file || changing) return;
+    pickerError('');
+    await exclusive(async () => {
+      try {
+        const imported = await importRoadMap(file);
+        if (!imported) return;
+        const refreshed = await refreshPickerCourses();
+        courses.splice(0, courses.length, ...refreshed);
+        renderList();
+        previewCourse(imported);
+      } catch (error) {
+        console.error(`Unable to import course "${file.name}":`, error);
+        pickerError(`Unable to import "${file.name}": ${errorText(error)}`);
+      }
+    });
+  });
   const overview = element('#course-overview');
   const previewContainer = element('#course-preview-visual');
   const previewError = bindText('#course-preview-error');
@@ -822,6 +851,7 @@ export function bindCoursePicker(
         );
         section.append(heading);
         if (group.id === 'stored') {
+          heading.firstElementChild!.append(' ', importLink);
           savedSection = section;
           section.append(createButton);
         }
@@ -1232,6 +1262,8 @@ export function bindCoursePicker(
     >('button, .master-detail input, .master-detail select'))
       control.disabled = changing;
     courseActionsSummary.toggleAttribute('aria-disabled', changing);
+    importLink.setAttribute('aria-disabled', String(changing));
+    importInput.disabled = changing;
     downloadAction.disabled = changing || downloading;
     previewToggle.disabled = changing || previewLoading;
     savedConfirm.disabled = savedCancel.disabled = savedNameInput.disabled = changing;

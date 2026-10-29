@@ -14,7 +14,7 @@ import {
 import { CourseBuilderPreview } from './course-builder-preview';
 import { courseBuilderTheme } from './course-builder-map';
 import { createLocationSearch } from './course-builder-search';
-import { listRoadMaps, openRoadMaps, storeRoadMap } from './course-builder-storage';
+import { importRoadMap, listRoadMaps, openRoadMaps, storeRoadMap } from './course-builder-storage';
 import {
   readRoadMap,
   restoreRoadDraft,
@@ -59,6 +59,10 @@ function element<T extends HTMLElement>(id: string) {
 
 const status = element('status');
 const buildButton = element<HTMLButtonElement>('build');
+const downloadButton = element<HTMLButtonElement>('download');
+downloadButton.hidden = window.parent !== window;
+const importButton = element<HTMLButtonElement>('import-course');
+const importInput = element<HTMLInputElement>('import-file');
 const builder = document.querySelector<HTMLElement>('.builder')!;
 const buildDialog = element<HTMLDialogElement>('build-dialog');
 const buildSteps = element('build-steps');
@@ -107,6 +111,7 @@ let directory: FileSystemDirectoryHandle | undefined;
 let courseSaved = false;
 type View = 'library' | 'editor' | 'generating' | 'preview';
 let view: View = 'library';
+let importing = false;
 let savedMaps: { course: RoadMap; handle: FileSystemFileHandle }[] = [];
 let selectedId: string | undefined;
 let editingId: string | undefined;
@@ -423,6 +428,7 @@ element<HTMLButtonElement>('edit-route').onclick = () => {
 function setView(next: View) {
   if (next !== 'editor') searchVersion++;
   view = next;
+  importButton.disabled = importing || next !== 'library';
   builder.dataset.view = next;
   element('library-panel').hidden = next !== 'library';
   element('editor-panel').hidden = next !== 'editor';
@@ -439,6 +445,7 @@ function updatePreviewInfo() {
   element('preview-name').textContent = course?.name ?? '';
   element('preview-meta').textContent = course ? roadMapMeta(course) : '';
   element('edit-route').textContent = view === 'library' ? 'Edit' : 'Go back';
+  downloadButton.disabled = !courseJSON;
   element<HTMLButtonElement>('play').disabled = !courseJSON;
 }
 
@@ -875,7 +882,7 @@ buildDialog.oncancel = (event) => {
   cancelBuild();
 };
 
-function buildProgress(active: RoadBuildStep | 'complete') {
+function buildProgress(active: RoadBuildStep | 'complete', detail?: string) {
   stopBuildSpinner?.();
   stopBuildSpinner = undefined;
   let pending = false;
@@ -885,9 +892,11 @@ function buildProgress(active: RoadBuildStep | 'complete') {
     item.dataset.state = current ? 'active' : pending ? 'pending' : 'complete';
     if (current) item.setAttribute('aria-current', 'step');
     else item.removeAttribute('aria-current');
+    const label = item.lastChild!;
+    label.textContent = current && detail ? `${item.dataset.label} ${detail}` : item.dataset.label!;
     item.setAttribute(
       'aria-label',
-      `${item.lastChild?.textContent}: ${item.dataset.state === 'complete' ? 'completed' : item.dataset.state === 'active' ? 'in progress' : 'pending'}`,
+      `${label.textContent}: ${item.dataset.state === 'complete' ? 'completed' : item.dataset.state === 'active' ? 'in progress' : 'pending'}`,
     );
     const indicator = item.querySelector<HTMLElement>('.build-step-indicator')!;
     indicator.textContent = item.dataset.state === 'complete' ? '\u2713' : '';
@@ -935,7 +944,7 @@ element<HTMLFormElement>('build-form').onsubmit = (event) => {
   worker.onmessage = async (message: MessageEvent<BuildResponse>) => {
     if (worker !== activeWorker) return;
     const response = message.data;
-    if (response.type === 'progress') buildProgress(response.step);
+    if (response.type === 'progress') buildProgress(response.step, response.detail);
     else {
       if (response.type === 'error') {
         finishBuild();
@@ -1020,7 +1029,8 @@ element<HTMLFormElement>('build-form').onsubmit = (event) => {
       continue;
     const item = document.createElement('li');
     item.dataset.step = key;
-    item.textContent = existingCourse && key === 'course' ? 'Updating course settings' : label;
+    item.dataset.label = existingCourse && key === 'course' ? 'Updating course settings' : label;
+    item.textContent = item.dataset.label;
     const indicator = document.createElement('span');
     indicator.className = 'build-step-indicator';
     indicator.setAttribute('aria-hidden', 'true');
@@ -1056,8 +1066,36 @@ element<HTMLFormElement>('build-form').onsubmit = (event) => {
   updateControls();
 };
 
-element<HTMLButtonElement>('play').onclick = () => {
+function downloadCourse() {
   if (course && courseJSON) download(courseJSON, `${course.id}.json`);
+}
+
+downloadButton.onclick = downloadCourse;
+element<HTMLButtonElement>('play').onclick = downloadCourse;
+
+importButton.onclick = () => importInput.click();
+importInput.onchange = async () => {
+  const file = importInput.files?.[0];
+  importInput.value = '';
+  if (!file || importing) return;
+  importing = true;
+  importButton.disabled = true;
+  try {
+    const imported = await importRoadMap(file);
+    if (!imported) return;
+    selectedId = imported.id;
+    await showLibrary();
+  } catch (error) {
+    report(
+      new Error(
+        `Unable to import "${file.name}": ${error instanceof Error ? error.message : String(error)}`,
+        { cause: error },
+      ),
+    );
+  } finally {
+    importing = false;
+    importButton.disabled = view !== 'library';
+  }
 };
 
 async function refreshSaved() {

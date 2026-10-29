@@ -9,7 +9,11 @@
   <body>
     <main class="builder" data-view="library">
       <aside class="panel">
-        <header><h1>Course builder</h1></header>
+        <header>
+          <h1>Course builder</h1>
+          <button id="import-course">Import</button>
+          <input id="import-file" type="file" accept=".json,application/json" hidden />
+        </header>
         <section id="library-panel" class="panel-body">
           <button id="new-course" class="button button-create">+ New course</button>
           <div
@@ -106,8 +110,9 @@
             <p id="preview-meta"></p>
           </div>
           <div class="viewport-toolbar">
-            <button id="edit-route">Edit</button
-            ><button id="play" class="button button-primary" disabled>Play</button>
+            <button id="edit-route">Edit</button>
+            <button id="download" hidden disabled>Download</button>
+            <button id="play" class="button button-primary" disabled>Play</button>
           </div>
         </section>
         <p id="empty-library" class="viewport-message">Create a course to get started.</p>

@@ -61,7 +61,13 @@ export function createCoursePreviewModel(
 ) {
   const group = new THREE.Group();
   try {
-    const terrain = new CourseTerrain({ ...definition, scenery: undefined }, false);
+    const terrain = new CourseTerrain(
+      {
+        ...definition,
+        scenery: definition.scenery && { ...definition.scenery, bounds: undefined },
+      },
+      false,
+    );
     const route = courseRoute({ ...definition, reverse: false });
     const length = route.getLength();
     const height = (x: number, z: number) => terrain.heightAt(x, z);

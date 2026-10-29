@@ -28,6 +28,7 @@
   "dependencies": {
     "@mapbox/vector-tile": "^3.0.0",
     "ammojs-typed": "^1.1.0",
+    "clipper2-ts": "^2.0.1",
     "maplibre-gl": "^6.15.0",
     "pbf": "^5.1.2",
     "three": "^0.186.1"

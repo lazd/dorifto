@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { CourseScenery, SceneryPoint } from './scenery-data';
-import { smoothSceneryLine } from './scenery-data';
+import { sceneryJunctions, smoothSceneryLine } from './scenery-data';
 
 export const nearbyBridgeClearance = 6.5;
 export const nearbyRoadLift = 0.035;
@@ -66,21 +66,61 @@ class SceneryRoadCurve extends THREE.Curve<THREE.Vector3> {
   }
 }
 
+const approachSmoothing = 15;
+
+/**
+ * Smooths a profile without dropping below it: a running maximum followed by an average over
+ * the same window. A radius of zero leaves a sample untouched.
+ */
+function smoothAbove(
+  heights: number[],
+  distances: number[],
+  radiusAt: (distance: number) => number,
+) {
+  const radii = distances.map(radiusAt);
+  const window = (i: number, each: (j: number, offset: number) => void) => {
+    for (let j = i; j >= 0 && Math.abs(distances[i] - distances[j]) <= radii[i]; j--)
+      each(j, Math.abs(distances[i] - distances[j]));
+    for (
+      let j = i + 1;
+      j < heights.length && Math.abs(distances[j] - distances[i]) <= radii[i];
+      j++
+    )
+      each(j, Math.abs(distances[j] - distances[i]));
+  };
+  const envelope = heights.map((_, i) => {
+    let max = -Infinity;
+    window(i, (j) => (max = Math.max(max, heights[j])));
+    return max;
+  });
+  return heights.map((_, i) => {
+    let sum = 0,
+      weight = 0;
+    window(i, (j, offset) => {
+      const w = radii[i] ? Math.exp(-((offset / (radii[i] / 2)) ** 2)) : 1;
+      sum += envelope[j] * w;
+      weight += w;
+    });
+    return sum / weight;
+  });
+}
+
 export function sceneryRoadProfiles(
   roads: CourseScenery['roads'],
   ground: (x: number, z: number) => number,
   trackHeight: (x: number, z: number) => number,
   trackDistance: (x: number, z: number) => number,
   selectedRoadCopy: (x: number, z: number, dx: number, dz: number, width: number) => boolean,
+  includeSelected = false,
 ) {
   const bridges = roads.filter((road) => road.structure === 'bridge');
+  const junctions = sceneryJunctions(roads);
   const profiles = roads
     .filter((road) => road.structure !== 'tunnel')
     .map((road) => {
-      const rounded = smoothSceneryLine(road.points, road.width);
+      const rounded = smoothSceneryLine(road.points, road.width, junctions);
       const major = isMajorSceneryRoad(road);
       const needsProfile =
-        major ||
         road.structure === 'bridge' ||
         bridges.some((bridge) =>
           [road.points[0], road.points.at(-1)!].some((p) =>
@@ -131,11 +171,11 @@ export function sceneryRoadProfiles(
         heights,
         selected,
         major,
-        raised: major,
+        raised: road.structure === 'bridge',
         bridgeApproach: false,
       };
     })
-    .filter(({ selected }) => !selected);
+    .filter(({ selected }) => includeSelected || !selected);
 
   for (const profile of profiles) {
     if (profile.road.structure !== 'bridge') continue;
@@ -151,7 +191,10 @@ export function sceneryRoadProfiles(
         const offset = Math.min(20, profile.road.width) * side;
         const px = x + tangent.z * offset,
           pz = z - tangent.x * offset;
-        if (trackDistance(px, pz) <= 2)
+        if (
+          trackDistance(px, pz) <= 2 &&
+          !selectedRoadCopy(px, pz, tangent.x, tangent.z, profile.road.width)
+        )
           lift = Math.max(lift, trackHeight(px, pz) + nearbyBridgeClearance - heights[i]);
       }
     }
@@ -161,30 +204,91 @@ export function sceneryRoadProfiles(
 
   // When approach terrain cannot establish clearance, carry the fallback rise onto
   // connected ground roads rather than leaving a vertical step at the abutment.
-  for (const profile of profiles) {
-    if (profile.road.structure) continue;
-    for (const bridge of profiles) {
-      if (bridge.road.structure !== 'bridge') continue;
-      for (const end of [0, bridge.points.length - 1]) {
-        const anchor = bridge.points[end];
-        for (const reverse of [false, true]) {
-          const endpoint = reverse ? profile.points.at(-1)! : profile.points[0];
-          if (Math.hypot(endpoint[0] - anchor[0], endpoint[1] - anchor[1]) >= 0.1) continue;
-          const index = reverse ? profile.points.length - 1 : 0;
-          const rise = bridge.heights[end] - profile.heights[index];
-          const rampLength = Math.min(profile.curve.getLength(), Math.max(40, rise / 0.1));
-          for (let i = 0; i < profile.points.length; i++) {
-            const distance = reverse
-              ? profile.curve.getLength() - profile.curve.distances[i]
-              : profile.curve.distances[i];
-            const blend = 1 - THREE.MathUtils.smoothstep(distance, 0, rampLength);
-            profile.heights[i] += rise * blend;
-          }
-          profile.raised = true;
-          profile.bridgeApproach = true;
-        }
-      }
+  const approaches = profiles.flatMap((profile) =>
+    profile.road.structure
+      ? []
+      : profiles.flatMap((bridge) =>
+          bridge.road.structure !== 'bridge'
+            ? []
+            : [0, bridge.points.length - 1].flatMap((end) =>
+                [false, true].flatMap((reverse) => {
+                  const endpoint = reverse ? profile.points.at(-1)! : profile.points[0];
+                  const anchor = bridge.points[end];
+                  if (Math.hypot(endpoint[0] - anchor[0], endpoint[1] - anchor[1]) >= 0.1)
+                    return [];
+                  const length = profile.curve.getLength();
+                  const index = reverse ? profile.points.length - 1 : 0;
+                  const distances = profile.curve.distances.map((distance) =>
+                    reverse ? length - distance : distance,
+                  );
+                  const rampLength = Math.min(
+                    length,
+                    Math.max(40, Math.abs(bridge.heights[end] - profile.heights[index]) / 0.1),
+                  );
+                  return [{ profile, bridge, end, reverse, index, distances, rampLength }];
+                }),
+              ),
+        ),
+  );
+  // Ramps follow a smoothed envelope of the ground, and decks rise to meet it where the
+  // envelope ends above them; both only ever lift, so the terrain stays below the road.
+  for (const { profile, distances, rampLength } of approaches)
+    profile.heights = smoothAbove(profile.heights, distances, (distance) =>
+      Math.max(0, Math.min(approachSmoothing, rampLength + approachSmoothing - distance)),
+    );
+  type Approach = (typeof approaches)[number];
+  const raiseDeck = ({ bridge, end }: Approach, raise: number) => {
+    if (raise > 0)
+      for (let i = 0; i < bridge.heights.length; i++)
+        bridge.heights[i] +=
+          raise *
+          (1 -
+            Math.abs(bridge.curve.distances[i] - bridge.curve.distances[end]) /
+              bridge.curve.getLength());
+  };
+  // Decks are straight, so their whole length gives the abutment grade.
+  const deckSlope = ({ bridge, end }: Approach) =>
+    (bridge.heights[end] - bridge.heights[bridge.points.length - 1 - end]) /
+    bridge.curve.getLength();
+  const rise = ({ profile, bridge, end, index }: Approach) =>
+    bridge.heights[end] - profile.heights[index];
+  const groundSlope = ({ profile, reverse, rampLength }: Approach) => {
+    const length = profile.curve.getLength();
+    const sampleAt = (distance: number) => {
+      const { i, t } = profile.curve.segment(reverse ? 1 - distance / length : distance / length);
+      return THREE.MathUtils.lerp(profile.heights[i - 1], profile.heights[i], t);
+    };
+    const step = Math.min(2, rampLength);
+    return (sampleAt(step) - sampleAt(0)) / step;
+  };
+  for (const approach of approaches) raiseDeck(approach, -rise(approach));
+  // The eased offset below stays non-negative only while its slope term is at least
+  // -3 * rise / length, so lift a deck that would otherwise dive into the approach ground.
+  for (const approach of approaches) {
+    const { bridge, rampLength } = approach;
+    raiseDeck(
+      approach,
+      ((-(deckSlope(approach) - groundSlope(approach)) * rampLength) / 3 - rise(approach)) /
+        (1 + rampLength / (3 * bridge.curve.getLength())),
+    );
+  }
+  for (const approach of approaches) {
+    const { profile, distances, rampLength } = approach;
+    const base = profile.heights.slice();
+    const lift = rise(approach);
+    const slope = Math.max(deckSlope(approach) - groundSlope(approach), (-3 * lift) / rampLength);
+    // Ease the offset from the ground-following profile, not the height itself, so the
+    // ramp keeps to the same surface the terrain is shaped to instead of cutting a chord
+    // through crests below it.
+    for (let i = 0; i < profile.points.length; i++) {
+      if (distances[i] > rampLength) continue;
+      const t = distances[i] / rampLength;
+      const offset =
+        (2 * t ** 3 - 3 * t ** 2 + 1) * lift + (t ** 3 - 2 * t ** 2 + t) * rampLength * slope;
+      profile.heights[i] = base[i] + Math.max(0, offset);
     }
+    profile.raised = true;
+    profile.bridgeApproach = true;
   }
 
   return profiles.map((profile) => {
