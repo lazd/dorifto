@@ -1530,7 +1530,7 @@ export function createScenery(
     if (
       road.structure ||
       profile.bridgeApproach ||
-      !['motorway', 'trunk', 'primary', 'secondary'].includes(road.roadClass ?? '')
+      !['motorway', 'trunk'].includes(road.roadClass ?? '')
     )
       continue;
     const length = curve.getLength();
@@ -1542,8 +1542,7 @@ export function createScenery(
       let medianX = center.x,
         medianZ = center.z,
         medianWidth = 0;
-      if (!road.oneway && (road.lanes ?? 0) >= 4) medianWidth = 1;
-      else if (road.oneway) {
+      if (road.oneway) {
         let closest = Infinity;
         for (const segment of roadSegments.query({
           minX: center.x - 30,
