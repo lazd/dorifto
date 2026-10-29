@@ -453,8 +453,18 @@ export function createScenery(
       ? Math.hypot(x, z) - definition.padRadius
       : surface.nearest(x, z).distance - halfWidth;
   const separated = (x: number, z: number) => Math.abs(terrain.heightAt(x, z) - ground(x, z)) > 3;
-  const pavementClearance = (p: Point) =>
-    separated(p.x, p.z) ? 100 : surface.nearest(p.x, p.z).distance - (definition.width / 2 - 0.5);
+  const pavementClearance = (p: Point) => {
+    if (separated(p.x, p.z)) return 100;
+    const near = surface.nearest(p.x, p.z);
+    // The course pavement ends square, so roads continuing past an open end must not lose a round cap.
+    if (
+      definition.closed === false &&
+      (near.fraction <= 0 || near.fraction >= 1) &&
+      Math.abs(near.across) < near.distance - 0.01
+    )
+      return 100;
+    return near.distance - (definition.width / 2 - 0.5);
+  };
   const addPavementEdge = (a: Point, b: Point) => {
     const da = pavementClearance(a),
       db = pavementClearance(b);
