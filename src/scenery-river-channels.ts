@@ -66,6 +66,18 @@ export class SceneryRiverChannels {
     );
   }
 
+  bedHeightAt(x: number, z: number) {
+    let nearest = Infinity;
+    let height: number | undefined;
+    for (const segment of this.segmentsAt(x, z)) {
+      const { t, distance } = project(segment, x, z);
+      if (distance >= nearest) continue;
+      nearest = distance;
+      height = MathUtils.lerp(segment.a.height, segment.b.height, t);
+    }
+    return height;
+  }
+
   heightAt(x: number, z: number, height: number, pavementDistance: number) {
     // Keep pavement and its immediate support intact, easing the channel into roadside banks.
     const protection = MathUtils.smoothstep(pavementDistance, 1, 5);

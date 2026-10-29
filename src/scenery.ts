@@ -40,12 +40,13 @@ export interface SceneryOptions {
    * Return a new geometry; the source is borrowed and disposed by createScenery.
    * `lift` is the game surface offset; previews can use a larger minimum offset.
    * Must use ground beneath bridges, not the selected route's elevated driving surface.
-   * With `horizontal`, clip shallow water to the ground while preserving its source level.
+   * With `horizontal`, clip water to the ground while preserving its source level.
+   * The 'river' mode keeps deep channel water too, rather than only shallow margins.
    */
   projectGroundGeometry?: (
     source: THREE.BufferGeometry,
     lift: number,
-    horizontal?: boolean,
+    horizontal?: boolean | 'river',
   ) => THREE.BufferGeometry;
 }
 
@@ -889,8 +890,6 @@ export function createScenery(
         segment.profileIndex >= other.profileIndex ||
         segment.profile.road.structure ||
         other.profile.road.structure ||
-        segment.profile.bridgeApproach ||
-        other.profile.bridgeApproach ||
         (segment.profile.road.layer ?? 0) !== (other.profile.road.layer ?? 0)
       )
         continue;
@@ -1158,6 +1157,8 @@ export function createScenery(
       };
       const atGrade = (x: number, z: number) =>
         !elevation ||
+        (profile?.bridgeApproach &&
+          Math.abs(elevation(x, z) - ground(x, z) - nearbyRoadLift) < 1e-5) ||
         (clearance(x, z) < width / 2 + 7 &&
           (!profile?.bridgeApproach || Math.abs(elevation(x, z) - terrain.heightAt(x, z)) < 3) &&
           profile?.road.structure !== 'bridge');
@@ -2072,30 +2073,42 @@ export function createScenery(
     for (const ring of rings)
       for (let i = 1; i < ring.length; i++)
         addPavementEdge({ x: ring[i - 1][0], z: ring[i - 1][1] }, { x: ring[i][0], z: ring[i][1] });
+  const edgeLineInset = 0.66;
+  const edgeLineWidth = 0.12;
+  const edgeSampleLength = 2;
+  const groundEdgeBatch = new Batch();
   for (const profile of profiles) {
     if (!profile.major) continue;
     const length = profile.curve.getLength();
-    for (let distance = 0; distance < length; distance += 2) {
-      const size = Math.min(2, length - distance);
+    for (let distance = 0; distance < length; distance += edgeSampleLength) {
+      const size = Math.min(edgeSampleLength, length - distance);
       const at = (distance + size / 2) / length;
       const center = profile.curve.getPointAt(at);
       const tangent = profile.curve.getTangentAt(at);
       for (const sign of [-1, 1]) {
-        const lateral = sign * (roadWidthAt(profile, distance + size / 2) / 2 - 0.66);
+        const lateral = sign * (roadWidthAt(profile, distance + size / 2) / 2 - edgeLineInset);
         const x = center.x - tangent.z * lateral,
           z = center.z + tangent.x * lateral;
         if (profile.road.structure !== 'bridge' && edgeDistance(pavementEdges, x, z, 2) > 1)
           continue;
         paintRoadStrip(
           profile,
-          paintBatch(markingBatch, profile),
+          profile.road.structure ? paintBatch(markingBatch, profile) : groundEdgeBatch,
           distance + size / 2,
-          (at) => sign * (roadWidthAt(profile, at) / 2 - 0.66),
+          (at) => sign * (roadWidthAt(profile, at) / 2 - edgeLineInset),
           size,
-          0.12,
+          edgeLineWidth,
         );
       }
     }
+  }
+  if (groundEdgeBatch.positions.length) {
+    const coverage = polygonClipping.offset(pavementFootprint(groundEdgeBatch), edgeSampleLength);
+    const edgeBand = polygonClipping.difference(
+      polygonClipping.offset(pavement, -edgeLineInset + edgeLineWidth / 2),
+      polygonClipping.offset(pavement, -edgeLineInset - edgeLineWidth / 2),
+    );
+    fillFootprint(groundEdgeBatch, polygonClipping.intersection(edgeBand, coverage));
   }
   buildBuildings();
   const groundQuery = query.groundSurface
@@ -2255,28 +2268,60 @@ export function createScenery(
     lift: number,
   ) => {
     if (!batch.positions.length && !tunnelBatches.has(batch)) return;
-    const source = batch.geometry();
+    let source = batch.geometry();
+    if (batch === riverBatch) {
+      const positions = source.getAttribute('position');
+      const sampled = new Batch();
+      const subdivide = (a: Point, b: Point, c: Point) => {
+        if (Math.abs((b.x - a.x) * (c.z - a.z) - (c.x - a.x) * (b.z - a.z)) < 1e-8) return;
+        const edges = [
+          [a, b, c],
+          [b, c, a],
+          [c, a, b],
+        ];
+        edges.sort(
+          ([a, b], [c, d]) => Math.hypot(c.x - d.x, c.z - d.z) - Math.hypot(a.x - b.x, a.z - b.z),
+        );
+        const [p, q, opposite] = edges[0];
+        if (Math.hypot(p.x - q.x, p.z - q.z) > 2) {
+          const middle = { x: (p.x + q.x) / 2, z: (p.z + q.z) / 2 };
+          subdivide(p, middle, opposite);
+          subdivide(middle, q, opposite);
+          return;
+        }
+        sampled.roof(
+          { ...a, y: terrain.waterwayHeightAt(a.x, a.z) + lift },
+          { ...b, y: terrain.waterwayHeightAt(b.x, b.z) + lift },
+          { ...c, y: terrain.waterwayHeightAt(c.x, c.z) + lift },
+        );
+      };
+      for (let i = 0; i < positions.count; i += 3)
+        subdivide(
+          { x: positions.getX(i), z: positions.getZ(i) },
+          { x: positions.getX(i + 1), z: positions.getZ(i + 1) },
+          { x: positions.getX(i + 2), z: positions.getZ(i + 2) },
+        );
+      source.dispose();
+      source = sampled.geometry();
+    }
     let projected: THREE.BufferGeometry;
     try {
       projected =
         batch === raisedBatch
           ? source.clone()
           : options.projectGroundGeometry
-            ? options.projectGroundGeometry(source, lift)
-            : projectTerrainGeometry(groundQuery, source, lift);
+            ? options.projectGroundGeometry(source, lift, batch === riverBatch ? 'river' : false)
+            : projectTerrainGeometry(
+                groundQuery,
+                source,
+                lift,
+                undefined,
+                batch === riverBatch ? 'river' : false,
+              );
     } finally {
       source.dispose();
     }
     const positions = projected.getAttribute('position');
-    if (batch === riverBatch)
-      for (let i = 0; i < positions.count; i++)
-        positions.setY(
-          i,
-          Math.min(
-            positions.getY(i),
-            terrain.waterwayHeightAt(positions.getX(i), positions.getZ(i)) + lift,
-          ),
-        );
     const kept = new Batch();
     appendTunnelBatch(batch, kept, lift);
     for (let i = 0; i < positions.count; i += 3) {
@@ -2404,7 +2449,8 @@ export function createScenery(
         y: batch.positions[i + j + 1],
         z: batch.positions[i + j + 2],
       }));
-      if (onDeck(vertices[0])) deckPaint.roof(vertices[0], vertices[1], vertices[2]);
+      if (batch !== groundEdgeBatch && onDeck(vertices[0]))
+        deckPaint.roof(vertices[0], vertices[1], vertices[2]);
       else groundPaint.roof(...(vertices.map((p) => ({ ...p, y: 0 })) as [Vertex, Vertex, Vertex]));
     }
     const raised = raisedPaintBatches.get(batch);
@@ -2434,12 +2480,54 @@ export function createScenery(
       source.dispose();
     }
     const positions = projected.getAttribute('position');
-    for (let i = 0; i < positions.count; i++)
-      batch.positions.push(positions.getX(i), positions.getY(i), positions.getZ(i));
+    for (let i = 0; i < positions.count; i++) {
+      const point = {
+        x: positions.getX(i),
+        y: positions.getY(i),
+        z: positions.getZ(i),
+      };
+      if (batch === groundEdgeBatch) {
+        let nearest = Infinity;
+        let road: RoadProfile | undefined;
+        for (const { a, b, profile, distance } of roadSegments.query({
+          minX: point.x - 20,
+          maxX: point.x + 20,
+          minZ: point.z - 20,
+          maxZ: point.z + 20,
+        })) {
+          if (!profile.major || profile.road.structure) continue;
+          const dx = b.x - a.x,
+            dz = b.z - a.z;
+          const t = THREE.MathUtils.clamp(
+            ((point.x - a.x) * dx + (point.z - a.z) * dz) / (dx * dx + dz * dz),
+            0,
+            1,
+          );
+          const edgeDistance = Math.abs(
+            segmentDistance(point.x, point.z, a, b) -
+              roadWidthAt(profile, distance + t * Math.hypot(dx, dz)) / 2,
+          );
+          if (edgeDistance >= nearest) continue;
+          nearest = edgeDistance;
+          road = profile;
+        }
+        if (road) {
+          const surface = road.bridgeApproach ? raisedPavement : pavementSurface;
+          const height = surface.heightAt({
+            ...point,
+            y: road.bridgeApproach ? road.heightAt(point.x, point.z) : point.y,
+          });
+          if (height !== undefined) point.y = height + 0.075 - nearbyRoadLift;
+        }
+      }
+      batch.positions.push(point.x, point.y, point.z);
+    }
     projected.dispose();
   };
   for (const batch of [markingBatch, centerlineBatch, directionBatch, stopLineBatch])
     drapePaint(batch);
+  drapePaint(groundEdgeBatch);
+  markingBatch.positions = markingBatch.positions.concat(groundEdgeBatch.positions);
   for (const [batch, color, name] of [
     [roadbedBatch, 0x84775f, 'nearby-road-embankments'],
     [abutmentBatch, 0xa39e91, 'nearby-road-abutments'],

@@ -266,19 +266,19 @@ export class SceneryRoadSurface {
       const edge = distance - width / 2;
       height = junctionHeight(roadIndex, height);
       // Outside the protected roadbed, continuous distance weights avoid nearest-road cliffs.
-      const weight = influence / Math.max(0.001, edge - 2) ** 2;
+      const weight = influence / Math.max(0.001, edge) ** 2;
       surroundingHeight += height * weight;
       surroundingWeight += weight;
       surroundingBlend = Math.max(surroundingBlend, influence);
       closestEdge = Math.min(closestEdge, edge);
-      const score = edge <= 2 ? distance / (width / 2 + 2) - 1 : distance / (width / 2 + 7);
+      const score = edge <= 0 ? distance / (width / 2) - 1 : distance / (width / 2 + 7);
       if (score >= closest) continue;
       closest = score;
       blend = influence;
       profileHeight = height;
     }
     if (!blend) return ground;
-    if (closestEdge > 2)
+    if (closestEdge > 0)
       return MathUtils.lerp(ground, surroundingHeight / surroundingWeight, surroundingBlend);
     return MathUtils.lerp(ground, profileHeight, blend);
   }

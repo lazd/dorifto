@@ -786,8 +786,16 @@ export class CourseTerrain {
       );
       return;
     }
-    const visualDistances = warp?.size ? roadDistances.slice() : roadDistances;
+    const visualDistances =
+      warp?.size || this.filletCells?.size ? roadDistances.slice() : roadDistances;
     for (const i of warp?.keys() ?? []) visualDistances[i] = 0;
+    // Refined boundaries must survive LOD, including the cells stitching back to the grid.
+    for (const cell of this.filletCells?.keys() ?? []) {
+      const corner =
+        Math.floor(cell / (this.columns - 1)) * this.columns + (cell % (this.columns - 1));
+      for (const offset of [0, 1, this.columns, this.columns + 1])
+        visualDistances[corner + offset] = 0;
+    }
     const indices = terrainVisualIndices(
       this.columns,
       this.rows,
@@ -1180,7 +1188,7 @@ export class CourseTerrain {
   waterwayHeightAt(x: number, z: number) {
     const ground = this.groundHeightAt(x, z);
     // Water follows the channel beneath protected roadbeds, not their embankments.
-    return this.riverChannels?.heightAt(x, z, ground, Infinity) ?? ground;
+    return this.riverChannels?.bedHeightAt(x, z) ?? ground;
   }
 
   /** Hillside before the bore is subtracted; driving queries still use its separate floor. */
@@ -1257,7 +1265,11 @@ export class CourseTerrain {
     return projectTerrainGeometry(this, source, lift);
   }
 
-  projectGroundGeometry(source: THREE.BufferGeometry, lift: number, horizontal = false) {
+  projectGroundGeometry(
+    source: THREE.BufferGeometry,
+    lift: number,
+    horizontal: boolean | 'river' = false,
+  ) {
     const ground = this.groundQuery ?? this;
     if (!this.groundTriangles) {
       const surface = terrainGeometryTriangles(ground, this.mesh.geometry);
@@ -1331,7 +1343,7 @@ export function projectTerrainGeometry(
   source: THREE.BufferGeometry,
   lift: number,
   renderedTriangles?: TerrainTriangles,
-  horizontal = false,
+  horizontal: boolean | 'river' = false,
 ) {
   const positions: number[] = [];
   const uv: number[] = [];
@@ -1385,10 +1397,8 @@ export function projectTerrainGeometry(
     }));
     const [a, b, c] = triangle;
     const area = (b.x - a.x) * (c.z - a.z) - (c.x - a.x) * (b.z - a.z);
-    const scalarAt = (
-      scalar: THREE.BufferAttribute | THREE.InterleavedBufferAttribute,
-      p: Point,
-    ) => {
+    if (Math.abs(area) < 1e-8) continue;
+    const scalarAt = (scalar: Pick<THREE.BufferAttribute, 'getX'>, p: Point) => {
       if (!area) return 0;
       const wb = ((p.x - a.x) * (c.z - a.z) - (c.x - a.x) * (p.z - a.z)) / area;
       const wc = ((b.x - a.x) * (p.z - a.z) - (p.x - a.x) * (b.z - a.z)) / area;
@@ -1410,17 +1420,19 @@ export function projectTerrainGeometry(
       let polygon = triangle;
       for (let edge = 0; edge < 3 && polygon.length; edge++)
         polygon = clip(polygon, points[edge], points[(edge + 1) % 3]);
-      const level = attribute.getY(vertices[0]);
+      const level = (p: Point) => scalarAt({ getX: (i: number) => attribute.getY(i) }, p);
       if (horizontal)
-        for (const [limit, sign] of [
-          [level - 0.025, -1],
-          [level - 0.65, 1],
-        ]) {
+        for (const [depth, sign] of horizontal === 'river'
+          ? [[0.025, -1]]
+          : [
+              [0.025, -1],
+              [0.65, 1],
+            ]) {
           const output: Point[] = [];
           polygon.forEach((p, i) => {
             const q = polygon[(i + 1) % polygon.length];
-            const dp = (height(p) - limit) * sign;
-            const dq = (height(q) - limit) * sign;
+            const dp = (height(p) - level(p) + depth) * sign;
+            const dq = (height(q) - level(q) + depth) * sign;
             if (dp >= 0) output.push(p);
             if (dp >= 0 !== dq >= 0) {
               const t = dp / (dp - dq);
@@ -1434,7 +1446,7 @@ export function projectTerrainGeometry(
         }
       for (let j = 1; j < polygon.length - 1; j++) {
         for (const p of [polygon[0], polygon[j], polygon[j + 1]]) {
-          positions.push(p.x, horizontal ? level : height(p) + lift, p.z);
+          positions.push(p.x, horizontal ? level(p) : height(p) + lift, p.z);
           uv.push(p.x / 5, p.z / 5);
           for (const scalar of scalars) scalar.values.push(scalarAt(scalar.source, p));
         }

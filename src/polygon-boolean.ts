@@ -1,4 +1,13 @@
-import { ClipType, FillRule, PolyTreeD, booleanOpDWithPolyTree, type PathD } from 'clipper2-ts';
+import {
+  ClipType,
+  EndType,
+  FillRule,
+  JoinType,
+  PolyTreeD,
+  booleanOpDWithPolyTree,
+  inflatePathsD,
+  type PathD,
+} from 'clipper2-ts';
 import type { SceneryPoint, SceneryPolygon } from './scenery-data';
 
 type MultiPolygon = SceneryPolygon[];
@@ -63,6 +72,20 @@ export const difference = (subject: MultiPolygon, clip: MultiPolygon) =>
 
 export const intersection = (subject: MultiPolygon, clip: MultiPolygon) =>
   booleanOp(ClipType.Intersection, subject, clip);
+
+export function offset(polygons: MultiPolygon, distance: number): MultiPolygon {
+  const tree = new PolyTreeD();
+  const expanded = inflatePathsD(
+    paths(polygons),
+    distance,
+    JoinType.Miter,
+    EndType.Polygon,
+    2,
+    precision,
+  );
+  booleanOpDWithPolyTree(ClipType.Union, expanded, [], tree, FillRule.NonZero, precision);
+  return multiPolygon(tree);
+}
 
 /** Add tangent circular fillets inside pavement notches, without trimming drivable pavement. */
 export function roundConcaveCorners(

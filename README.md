@@ -554,12 +554,17 @@ truss and support layout, while retaining their separate decks, lanes, markings 
 Paired decks use identical lengths, aligned abutment planes and a common elevation profile;
 connected approaches follow the adjusted endpoints and grade without changing the saved map.
 Approaches use half-meter samples and a quintic transition to ease into the deck grade.
+Run-ups and endpoint straightening stop before the next at-grade junction, retaining its
+mapped anchor. Grounded sections merge into the ground-road pavement, and approach
+paint obeys the same intersection exclusions as other roads.
 Their final heading and full-width cross-section match the deck before blending back
 into the mapped bend, preventing open seams at the pavement edges.
 Approach widths taper over their length to the aligned continuing road, including
 multi-arm merges, rather than narrowing abruptly at the final source node.
 Paint follows the same interpolated cross-sections as pavement. White edge lines only
-follow exposed pavement boundaries, not internal merge edges; junction interiors remain
+follow a continuous inset of merged pavement boundaries, joining cleanly around intersection
+corners rather than leaving overshooting or disconnected strips. They do not follow internal
+merge edges; junction interiors remain
 clear of centerlines and lane arrows. Multilane one-way roads have per-lane arrows and
 dashed separators. Compatible degree-two road fragments share their dash phase, including
 partial dashes at fragment ends.
@@ -570,6 +575,8 @@ Width transitions receive meter-spaced samples near fragment ends, independent o
 sparsely the original straight road was mapped.
 Bridge and approach markings project onto the rendered pavement triangles rather than
 being reclassified as ground paint near the abutments.
+The continuous edge inset extends along approach ramps, with paint projected onto their
+actual pavement instead of switching between separate ground and ramp edge strips.
 At ground-road merges, the full approach width follows the displayed terrain and shares
 the continuing road's outer dirt boundary; asphalt lift remains visual-only.
 Approach ribbons include interior samples so baked edge dirt stays at the shoulders
@@ -592,9 +599,11 @@ smoothed surface as small roads. Ground junctions share a graded plane aligned w
 through road, easing into branch grades over 30 m rather than blending uphill terrain
 into bumps across the intersection. Junction grading only affects its connected roads,
 so hillside intersections cannot lift an unrelated highway below. Outside junctions, the closest width-aware road
-profile controls the full cross-section and its two-meter support, without influence from
-distant uphill roads or the density of map nodes. Beyond that protected roadbed, nearby
-grade fields blend continuously before returning to the original terrain, avoiding sharp
+profile controls the paved cross-section, without influence from
+distant uphill roads or the density of map nodes. Starting at the pavement edges, nearby
+grade fields blend continuously across shoulders and medians before returning to the original terrain.
+Their weights converge to each road's own height at its edge, avoiding competing fixed-width
+shoulder plateaus in narrow gaps and sharp
 nearest-road ownership creases between neighboring roads. Inside junction corners receive
 tangent circular pavement fillets, shared by asphalt, dirt boundaries, and road coverage.
 Four-lane two-way highways and closely spaced, oppositely
@@ -621,10 +630,15 @@ collision grid. Their surfaces and a 6 m band on either side retain native terra
 unrelated landscape remains simplified. This changes visual tessellation, not the heightfield
 or collision. Separately, Complete maps locally refine terrain cells where coarse interpolation
 disagrees with road grades, their full terrain-blending banks, or river channels, with matching collision and crack-free neighboring
-cells, so adjacent uphill roads cannot push triangles into pavement. Rivers occupy channels
+cells, so adjacent uphill roads cannot push triangles into pavement. Refined cells and their
+stitched neighbors are retained by terrain LOD, preventing cracks at simplified patch boundaries.
+Rivers occupy channels
 one meter below the original local surface, with gradual six-meter banks. Ground-road pavement
 and its immediate support remain intact; waterways stay at channel height beneath those
 protected roadbeds and banks instead of draping over them, like culverts without extra geometry.
+River levels use local two-meter channel samples rather than interpolating across long
+triangulated bends, and water triangles are clipped against the displayed
+banks before rendering rather than lowered after draping, preventing triangular shoreline slivers.
 That protection stops at bridge abutments rather than
 extending round road-end caps into the river. Bridges span the lowered riverbed. Horizontal water surfaces are clipped to that same landscape at their estimated
 level. Rivers and shallow water are clipped to ground-road pavement boundaries, including

@@ -196,6 +196,18 @@ export function sceneryRoadProfiles(
   const endpointWidths = new Map<string, Set<number>>();
   const endpointKey = (road: CourseScenery['roads'][number], point: SceneryPoint) =>
     `${road.layer ?? 0}:${sceneryPointKey(point)}`;
+  const junctionArms = new Map<string, { arms: Set<string>; width: number }>();
+  for (const road of roads) {
+    if (road.structure) continue;
+    for (let i = 0; i < road.points.length; i++) {
+      const key = endpointKey(road, road.points[i]);
+      const junction = junctionArms.get(key) ?? { arms: new Set<string>(), width: 0 };
+      for (const neighbor of [road.points[i - 1], road.points[i + 1]])
+        if (neighbor) junction.arms.add(sceneryPointKey(neighbor));
+      junction.width = Math.max(junction.width, Math.min(20, road.width));
+      junctionArms.set(key, junction);
+    }
+  }
   for (const road of roads)
     for (const point of [road.points[0], road.points.at(-1)!]) {
       const key = endpointKey(road, point),
@@ -319,6 +331,17 @@ export function sceneryRoadProfiles(
   }
 
   type Profile = (typeof profiles)[number];
+  const approachLimit = (profile: Profile, reverse: boolean) => {
+    const length = profile.curve.getLength();
+    let limit = length;
+    for (let i = 0; i < profile.points.length; i++) {
+      const distance = reverse ? length - profile.curve.distances[i] : profile.curve.distances[i];
+      const junction = junctionArms.get(endpointKey(profile.road, profile.points[i]));
+      if (distance > 0.1 && junction && junction.arms.size >= 3)
+        limit = Math.min(limit, distance - junction.width / 2);
+    }
+    return Math.min(length, Math.max(0.5, limit));
+  };
   const paired = new Map<Profile, { other: Profile; reverse: boolean }>();
   const pairs = sceneryBridgeGroups(
     profiles.map((profile) => ({
@@ -395,29 +418,31 @@ export function sceneryRoadProfiles(
     if (profile.road.structure === 'bridge' && !paired.has(profile)) moveBridgeEnds(profile);
   for (const profile of profiles) {
     if (profile.road.structure) continue;
+    const length = profile.curve.getLength();
     const adjustments = moves.filter(({ from }) =>
       [profile.points[0], profile.points.at(-1)!].some(
         (p) => Math.hypot(p[0] - from[0], p[1] - from[1]) < 0.1,
       ),
     );
     if (!adjustments.length) continue;
-    const length = profile.curve.getLength();
+    const joins = adjustments.map(({ from, to, direction }) => {
+      const fromStart =
+        Math.hypot(profile.points[0][0] - from[0], profile.points[0][1] - from[1]) < 0.1;
+      return {
+        to,
+        direction,
+        fromStart,
+        reach: Math.min(approachSmoothing, length / 2, approachLimit(profile, !fromStart)),
+      };
+    });
     profile.points = profile.points.map(([x, z], i) => {
       let px = x,
         pz = z;
-      for (const { from, to, direction } of adjustments) {
-        const fromStart =
-          Math.hypot(profile.points[0][0] - from[0], profile.points[0][1] - from[1]) < 0.1;
+      for (const { to, direction, fromStart, reach } of joins) {
         const distance = fromStart
           ? profile.curve.distances[i]
           : length - profile.curve.distances[i];
-        const weight =
-          1 -
-          THREE.MathUtils.smoothstep(
-            distance,
-            Math.min(2, length / 4),
-            Math.min(approachSmoothing, length / 2),
-          );
+        const weight = 1 - THREE.MathUtils.smoothstep(distance, Math.min(2, reach / 4), reach);
         px += (to[0] + direction[0] * distance - x) * weight;
         pz += (to[1] + direction[1] * distance - z) * weight;
       }
@@ -461,6 +486,7 @@ export function sceneryRoadProfiles(
                   );
                   const rampLength = Math.min(
                     length,
+                    approachLimit(profile, reverse),
                     Math.max(40, Math.abs(bridge.heights[end] - profile.heights[index]) / 0.1),
                   );
                   return [{ profile, bridge, end, reverse, index, distances, rampLength }];
@@ -545,30 +571,23 @@ export function sceneryRoadProfiles(
 
   return profiles.map((profile) => {
     const length = profile.curve.getLength();
-    const groundEnds = [profile.points[0], profile.points.at(-1)!].map(
-      (point) =>
-        profile.bridgeApproach &&
-        !profiles.some(
-          (other) =>
-            other.road.structure === 'bridge' &&
-            [other.points[0], other.points.at(-1)!].some(
-              (end) => Math.hypot(point[0] - end[0], point[1] - end[1]) < 0.1,
-            ),
-        ),
-    );
+    const ramps = approaches.filter((approach) => approach.profile === profile);
     const groundBlendAt = (distance: number) =>
-      groundEnds.reduce(
-        (blend, grounded, end) =>
-          grounded
-            ? blend *
-              THREE.MathUtils.smoothstep(
-                end ? length - distance : distance,
-                Math.min(2, length / 4),
-                Math.min(approachSmoothing, length / 2),
-              )
-            : blend,
-        1,
-      );
+      profile.bridgeApproach
+        ? ramps.reduce(
+            (blend, { reverse, rampLength }) =>
+              Math.max(
+                blend,
+                1 -
+                  THREE.MathUtils.smoothstep(
+                    reverse ? length - distance : distance,
+                    Math.max(0, rampLength - approachSmoothing),
+                    rampLength,
+                  ),
+              ),
+            0,
+          )
+        : 1;
     const segments = new Map<string, number[]>();
     if (profile.raised) {
       for (let i = 1; i < profile.points.length; i++) {
