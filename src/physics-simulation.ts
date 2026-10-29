@@ -544,6 +544,9 @@ export function createPhysicsSimulation(
         ),
         time: request.time,
       };
+    } else if (request.type === 'teleport') {
+      physics.setCourseDirection(request.spawn, laps, request.height);
+      reset();
     } else if (request.type === 'snap') {
       accumulator = 0;
       capture(true, replay !== null);

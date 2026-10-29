@@ -583,6 +583,8 @@ async function start() {
         },
       });
       physics.setCones(coneMode !== 'off', coneMode === 'corners');
+      // Lets development tooling save the car's pose and restore it after a hot reload.
+      if (import.meta.env.DEV) Object.assign(globalThis, { doriftoPhysics: physics });
       await physics.ready;
       const latest = configurationState.getState();
       physics.setCones(latest.coneMode !== 'off', latest.coneMode === 'corners');

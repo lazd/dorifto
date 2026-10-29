@@ -548,6 +548,19 @@ export function createPhysicsClient({
       }
       send({ type: 'reset', input: input() });
     },
+    /** Development aid: respawns the player at a pose, e.g. one read from `chassisPose`. */
+    teleport(spawn: ReturnType<typeof courseSpawn>, height: number) {
+      invalidate();
+      send({ type: 'teleport', spawn, height, input: input() });
+    },
+    chassisPose() {
+      const { x, y, z } = car.chassis.position;
+      const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(car.chassis.quaternion);
+      return {
+        spawn: { position: [x, z] as const, heading: Math.atan2(forward.x, forward.z) },
+        height: y,
+      };
+    },
     setCourseDirection(spawn: ReturnType<typeof courseSpawn>, definition: CourseDefinition) {
       botEffects.forEach((effect) => effect.reset());
       invalidate();

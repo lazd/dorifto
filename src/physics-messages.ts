@@ -217,7 +217,13 @@ export type PhysicsCommand =
       input: PhysicsInput;
     }
   | { type: 'replay'; recording: ReplayData; time: number; input: PhysicsInput }
-  | { type: 'snap'; input: PhysicsInput };
+  | { type: 'snap'; input: PhysicsInput }
+  | {
+      type: 'teleport';
+      spawn: ReturnType<typeof courseSpawn>;
+      height: number;
+      input: PhysicsInput;
+    };
 
 export type PhysicsRequest = PhysicsCommand & { revision: number };
 

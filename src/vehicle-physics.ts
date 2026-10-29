@@ -243,7 +243,11 @@ export function createVehiclePhysics({
   const replayFrom = new THREE.Vector3();
   const replayTo = new THREE.Vector3();
   const replaySpin = new THREE.Quaternion();
-  function setCourseDirection(nextSpawn: ReturnType<typeof courseSpawn>, nextLaps: LapTimer) {
+  function setCourseDirection(
+    nextSpawn: ReturnType<typeof courseSpawn>,
+    nextLaps: LapTimer,
+    height = terrain.heightAt(nextSpawn.position[0], nextSpawn.position[1]),
+  ) {
     const spawnNormal = terrain.normalAt(nextSpawn.position[0], nextSpawn.position[1]);
     const spawnForward = new THREE.Vector3(
       Math.sin(nextSpawn.heading),
@@ -259,9 +263,7 @@ export function createVehiclePhysics({
     centerOfMassOffset.copy(centerOfMass).applyQuaternion(spawnQuaternion);
     vector.setValue(
       nextSpawn.position[0] + centerOfMassOffset.x,
-      terrain.heightAt(nextSpawn.position[0], nextSpawn.position[1]) +
-        settings.spawnHeightM +
-        centerOfMassOffset.y,
+      height + settings.spawnHeightM + centerOfMassOffset.y,
       nextSpawn.position[1] + centerOfMassOffset.z,
     );
     resetTransform.setOrigin(vector);
