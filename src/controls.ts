@@ -4,6 +4,7 @@ import type { DriveMode } from './drive-modes';
 const STICK_DEADZONE = 0.0;
 const TRIGGER_DEADZONE = 0.0;
 const T300_DRIFT_STEERING_GAIN = 4;
+const HANDBRAKE_LATCH_MS = 5000;
 
 export function isT300(pad: Gamepad): boolean {
   return /Thrustmaster FFB|\bt300(?:rs)?\b|044f.*b66[def]/i.test(pad.id ?? '');
@@ -95,6 +96,8 @@ export class DrivingControls {
   private previousLapHeld = false;
   private nextLapHeld = false;
   private resetHeld = false;
+  private handbrakePressedAt: number | null = null;
+  private handbrakeLatched = false;
   private cameraHeld = false;
   private driveModeHeld = false;
   private timeOfDayHeld = false;
@@ -139,6 +142,8 @@ export class DrivingControls {
     this.cameraX = this.cameraY = 0;
     this.mapZoom = 0;
     this.handbrake = this.clutch = this.lookBehind = false;
+    this.handbrakePressedAt = null;
+    this.handbrakeLatched = false;
     this.shiftUp = this.shiftDown = false;
     this.highBeams = false;
     this.highBeamPressedAt = null;
@@ -272,14 +277,25 @@ export class DrivingControls {
     this.throttle = Math.max(Number(keyDown('accelerate')), value('accelerate'));
     this.brake = Math.max(Number(keyDown('brake')), value('brake'));
     this.reverse = this.brake;
-    this.handbrake = keyDown('handbrake') || pressed('handbrake');
+    const now = performance.now();
+    const handbrakePressed = keyDown('handbrake') || pressed('handbrake');
+    if (handbrakePressed) {
+      if (this.handbrakePressedAt === null) {
+        this.handbrakePressedAt = now;
+        this.handbrakeLatched = false;
+      } else if (now - this.handbrakePressedAt >= HANDBRAKE_LATCH_MS) {
+        this.handbrakeLatched = true;
+      }
+    } else {
+      this.handbrakePressedAt = null;
+    }
+    this.handbrake = handbrakePressed || this.handbrakeLatched;
     this.clutch =
       pressed('clutch') ||
       Boolean(wheel && !needsInitialization && t300Pedal(pad, pedalAxes.clutch) > 0.5);
     this.shiftUp = Boolean(wheel && pad.buttons[1]?.pressed);
     this.shiftDown = Boolean(wheel && pad.buttons[0]?.pressed);
     const highBeamPressed = keyDown('highBeams') || pressed('highBeams');
-    const now = performance.now();
     if (highBeamPressed) {
       this.highBeamPressedAt ??= now;
       if (!this.highBeamToggled && now - this.highBeamPressedAt >= 1000) {

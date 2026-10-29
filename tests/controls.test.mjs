@@ -609,6 +609,44 @@ test('Xbox B still toggles the map and RB still operates the e-brake', (t) => {
   assert.equal(r.controls.handbrake, true);
 });
 
+test('holding the handbrake for 5 seconds latches it until the next press', (t) => {
+  for (const [name, press] of [
+    [
+      'controller',
+      (r, down) => {
+        r.pad.buttons[5] = { pressed: down };
+      },
+    ],
+    [
+      'keyboard',
+      (r, down) => {
+        if (down) r.controls.keys.add('Space');
+        else r.controls.keys.delete('Space');
+      },
+    ],
+  ]) {
+    const r = rig(t);
+    press(r, true);
+    r.poll(4999);
+    assert.equal(r.controls.handbrake, true, `${name}: handbrake works while held`);
+    press(r, false);
+    r.poll();
+    assert.equal(r.controls.handbrake, false, `${name}: release before 5 seconds is momentary`);
+
+    press(r, true);
+    r.poll(5000);
+    press(r, false);
+    r.poll();
+    assert.equal(r.controls.handbrake, true, `${name}: 5-second hold stays engaged after release`);
+
+    press(r, true);
+    r.poll();
+    press(r, false);
+    r.poll();
+    assert.equal(r.controls.handbrake, false, `${name}: next tap disengages the handbrake`);
+  }
+});
+
 for (const direction of [-1, 1]) {
   test(`right stick ${direction < 0 ? 'left' : 'right'} holds for 1 second then flashes exactly four times`, (t) => {
     const r = rig(t);

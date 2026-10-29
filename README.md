@@ -1239,22 +1239,22 @@ bindings; close Settings with Done, Close or Escape. Driving inputs are disabled
 while the dialog is open, but the simulation continues. The following tables show
 the default bindings; remapped bindings are reflected in the in-app diagrams.
 
-| Key                 | Action                                                            |
-| ------------------- | ----------------------------------------------------------------- |
-| Left / right arrows | Steer                                                             |
-| Z                   | Accelerate (rear-wheel drive)                                     |
-| X (hold)            | Brake, then reverse near a stop                                   |
-| X + Z               | Brakestand (front brakes hold, rear tires spin)                   |
-| Space               | Lock the rear wheels / initiate a slide                           |
-| F                   | Flash high beams; hold 1 second to toggle high beams on/off       |
-| H                   | Tap to toggle headlights; hold 1 second to toggle fog lights      |
-| R                   | Reset the car, cones, smoke, and tire marks                       |
-| V                   | Cycle FPV drone, classic chase, in-cabin (once per press)         |
-| D                   | Toggle Grip / Drift mode (once per press)                         |
-| M                   | Toggle the bird's-eye map view of the whole course                |
-| U                   | Hide tach, map, leaderboard, then all HUD; press again to restore |
-| W                   | Cycle Noon / Sunset / Night (once per press)                      |
-| S                   | Turn on the stereo / next station / off after the last station    |
+| Key                 | Action                                                                                 |
+| ------------------- | -------------------------------------------------------------------------------------- |
+| Left / right arrows | Steer                                                                                  |
+| Z                   | Accelerate (rear-wheel drive)                                                          |
+| X (hold)            | Brake, then reverse near a stop                                                        |
+| X + Z               | Brakestand (front brakes hold, rear tires spin)                                        |
+| Space               | Lock the rear wheels / initiate a slide; hold 5 seconds to latch, tap again to release |
+| F                   | Flash high beams; hold 1 second to toggle high beams on/off                            |
+| H                   | Tap to toggle headlights; hold 1 second to toggle fog lights                           |
+| R                   | Reset the car, cones, smoke, and tire marks                                            |
+| V                   | Cycle FPV drone, classic chase, in-cabin (once per press)                              |
+| D                   | Toggle Grip / Drift mode (once per press)                                              |
+| M                   | Toggle the bird's-eye map view of the whole course                                     |
+| U                   | Hide tach, map, leaderboard, then all HUD; press again to restore                      |
+| W                   | Cycle Noon / Sunset / Night (once per press)                                           |
+| S                   | Turn on the stereo / next station / off after the last station                         |
 
 Map view switches instantly in both directions, without an animated camera flight.
 Each U press advances one step; holding it does not repeat. Restoring the HUD preserves
@@ -1277,7 +1277,7 @@ Settings > Controls. The first connected standard-mapped controller is used.
 | Left stick vertical (map view)      | Up: zoom in; down: zoom out                                                         |
 | Right stick                         | Camera orbit/height; pan up/down/left/right in map view                             |
 | Right stick left / right (hold 1 s) | Corresponding turn signal flashes four times; camera still pans (not in map view)   |
-| R1 / RB                             | Handbrake                                                                           |
+| R1 / RB                             | Handbrake; hold 5 seconds to latch, tap again to release                            |
 | A / Cross (south face button)       | Clutch: hold at high revs, release to clutch kick                                   |
 | X / Square (west face button)       | Tap to toggle headlights; hold 1 second to toggle fog lights                        |
 | L1 / LB                             | Flash high beams; hold 1 second to toggle high beams on/off                         |
