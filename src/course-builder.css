@@ -412,17 +412,25 @@ input.switch::before {
   content: '\25cb';
 }
 .build-step-content {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: var(--space-2);
   flex: 1;
   min-width: 0;
   padding-block: var(--space-1);
   overflow-wrap: anywhere;
 }
 .build-step-retry {
+  grid-column: 2;
+  grid-row: 1;
+  width: 5ch;
   color: var(--color-muted);
   font-weight: 400;
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 .build-step-progress {
+  grid-column: 1 / -1;
   display: block;
   width: 100%;
   height: var(--space-1);

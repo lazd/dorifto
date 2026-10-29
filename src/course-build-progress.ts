@@ -38,6 +38,7 @@ export function createBuildProgress(root: HTMLElement) {
       item.setAttribute('aria-busy', String(nextState === 'active'));
       const label = item.querySelector<HTMLElement>('.build-step-label')!;
       const content = item.querySelector<HTMLElement>('.build-step-content')!;
+      if (label.textContent !== item.dataset.label) label.textContent = item.dataset.label!;
       let bar = content.querySelector('progress');
       const tiles = detail?.match(/^Tiles (\d+)\/(\d+)(?:; tile \d+ \((\d+)\/(\d+)\))?$/);
       if (
@@ -52,6 +53,12 @@ export function createBuildProgress(root: HTMLElement) {
         bar.setAttribute('aria-valuetext', '0 tiles complete');
         content.append(bar);
       }
+      let retry = content.querySelector<HTMLElement>('.build-step-retry');
+      if (bar && !retry) {
+        retry = document.createElement('span');
+        retry.className = 'build-step-retry';
+        content.insertBefore(retry, bar);
+      }
       if (bar && reset) {
         bar.max = 1;
         bar.value = 0;
@@ -63,20 +70,11 @@ export function createBuildProgress(root: HTMLElement) {
         bar.setAttribute('aria-valuetext', `${tiles[1]} of ${tiles[2]} tiles complete`);
       }
       if (bar && nextState === 'complete') bar.value = bar.max;
-      if (reset || detail !== undefined) {
-        const status = tiles ? '' : detail;
-        const text = current && status ? `${item.dataset.label} ${status}` : item.dataset.label!;
-        const retryText = current && tiles?.[3] ? `(${tiles[3]}/${tiles[4]})` : '';
-        if (label.textContent !== (retryText ? `${text} ${retryText}` : text)) {
-          label.textContent = text;
-          if (retryText) {
-            const retry = document.createElement('span');
-            retry.className = 'build-step-retry';
-            retry.textContent = retryText;
-            label.append(' ', retry);
-          }
-        }
-      }
+      const retryText =
+        !reset && nextState === 'active' && tiles?.[3] ? `(${tiles[3]}/${tiles[4]})` : '';
+      if (retry && retry.textContent !== retryText) retry.textContent = retryText;
+      if (reset || nextState === 'complete') item.removeAttribute('aria-description');
+      else if (current && detail) item.setAttribute('aria-description', detail);
       item.setAttribute(
         'aria-label',
         `${label.textContent}: ${nextState === 'complete' ? 'completed' : nextState === 'active' ? 'in progress' : 'pending'}`,
