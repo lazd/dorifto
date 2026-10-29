@@ -476,7 +476,7 @@ if (diffuseColor.a < ${material.transparent ? '0.01' : '0.5'}) discard;`,
           const sample = position
             .clone()
             .addScaledVector(across, (side * turnSignDimensions.boardWidth) / 2);
-          return terrain.isAsphalt(sample) || scenery.isAsphalt(sample);
+          return scenery.isAsphalt(sample);
         })
       )
         continue;

@@ -2268,6 +2268,15 @@ export function createScenery(
       source.dispose();
     }
     const positions = projected.getAttribute('position');
+    if (batch === riverBatch)
+      for (let i = 0; i < positions.count; i++)
+        positions.setY(
+          i,
+          Math.min(
+            positions.getY(i),
+            terrain.waterwayHeightAt(positions.getX(i), positions.getZ(i)) + lift,
+          ),
+        );
     const kept = new Batch();
     appendTunnelBatch(batch, kept, lift);
     for (let i = 0; i < positions.count; i += 3) {

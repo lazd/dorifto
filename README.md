@@ -623,7 +623,9 @@ or collision. Separately, Complete maps locally refine terrain cells where coars
 disagrees with road grades, their full terrain-blending banks, or river channels, with matching collision and crack-free neighboring
 cells, so adjacent uphill roads cannot push triangles into pavement. Rivers occupy channels
 one meter below the original local surface, with gradual six-meter banks. Ground-road pavement
-and its immediate support remain intact; that protection stops at bridge abutments rather than
+and its immediate support remain intact; waterways stay at channel height beneath those
+protected roadbeds and banks instead of draping over them, like culverts without extra geometry.
+That protection stops at bridge abutments rather than
 extending round road-end caps into the river. Bridges span the lowered riverbed. Horizontal water surfaces are clipped to that same landscape at their estimated
 level. Rivers and shallow water are clipped to ground-road pavement boundaries, including
 side roads and parking areas, while water continues beneath bridges. This is static
@@ -997,7 +999,7 @@ live in `src/turn-sign.ts`.
 
 Several/Many use at most 8 m between signs and at least three per turn.
 Longer bends receive more signs, and reverse courses have their own runs.
-Placements whose posts or board edges overlap course pavement or nearby mapped roads
+Placements whose posts or board edges overlap nearby mapped roads
 are omitted, including their collision bodies, so intersecting roads remain clear.
 Existing `?signs=on` links map to Several. Inactive density/direction groups
 are hidden and removed from physics; switching modes restores the selected

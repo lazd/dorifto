@@ -63,6 +63,7 @@ export class CourseTerrain {
   private readonly groundQuery?: HeightfieldData;
   private groundTriangles?: ReturnType<typeof terrainGeometryTriangles>;
   private exteriorQuery?: HeightfieldData;
+  private readonly riverChannels?: SceneryRiverChannels;
 
   constructor(definition: CourseDefinition, buildVisuals = true) {
     const mapBounds = definition.scenery?.bounds;
@@ -280,6 +281,7 @@ export class CourseTerrain {
           uncutSurfaceHeight(x, z, this.nearest(x, z), blendStart),
         )
       : undefined;
+    this.riverChannels = riverChannels;
     const surfaceHeight = (
       x: number,
       z: number,
@@ -1173,6 +1175,12 @@ export class CourseTerrain {
 
   groundHeightAt(x: number, z: number) {
     return heightAt(this.groundQuery ?? this, x, z);
+  }
+
+  waterwayHeightAt(x: number, z: number) {
+    const ground = this.groundHeightAt(x, z);
+    // Water follows the channel beneath protected roadbeds, not their embankments.
+    return this.riverChannels?.heightAt(x, z, ground, Infinity) ?? ground;
   }
 
   /** Hillside before the bore is subtracted; driving queries still use its separate floor. */
