@@ -7,7 +7,7 @@ import {
   type CourseDefinition,
 } from './courses';
 import { CourseTerrain, projectTerrainGeometry } from './terrain';
-import { createTunnelMeshes } from './tunnels';
+import { createTunnelMeshes, excavateTunnelTerrain } from './tunnels';
 import { createBridgeMeshes } from './bridges';
 import { createScenery } from './scenery';
 
@@ -179,7 +179,7 @@ export function createCoursePreviewModel(
       for (let column = 0; column < columns; column++) {
         const x = Math.min(minX + column * cell, maxX);
         const z = Math.min(minZ + row * cell, maxZ);
-        const ground = terrain.groundHeightAt(x, z);
+        const ground = terrain.exteriorHeightAt(x, z);
         positions.push(x, ground, z);
         groundHeights[row * columns + column] = ground;
         heights[row * columns + column] = height(x, z);
@@ -202,7 +202,7 @@ export function createCoursePreviewModel(
       if (!(object instanceof THREE.Mesh)) continue;
       const source = object.geometry;
       object.geometry = projectTerrainGeometry(
-        terrain.bridgeMesh ? terrain : previewTerrain,
+        terrain.bridgeMesh || terrain.collisionMesh ? terrain : previewTerrain,
         source,
         object === group.children[0] ? roadLift : roadLift * 2,
       );
@@ -230,6 +230,11 @@ export function createCoursePreviewModel(
       new THREE.MeshStandardMaterial({ color: colors.ground, roughness: 1, flatShading: true }),
     );
     ground.name = 'preview-ground';
+    if (terrain.collisionMesh) {
+      const source = ground.geometry;
+      ground.geometry = excavateTunnelTerrain(source, definition, height);
+      source.dispose();
+    }
     group.add(ground);
     if (terrain.collisionMesh)
       group.add(

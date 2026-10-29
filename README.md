@@ -187,10 +187,12 @@ direct browser requests to OpenFreeMap and USGS, so an internet connection is ne
   deck/tunnel height; tiles do not provide surveyed road heights. Spans without terrain
   approaches on both sides (such as a route starting on a bridge) are left unchanged.
   Structure spans and their source geometry are saved for editing. Tagged tunnels render
-  an arched bore with open portals in both the game and 3D previews. A terrain cover sampled
-  from the retained raster fills the road cut above the bore; the road floor remains on
-  the existing heightfield. Tunnel walls, ceilings, portals, and cover have matching static
-  triangle-mesh collision, shared across driving directions. Clearance is an estimate
+  an arched bore cut through the retained terrain in both the game and 3D previews, without
+  a separate mountain cap. The lining meets the existing hillside, and the road floor stays
+  on its heightfield through the portals, blending into surface roads over 20 m approaches.
+  Tunnel walls, ceilings, and the terrain above have matching static triangle-mesh collision,
+  shared across driving directions, with triangle-edge contact correction so wall scrapes slide
+  rather than snag. Clearance is an estimate
   (3 m sidewalls, 6.5 m at the crown), not a surveyed reconstruction of a specific tunnel.
   Tagged bridges render a concrete deck with raised edge curbs, metal railings/posts,
   and paired piers grounded in the saved terrain where there is sufficient clearance.

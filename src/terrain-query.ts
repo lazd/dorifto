@@ -25,7 +25,7 @@ export interface HeightfieldData {
   /** Triangle vertex indices of warped cells subdivided across the roadside wall. */
   filletCells?: Map<number, number[]>;
   /** Additional non-heightfield surfaces, such as tunnel walls and ceilings. */
-  collisionMesh?: TriangleMeshData;
+  collisionMesh?: TriangleMeshData & { collisionIndices?: Uint32Array };
   /** Ground below elevated roads; height queries still return the drivable road surface. */
   groundSurface?: { heights: Float32Array; filletVertices?: Float32Array };
   bridgeMesh?: TriangleMeshData & { collisionIndices?: Uint32Array };

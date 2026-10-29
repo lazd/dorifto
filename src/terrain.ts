@@ -14,6 +14,9 @@ import {
 import {
   buildTunnelGeometry,
   createTunnelMeshes,
+  excavateTunnelTerrain,
+  tunnelApproachLength,
+  tunnelBoreSpans,
   tunnelShoulderClearance,
   type TunnelGeometry,
 } from './tunnels';
@@ -22,7 +25,7 @@ import {
   cellTriangles,
   heightAt,
   normalAt,
-  triangleHeight,
+  vertexHeight,
   vertexPosition,
   type TerrainQueryData,
   type HeightfieldData,
@@ -58,6 +61,7 @@ export class CourseTerrain {
   private readonly padRadius?: number;
   private readonly groundQuery?: HeightfieldData;
   private groundTriangles?: ReturnType<typeof terrainGeometryTriangles>;
+  private exteriorQuery?: HeightfieldData;
 
   constructor(definition: CourseDefinition, buildVisuals = true) {
     const mapBounds = definition.scenery?.bounds;
@@ -140,7 +144,7 @@ export class CourseTerrain {
     const tunnelSpans = definition.structures?.filter(({ type }) => type === 'tunnel') ?? [];
     // Overlaid courses drive on the roads' rendered pavement, except through their own tunnels,
     // where the mapped tunnel roads have no ground surface.
-    this.asphaltSpans = overlay ? tunnelSpans : undefined;
+    this.asphaltSpans = overlay ? tunnelBoreSpans(definition, length) : undefined;
     this.surface = new TerrainSurface(
       this.segments,
       this.halfWidth,
@@ -169,8 +173,8 @@ export class CourseTerrain {
     const structureSpans = [...tunnelSpans, ...bridgeSpans];
     const structureBlendStart =
       this.halfWidth + Math.max(tunnelShoulderClearance, bridgeDimensions.edgeWidth) + supportWidth;
-    // Complete maps cut only the course's own tunnel bores into the ground, close enough to
-    // the bore and portals that the tunnel's mountain cover hides the entire cut.
+    // The driving heightfield is the bore floor, not the hillside above it. Keep the floor
+    // on its profile through each portal, blending into the surface roads on the approaches.
     const tunnelCut = (near: ReturnType<typeof this.nearest>) => {
       if (!overlay || !tunnelSpans.length) return 0;
       // Every triangle touching the bore stays flat; the cut then rises within one more cell.
@@ -185,8 +189,8 @@ export class CourseTerrain {
               (1 -
                 THREE.MathUtils.smoothstep(
                   Math.max(start - near.fraction, near.fraction - end) * length,
-                  -this.spacing,
-                  0,
+                  supportWidth,
+                  supportWidth + tunnelApproachLength,
                 )),
           ),
         0,
@@ -242,7 +246,9 @@ export class CourseTerrain {
     const roadSurface =
       definition.scenery?.roads.length && !definition.flat
         ? new SceneryRoadSurface(definition.scenery.roads, (x, z) =>
-            courseSurfaceHeight(x, z, this.nearest(x, z), blendStart),
+            overlay
+              ? rasterHeight!(x, z) * elevationScale
+              : courseSurfaceHeight(x, z, this.nearest(x, z), blendStart),
           )
         : undefined;
     if (roadSurface)
@@ -357,6 +363,40 @@ export class CourseTerrain {
       }
       this.heights.set(smoothed);
     }
+    const exteriorHeight = (x: number, z: number, floor: number) => {
+      if (!rasterHeight) return floor;
+      const near = this.nearest(x, z);
+      const along = tunnelSpans.reduce(
+        (weight, { start, end }) =>
+          Math.max(
+            weight,
+            1 -
+              THREE.MathUtils.smoothstep(
+                Math.max(start - near.fraction, near.fraction - end) * length,
+                0,
+                tunnelApproachLength,
+              ),
+          ),
+        0,
+      );
+      const width = structureBlendStart + transition;
+      const weight =
+        along *
+        (1 - THREE.MathUtils.smoothstep(near.distance, width, width + this.spacing * Math.SQRT2));
+      if (!weight) return floor;
+      const raw = rasterHeight(x, z, near.distance) * elevationScale;
+      const ground = overlay && roadSurface ? roadSurface.heightAt(x, z, raw) : raw;
+      return THREE.MathUtils.lerp(floor, ground, weight);
+    };
+    if (tunnelSpans.length && rasterHeight && !definition.flat) {
+      const heights = this.heights.slice();
+      for (let i = 0; i < heights.length; i++) {
+        const x = positions[i * 3],
+          z = positions[i * 3 + 2];
+        heights[i] = exteriorHeight(x, z, heights[i]);
+      }
+      this.exteriorQuery = { ...this, heights };
+    }
     // Vegetation uses the steepest adjacent edges so vertices at the foot or crest of a wall
     // don't average to gentle and spread grass across the wall's triangles. Snapped vertices
     // sit closer than one grid step, so measure true horizontal distances.
@@ -371,16 +411,17 @@ export class CourseTerrain {
           positions[n * 3] - positions[i * 3],
           positions[n * 3 + 2] - positions[i * 3 + 2],
         );
-        steepest = Math.max(steepest, Math.abs(this.heights[n] - this.heights[i]) / run);
+        const heights = this.exteriorQuery?.heights ?? this.heights;
+        steepest = Math.max(steepest, Math.abs(heights[n] - heights[i]) / run);
       }
       return steepest;
     };
     let min = Infinity;
     let max = -Infinity;
     for (let i = 0; i < this.heights.length; i++) {
-      positions[i * 3 + 1] = this.heights[i];
+      positions[i * 3 + 1] = this.exteriorQuery?.heights[i] ?? this.heights[i];
       min = Math.min(min, this.heights[i]);
-      max = Math.max(max, this.heights[i]);
+      max = Math.max(max, this.heights[i], positions[i * 3 + 1]);
       const x = i % this.columns;
       const z = Math.floor(i / this.columns);
       const slope = Math.atan(
@@ -389,7 +430,10 @@ export class CourseTerrain {
           Math.hypot(grade(i, x, z, 1, 1), grade(i, x, z, 1, -1)),
         ),
       );
-      vegetation.push(roadDistances[i], slope);
+      vegetation.push(
+        positions[i * 3 + 1] > this.heights[i] + 1 ? farFromCourse : roadDistances[i],
+        slope,
+      );
     }
     if (warp?.size) {
       this.warpedVertices = warp;
@@ -560,12 +604,29 @@ export class CourseTerrain {
     this.minHeight = min === max ? min - 0.01 : min;
     this.maxHeight = min === max ? max + 0.01 : max;
     if (this.groundSurface) this.groundQuery = { ...this, ...this.groundSurface };
+    if (this.exteriorQuery) {
+      const heights = this.groundSurface
+        ? this.groundSurface.heights.map((height, i) =>
+            exteriorHeight(positions[i * 3], positions[i * 3 + 2], height),
+          )
+        : this.exteriorQuery.heights;
+      const filletVertices = (this.groundSurface?.filletVertices ?? this.filletVertices)?.slice();
+      if (filletVertices)
+        for (let i = 0; i < filletVertices.length; i += 3)
+          filletVertices[i + 1] = exteriorHeight(
+            filletVertices[i],
+            filletVertices[i + 2],
+            filletVertices[i + 1],
+          );
+      this.exteriorQuery = { ...this, heights, filletVertices };
+    }
     // Scenery roads provide a complete map's bridges; only the course's own tunnels remain.
     const structureDefinition = overlay ? { ...definition, structures: tunnelSpans } : definition;
     this.collisionMesh = buildTunnelGeometry(
       structureDefinition,
       (x, z) => heightAt(this, x, z),
-      overlay ? this.spacing : 0,
+      this.exteriorQuery ? (x, z) => this.exteriorHeightAt(x, z) : undefined,
+      (source) => this.projectGeometry(source, 0),
     );
     this.bridgeMesh = buildBridgeGeometry(
       structureDefinition,
@@ -573,7 +634,7 @@ export class CourseTerrain {
       (x, z) => this.groundHeightAt(x, z),
       (geometry, lift) => this.projectGeometry(geometry, lift),
     );
-    if (!buildVisuals) {
+    if (!buildVisuals && !this.exteriorQuery) {
       this.mesh = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshStandardMaterial());
       this.grass = new THREE.InstancedMesh(
         new THREE.BufferGeometry(),
@@ -605,11 +666,17 @@ export class CourseTerrain {
       if (this.groundSurface.filletVertices)
         vertices.set(this.groundSurface.filletVertices, positions.length);
     }
+    if (this.exteriorQuery) {
+      for (let i = 0; i < this.heights.length; i++)
+        vertices[i * 3 + 1] = this.exteriorQuery.heights[i];
+      if (this.exteriorQuery.filletVertices)
+        vertices.set(this.exteriorQuery.filletVertices, positions.length);
+    }
     const textureCoordinates = new Float32Array((vertices.length / 3) * 2);
     textureCoordinates.set(uvs);
     for (let i = 0; i < fillet.length; i += 3)
       textureCoordinates.set([fillet[i] / 6, fillet[i + 2] / 6], uvs.length + (i / 3) * 2);
-    const geometry = new THREE.BufferGeometry();
+    let geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
     geometry.setAttribute('uv', new THREE.BufferAttribute(textureCoordinates, 2));
     geometry.setAttribute(
@@ -623,6 +690,47 @@ export class CourseTerrain {
     );
     geometry.setIndex(new THREE.BufferAttribute(indices, 1));
     geometry.computeVertexNormals();
+    if (this.exteriorQuery) {
+      const source = geometry;
+      geometry = excavateTunnelTerrain(source, definition, (x, z) => this.heightAt(x, z));
+      source.dispose();
+      // The heightfield stays below the bore. Restored terrain above it needs matching
+      // triangle collision, without adding a second copy of the drivable floor.
+      if (this.collisionMesh) {
+        const positions = geometry.getAttribute('position');
+        const indices = geometry.getIndex()!;
+        const roof: number[] = [];
+        for (let i = 0; i < indices.count; i += 3) {
+          const corners = [0, 1, 2].map((j) => indices.getX(i + j));
+          if (
+            !corners.some(
+              (j) => positions.getY(j) > this.heightAt(positions.getX(j), positions.getZ(j)) + 0.05,
+            )
+          )
+            continue;
+          for (const j of corners)
+            roof.push(positions.getX(j), positions.getY(j), positions.getZ(j));
+        }
+        const data = this.collisionMesh;
+        const vertices = new Float32Array(data.positions.length + roof.length);
+        vertices.set(data.positions);
+        vertices.set(roof, data.positions.length);
+        const collisionIndices = new Uint32Array(data.collisionIndices.length + roof.length / 3);
+        collisionIndices.set(data.collisionIndices);
+        for (let i = 0; i < roof.length / 3; i++)
+          collisionIndices[data.collisionIndices.length + i] = data.positions.length / 3 + i;
+        this.collisionMesh = { ...data, positions: vertices, collisionIndices };
+      }
+    }
+    if (!buildVisuals) {
+      this.mesh = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial());
+      this.grass = new THREE.InstancedMesh(
+        new THREE.BufferGeometry(),
+        new THREE.MeshStandardMaterial(),
+        0,
+      );
+      return;
+    }
     const material = surfaceMaterial('rock');
     const soilMaterial = surfaceMaterial('gravel');
     const soilMap = soilMaterial.map;
@@ -727,6 +835,8 @@ export class CourseTerrain {
             vec4 soilColor = groundSample(soilMap, vMapUv * 2.0);
             if (wall > 0.0)
               soilColor = mix(soilColor, triplanarSample(soilMap, rockPosition, rockWeights), wall);
+            vec3 dirtColor = roadDirt(soilColor.rgb);
+            soilColor.rgb = dirtColor;
             // Recolor the gray scan as weathered tan cut-bank material, keeping its detail.
             float rockLuma = dot(gravelColor.rgb, vec3(0.2126, 0.7152, 0.0722));
             gravelColor.rgb = vec3(0.62, 0.5, 0.37) * rockLuma * 2.4;
@@ -739,7 +849,7 @@ export class CourseTerrain {
             float edge = (detail - 0.5) * 0.65 + (patches - 0.5) * 0.8;
             // Packed brown dirt verge along the road, with a ragged edge into grass/rock.
             float verge = 1.0 - smoothstep(2.5, 5.0, vVegetation.x + edge * 1.5);
-            gravelColor.rgb = mix(gravelColor.rgb, roadDirt(soilColor.rgb), verge);
+            gravelColor.rgb = mix(gravelColor.rgb, dirtColor, verge);
             float bankNoise = terrainNoise(vTerrainPosition.xz * 0.09) * 0.6 +
               terrainNoise(vTerrainPosition.xz * 0.31 + vec2(5.2, 1.7)) * 0.4;
             float slopeGrass = 1.0 - smoothstep(0.62, 1.05, vVegetation.y + (bankNoise - 0.5) * 0.45);
@@ -918,6 +1028,11 @@ export class CourseTerrain {
     return heightAt(this.groundQuery ?? this, x, z);
   }
 
+  /** Hillside before the bore is subtracted; driving queries still use its separate floor. */
+  exteriorHeightAt(x: number, z: number) {
+    return heightAt(this.exteriorQuery ?? this.groundQuery ?? this, x, z);
+  }
+
   normalAt(x: number, z: number) {
     return normalAt(this, x, z);
   }
@@ -989,21 +1104,36 @@ export class CourseTerrain {
 
   projectGroundGeometry(source: THREE.BufferGeometry, lift: number, horizontal = false) {
     const ground = this.groundQuery ?? this;
-    this.groundTriangles ??= terrainGeometryTriangles(ground, this.mesh.geometry);
+    if (!this.groundTriangles) {
+      const surface = terrainGeometryTriangles(ground, this.mesh.geometry);
+      const floor = this.mesh.getObjectByName('tunnel-floor');
+      const floorTriangles =
+        floor instanceof THREE.Mesh ? terrainGeometryTriangles(ground, floor.geometry) : undefined;
+      this.groundTriangles = function* (bounds) {
+        yield* surface(bounds);
+        if (floorTriangles) yield* floorTriangles(bounds);
+      };
+    }
     return projectTerrainGeometry(ground, source, lift, this.groundTriangles, horizontal);
   }
 }
 
 type ProjectionBounds = { minX: number; maxX: number; minZ: number; maxZ: number };
-type TerrainTriangles = (bounds: ProjectionBounds) => Iterable<readonly number[]>;
+type TerrainTriangles = (bounds: ProjectionBounds) => Iterable<readonly THREE.Vector3[]>;
 
 /** Index the rendered triangles once; coarse patches do not follow the physics grid's cells. */
-export function terrainGeometryTriangles(terrain: HeightfieldData, geometry: THREE.BufferGeometry) {
+export function terrainGeometryTriangles(
+  _terrain: HeightfieldData,
+  geometry: THREE.BufferGeometry,
+) {
   const levels = new Map<number, Map<string, number[]>>();
+  const position = geometry.getAttribute('position');
   const index = geometry.getIndex();
   if (!index) throw new Error('Terrain projection requires indexed ground geometry');
   for (let i = 0; i < index.count; i += 3) {
-    const points = [0, 1, 2].map((j) => vertexPosition(terrain, index.getX(i + j)));
+    const points = [0, 1, 2].map((j) =>
+      new THREE.Vector3().fromBufferAttribute(position, index.getX(i + j)),
+    );
     const minX = Math.min(...points.map((p) => p.x));
     const maxX = Math.max(...points.map((p) => p.x));
     const minZ = Math.min(...points.map((p) => p.z));
@@ -1028,7 +1158,9 @@ export function terrainGeometryTriangles(terrain: HeightfieldData, geometry: THR
           for (const i of buckets.get(`${x},${z}`) ?? []) {
             if (seen.has(i)) continue;
             seen.add(i);
-            yield [index.getX(i), index.getX(i + 1), index.getX(i + 2)];
+            yield [0, 1, 2].map((j) =>
+              new THREE.Vector3().fromBufferAttribute(position, index.getX(i + j)),
+            );
           }
   };
 }
@@ -1059,7 +1191,10 @@ export function projectTerrainGeometry(
       for (let x = Math.max(firstX, 0); x <= Math.min(lastX, terrain.columns - 2); x++) {
         const corners = cellTriangles(terrain, x, z);
         for (let t = 0; t < corners.length; t += 3)
-          yield [corners[t], corners[t + 1], corners[t + 2]];
+          yield corners.slice(t, t + 3).map((i) => {
+            const { x, z } = vertexPosition(terrain, i);
+            return new THREE.Vector3(x, vertexHeight(terrain, i), z);
+          });
       }
   }
   function clip(polygon: Point[], a: Point, b: Point) {
@@ -1100,8 +1235,11 @@ export function projectTerrainGeometry(
       maxZ: Math.max(...triangle.map((p) => p.z)),
     };
     for (const corners of (renderedTriangles ?? gridTriangles)(bounds)) {
-      const cell = [corners[0], corners[2], corners[1]];
-      const points = cell.map((i) => vertexPosition(terrain, i));
+      const points = [corners[0], corners[2], corners[1]];
+      const plane = new THREE.Plane().setFromCoplanarPoints(points[0], points[1], points[2]);
+      if (Math.abs(plane.normal.y) < 1e-8) continue;
+      const height = (p: Point) =>
+        -(plane.constant + plane.normal.x * p.x + plane.normal.z * p.z) / plane.normal.y;
       let polygon = triangle;
       for (let edge = 0; edge < 3 && polygon.length; edge++)
         polygon = clip(polygon, points[edge], points[(edge + 1) % 3]);
@@ -1114,8 +1252,8 @@ export function projectTerrainGeometry(
           const output: Point[] = [];
           polygon.forEach((p, i) => {
             const q = polygon[(i + 1) % polygon.length];
-            const dp = (triangleHeight(terrain, cell, p.x, p.z)! - limit) * sign;
-            const dq = (triangleHeight(terrain, cell, q.x, q.z)! - limit) * sign;
+            const dp = (height(p) - limit) * sign;
+            const dq = (height(q) - limit) * sign;
             if (dp >= 0) output.push(p);
             if (dp >= 0 !== dq >= 0) {
               const t = dp / (dp - dq);
@@ -1126,11 +1264,7 @@ export function projectTerrainGeometry(
         }
       for (let j = 1; j < polygon.length - 1; j++) {
         for (const p of [polygon[0], polygon[j], polygon[j + 1]]) {
-          positions.push(
-            p.x,
-            horizontal ? level : triangleHeight(terrain, cell, p.x, p.z)! + lift,
-            p.z,
-          );
+          positions.push(p.x, horizontal ? level : height(p) + lift, p.z);
           uv.push(p.x / 5, p.z / 5);
           for (const scalar of scalars) scalar.values.push(scalarAt(scalar.source, p));
         }

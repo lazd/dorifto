@@ -42,7 +42,7 @@ const contactCallbacks = new WeakMap<typeof AmmoFactory, number>();
 /**
  * Bodies sliding along terrain catch on internal triangle edges, whose contact normals can point
  * back against travel and stop a car dead. Like Bullet's btAdjustInternalEdgeContacts, replace
- * terrain contact normals with the smoothed surface normal. Bridge contacts use their triangle's
+ * terrain contact normals with the smoothed surface normal. Structure contacts use their triangle's
  * face normal, preserving real caps and corners without catching on tessellation edges.
  */
 function surfaceContactCallback(Ammo: typeof AmmoFactory) {
@@ -114,7 +114,16 @@ export function createPhysicsWorld(
   world.setGravity(vector);
   const contours =
     (terrain.flippedCells || terrain.warpedCells) && contourCollider(Ammo, groundTerrain);
-  const structures = terrain.collisionMesh && triangleCollider(Ammo, terrain.collisionMesh);
+  const structures =
+    terrain.collisionMesh &&
+    triangleCollider(
+      Ammo,
+      {
+        positions: terrain.collisionMesh.positions,
+        indices: terrain.collisionMesh.collisionIndices ?? terrain.collisionMesh.indices,
+      },
+      true,
+    );
   const bridges =
     terrain.bridgeMesh &&
     triangleCollider(

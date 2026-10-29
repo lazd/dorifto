@@ -126,11 +126,11 @@ test('ground overlays follow coarse rendered triangles, including interiors and 
   ground.setAttribute(
     'position',
     new THREE.Float32BufferAttribute(
-      Array.from(terrain.heights).flatMap((y, i) => [i % 5, y, Math.floor(i / 5)]),
+      [12, 4, 0, 24, 20].flatMap((i) => [i % 5, terrain.heights[i], Math.floor(i / 5)]),
       3,
     ),
   );
-  ground.setIndex([12, 4, 0, 12, 24, 4, 12, 20, 24, 12, 0, 20]);
+  ground.setIndex([0, 1, 2, 0, 3, 1, 0, 4, 3, 0, 2, 4]);
   const mesh = new THREE.Mesh(ground, new THREE.MeshBasicMaterial());
   mesh.updateMatrixWorld(true);
   const source = new THREE.BufferGeometry();
