@@ -1,10 +1,15 @@
 import { geographicRasterSampler } from './terrain-raster.mjs';
-import { cleanRoadElevation } from './road-elevation.mjs';
+import { cleanRoadElevation, roadElevationSmoothing } from './road-elevation.mjs';
 import { repairStructureElevation } from './road-structures.mjs';
 
 const earthRadius = 6371008.8;
 export const roadImportDefaults = { width: 8, doubleYellow: true };
-const defaults = { width: 15, spacing: 8, elevationSpacing: 5, elevationSmoothing: 15 };
+const defaults = {
+  width: 15,
+  spacing: 8,
+  elevationSpacing: 5,
+  elevationSmoothing: roadElevationSmoothing,
+};
 
 /** Evenly resamples a closed polyline; the closing segment bridges any gap at the start line. */
 export function resampleLoop(points, spacing, closed = true) {

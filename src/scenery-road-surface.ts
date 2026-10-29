@@ -1,4 +1,5 @@
 import { MathUtils } from 'three';
+import { cleanRoadElevation, roadElevationSmoothing } from './road-elevation.mjs';
 import {
   sceneryJunctions,
   sceneryPointKey,
@@ -37,25 +38,41 @@ export class SceneryRoadSurface {
               height: 0,
             });
         }
-        const raw = samples.map((p) => height(p.x, p.z));
-        for (let i = 0; i < samples.length; i++) {
+        const length = samples.at(-1)!.distance;
+        const spacing = length / Math.max(1, samples.length - 1);
+        const raw = cleanRoadElevation(
+          samples.map((p) => height(p.x, p.z)),
+          spacing || 1,
+        );
+        // Same Gaussian as course profiles; ends reflect through the endpoint to keep their grade.
+        const reach = roadElevationSmoothing * 3;
+        const smoothed = samples.map((sample, i) => {
           let sum = 0,
             weight = 0;
-          for (let j = i; j >= 0 && samples[i].distance - samples[j].distance <= 20; j--) {
-            const w = Math.exp(-(((samples[i].distance - samples[j].distance) / 9) ** 2));
-            sum += raw[j] * w;
+          const add = (offset: number, value: number) => {
+            const w = Math.exp(-0.5 * (offset / roadElevationSmoothing) ** 2);
+            sum += value * w;
             weight += w;
-          }
+          };
+          const contribute = (j: number) => {
+            add(samples[j].distance - sample.distance, raw[j]);
+            const before = -samples[j].distance - sample.distance;
+            if (j > 0 && before >= -reach) add(before, 2 * raw[0] - raw[j]);
+            const after = 2 * length - samples[j].distance - sample.distance;
+            if (j < samples.length - 1 && after <= reach) add(after, 2 * raw.at(-1)! - raw[j]);
+          };
+          for (let j = i; j >= 0 && sample.distance - samples[j].distance <= reach; j--)
+            contribute(j);
           for (
             let j = i + 1;
-            j < samples.length && samples[j].distance - samples[i].distance <= 20;
+            j < samples.length && samples[j].distance - sample.distance <= reach;
             j++
-          ) {
-            const w = Math.exp(-(((samples[j].distance - samples[i].distance) / 9) ** 2));
-            sum += raw[j] * w;
-            weight += w;
-          }
-          samples[i].height = sum / weight;
+          )
+            contribute(j);
+          return sum / weight;
+        });
+        for (let i = 0; i < samples.length; i++) {
+          samples[i].height = smoothed[i];
           const key = sceneryPointKey([samples[i].x, samples[i].z]);
           if (junctions.has(key)) {
             const shared = anchors.get(key) ?? [];

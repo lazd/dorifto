@@ -445,7 +445,9 @@ export function createScenery(
     maxX: query.minX + (query.columns - 1) * query.spacing - 0.001,
     maxZ: query.minZ + (query.rows - 1) * query.spacing - 0.001,
   };
-  const surface = new TerrainSurface(query.segments, query.halfWidth, query.padRadius);
+  // A complete map's course is only a route over its roads, so nothing yields to it.
+  const courseSegments = completeMap ? [] : query.segments;
+  const surface = new TerrainSurface(courseSegments, query.halfWidth, query.padRadius);
   const halfWidth = definition.width / 2 + (definition.shoulderWidth ?? courseShoulderWidth);
   const ground = (x: number, z: number) => terrain.groundHeightAt(x, z);
   const clearance = (x: number, z: number) =>
@@ -493,11 +495,7 @@ export function createScenery(
   const roadBlocked = (x: number, z: number) => clearance(x, z) < 0.8 && !separated(x, z);
   const selectedRoadCopy = (x: number, z: number, dx: number, dz: number, width: number) => {
     const near = surface.nearest(x, z);
-    if (
-      near.distance >=
-      (completeMap ? Math.min(definition.width, width) / 4 : halfWidth + width / 2 + 0.8)
-    )
-      return false;
+    if (near.distance >= halfWidth + width / 2 + 0.8) return false;
     const selected =
       query.segments[
         Math.min(query.segments.length - 1, Math.floor(near.fraction * query.segments.length))
@@ -1502,9 +1500,9 @@ export function createScenery(
   const pavement = pavementFootprint(roadBatch);
   fillFootprint(roadBatch, pavement);
   const selectedFootprint = new Batch();
-  for (let i = 0; i < query.segments.length; i += 5) {
-    const a = query.segments[i].a;
-    const b = query.segments[Math.min(i + 4, query.segments.length - 1)].b;
+  for (let i = 0; i < courseSegments.length; i += 5) {
+    const a = courseSegments[i].a;
+    const b = courseSegments[Math.min(i + 4, courseSegments.length - 1)].b;
     if (separated((a.x + b.x) / 2, (a.z + b.z) / 2)) continue;
     const length = Math.hypot(b.x - a.x, b.z - a.z);
     if (!length) continue;
@@ -1518,7 +1516,7 @@ export function createScenery(
     selectedFootprint.roof(rightA, rightB, leftB);
   }
   groundFootprint = polygonClipping.union(pavement, pavementFootprint(selectedFootprint));
-  for (const segment of query.segments)
+  for (const segment of courseSegments)
     if (!separated((segment.a.x + segment.b.x) / 2, (segment.a.z + segment.b.z) / 2))
       centerlines.add({
         a: segment.a,

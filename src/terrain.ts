@@ -52,6 +52,7 @@ export class CourseTerrain {
   private readonly segments;
   private readonly surface: TerrainSurface;
   private readonly halfWidth: number;
+  private readonly asphaltHalfWidth: number;
   private readonly padRadius?: number;
   private readonly groundQuery?: HeightfieldData;
   private groundTriangles?: ReturnType<typeof terrainGeometryTriangles>;
@@ -109,6 +110,9 @@ export class CourseTerrain {
     const bounds = new THREE.Box3().setFromPoints(this.segments.map((segment) => segment.a));
     const profile = definition.elevation;
     const rasterHeight = definition.terrain ? terrainRasterSampler(definition.terrain) : undefined;
+    // A complete map's course is only a route over the road network, which shapes the ground.
+    const overlay = mapBounds !== undefined && this.padRadius === undefined && !!rasterHeight;
+    const farFromCourse = 1000;
     const surroundings =
       !rasterHeight &&
       profile &&
@@ -131,7 +135,9 @@ export class CourseTerrain {
     this.minZ = Math.floor(minZ / this.spacing) * this.spacing;
     this.columns = Math.ceil((maxX - this.minX) / this.spacing) + 1;
     this.rows = Math.ceil((maxZ - this.minZ) / this.spacing) + 1;
-    this.surface = new TerrainSurface(this.segments, this.halfWidth, this.padRadius);
+    // Overlaid courses drive on the roads' rendered pavement, not their own asphalt corridor.
+    this.asphaltHalfWidth = overlay ? -1 : this.halfWidth;
+    this.surface = new TerrainSurface(this.segments, this.asphaltHalfWidth, this.padRadius);
     this.heights = new Float32Array(this.columns * this.rows);
     const positions = new Float32Array(this.heights.length * 3);
     const elevationScale = definition.elevationScale ?? 1;
@@ -191,6 +197,7 @@ export class CourseTerrain {
         : surroundings
           ? surroundings(px, pz) + 0.35 * (hills - 12)
           : base + hills;
+      if (overlay) return ground * elevationScale;
       const rise = ground * elevationScale - road;
       const end = rasterHeight
         ? start + Math.min(transition, Math.max(Math.abs(rise), minTerrainTransition))
@@ -216,11 +223,9 @@ export class CourseTerrain {
     ) => {
       const height = courseSurfaceHeight(x, z, near, start);
       if (!roadSurface) return height;
-      const blend = THREE.MathUtils.smoothstep(
-        near.distance,
-        this.halfWidth + 7,
-        this.halfWidth + 20,
-      );
+      const blend = overlay
+        ? 1
+        : THREE.MathUtils.smoothstep(near.distance, this.halfWidth + 7, this.halfWidth + 20);
       return THREE.MathUtils.lerp(height, roadSurface.heightAt(x, z, height), blend);
     };
     const vertex = (
@@ -230,8 +235,9 @@ export class CourseTerrain {
       near = this.nearest(px, pz),
       start = blendStart,
     ) => {
-      roadDistances[i] =
-        this.padRadius !== undefined
+      roadDistances[i] = overlay
+        ? farFromCourse
+        : this.padRadius !== undefined
           ? Math.hypot(px, pz) - this.padRadius
           : near.distance - this.halfWidth;
       this.heights[i] = surfaceHeight(px, pz, near, start);
@@ -253,7 +259,7 @@ export class CourseTerrain {
     // apart, so the wall's crest, face and foot follow the road instead of stair-stepping
     // along grid rows. Raster heights are sampled exactly there, so they aren't smoothed.
     const warp =
-      rasterHeight && !definition.flat && this.padRadius === undefined
+      rasterHeight && !definition.flat && this.padRadius === undefined && !overlay
         ? new Map<number, Point>()
         : undefined;
     const snapLines = Math.ceil(transition / this.spacing);
@@ -359,7 +365,7 @@ export class CourseTerrain {
             this.warpedCells[cz * (this.columns - 1) + cx] = 1;
       }
     }
-    if (rasterHeight && !definition.flat)
+    if (rasterHeight && !definition.flat && !overlay)
       this.flippedCells = flipCellsAlongContours(
         this.heights,
         roadDistances,
@@ -470,7 +476,7 @@ export class CourseTerrain {
         this.filletCells = new Map([...cells].filter(([, indices]) => indices.length > 6));
       }
     }
-    if (bridgeSpans.length && rasterHeight && !definition.flat) {
+    if (bridgeSpans.length && rasterHeight && !definition.flat && !overlay) {
       const lower = (x: number, z: number, height: number) => {
         const near = this.nearest(x, z);
         // Restore the entire raised road/shoulder profile before fading into untouched ground.
@@ -517,9 +523,10 @@ export class CourseTerrain {
     this.minHeight = min === max ? min - 0.01 : min;
     this.maxHeight = min === max ? max + 0.01 : max;
     if (this.groundSurface) this.groundQuery = { ...this, ...this.groundSurface };
-    this.collisionMesh = buildTunnelGeometry(definition, (x, z) => heightAt(this, x, z));
+    const structureDefinition = overlay ? { ...definition, structures: undefined } : definition;
+    this.collisionMesh = buildTunnelGeometry(structureDefinition, (x, z) => heightAt(this, x, z));
     this.bridgeMesh = buildBridgeGeometry(
-      definition,
+      structureDefinition,
       (x, z) => heightAt(this, x, z),
       (x, z) => this.groundHeightAt(x, z),
       (geometry, lift) => this.projectGeometry(geometry, lift),
@@ -888,7 +895,7 @@ export class CourseTerrain {
       groundSurface,
       bridgeMesh,
       segments,
-      halfWidth,
+      asphaltHalfWidth,
       padRadius,
     } = this;
     return {
@@ -909,7 +916,7 @@ export class CourseTerrain {
       groundSurface,
       bridgeMesh,
       segments,
-      halfWidth,
+      halfWidth: asphaltHalfWidth,
       padRadius,
     };
   }

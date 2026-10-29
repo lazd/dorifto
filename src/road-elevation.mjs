@@ -1,3 +1,6 @@
+/** Gaussian sigma, in meters, for smoothing road elevation profiles. */
+export const roadElevationSmoothing = 15;
+
 /** Reject short DEM obstacles (bridges, vegetation, cliffs) mistaken for roadway. */
 export function cleanRoadElevation(heights, spacing) {
   const result = [...heights];

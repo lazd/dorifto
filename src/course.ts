@@ -62,6 +62,8 @@ export function createCourse(scene: THREE.Scene, definition: CourseDefinition, c
 function buildCourse(scene: THREE.Group, definition: CourseDefinition, carWidth: number) {
   const route = courseRoute({ ...definition, reverse: false });
   const terrain = new CourseTerrain(definition);
+  // A complete map's roads are the pavement; the course only marks a route over them.
+  const overlay = definition.scenery?.bounds !== undefined && definition.padRadius === undefined;
   terrain.grass.name = 'roadside-grass';
   scene.add(terrain.mesh);
   const scenery = createScenery(definition, terrain, {
@@ -346,14 +348,14 @@ float aa = max(fwidth(edgeDistance), max(DIRT_FEATHER, junctionSoil * 0.15));`,
     pad.name = 'skidpad-asphalt';
     pad.receiveShadow = true;
     scene.add(pad);
-  } else ribbon(0, definition.width + shoulder * 2, 0.008, asphalt);
+  } else if (!overlay) ribbon(0, definition.width + shoulder * 2, 0.008, asphalt);
   const edgeWhite = paint(0xe1e6df);
   maskJunctionMaterial(edgeWhite);
-  for (const side of [-1, 1]) {
+  for (const side of overlay ? [] : [-1, 1]) {
     const edge = ribbon((side * definition.width) / 2, courseLineWidth, 0.016, edgeWhite);
     maskJunctionGeometry(edge.geometry, courseLineWidth);
   }
-  if (definition.doubleYellow) {
+  if (definition.doubleYellow && !overlay) {
     const yellow = paint(0xffd32a);
     for (const side of [-1, 1]) {
       const line = ribbon(side * courseLineWidth, courseLineWidth, 0.016, yellow);
@@ -464,7 +466,7 @@ float aa = max(fwidth(edgeDistance), max(DIRT_FEATHER, junctionSoil * 0.15));`,
     transparent: true,
   });
   const curbPositions: number[][] = [[], []];
-  const kerbs = definition.padRadius === undefined ? courseKerbSegments(route) : [];
+  const kerbs = definition.padRadius === undefined && !overlay ? courseKerbSegments(route) : [];
   for (const { distance, endDistance, direction } of kerbs) {
     const curb = ribbon(
       direction * (definition.width / 2 + 0.4),
@@ -504,7 +506,8 @@ float aa = max(fwidth(edgeDistance), max(DIRT_FEATHER, junctionSoil * 0.15));`,
   const dirtEdge = definition.width / 2 + Math.max(shoulder, 0.8);
   const dirtMin = dirtEdge - definition.width / 2 - shoulder;
   const dirtMax = dirtEdge - definition.width / 2 + 0.35;
-  const dirt = definition.padRadius === undefined && roadDirtMaterial(dirtEdge, dirtMin, dirtMax);
+  const dirt =
+    !overlay && definition.padRadius === undefined && roadDirtMaterial(dirtEdge, dirtMin, dirtMax);
   const dirtMeshes: THREE.Mesh[] = [];
   if (dirt) maskJunctionMaterial(dirt, 0.9);
   if (dirt)
