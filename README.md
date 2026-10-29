@@ -190,6 +190,8 @@ direct browser requests to OpenFreeMap and USGS, so an internet connection is ne
   an arched bore cut through the retained terrain in both the game and 3D previews, without
   a separate mountain cap. The lining meets the existing hillside, and the road floor stays
   on its heightfield through the portals, blending into surface roads over 20 m approaches.
+  The lining closes exposed side cuts at the portals. Clipped triangles that collapse at
+  render precision are discarded so they cannot create phantom collision on the shoulders.
   Tunnel walls, ceilings, and the terrain above have matching static triangle-mesh collision,
   shared across driving directions, with triangle-edge contact correction so wall scrapes slide
   rather than snag. Clearance is an estimate

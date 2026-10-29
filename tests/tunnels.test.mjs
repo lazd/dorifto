@@ -47,6 +47,12 @@ test('tunnels bore through retained terrain with a separate floor and identical 
   const terrain = new CourseTerrain(definition, false);
   const data = terrain.collisionMesh;
   assert.ok(data.indices.length > data.liningCount);
+  const triangle = new THREE.Triangle();
+  for (let i = 0; i < data.collisionIndices.length; i += 3) {
+    for (const [j, vertex] of [triangle.a, triangle.b, triangle.c].entries())
+      vertex.fromArray(data.positions, data.collisionIndices[i + j] * 3);
+    assert.ok(triangle.getArea() > 1e-6, 'clipped collision must not contain zero-area slivers');
+  }
   assert.deepEqual(terrain.physicsData().collisionMesh, data);
   const reverse = new CourseTerrain({ ...definition, reverse: true }, false);
   assert.equal(reverse.collisionMesh.positions.length, data.positions.length);
@@ -120,14 +126,38 @@ test('tunnels bore through retained terrain with a separate floor and identical 
   });
 });
 
-test('tunnel lining ends at the hillside instead of standing above exposed approaches', () => {
+test('tunnel lining closes the hillside cut without standing above exposed approaches', () => {
   const data = buildTunnelGeometry(
     definition,
     () => 0,
     () => 1,
   );
+  assert.ok(data.liningCount > 0, 'exposed side cuts still need a lining to close the terrain');
   for (const index of data.indices.subarray(0, data.liningCount))
     assert.ok(data.positions[index * 3 + 1] <= 0.981);
+  const group = createTunnelMeshes(data);
+  try {
+    const route = courseRoute(definition);
+    for (const fraction of [0.3, 0.6]) {
+      const center = route.getPointAt(fraction);
+      const tangent = route.getTangentAt(fraction);
+      for (const side of [-1, 1]) {
+        const ray = new THREE.Raycaster(
+          new THREE.Vector3(center.x, 0.5, center.z),
+          new THREE.Vector3(tangent.z * side, 0, -tangent.x * side).normalize(),
+          0,
+          definition.width,
+        );
+        assert.ok(ray.intersectObject(group).length > 0, 'no see-through portal side cuts');
+      }
+    }
+  } finally {
+    group.traverse((object) => {
+      if (!object.isMesh) return;
+      object.geometry.dispose();
+      object.material.dispose();
+    });
+  }
 });
 
 test('coarse complete-map terrain stays on the road profile across both tunnel mouths', () => {

@@ -100,6 +100,19 @@ function splitPolygon(polygon: number[][], distance: (p: number[]) => number) {
   return { inside, outside };
 }
 
+function nondegenerateIndices(positions: ArrayLike<number>, indices: number[]) {
+  const triangle = new THREE.Triangle();
+  const result: number[] = [];
+  for (let i = 0; i < indices.length; i += 3) {
+    triangle.a.fromArray(positions, indices[i] * 3);
+    triangle.b.fromArray(positions, indices[i + 1] * 3);
+    triangle.c.fromArray(positions, indices[i + 2] * 3);
+    // Clipped slivers can collapse after Float32 rounding and cause phantom Ammo contacts.
+    if (triangle.getArea() > 1e-6) result.push(indices[i], indices[i + 1], indices[i + 2]);
+  }
+  return result;
+}
+
 /** Subtracts the swept bore from the existing terrain, keeping its heights and attributes. */
 export function excavateTunnelTerrain(
   source: THREE.BufferGeometry,
@@ -206,7 +219,7 @@ export function excavateTunnelTerrain(
   attributes.forEach(([name, a], i) =>
     geometry.setAttribute(name, new THREE.Float32BufferAttribute(values[i], a.itemSize)),
   );
-  geometry.setIndex(indices);
+  geometry.setIndex(nondegenerateIndices(geometry.getAttribute('position').array, indices));
   return geometry;
 }
 
@@ -263,11 +276,13 @@ export function buildTunnelGeometry(
   );
   if (projected !== source) projected.dispose();
   source.dispose();
+  const vertices = new Float32Array(positions);
+  const liningIndices = nondegenerateIndices(vertices, lining);
   return {
-    positions: new Float32Array(positions),
-    indices: new Uint32Array([...lining, ...floorIndices]),
-    collisionIndices: new Uint32Array(lining),
-    liningCount: lining.length,
+    positions: vertices,
+    indices: new Uint32Array([...liningIndices, ...nondegenerateIndices(vertices, floorIndices)]),
+    collisionIndices: new Uint32Array(liningIndices),
+    liningCount: liningIndices.length,
   };
 }
 
