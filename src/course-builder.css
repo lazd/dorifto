@@ -395,15 +395,21 @@ input.switch::before {
 }
 #build-steps li {
   display: flex;
-  align-items: baseline;
+  align-items: flex-start;
   gap: var(--space-3);
   color: var(--color-muted);
   margin-block: var(--space-2);
 }
 .build-step-indicator {
+  display: grid;
+  place-items: center;
   width: 1em;
-  height: 1em;
+  height: 1lh;
   flex: none;
+  margin-top: var(--space-1);
+}
+#build-steps li[data-state='pending'] .build-step-indicator::before {
+  content: '\25cb';
 }
 .build-step-content {
   flex: 1;
@@ -445,9 +451,7 @@ input.switch::before {
 #build-steps li[data-state='active'],
 #build-steps li[data-state='complete'] {
   color: var(--color-text);
-}
-#build-steps li[data-state='active'] {
-  font-weight: 600;
+  font-weight: inherit;
 }
 #build-dialog .dialog-footer {
   justify-content: flex-end;

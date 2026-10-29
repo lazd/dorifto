@@ -31,8 +31,7 @@ export function createBuildProgress(root: HTMLElement) {
       ) {
         spinners.get(indicator)?.();
         spinners.delete(indicator);
-        indicator.textContent =
-          nextState === 'complete' ? '\u2713' : nextState === 'pending' ? '\u25cb' : '';
+        indicator.textContent = nextState === 'complete' ? '\u2713' : '';
         if (nextState === 'active') spinners.set(indicator, startTextSpinner(indicator));
       }
       item.dataset.state = nextState;
@@ -66,13 +65,16 @@ export function createBuildProgress(root: HTMLElement) {
       if (bar && nextState === 'complete') bar.value = bar.max;
       if (reset || detail !== undefined) {
         const status = tiles ? '' : detail;
-        label.textContent =
-          current && status ? `${item.dataset.label} ${status}` : item.dataset.label!;
-        if (current && tiles?.[3]) {
-          const retry = document.createElement('span');
-          retry.className = 'build-step-retry';
-          retry.textContent = `(${tiles[3]}/${tiles[4]})`;
-          label.append(' ', retry);
+        const text = current && status ? `${item.dataset.label} ${status}` : item.dataset.label!;
+        const retryText = current && tiles?.[3] ? `(${tiles[3]}/${tiles[4]})` : '';
+        if (label.textContent !== (retryText ? `${text} ${retryText}` : text)) {
+          label.textContent = text;
+          if (retryText) {
+            const retry = document.createElement('span');
+            retry.className = 'build-step-retry';
+            retry.textContent = retryText;
+            label.append(' ', retry);
+          }
         }
       }
       item.setAttribute(
