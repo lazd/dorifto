@@ -5,6 +5,14 @@ export interface GeographicBox {
   north: number;
 }
 
+export const geographicDownloadConcurrency: { readonly osm: number; readonly terrain: number };
+
+export function forEachConcurrent<T>(
+  items: readonly T[],
+  concurrency: number,
+  visit: (item: T, index: number) => Promise<void>,
+): Promise<void>;
+
 export function geographicTiles(box: GeographicBox): (GeographicBox & {
   key: string;
   metersPerDegree: number;

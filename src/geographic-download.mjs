@@ -1,6 +1,32 @@
 const metersPerDegree = (6371008.8 * Math.PI) / 180;
 const latitudeStep = 1000 / metersPerDegree;
 
+export const geographicDownloadConcurrency = { osm: 2, terrain: 4 };
+
+export async function forEachConcurrent(items, concurrency, visit) {
+  if (!Number.isInteger(concurrency) || concurrency < 1)
+    throw new Error('Download concurrency must be a positive integer.');
+  let next = 0;
+  let failed = false;
+  let failure;
+  const workers = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+    while (!failed && next < items.length) {
+      const index = next++;
+      try {
+        await visit(items[index], index);
+      } catch (error) {
+        if (!failed) {
+          failed = true;
+          failure = error;
+        }
+      }
+    }
+  });
+  // Finish active downloads so their successful tiles are cached before reporting failure.
+  await Promise.all(workers);
+  if (failed) throw failure;
+}
+
 /** A fixed ~1 km grid, independent of the selected course and its bounds. */
 export function geographicTiles({ west, east, south, north }) {
   if (

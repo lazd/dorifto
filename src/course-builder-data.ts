@@ -19,6 +19,12 @@ export const roadBuildSteps = {
 export type MapDefinition = 'course' | 'nearby-roads' | 'complete-map';
 
 export type RoadBuildStep = keyof typeof roadBuildSteps;
+export type RoadBuildState = 'active' | 'complete';
+export type RoadBuildProgress = (
+  step: RoadBuildStep,
+  detail?: string,
+  state?: RoadBuildState,
+) => void;
 
 export interface RoadDraft {
   sections: GPSPoint[][];

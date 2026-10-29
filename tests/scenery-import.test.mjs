@@ -6,11 +6,13 @@ import { mkdtemp, readdir, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { createDownloadCache } from '../scripts/download-cache.mjs';
+import { geographicDownloadConcurrency } from '../src/geographic-download.mjs';
 
 const extent = 4096;
 const metersPerDegree = (6371008.8 * Math.PI) / 180;
 let server;
 let fetchCourseScenery;
+let requestSceneryTiles;
 let sceneryImportRevision;
 let defaultCompleteMapDimensions;
 
@@ -19,7 +21,8 @@ before(async () => {
     server: { middlewareMode: true, hmr: false, ws: false, watch: null },
     appType: 'custom',
   });
-  ({ fetchCourseScenery } = await server.ssrLoadModule('/src/scenery-import.ts'));
+  ({ fetchCourseScenery, requestSceneryTiles } =
+    await server.ssrLoadModule('/src/scenery-import.ts'));
   ({ sceneryImportRevision } = await server.ssrLoadModule('/src/scenery-data.ts'));
   ({ defaultCompleteMapDimensions } = await server.ssrLoadModule('/src/complete-map.ts'));
 });
@@ -322,12 +325,19 @@ test('decodes supported scenery, holes, widths and clips to the terrain grid wit
   const requests = [];
   let active = 0;
   let maximumActive = 0;
+  let activeNetwork = 0;
+  let maximumActiveNetwork = 0;
   t.mock.method(globalThis, 'fetch', async (input) => {
     const url = String(input);
     requests.push(url);
     if (url === 'https://tiles.openfreemap.org/planet')
       return Response.json({ tiles: ['https://tiles.example/{z}/{x}/{y}.pbf'] });
-    if (url.includes('/api/interpreter')) return Response.json(osmFixture());
+    if (url.includes('/api/interpreter')) {
+      maximumActiveNetwork = Math.max(maximumActiveNetwork, ++activeNetwork);
+      await new Promise((resolve) => setTimeout(resolve, 2));
+      activeNetwork--;
+      return Response.json(osmFixture());
+    }
     active++;
     maximumActive = Math.max(maximumActive, active);
     await new Promise((resolve) => setTimeout(resolve, 2));
@@ -389,7 +399,15 @@ test('decodes supported scenery, holes, widths and clips to the terrain grid wit
   const withoutRoads = await fetchCourseScenery(definition, false);
   assert.equal(withoutRoads.roads.length, 0);
   assert.equal(requests.filter((url) => url.endsWith('.pbf')).length, tileRequests.length);
-  const complete = await fetchCourseScenery(definition, 'complete-map');
+  const tileRequest = requestSceneryTiles(definition.terrain);
+  await tileRequest;
+  const prefetched = requests.filter((url) => url.endsWith('.pbf')).length;
+  const complete = await fetchCourseScenery(definition, 'complete-map', { tileRequest });
+  assert.equal(
+    requests.filter((url) => url.endsWith('.pbf')).length,
+    prefetched,
+    'scenery consumes its prefetched bytes without downloading them again',
+  );
   assert.equal(complete.bounds.maxX - complete.bounds.minX, defaultCompleteMapDimensions.width);
   assert.equal(complete.bounds.maxZ - complete.bounds.minZ, defaultCompleteMapDimensions.height);
   assert.equal(complete.roads.length, 3, 'precise OSM roads replace tile road fragments');
@@ -414,6 +432,7 @@ test('decodes supported scenery, holes, widths and clips to the terrain grid wit
   );
   assert.equal(rectangle.bounds.maxX - rectangle.bounds.minX, dimensions.width);
   assert.equal(rectangle.bounds.maxZ - rectangle.bounds.minZ, dimensions.height);
+  assert.equal(maximumActiveNetwork, geographicDownloadConcurrency.osm);
 });
 
 test('injected disk caches persist OSM and vector tiles across cache instances', async (t) => {

@@ -227,6 +227,11 @@ direct browser requests to OpenFreeMap and USGS, so an internet connection is ne
   logs request URLs and failure details; failed elevation downloads show the underlying error.
   USGS and complete-map OSM downloads use aligned ~1 km tiles, cached on-device for
   30 days (128 MB maximum). Completed tiles survive failed builds and are reused in overlapping maps.
+  Downloads run with up to 2 OSM tiles and 4 USGS tiles in flight at once, in both the
+  browser and command-line upgrader; progress counts completed tiles.
+  Complete-map builds start OSM, vector scenery, and coarse USGS downloads together.
+  High-resolution road elevation follows OSM decoding because it needs the imported road geometry.
+  The build dialog tracks each task independently, showing simultaneous spinners and tile counts.
   Persistent CORS restrictions require a USGS-side fix; the browser cannot bypass them.
 - A Web Worker handles terrain decoding, elevation processing, course conversion,
   JSON serialization, and 3D preview mesh generation. Cancel stops the worker.

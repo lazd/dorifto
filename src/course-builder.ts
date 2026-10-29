@@ -23,7 +23,6 @@ import {
   roadBuildSteps,
   roadDraftPoints,
   type MapDefinition,
-  type RoadBuildStep,
   type RoadMap,
 } from './course-builder-data';
 import type { GPSPoint } from './track-conversion.mjs';
@@ -31,6 +30,7 @@ import { courseShoulderWidth } from './courses';
 import { coursePreviewSvg } from './course-preview';
 import { defaultTerrainTransition } from './terrain';
 import { startTextSpinner } from './text-spinner';
+import { createBuildProgress } from './course-build-progress';
 import { download } from './download';
 import type { BuildRequest, BuildResponse } from './course-builder-worker';
 import { matchRoadStructures } from './road-structures.mjs';
@@ -74,7 +74,7 @@ const importInput = element<HTMLInputElement>('import-file');
 const builder = document.querySelector<HTMLElement>('.builder')!;
 const buildDialog = element<HTMLDialogElement>('build-dialog');
 const buildSteps = element('build-steps');
-let stopBuildSpinner: (() => void) | undefined;
+const { update: buildProgress, stop: stopBuildSpinners } = createBuildProgress(buildSteps);
 const nameInput = element<HTMLInputElement>('name');
 const widthInput = element<HTMLInputElement>('width');
 const transitionInput = element<HTMLInputElement>('terrain-transition');
@@ -904,8 +904,7 @@ locationForm.onsubmit = async (event) => {
 };
 
 function finishBuild() {
-  stopBuildSpinner?.();
-  stopBuildSpinner = undefined;
+  stopBuildSpinners();
   worker?.terminate();
   worker = undefined;
   buildDialog.close();
@@ -929,28 +928,6 @@ buildDialog.oncancel = (event) => {
   event.preventDefault();
   cancelBuild();
 };
-
-function buildProgress(active: RoadBuildStep | 'complete', detail?: string) {
-  stopBuildSpinner?.();
-  stopBuildSpinner = undefined;
-  let pending = false;
-  for (const item of buildSteps.querySelectorAll<HTMLLIElement>('li')) {
-    const current = item.dataset.step === active;
-    if (current) pending = true;
-    item.dataset.state = current ? 'active' : pending ? 'pending' : 'complete';
-    if (current) item.setAttribute('aria-current', 'step');
-    else item.removeAttribute('aria-current');
-    const label = item.lastChild!;
-    label.textContent = current && detail ? `${item.dataset.label} ${detail}` : item.dataset.label!;
-    item.setAttribute(
-      'aria-label',
-      `${label.textContent}: ${item.dataset.state === 'complete' ? 'completed' : item.dataset.state === 'active' ? 'in progress' : 'pending'}`,
-    );
-    const indicator = item.querySelector<HTMLElement>('.build-step-indicator')!;
-    indicator.textContent = item.dataset.state === 'complete' ? '\u2713' : '';
-    if (current) stopBuildSpinner = startTextSpinner(indicator);
-  }
-}
 
 element<HTMLFormElement>('build-form').onsubmit = (event) => {
   event.preventDefault();
@@ -1000,7 +977,7 @@ element<HTMLFormElement>('build-form').onsubmit = (event) => {
   worker.onmessage = async (message: MessageEvent<BuildResponse>) => {
     if (worker !== activeWorker) return;
     const response = message.data;
-    if (response.type === 'progress') buildProgress(response.step, response.detail);
+    if (response.type === 'progress') buildProgress(response.step, response.detail, response.state);
     else {
       if (response.type === 'error') {
         finishBuild();
@@ -1474,7 +1451,7 @@ if (embedded) {
 
 window.addEventListener('pagehide', () => {
   hideHover();
-  stopBuildSpinner?.();
+  stopBuildSpinners();
   stopPreviewSpinner?.();
   stopPreviewSpinner = undefined;
   embeddedResize?.disconnect();

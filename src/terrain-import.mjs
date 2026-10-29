@@ -1,5 +1,10 @@
 import { fromArrayBuffer } from 'geotiff';
-import { geographicDownloadCache, geographicTiles } from './geographic-download.mjs';
+import {
+  geographicDownloadCache,
+  geographicDownloadConcurrency,
+  geographicTiles,
+  forEachConcurrent,
+} from './geographic-download.mjs';
 
 const endpoint =
   'https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/exportImage';
@@ -144,9 +149,9 @@ async function downloadRaster(bounds, resolution, options) {
     );
   const heights = new Float32Array(columns * rows);
   const tiles = geographicTiles(bounds);
+  let completed = 0;
   options.onProgress?.(0, tiles.length);
-  // Process one tile at a time: bound service load and decoded-raster memory.
-  for (const [index, tile] of tiles.entries()) {
+  await forEachConcurrent(tiles, geographicDownloadConcurrency.terrain, async (tile) => {
     const apronLat = (resolution * 2) / tile.metersPerDegree;
     const apronLon = (resolution * 2) / tile.metersPerLongitude;
     const raster = await downloadRasterTile(
@@ -183,8 +188,8 @@ async function downloadRaster(bounds, resolution, options) {
         heights[y * columns + x] = top * (1 - v) + bottom * v;
       }
     }
-    options.onProgress?.(index + 1, tiles.length);
-  }
+    options.onProgress?.(++completed, tiles.length);
+  });
   return { resolution, west, east, south, north, columns, rows, heights };
 }
 

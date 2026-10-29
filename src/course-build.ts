@@ -15,10 +15,10 @@ import {
   type MapDefinition,
   type RoadMap,
   type RoadDraft,
-  type RoadBuildStep,
+  type RoadBuildProgress,
 } from './course-builder-data';
 import { matchRoadStructures } from './road-structures.mjs';
-import { fetchCourseScenery, requestMappedNetwork } from './scenery-import';
+import { fetchCourseScenery, requestMappedNetwork, requestSceneryTiles } from './scenery-import';
 import { sceneryImportRevision } from './scenery-data';
 import type { GeographicDownloadCache } from './geographic-download.mjs';
 import {
@@ -47,7 +47,7 @@ interface BuildOptions {
   cache?: GeographicDownloadCache;
   rebuildTerrain?: boolean;
   refreshScenery?: boolean;
-  progress?: (step: RoadBuildStep, detail?: string) => void;
+  progress?: RoadBuildProgress;
   raster?: typeof fetchTerrainRaster;
   detail?: typeof fetchTerrainDetail;
   fetchScenery?: typeof fetchCourseScenery;
@@ -141,7 +141,33 @@ export async function buildRoadCourse(
     dimensionsChanged ||
     request.existingCourse?.scenery?.importRevision !== sceneryImportRevision ||
     definition !== previousDefinition;
-  // Start the slow Overpass query alongside terrain using the padded selection.
+  progress('starting', undefined, 'complete');
+  if (fetchesScenery && definition === 'complete-map')
+    progress('scenery', 'Connecting to OpenFreeMap', 'active');
+  else if (!fetchesScenery) progress('scenery', 'Using saved scenery', 'complete');
+  if (definition !== 'complete-map' || !fetchesScenery)
+    progress(
+      'network',
+      definition === 'complete-map' ? 'Using saved roads' : 'Not required',
+      'complete',
+    );
+  // Complete-map bounds are known before terrain decoding or course conversion.
+  const selection =
+    definition === 'complete-map' && fetchesScenery
+      ? completeMapCorners(request.points, dimensions)
+      : undefined;
+  const tileRequest = selection
+    ? requestSceneryTiles(
+        {
+          south: Math.min(...selection.map(({ lat }) => lat)),
+          west: Math.min(...selection.map(({ lon }) => lon)),
+          north: Math.max(...selection.map(({ lat }) => lat)),
+          east: Math.max(...selection.map(({ lon }) => lon)),
+        },
+        cache,
+        (completed, total) => progress('scenery', `Tiles ${completed}/${total}`, 'active'),
+      )
+    : undefined;
   const corners =
     definition === 'complete-map' && fetchesScenery
       ? completeMapCorners(request.points, dimensions, 50)
@@ -155,6 +181,7 @@ export async function buildRoadCourse(
           east: Math.max(...corners.map(({ lon }) => lon)),
         },
         cache,
+        (detail, state) => progress('network', detail, state),
       )
     : undefined;
   const needsTerrainRebuild =
@@ -163,7 +190,8 @@ export async function buildRoadCourse(
     (definition === 'complete-map' && previousDefinition !== 'complete-map');
   const terrainRebuilt = !request.existingCourse || needsTerrainRebuild;
   if (request.existingCourse && !needsTerrainRebuild) {
-    progress('course');
+    progress('terrain', 'Using saved terrain', 'complete');
+    progress('course', undefined, 'active');
     course = {
       ...request.existingCourse,
       name: request.name.trim(),
@@ -186,7 +214,7 @@ export async function buildRoadCourse(
     }
   } else {
     try {
-      progress('terrain');
+      progress('terrain', undefined, 'active');
       const rasterSource =
         definition === 'complete-map'
           ? {
@@ -197,7 +225,8 @@ export async function buildRoadCourse(
       data.terrain = await raster(rasterSource, {
         cache,
         resolution: 5,
-        onProgress: (completed, total) => progress('terrain', `Tiles ${completed}/${total}`),
+        onProgress: (completed, total) =>
+          progress('terrain', `Tiles ${completed}/${total}`, 'active'),
       });
     } catch (error) {
       throw new Error(
@@ -205,6 +234,8 @@ export async function buildRoadCourse(
         { cause: error },
       );
     }
+    progress('terrain', undefined, 'complete');
+    progress('course', undefined, 'active');
     data.elevation = terrainElevationProfile(data);
     const converted = convertTrack(data, settings);
     course = {
@@ -222,7 +253,7 @@ export async function buildRoadCourse(
     course.attribution =
       'OpenStreetMap contributors (ODbL): https://www.openstreetmap.org/copyright; vector tiles by OpenFreeMap; elevation: USGS 3DEP';
   }
-  progress('course');
+  progress('course', undefined, 'complete');
   const includeNearbyRoads = definition !== 'course';
   course.courseBuilder = {
     ...request.draft,
@@ -231,13 +262,19 @@ export async function buildRoadCourse(
     includeNearbyRoads,
   };
   if (fetchesScenery) {
-    progress('scenery');
-    course.scenery = await fetchScenery(course, definition, { progress, network, cache });
+    progress('scenery', 'Processing downloaded scenery', 'active');
+    course.scenery = await fetchScenery(course, definition, {
+      progress,
+      network,
+      cache,
+      tileRequest,
+    });
+    progress('scenery', undefined, 'complete');
   } else if (!includeNearbyRoads && course.scenery?.roads.length) {
     course.scenery = { ...course.scenery, roads: [] };
   }
   if (definition === 'complete-map' && terrainRebuilt) {
-    progress('corridor');
+    progress('corridor', undefined, 'active');
     const terrain = course.terrain;
     if (!terrain) throw new Error('Complete-map elevation requires downloaded terrain.');
     const metersPerDegree = (6371008.8 * Math.PI) / 180;
@@ -250,11 +287,12 @@ export async function buildRoadCourse(
     const detailData = Object.assign({}, data, { roadwayLines });
     terrain.detail = await detail(detailData, {
       cache,
-      onProgress: (completed, total) => progress('corridor', `Tiles ${completed}/${total}`),
+      onProgress: (completed, total) =>
+        progress('corridor', `Tiles ${completed}/${total}`, 'active'),
     });
     course.terrain = { ...terrain, detail: terrain.detail };
   } else if (terrainRebuilt) {
-    progress('corridor');
+    progress('corridor', undefined, 'active');
     const terrain = course.terrain;
     if (!terrain) throw new Error('Terrain detail requires downloaded terrain.');
     const detailData = {
@@ -263,10 +301,12 @@ export async function buildRoadCourse(
     };
     terrain.detail = await detail(detailData, {
       cache,
-      onProgress: (completed, total) => progress('corridor', `Tiles ${completed}/${total}`),
+      onProgress: (completed, total) =>
+        progress('corridor', `Tiles ${completed}/${total}`, 'active'),
     });
     course.terrain = { ...terrain, detail: terrain.detail };
   }
+  progress('corridor', terrainRebuilt ? undefined : 'Using saved road elevation', 'complete');
   if (!course.attribution?.includes('OpenStreetMap'))
     course.attribution = [
       course.attribution,
