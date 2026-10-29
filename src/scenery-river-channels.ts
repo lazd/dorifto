@@ -4,7 +4,8 @@ import type { CourseScenery } from './scenery-data';
 type Sample = { x: number; z: number; height: number };
 type Segment = { a: Sample; b: Sample; halfWidth: number };
 const bankWidth = 6;
-const channelDepth = 1.065;
+export const riverWaterLift = 0.065;
+const channelDepth = 1 + riverWaterLift;
 const cellSize = 32;
 
 function project(segment: Segment, x: number, z: number) {

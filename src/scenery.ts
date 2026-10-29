@@ -7,6 +7,7 @@ import { PavementSurface, TerrainSurface, type TriangleMeshData } from './terrai
 import type { SceneryCategory, SceneryPoint, SceneryPolygon } from './scenery-data';
 import { junctionRoadFlare, sceneryJunctions, sceneryPointKey } from './scenery-data';
 import { nearbyRoadLift, sceneryBridgeGroups, sceneryRoadProfiles } from './scenery-roads';
+import { riverWaterLift } from './scenery-river-channels';
 import { buildBridgeGeometry, createBridgeMeshes } from './bridges';
 import { createStopSignFactory } from './turn-sign';
 import * as polygonClipping from './polygon-boolean';
@@ -2235,7 +2236,7 @@ export function createScenery(
       positions: new Float32Array(structurePositions),
       indices: new Uint32Array(structureIndices),
     };
-  addDraped(riverBatch, layers.water, 0x397d89, 'draped-waterways', 0.065);
+  addDraped(riverBatch, layers.water, 0x397d89, 'draped-waterways', riverWaterLift);
   if (waterBatch.positions.length) {
     const waterMaterial = material(0x397d89);
     waterMaterial.roughness = 0.38;
