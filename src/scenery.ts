@@ -705,6 +705,10 @@ export function createScenery(
     medianBatch = new Batch(),
     abutmentBatch = new Batch(),
     riverBatch = new Batch();
+  const tunnelCourse =
+    completeMap && scenery.roads.some((road) => road.structure === 'tunnel')
+      ? new TerrainSurface(query.segments, query.halfWidth)
+      : undefined;
   const profiles = sceneryRoadProfiles(
     scenery.roads,
     ground,
@@ -712,8 +716,28 @@ export function createScenery(
     (x, z) => surface.nearest(x, z).distance - halfWidth,
     selectedRoadCopy,
     completeMap,
-  );
+    completeMap,
+  ).filter(({ road, curve }) => {
+    if (road.structure !== 'tunnel') return true;
+    if (!tunnelCourse) return false;
+    const point = curve.getPointAt(0.5);
+    const near = tunnelCourse.nearest(point.x, point.z);
+    return (
+      near.distance < definition.width / 2 &&
+      definition.structures?.some(
+        ({ type, start, end }) =>
+          type === 'tunnel' && near.fraction >= start && near.fraction <= end,
+      )
+    );
+  });
   type RoadProfile = (typeof profiles)[number];
+  const tunnelBatches = new Map<Batch, Batch>();
+  const profileBatch = (batch: Batch, profile: RoadProfile) => {
+    if (profile.road.structure !== 'tunnel') return batch;
+    let tunnel = tunnelBatches.get(batch);
+    if (!tunnel) tunnelBatches.set(batch, (tunnel = new Batch()));
+    return tunnel;
+  };
   type IndexedRoadSegment = RoadSegment & { profile: RoadProfile; profileIndex: number };
   type RoadIntersection = {
     point: Point;
@@ -921,10 +945,10 @@ export function createScenery(
   if (stopSignGroup.children.length) layers.nearbyRoads.add(stopSignGroup);
   const roadPaths = profiles.map(({ road }) => road);
   type RoadEnd = { point: SceneryPoint; width: number };
-  const roadEnd = (road: (typeof roadPaths)[number], end: boolean): RoadEnd | undefined => {
-    const p = end ? road.points.at(-1)! : road.points[0];
-    const neighbors = roadPaths.flatMap((other) =>
-      other === road
+  const roadEnd = ({ road, points }: RoadProfile, end: boolean): RoadEnd | undefined => {
+    const p = end ? points.at(-1)! : points[0];
+    const neighbors = profiles.flatMap((other) =>
+      other.road === road
         ? []
         : [false, true].flatMap((last) => {
             const q = last ? other.points.at(-1)! : other.points[0];
@@ -934,7 +958,7 @@ export function createScenery(
                     point: last ? other.points.at(-2)! : other.points[1],
                     width:
                       (THREE.MathUtils.clamp(road.width, 0.6, 20) +
-                        THREE.MathUtils.clamp(other.width, 0.6, 20)) /
+                        THREE.MathUtils.clamp(other.road.width, 0.6, 20)) /
                       2,
                   },
                 ]
@@ -1169,8 +1193,9 @@ export function createScenery(
               const b = across(corners[0], corners[1], to);
               const c = across(corners[2], corners[3], from);
               const d = across(corners[2], corners[3], to);
-              markingBatch.roof(a, b, c);
-              markingBatch.roof(b, d, c);
+              const markings = profileBatch(markingBatch, profile);
+              markings.roof(a, b, c);
+              markings.roof(b, d, c);
             }
           }
           if (profile.road.structure !== 'bridge') {
@@ -1231,7 +1256,7 @@ export function createScenery(
     // Ground copies merge into the course pavement; a copied structure would duplicate the course's deck.
     if (profile.selected && road.structure) continue;
     if (profile.raised) {
-      const ends = [roadEnd(road, false), roadEnd(road, true)];
+      const ends = [roadEnd(profile, false), roadEnd(profile, true)];
       ribbon(profile.points, road.width, raisedBatch, false, false, ends, profile);
       ribbon([...profile.points].reverse(), road.width, raisedBatch, false, true, [], profile);
       if (road.structure === 'bridge') {
@@ -1284,9 +1309,10 @@ export function createScenery(
       continue;
     }
     const points = profile.points;
-    const ends = [roadEnd(road, false), roadEnd(road, true)];
-    ribbon(points, road.width, roadBatch, false, false, ends, profile);
-    ribbon([...points].reverse(), road.width, roadBatch, false, true, [], profile);
+    const ends = [roadEnd(profile, false), roadEnd(profile, true)];
+    const batch = profileBatch(roadBatch, profile);
+    ribbon(points, road.width, batch, false, false, ends, profile);
+    ribbon([...points].reverse(), road.width, batch, false, true, [], profile);
   }
   for (const [profileIndex, profile] of profiles.entries()) {
     const { road, curve } = profile;
@@ -1482,7 +1508,8 @@ export function createScenery(
           outline.map((p) => new THREE.Vector2(p.x, p.z)),
           [],
         );
-        for (const [a, b, c] of triangles) directionBatch.roof(outline[a], outline[b], outline[c]);
+        for (const [a, b, c] of triangles)
+          profileBatch(directionBatch, profile).roof(outline[a], outline[b], outline[c]);
       }
     } else if (road.centerline) {
       const dashed = road.centerline === 'dashed-yellow';
@@ -1491,7 +1518,14 @@ export function createScenery(
           if (dashed && (distance % 12 >= 3 || distance + 2 > length)) continue;
           const center = curve.getPointAt(Math.min(1, (distance + 1) / length));
           if (paintCovered(profile, center.x, center.z)) continue;
-          paintRoadStrip(profile, centerlineBatch, distance + 1, lateral, 2, 0.12);
+          paintRoadStrip(
+            profile,
+            profileBatch(centerlineBatch, profile),
+            distance + 1,
+            lateral,
+            2,
+            0.12,
+          );
         }
       }
     }
@@ -1514,8 +1548,14 @@ export function createScenery(
     for (const [a, b, c] of triangles)
       roadBatch.roof({ ...points[a], y: 0 }, { ...points[b], y: 0 }, { ...points[c], y: 0 });
   }
-  const pavement = pavementFootprint(roadBatch);
-  fillFootprint(roadBatch, pavement);
+  const groundPavement = pavementFootprint(roadBatch);
+  fillFootprint(roadBatch, groundPavement);
+  const tunnelRoads = tunnelBatches.get(roadBatch);
+  const tunnelPavement = tunnelRoads ? pavementFootprint(tunnelRoads) : [];
+  if (tunnelRoads) fillFootprint(tunnelRoads, tunnelPavement);
+  const pavement = tunnelPavement.length
+    ? polygonClipping.union(groundPavement, tunnelPavement)
+    : groundPavement;
   for (const segment of courseSegments)
     if (!separated((segment.a.x + segment.b.x) / 2, (segment.a.z + segment.b.z) / 2))
       centerlines.add({
@@ -1545,6 +1585,17 @@ export function createScenery(
     : query;
   const onDeck = (p: Vertex) =>
     raisedPavement.isAsphalt(p) && Math.abs(p.y - ground(p.x, p.z)) > 0.15;
+  const appendTunnelBatch = (batch: Batch, target: Batch, lift: number) => {
+    const tunnel = tunnelBatches.get(batch);
+    if (!tunnel) return;
+    const source = tunnel.geometry();
+    const projected = projectTerrainGeometry(query, source, lift);
+    source.dispose();
+    const positions = projected.getAttribute('position');
+    for (let i = 0; i < positions.count; i++)
+      target.positions.push(positions.getX(i), positions.getY(i), positions.getZ(i));
+    projected.dispose();
+  };
   const setRoadDirtAttributes = (geometries: THREE.BufferGeometry[]) => {
     for (const geometry of geometries) {
       const positions = geometry.getAttribute('position');
@@ -1574,7 +1625,7 @@ export function createScenery(
     name: string,
     lift: number,
   ) => {
-    if (!batch.positions.length) return;
+    if (!batch.positions.length && !tunnelBatches.has(batch)) return;
     const source = batch.geometry();
     let projected: THREE.BufferGeometry;
     try {
@@ -1589,6 +1640,7 @@ export function createScenery(
     }
     const positions = projected.getAttribute('position');
     const kept = new Batch();
+    appendTunnelBatch(batch, kept, lift);
     for (let i = 0; i < positions.count; i += 3) {
       const vertices = [0, 1, 2].map((j) => ({
         x: positions.getX(i + j),
@@ -1697,6 +1749,7 @@ export function createScenery(
       else groundPaint.roof(...(vertices.map((p) => ({ ...p, y: 0 })) as [Vertex, Vertex, Vertex]));
     }
     batch.positions = deckPaint.positions;
+    appendTunnelBatch(batch, batch, 0.075);
     if (!groundPaint.positions.length) return;
     const source = groundPaint.geometry();
     let projected: THREE.BufferGeometry;

@@ -240,6 +240,94 @@ test('Ammo tunnel collision matches lining rays and leaves floor and portal driv
   }
 });
 
+test('mapped tunnel pavement and dirt edges join both approaches without gaps or roof asphalt', async () => {
+  const { createScenery } = await server.ssrLoadModule('/src/scenery.ts');
+  const route = courseRoute(definition);
+  const length = route.getLength();
+  const width = definition.width - 1.5;
+  const portals = [0.315, 0.585];
+  const points = (from, to) => {
+    const steps = Math.ceil(((to - from) * length) / 12);
+    return Array.from({ length: steps + 1 }, (_, i) => {
+      const p = route.getPointAt(from + ((to - from) * i) / steps);
+      return [p.x + 0.8, p.z];
+    });
+  };
+  const bounds = new THREE.Box2().setFromPoints(
+    definition.points.map(([x, z]) => new THREE.Vector2(x, z)),
+  );
+  const mapped = {
+    ...definition,
+    bankingScale: 0,
+    scenery: {
+      bounds: { minX: bounds.min.x, minZ: bounds.min.y, maxX: bounds.max.x, maxZ: bounds.max.y },
+      buildings: [],
+      water: [],
+      waterways: [],
+      vegetation: [],
+      roads: [
+        { points: points(0, portals[0]), width },
+        { points: points(...portals), width, structure: 'tunnel' },
+        { points: points(portals[1], 1), width },
+      ].map((road) => ({ ...road, centerline: 'double-yellow' })),
+    },
+  };
+  const terrain = new CourseTerrain(mapped, false);
+  terrain.mesh.add(createTunnelMeshes(terrain.collisionMesh));
+  const scenery = createScenery(mapped, terrain, {
+    addRoadDirt: () => true,
+    projectGroundGeometry: (source, lift) => terrain.projectGroundGeometry(source, lift),
+  });
+  try {
+    scenery.group.updateMatrixWorld(true);
+    const roads = [];
+    scenery.group.traverse((object) => {
+      if (object.isMesh && object.name.startsWith('nearby-road-surfaces')) roads.push(object);
+    });
+    const ray = new THREE.Raycaster();
+    for (const portal of portals) {
+      for (const distance of [-3, -0.25, 0, 0.25, 3]) {
+        const fraction = portal + distance / length;
+        const center = route.getPointAt(fraction);
+        center.x += 0.8;
+        const tangent = route.getTangentAt(fraction);
+        for (const side of [-0.25, 0, 0.25]) {
+          const x = center.x + tangent.z * width * side;
+          const z = center.z - tangent.x * width * side;
+          const floor = terrain.heightAt(x, z);
+          ray.set(new THREE.Vector3(x, floor + 1, z), new THREE.Vector3(0, -1, 0));
+          const hit = ray.intersectObjects(roads)[0];
+          assert.ok(hit, `asphalt covers portal ${portal}, distance ${distance}, side ${side}`);
+          assert.ok(
+            Math.abs(hit.point.y - floor - 0.035) < 1e-4,
+            'pavement follows the driving floor',
+          );
+          if (side !== 0) continue;
+          assert.ok(scenery.roadDistance(x, z) < -1, 'no internal dirt edge at the portal');
+          const geometry = hit.object.geometry;
+          assert.ok(geometry.hasAttribute('lateral'));
+          assert.ok(geometry.hasAttribute('mainRoad'));
+        }
+      }
+    }
+    const middle = route.getPointAt(0.45);
+    middle.x += 0.8;
+    middle.y = terrain.heightAt(middle.x, middle.z) + 1;
+    ray.set(middle, new THREE.Vector3(0, 1, 0));
+    assert.equal(ray.intersectObjects(roads).length, 0, 'no tunnel pavement on the hillside above');
+  } finally {
+    const resources = new Set();
+    for (const group of [scenery.group, terrain.mesh])
+      group.traverse((object) => {
+        if (!object.isMesh) return;
+        resources.add(object.geometry);
+        for (const material of Array.isArray(object.material) ? object.material : [object.material])
+          resources.add(material);
+      });
+    resources.forEach((resource) => resource.dispose());
+  }
+});
+
 test('glancing tunnel wall contacts slide across triangle seams in both directions', async () => {
   const tunnel = {
     ...definition,

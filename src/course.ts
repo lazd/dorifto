@@ -312,7 +312,12 @@ if (diffuseColor.a < ${material.transparent ? '0.01' : '0.5'}) discard;`,
   }
   // Complete maps pave only the course's tunnels; mapped roads pave everything else.
   const pavedSpans = overlay
-    ? (definition.structures?.filter(({ type }) => type === 'tunnel') ?? [])
+    ? (definition.structures?.filter(({ type, start, end }) => {
+        if (type !== 'tunnel') return false;
+        const center = route.getPointAt((start + end) / 2);
+        center.y = terrain.heightAt(center.x, center.z);
+        return !scenery.isAsphalt(center);
+      }) ?? [])
     : [{ start: 0, end: 1 }];
   const asphalt = surfaceMaterial('asphalt');
   const asphaltDirt = addDirt(asphalt);

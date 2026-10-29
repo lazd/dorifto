@@ -112,11 +112,12 @@ export function sceneryRoadProfiles(
   trackDistance: (x: number, z: number) => number,
   selectedRoadCopy: (x: number, z: number, dx: number, dz: number, width: number) => boolean,
   includeSelected = false,
+  includeTunnels = false,
 ) {
   const bridges = roads.filter((road) => road.structure === 'bridge');
   const junctions = sceneryJunctions(roads);
   const profiles = roads
-    .filter((road) => road.structure !== 'tunnel')
+    .filter((road) => includeTunnels || road.structure !== 'tunnel')
     .map((road) => {
       const rounded = smoothSceneryLine(road.points, road.width, junctions);
       const major = isMajorSceneryRoad(road);

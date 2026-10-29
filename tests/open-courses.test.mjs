@@ -395,6 +395,103 @@ test('imported road width and optional double-yellow lines reach the terrain-dra
   } finally {
     structured.dispose();
   }
+  await t.test(
+    'gate paint follows mapped pavement and shares its dirt toggle after repositioning',
+    () => {
+      const close = (actual, expected, tolerance) =>
+        assert.ok(Math.abs(actual - expected) < tolerance, `${actual} should equal ${expected}`);
+      for (const overlay of [false, true]) {
+        const roadWidth = 6;
+        const definition = {
+          ...imported,
+          flat: true,
+          points: [
+            [0, -100],
+            [0, 100],
+          ],
+          ...(overlay
+            ? {
+                scenery: {
+                  version: 1,
+                  bounds: { minX: -20, maxX: 20, minZ: -120, maxZ: 120 },
+                  buildings: [],
+                  water: [],
+                  waterways: [],
+                  vegetation: [],
+                  roads: [
+                    {
+                      points: [
+                        [1, -100],
+                        [3, 100],
+                      ],
+                      width: roadWidth,
+                    },
+                    {
+                      points: [
+                        [-12, -40],
+                        [12, -40],
+                      ],
+                      width: 8,
+                    },
+                  ],
+                },
+              }
+            : {}),
+        };
+        const course = createCourse(scene, definition, 1.8);
+        try {
+          for (const gates of [
+            { start: 60, finish: 140 },
+            { start: 70, finish: 150 },
+          ]) {
+            course.setGates({ start: gates.start / 200, finish: gates.finish / 200 });
+            const meshes = scene.getObjectByName('start-finish-lines').children;
+            assert.equal(meshes.length, 4, 'two draws per line, not one per checker tile');
+            const tangent = overlay
+              ? { x: 1 / Math.hypot(1, 100), z: 100 / Math.hypot(1, 100) }
+              : { x: 0, z: 1 };
+            for (const [gate, distance] of Object.values(gates).entries()) {
+              const z = distance - 100,
+                x = overlay ? 2 + z / 100 : 0;
+              const across = [],
+                along = [];
+              for (const mesh of meshes.slice(gate * 2, gate * 2 + 2)) {
+                const positions = mesh.geometry.getAttribute('position');
+                for (let i = 0; i < positions.count; i++) {
+                  const dx = positions.getX(i) - x,
+                    dz = positions.getZ(i) - z;
+                  across.push(dx * tangent.z - dz * tangent.x);
+                  along.push(dx * tangent.x + dz * tangent.z);
+                  close(positions.getY(i), overlay ? 0.09 : 0.02, 1e-5);
+                }
+                assert.ok(mesh.geometry.hasAttribute('structure'));
+                if (overlay) assert.ok(mesh.geometry.hasAttribute('mainRoad'));
+                const shader = {
+                  uniforms: {},
+                  vertexShader: '#include <common>\n#include <begin_vertex>',
+                  fragmentShader:
+                    '#include <common>\n#include <map_fragment>\n#include <alphatest_fragment>',
+                };
+                mesh.material.onBeforeCompile(shader, {});
+                assert.ok(shader.uniforms.roadDirtVisible);
+                course.setRoadEdgeDirt(false);
+                assert.equal(shader.uniforms.roadDirtVisible.value, 0);
+                course.setRoadEdgeDirt(true);
+                assert.equal(shader.uniforms.roadDirtVisible.value, 1);
+              }
+              const width = overlay ? roadWidth : definition.width;
+              close(Math.min(...across), -width / 2, 1e-5);
+              close(Math.max(...across), width / 2, 1e-5);
+              close(Math.min(...along), -0.5, 1e-5);
+              close(Math.max(...along), 0.5, 1e-5);
+            }
+          }
+        } finally {
+          course.dispose();
+        }
+      }
+    },
+  );
 });
 
 test('real driver recordings and open-road gates trim to the stretch both cover', async () => {

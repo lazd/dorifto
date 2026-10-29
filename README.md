@@ -527,6 +527,10 @@ Complete-map start/finish paint follows the mapped pavement's center, direction,
 and terrain triangles rather than the course spline's approximation. Its dirt attributes
 are baked when the gates change, sharing the roads' shader and visibility switch.
 Checker tiles are batched into two meshes per line, with no per-frame geometry updates.
+Tagged mapped roads continue through the course's tunnel bores at their mapped width,
+using the same pavement, markings, and dirt shader as their approaches. Tunnel pavement
+is projected onto the driving floor, not the hillside above it, so portal joins remain
+continuous without a second, wider strip of course asphalt.
 Roads still stop at the imported 300 m corridor or the supported terrain boundary; they
 are scenery, not an unlimited navigable road network.
 Nearby-road copies aligned with the selected route
