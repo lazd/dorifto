@@ -50,51 +50,71 @@ export async function loadTerrainSurfaces() {
   for (const { surface, maps } of loaded) terrainMaps.set(surface, maps);
 }
 
+/** Per-course switch for the dirt washed onto road surfaces. */
+export type RoadDirtVisibility = { value: number };
+
 /**
- * Transparent overlay of dirt washed inward from `outerEdge` (distance from the centerline).
- * Its ragged edge always reaches at least `minReach` inward (past the pavement edge) and drifts
- * up to `maxReach`, with crumbs clinging to it and pebbles scattered beyond. Its geometry carries
- * a signed `lateral` distance from the road centerline; it draws above lines, kerbs, and gates.
- * Undefined without scanned soil (headless builds).
+ * Washes dirt inward over a road surface material from `outerEdge` (distance from the
+ * centerline). Its ragged edge always reaches at least `minReach` inward (past the pavement edge)
+ * and drifts up to `maxReach`, with crumbs clinging to it and pebbles scattered beyond. Geometry
+ * carries a signed `lateral` distance from the road centerline and optionally a `structure`
+ * weight (1 on bridges and in tunnels, which stay clean). Asphalt, paint, and kerbs share it so
+ * one continuous spill crosses them all. Returns false without scanned soil (headless builds).
  */
-export function roadDirtMaterial(outerEdge: number, minReach: number, maxReach: number) {
+export function addRoadDirt(
+  material: THREE.MeshStandardMaterial,
+  outerEdge: number,
+  minReach: number,
+  maxReach: number,
+  visible: RoadDirtVisibility,
+) {
   const soil = terrainMaps.get('gravel')?.[0];
-  if (!soil) return undefined;
-  const map = soil.clone();
-  map.repeat.setScalar(1 / 0.6);
-  const material = new THREE.MeshStandardMaterial({
-    map,
-    roughness: 1,
-    transparent: true,
-    depthWrite: false,
-    // Pull toward the camera so paint and kerbs below never poke through at grazing angles.
-    polygonOffset: true,
-    polygonOffsetFactor: -2,
-    polygonOffsetUnits: -4,
-  });
+  if (!soil) return false;
   material.defines = {
+    ...material.defines,
     DIRT_EDGE: outerEdge.toFixed(3),
     DIRT_MIN: minReach.toFixed(3),
     DIRT_MAX: maxReach.toFixed(3),
     DIRT_FEATHER: '0.14',
   };
-  material.onBeforeCompile = (shader) => {
+  const compile = material.onBeforeCompile;
+  const key = material.customProgramCacheKey();
+  material.onBeforeCompile = function (shader, renderer) {
+    compile.call(this, shader, renderer);
+    shader.uniforms.roadDirtMap = { value: soil };
+    shader.uniforms.roadDirtVisible = visible;
     shader.vertexShader = shader.vertexShader
       .replace(
         '#include <common>',
-        '#include <common>\nattribute float lateral;\nvarying float vLateral;',
+        `#include <common>
+        attribute float lateral;
+        attribute float structure;
+        varying float vLateral;
+        varying float vStructure;
+        varying vec2 vDirtWorld;`,
       )
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvLateral = lateral;');
+      .replace(
+        '#include <begin_vertex>',
+        `#include <begin_vertex>
+        vLateral = lateral;
+        vStructure = structure;
+        vDirtWorld = (modelMatrix * vec4(transformed, 1.0)).xz;`,
+      );
     shader.fragmentShader = shader.fragmentShader
       .replace(
         '#include <common>',
         `#include <common>
+        uniform sampler2D roadDirtMap;
+        uniform float roadDirtVisible;
         varying float vLateral;
+        varying float vStructure;
+        varying vec2 vDirtWorld;
         ${terrainNoiseGlsl}`,
       )
       .replace(
         '#include <map_fragment>',
-        `vec2 roadWorld = vMapUv * 0.6 * 5.0;
+        `#include <map_fragment>
+        vec2 roadWorld = vDirtWorld;
         float edgeDistance = DIRT_EDGE - abs(vLateral);
         float drift = terrainNoise(roadWorld * 0.35) * 0.8 +
           terrainNoise(roadWorld * 1.4 + vec2(4.7, 1.3)) * 0.2;
@@ -123,33 +143,50 @@ export function roadDirtMaterial(outerEdge: number, minReach: number, maxReach: 
           (1.0 - smoothstep(pebbleRadius - pebbleWidth, pebbleRadius + pebbleWidth,
             length(pebbleOffset)));
         clumps *= 0.35 * (1.0 - smoothstep(0.0, 0.3, beyond));
-        cover = max(cover, max(pebble, clumps));
-        // Fade out past the edge so the overlay blends into the terrain's own dirt, and as
-        // roadside walls curve up from the pavement, where a horizontal fade reads as a line.
-        float flatness = dot(normalize(vNormal), normalize((viewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz));
-        cover *= (1.0 - smoothstep(0.0, 0.6, -edgeDistance)) *
-          smoothstep(0.8, 0.97, flatness + (drift - 0.5) * 0.1);
-        if (cover < 0.01) discard;
-        vec3 dirt = roadDirt(texture2D(map, vMapUv).rgb);
+        float dirtCover = max(cover, max(pebble, clumps));
+        // Fade out past the edge into the terrain's own dirt verge, and as roadside walls curve
+        // up from the pavement, where a horizontal fade reads as a line.
+        #ifdef FLAT_SHADED
+          vec3 dirtNormal = normalize(cross(dFdx(vViewPosition), dFdy(vViewPosition)));
+        #else
+          vec3 dirtNormal = normalize(vNormal);
+        #endif
+        float flatness = abs(dot(dirtNormal, normalize((viewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz)));
+        dirtCover *= (1.0 - smoothstep(0.0, 0.6, -edgeDistance)) *
+          smoothstep(0.8, 0.97, flatness + (drift - 0.5) * 0.1) *
+          (1.0 - vStructure) * roadDirtVisible;
+        // road dirt mask
+        vec3 dirt = roadDirt(texture2D(roadDirtMap, roadWorld / 3.0).rgb);
         vec3 stone = mix(vec3(0.2, 0.17, 0.14), vec3(0.42, 0.36, 0.29), ph.w * 2.0) *
           (0.8 + 0.4 * terrainNoise(roadWorld * 90.0));
-        diffuseColor.rgb *= mix(dirt, stone, pebble * 0.85);
-        diffuseColor.a *= cover;`,
+        diffuseColor.rgb = mix(diffuseColor.rgb, mix(dirt, stone, pebble * 0.85), dirtCover);`,
+      )
+      .replace(
+        '#include <roughnessmap_fragment>',
+        `#include <roughnessmap_fragment>
+        roughnessFactor = mix(roughnessFactor, 1.0, dirtCover);`,
       );
   };
-  material.customProgramCacheKey = () => 'road-dirt';
-  material.addEventListener('dispose', () => map.dispose());
-  return material;
+  material.customProgramCacheKey = () => `${key}-road-dirt`;
+  return true;
 }
 
-export function nearbyRoadDirtMaterial(shoulderWidth = 0.6) {
-  const material = roadDirtMaterial(1.8, 1.9, 2.4);
-  if (!material) return undefined;
+/**
+ * Dirt for scenery roads, whose `lateral` is the signed distance to the nearest pavement edge
+ * (negative on the pavement) and `mainRoad` the distance outside the course's own pavement.
+ */
+export function addNearbyRoadDirt(
+  material: THREE.MeshStandardMaterial,
+  visible: RoadDirtVisibility,
+  shoulderWidth = 0.6,
+) {
+  if (!addRoadDirt(material, 1.8, 1.9, 2.4, visible)) return false;
   material.defines = {
     ...material.defines,
     DIRT_HANDOFF: Math.max(0.01, Math.min(0.6, shoulderWidth)).toFixed(3),
   };
   const compile = material.onBeforeCompile;
+  const key = material.customProgramCacheKey();
   material.onBeforeCompile = function (shader, renderer) {
     compile.call(this, shader, renderer);
     shader.vertexShader = shader.vertexShader
@@ -162,8 +199,7 @@ export function nearbyRoadDirtMaterial(shoulderWidth = 0.6) {
       .replace('#include <common>', '#include <common>\nvarying float vMainRoad;')
       .replace(
         'float edgeDistance = DIRT_EDGE - abs(vLateral);',
-        `
-        float pavementDistance = vLateral;
+        `float pavementDistance = vLateral;
         float edgeDistance = DIRT_EDGE - pavementDistance;`,
       )
       .replace(
@@ -173,14 +209,13 @@ reach += turningSoil * 0.45;
 float aa = max(fwidth(edgeDistance), DIRT_FEATHER);`,
       )
       .replace(
-        '#include <alphatest_fragment>',
-        `diffuseColor.a *= smoothstep(-1.0 - turningSoil * 0.45, -0.65, pavementDistance) *
-          smoothstep(-DIRT_HANDOFF, 0.0, vMainRoad);
-        #include <alphatest_fragment>`,
+        '// road dirt mask',
+        `dirtCover *= smoothstep(-1.0 - turningSoil * 0.45, -0.65, pavementDistance) *
+          smoothstep(-DIRT_HANDOFF, 0.0, vMainRoad);`,
       );
   };
-  material.customProgramCacheKey = () => 'nearby-road-dirt';
-  return material;
+  material.customProgramCacheKey = () => `${key}-nearby`;
+  return true;
 }
 
 export function surfaceMaterial(surface: 'asphalt' | TerrainSurface, repeats = 1) {

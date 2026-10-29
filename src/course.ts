@@ -8,7 +8,7 @@ import {
   courseRoute,
   courseShoulderWidth,
 } from './courses';
-import { nearbyRoadDirtMaterial, roadDirtMaterial, surfaceMaterial } from './surfaces';
+import { addNearbyRoadDirt, addRoadDirt, surfaceMaterial } from './surfaces';
 import { CourseTerrain } from './terrain';
 import { courseTurnSignPlacements, createTurnSignFactory, type TurnSignMode } from './turn-sign';
 import { createTrainingGates } from './racing-line';
@@ -66,16 +66,20 @@ function buildCourse(scene: THREE.Group, definition: CourseDefinition, carWidth:
   const overlay = definition.scenery?.bounds !== undefined && definition.padRadius === undefined;
   terrain.grass.name = 'roadside-grass';
   scene.add(terrain.mesh);
+  const roadDirtVisible = { value: 1 };
   const scenery = createScenery(definition, terrain, {
     createRoadMaterial: () => surfaceMaterial('asphalt'),
-    createRoadDirtMaterial: () =>
-      nearbyRoadDirtMaterial(definition.shoulderWidth ?? courseShoulderWidth),
+    addRoadDirt: (material) =>
+      addNearbyRoadDirt(material, roadDirtVisible, definition.shoulderWidth ?? courseShoulderWidth),
     projectGroundGeometry: (source, lift, horizontal) =>
       terrain.projectGroundGeometry(source, lift, horizontal),
   });
   scene.add(scenery.group);
+  if (definition.scenery?.roads.length)
+    terrain.setSceneryRoadDistance((x, z) => scenery.pavementEdgeDistance(x, z));
   const junctionsVisible = { value: 1 };
-  function maskJunctionMaterial(material: THREE.Material, feather = 0.25) {
+  /** Hides the material (with `feather`) and any road dirt on it where side roads join. */
+  function maskJunctionMaterial(material: THREE.Material, feather?: number) {
     const compile = material.onBeforeCompile;
     const key = material.customProgramCacheKey();
     material.onBeforeCompile = function (shader, renderer) {
@@ -93,19 +97,22 @@ function buildCourse(scene: THREE.Group, definition: CourseDefinition, carWidth:
           '#include <common>\nuniform float junctionsVisible;\nvarying float vJunction;',
         )
         .replace(
+          'float aa = max(fwidth(edgeDistance), DIRT_FEATHER);',
+          `float junctionSoil = (1.0 - smoothstep(0.0, 3.0, vJunction)) * junctionsVisible;
+reach = mix(reach, mix(DIRT_MIN, DIRT_MAX, 0.5) + ragged, junctionSoil);
+float aa = max(fwidth(edgeDistance), max(DIRT_FEATHER, junctionSoil * 0.15));`,
+        )
+        .replace(
+          '// road dirt mask',
+          'dirtCover *= mix(1.0, smoothstep(-0.9, 0.9, vJunction), junctionsVisible);',
+        );
+      if (feather !== undefined)
+        shader.fragmentShader = shader.fragmentShader.replace(
           '#include <alphatest_fragment>',
           `#include <alphatest_fragment>
 diffuseColor.a *= mix(1.0, smoothstep(-${feather.toFixed(2)}, ${feather.toFixed(2)}, vJunction), junctionsVisible);
 if (diffuseColor.a < ${material.transparent ? '0.01' : '0.5'}) discard;`,
         );
-      if (material.transparent) {
-        shader.fragmentShader = shader.fragmentShader.replace(
-          'float aa = max(fwidth(edgeDistance), DIRT_FEATHER);',
-          `float junctionSoil = (1.0 - smoothstep(0.0, 3.0, vJunction)) * junctionsVisible;
-reach = mix(reach, mix(DIRT_MIN, DIRT_MAX, 0.5) + ragged, junctionSoil);
-float aa = max(fwidth(edgeDistance), max(DIRT_FEATHER, junctionSoil * 0.15));`,
-        );
-      }
     };
     material.customProgramCacheKey = () => `${key}-junctions-${feather}`;
   }
@@ -238,8 +245,19 @@ float aa = max(fwidth(edgeDistance), max(DIRT_FEATHER, junctionSoil * 0.15));`,
 
   const paint = (color: number) =>
     new THREE.MeshStandardMaterial({ color, roughness: 0.75, side: THREE.DoubleSide });
+  // Dirt washes in from beyond the pavement or kerbs, whichever reaches further. It always
+  // covers the pavement edge and drifts up to just past the edge line, across every surface.
+  const dirtEdge = definition.width / 2 + Math.max(shoulder, 0.8);
+  const dirtMin = dirtEdge - definition.width / 2 - shoulder;
+  const dirtMax = dirtEdge - definition.width / 2 + 0.35;
+  const addDirt = (material: THREE.MeshStandardMaterial) =>
+    !overlay &&
+    definition.padRadius === undefined &&
+    addRoadDirt(material, dirtEdge, dirtMin, dirtMax, roadDirtVisible);
   const white = paint(0xe1e6df);
   const dark = paint(0x20282b);
+  addDirt(white);
+  addDirt(dark);
   const segments = Math.ceil(length / 0.5);
   function ribbon(
     offset: number | ((fraction: number) => number),
@@ -249,77 +267,38 @@ float aa = max(fwidth(edgeDistance), max(DIRT_FEATHER, junctionSoil * 0.15));`,
     from = 0,
     to = 1,
     relativeLateral = false,
-    columns = 1,
-    excludeStructures = false,
   ) {
     const positions: number[] = [];
     const uvs: number[] = [];
     const lateral: number[] = [];
+    const structure: number[] = [];
     const steps = Math.max(1, Math.ceil((to - from) * segments));
-    const fractions = Array.from({ length: steps + 1 }, (_, i) =>
-      THREE.MathUtils.lerp(from, to, i / steps),
-    );
-    if (excludeStructures) {
-      fractions.push(
-        ...(definition.structures ?? []).flatMap(({ start, end }) =>
-          [start, end].filter((t) => t > from && t < to),
-        ),
-      );
-      fractions.sort((a, b) => a - b);
-    }
-    for (const t of fractions) {
+    for (let i = 0; i <= steps; i++) {
+      const t = THREE.MathUtils.lerp(from, to, i / steps);
       const center = route.getPointAt(t);
       const tangent = route.getTangentAt(t);
       across.set(tangent.z, 0, -tangent.x).normalize();
       const centerOffset = typeof offset === 'number' ? offset : offset(t);
-      for (let column = 0; column <= columns; column++) {
-        const edge = width * (column / columns - 0.5);
+      const onStructure = definition.structures?.some(({ start, end }) => t >= start && t <= end);
+      for (const edge of [-width / 2, width / 2]) {
         const point = center.clone().addScaledVector(across, centerOffset + edge);
         positions.push(point.x, height, point.z);
         uvs.push(point.x / 5, point.z / 5);
         lateral.push(relativeLateral ? edge : centerOffset + edge);
+        structure.push(onStructure ? 1 : 0);
       }
     }
     const indices: number[] = [];
-    for (let i = 0; i < fractions.length - 1; i++) {
-      if (fractions[i + 1] - fractions[i] < 1e-8) continue;
-      const middle = (fractions[i] + fractions[i + 1]) / 2;
-      if (
-        excludeStructures &&
-        definition.structures?.some(({ start, end }) => middle >= start && middle <= end)
-      )
-        continue;
-      const nearJunction =
-        columns > 1 &&
-        [i, i + 1].some((row) => {
-          const start = row * (columns + 1) * 3;
-          const end = start + columns * 3;
-          return (
-            scenery.roadDistance(
-              (positions[start] + positions[end]) / 2,
-              (positions[start + 2] + positions[end + 2]) / 2,
-              true,
-            ) <
-            width / 2 + 0.5
-          );
-        });
-      const stride = nearJunction ? 1 : columns;
-      for (let column = 0; column < columns; column += stride) {
-        const j = i * (columns + 1) + column;
-        indices.push(
-          j,
-          j + columns + 1,
-          j + stride,
-          j + stride,
-          j + columns + 1,
-          j + columns + 1 + stride,
-        );
-      }
+    for (let i = 0; i < steps; i++) {
+      const j = i * 2;
+      indices.push(j, j + 2, j + 1, j + 1, j + 2, j + 3);
     }
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
     geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
     geometry.setAttribute('lateral', new THREE.Float32BufferAttribute(lateral, 1));
+    if (definition.structures?.length)
+      geometry.setAttribute('structure', new THREE.Float32BufferAttribute(structure, 1));
     geometry.setIndex(indices);
     const projected = terrain.projectGeometry(geometry, height);
     geometry.dispose();
@@ -329,6 +308,8 @@ float aa = max(fwidth(edgeDistance), max(DIRT_FEATHER, junctionSoil * 0.15));`,
     return mesh;
   }
   const asphalt = surfaceMaterial('asphalt');
+  const asphaltDirt = addDirt(asphalt);
+  if (asphaltDirt) maskJunctionMaterial(asphalt);
   asphalt.polygonOffset = true;
   asphalt.polygonOffsetFactor = 1;
   asphalt.polygonOffsetUnits = 1;
@@ -348,9 +329,13 @@ float aa = max(fwidth(edgeDistance), max(DIRT_FEATHER, junctionSoil * 0.15));`,
     pad.name = 'skidpad-asphalt';
     pad.receiveShadow = true;
     scene.add(pad);
-  } else if (!overlay) ribbon(0, definition.width + shoulder * 2, 0.008, asphalt);
+  } else if (!overlay) {
+    const road = ribbon(0, definition.width + shoulder * 2, 0.008, asphalt);
+    if (asphaltDirt) maskJunctionGeometry(road.geometry);
+  }
   const edgeWhite = paint(0xe1e6df);
-  maskJunctionMaterial(edgeWhite);
+  addDirt(edgeWhite);
+  maskJunctionMaterial(edgeWhite, 0.25);
   for (const side of overlay ? [] : [-1, 1]) {
     const edge = ribbon((side * definition.width) / 2, courseLineWidth, 0.016, edgeWhite);
     maskJunctionGeometry(edge.geometry, courseLineWidth);
@@ -391,6 +376,18 @@ float aa = max(fwidth(edgeDistance), max(DIRT_FEATHER, junctionSoil * 0.15));`,
             .setY(0.02);
           tile.updateMatrix();
           const geometry = tile.geometry.clone().applyMatrix4(tile.matrix);
+          const corners = geometry.getAttribute('position');
+          geometry.setAttribute(
+            'lateral',
+            new THREE.Float32BufferAttribute(
+              Array.from(
+                { length: corners.count },
+                (_, i) =>
+                  (corners.getX(i) - start.x) * across.x + (corners.getZ(i) - start.z) * across.z,
+              ),
+              1,
+            ),
+          );
           tile.geometry.dispose();
           tile.geometry = terrain.projectGeometry(geometry, 0.02);
           geometry.dispose();
@@ -465,7 +462,13 @@ float aa = max(fwidth(edgeDistance), max(DIRT_FEATHER, junctionSoil * 0.15));`,
     vertexColors: true,
     transparent: true,
   });
-  const curbPositions: number[][] = [[], []];
+  const kerbDirt = addDirt(curbRed) && addDirt(curbWhite);
+  if (kerbDirt) for (const material of [curbRed, curbWhite]) maskJunctionMaterial(material);
+  const curbAttributes = [0, 1].map(() => ({
+    position: [] as number[],
+    lateral: [] as number[],
+    structure: [] as number[],
+  }));
   const kerbs = definition.padRadius === undefined && !overlay ? courseKerbSegments(route) : [];
   for (const { distance, endDistance, direction } of kerbs) {
     const curb = ribbon(
@@ -476,16 +479,23 @@ float aa = max(fwidth(edgeDistance), max(DIRT_FEATHER, junctionSoil * 0.15));`,
       distance / length,
       endDistance / length,
     );
-    const positions = curb.geometry.getAttribute('position');
-    curbPositions[Math.round(distance / (length / Math.ceil(length / 2))) % 2].push(
-      ...Array.from(positions.array),
-    );
+    const attributes = curbAttributes[Math.round(distance / (length / Math.ceil(length / 2))) % 2];
+    for (const [name, values] of Object.entries(attributes)) {
+      const attribute = curb.geometry.getAttribute(name);
+      const count = curb.geometry.getAttribute('position').count * (name === 'position' ? 3 : 1);
+      for (let i = 0; i < count; i++) values.push(attribute ? attribute.array[i] : 0);
+    }
     scene.remove(curb);
     curb.geometry.dispose();
   }
-  const kerbMeshes = curbPositions.map((positions, i) => {
+  const kerbMeshes = curbAttributes.map((attributes, i) => {
     const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    for (const [name, values] of Object.entries(attributes))
+      geometry.setAttribute(
+        name,
+        new THREE.Float32BufferAttribute(values, name === 'position' ? 3 : 1),
+      );
+    if (kerbDirt) maskJunctionGeometry(geometry);
     geometry.computeVertexNormals();
     // Vanish as soon as the shoulder starts curving up into a roadside wall (about 8°), while
     // tolerating steep road grades.
@@ -501,35 +511,6 @@ float aa = max(fwidth(edgeDistance), max(DIRT_FEATHER, junctionSoil * 0.15));`,
     scene.add(curbs);
     return curbs;
   });
-  // Dirt washes in from beyond the pavement or kerbs, whichever reaches further. It always
-  // covers the pavement edge and drifts up to just past the edge line.
-  const dirtEdge = definition.width / 2 + Math.max(shoulder, 0.8);
-  const dirtMin = dirtEdge - definition.width / 2 - shoulder;
-  const dirtMax = dirtEdge - definition.width / 2 + 0.35;
-  const dirt =
-    !overlay && definition.padRadius === undefined && roadDirtMaterial(dirtEdge, dirtMin, dirtMax);
-  const dirtMeshes: THREE.Mesh[] = [];
-  if (dirt) maskJunctionMaterial(dirt, 0.9);
-  if (dirt)
-    for (const side of [-1, 1]) {
-      // From 0.6 m outside the dirt edge (feather) to past the farthest scattered pebbles.
-      const stripWidth = dirtMax + 1.8;
-      const strip = ribbon(
-        side * (dirtEdge + 0.6 - stripWidth / 2),
-        stripWidth,
-        0.04,
-        dirt,
-        0,
-        1,
-        false,
-        Math.ceil(stripWidth / 0.5),
-        true,
-      );
-      strip.name = 'road-edge-dirt';
-      strip.renderOrder = 1;
-      maskJunctionGeometry(strip.geometry);
-      dirtMeshes.push(strip);
-    }
   return {
     cones,
     cornerCones,
@@ -545,7 +526,7 @@ float aa = max(fwidth(edgeDistance), max(DIRT_FEATHER, junctionSoil * 0.15));`,
       scenery.setVisible('water', settings.showWater);
       scenery.setVisible('vegetation', settings.showVegetation);
       scenery.setVisible('nearbyRoads', settings.showNearbyRoads);
-      junctionsVisible.value = settings.showNearbyRoads ? 1 : 0;
+      junctionsVisible.value = terrain.sceneryRoadsVisible.value = settings.showNearbyRoads ? 1 : 0;
     },
     turnSignGroups: [...turnSignGroups, scenery.stopSignGroup],
     terrain,
@@ -553,8 +534,7 @@ float aa = max(fwidth(edgeDistance), max(DIRT_FEATHER, junctionSoil * 0.15));`,
       for (const mesh of kerbMeshes) mesh.visible = visible;
     },
     setRoadEdgeDirt(visible: boolean) {
-      for (const mesh of dirtMeshes) mesh.visible = visible;
-      scenery.setRoadEdgeDirt(visible);
+      roadDirtVisible.value = visible ? 1 : 0;
     },
     setLapGates(mode: LapGateMode) {
       lapGateMesh.visible = mode !== 'off';

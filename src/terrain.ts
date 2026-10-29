@@ -39,6 +39,8 @@ export class CourseTerrain {
   readonly heights: Float32Array;
   readonly mesh: THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>;
   readonly grass: THREE.InstancedMesh;
+  /** Shows the roadside dirt verge along scenery roads set by `setSceneryRoadDistance`. */
+  readonly sceneryRoadsVisible = { value: 1 };
   readonly minHeight: number;
   readonly maxHeight: number;
   readonly flippedCells?: Uint8Array;
@@ -575,6 +577,10 @@ export class CourseTerrain {
       new THREE.BufferAttribute(new Float32Array(vertices.length).fill(1), 3),
     );
     geometry.setAttribute('vegetation', new THREE.Float32BufferAttribute(vegetation, 2));
+    geometry.setAttribute(
+      'sceneryRoad',
+      new THREE.BufferAttribute(new Float32Array(vertices.length / 3).fill(farFromCourse), 1),
+    );
     geometry.setIndex(new THREE.BufferAttribute(indices, 1));
     geometry.computeVertexNormals();
     const material = surfaceMaterial('rock');
@@ -595,15 +601,19 @@ export class CourseTerrain {
       shader.uniforms.soilMap = { value: soilMap };
       shader.uniforms.soilNormalMap = { value: soilNormalMap };
       shader.uniforms.soilRoughnessMap = { value: soilRoughnessMap ?? soilMap };
+      shader.uniforms.sceneryRoadsVisible = this.sceneryRoadsVisible;
       shader.vertexShader = shader.vertexShader
         .replace(
           '#include <common>',
-          '#include <common>\nattribute vec2 vegetation;\nvarying vec2 vVegetation;\nvarying vec3 vTerrainPosition;\nvarying vec3 vTerrainNormal;',
+          '#include <common>\nattribute vec2 vegetation;\nattribute float sceneryRoad;\nuniform float sceneryRoadsVisible;\nvarying vec2 vVegetation;\nvarying vec3 vTerrainPosition;\nvarying vec3 vTerrainNormal;',
         )
         .replace(
           '#include <begin_vertex>',
           `#include <begin_vertex>
-          vVegetation = vegetation;
+          vVegetation = vec2(
+            min(vegetation.x, mix(${farFromCourse.toFixed(1)}, sceneryRoad, sceneryRoadsVisible)),
+            vegetation.y
+          );
           vTerrainPosition = (modelMatrix * vec4(position, 1.0)).xyz;
           vTerrainNormal = normalize(mat3(modelMatrix) * objectNormal);`,
         );
@@ -921,6 +931,16 @@ export class CourseTerrain {
     };
   }
 
+  /** Extends the roadside dirt verge along scenery roads, given the distance to their pavement. */
+  setSceneryRoadDistance(distance: (x: number, z: number) => number) {
+    const attribute = this.mesh.geometry.getAttribute('sceneryRoad');
+    if (!attribute) return;
+    const positions = this.mesh.geometry.getAttribute('position');
+    for (let i = 0; i < attribute.count; i++)
+      attribute.setX(i, distance(positions.getX(i), positions.getZ(i)));
+    attribute.needsUpdate = true;
+  }
+
   projectGeometry(source: THREE.BufferGeometry, lift: number) {
     return projectTerrainGeometry(this, source, lift);
   }
@@ -983,9 +1003,10 @@ export function projectTerrainGeometry(
   const uv: number[] = [];
   const attribute = source.getAttribute('position');
   const index = source.getIndex();
-  // Optional per-vertex scalar (e.g. distance across a road ribbon), interpolated onto clipped pieces.
-  const sourceLateral = source.getAttribute('lateral');
-  const lateral: number[] = [];
+  // Optional per-vertex scalars (e.g. distance across a road ribbon), interpolated onto clipped pieces.
+  const scalars = (['lateral', 'structure'] as const)
+    .map((name) => ({ name, source: source.getAttribute(name), values: [] as number[] }))
+    .filter(({ source }) => source);
   function* gridTriangles({ minX, maxX, minZ, maxZ }: ProjectionBounds) {
     const pad = terrain.warpedCells ? 1 : 0;
     const firstX = Math.floor((minX - terrain.minX) / terrain.spacing) - pad;
@@ -1020,11 +1041,14 @@ export function projectTerrainGeometry(
     const triangle = vertices.map((v) => ({ x: attribute.getX(v), z: attribute.getZ(v) }));
     const [a, b, c] = triangle;
     const area = (b.x - a.x) * (c.z - a.z) - (c.x - a.x) * (b.z - a.z);
-    const lateralAt = (p: Point) => {
-      if (!sourceLateral || !area) return 0;
+    const scalarAt = (
+      scalar: THREE.BufferAttribute | THREE.InterleavedBufferAttribute,
+      p: Point,
+    ) => {
+      if (!area) return 0;
       const wb = ((p.x - a.x) * (c.z - a.z) - (c.x - a.x) * (p.z - a.z)) / area;
       const wc = ((b.x - a.x) * (p.z - a.z) - (p.x - a.x) * (b.z - a.z)) / area;
-      const [la, lb, lc] = vertices.map((v) => sourceLateral.getX(v));
+      const [la, lb, lc] = vertices.map((v) => scalar.getX(v));
       return la + (lb - la) * wb + (lc - la) * wc;
     };
     const bounds = {
@@ -1066,7 +1090,7 @@ export function projectTerrainGeometry(
             p.z,
           );
           uv.push(p.x / 5, p.z / 5);
-          if (sourceLateral) lateral.push(lateralAt(p));
+          for (const scalar of scalars) scalar.values.push(scalarAt(scalar.source, p));
         }
       }
     }
@@ -1074,7 +1098,8 @@ export function projectTerrainGeometry(
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
-  if (sourceLateral) geometry.setAttribute('lateral', new THREE.Float32BufferAttribute(lateral, 1));
+  for (const { name, values } of scalars)
+    geometry.setAttribute(name, new THREE.Float32BufferAttribute(values, 1));
   geometry.computeVertexNormals();
   return geometry;
 }

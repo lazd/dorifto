@@ -20,7 +20,8 @@ type MultiPolygon = SceneryPolygon[];
 
 export interface SceneryOptions {
   createRoadMaterial?: () => THREE.MeshStandardMaterial;
-  createRoadDirtMaterial?: () => THREE.MeshStandardMaterial | undefined;
+  /** Adds roadside dirt to a ground-level road or paint material; false when unavailable. */
+  addRoadDirt?: (material: THREE.MeshStandardMaterial) => boolean;
   /**
    * Projects nearby roads and waterways onto the displayed ground, e.g. a coarse preview grid.
    * Return a new geometry; the source is borrowed and disposed by createScenery.
@@ -38,8 +39,8 @@ export interface SceneryOptions {
 const categories: SceneryCategory[] = ['buildings', 'water', 'vegetation', 'nearbyRoads'];
 const maxPlants = 4000;
 const maxPlantAttempts = 24000;
-// Covers nearbyRoadDirtMaterial's spill, which reaches up to 1.45 m onto the pavement.
-const dirtSpillWidth = 1.5;
+// Pavement edges are indexed far enough out to cover the terrain's roadside dirt verge.
+const pavementEdgeReach = 6;
 
 /** Small local indices keep vegetation rejection independent of the total map feature count. */
 class SpatialIndex<T extends Bounds> {
@@ -401,12 +402,16 @@ export function createScenery(
   let raisedPavement = new PavementSurface();
   let hasRaisedPavement = false;
   let junctionExpansion = (_x: number, _z: number) => 0;
-  const roadDistance = (x: number, z: number, atGradeOnly = false) => {
-    let distance = 3;
-    (atGradeOnly ? junctionEdges : pavementEdges).some(x, z, (edge) => {
+  const edgeDistance = (edges: SpatialIndex<RoadSegment>, x: number, z: number, reach: number) => {
+    let distance = reach;
+    edges.some(x, z, (edge) => {
       distance = Math.min(distance, segmentDistance(x, z, edge.a, edge.b));
       return false;
     });
+    return distance;
+  };
+  const roadDistance = (x: number, z: number, atGradeOnly = false) => {
+    const distance = edgeDistance(atGradeOnly ? junctionEdges : pavementEdges, x, z, 3);
     const groundPavement =
       pavementSurface.isAsphalt({ x, z }) ||
       (hasRaisedPavement && raisedPavement.isAsphalt({ x, z, y: terrain.groundHeightAt(x, z) }));
@@ -422,6 +427,9 @@ export function createScenery(
       roadsVisible && (pavementSurface.isAsphalt(position) || raisedPavement.isAsphalt(position)),
     junctionCones,
     roadDistance,
+    /** Unsigned distance to the nearest pavement edge, capped where roadside dirt ends. */
+    pavementEdgeDistance: (x: number, z: number) =>
+      edgeDistance(pavementEdges, x, z, pavementEdgeReach),
     roadCoverage(x: number, z: number) {
       return roadDistance(x, z, true) <= 0.25 ? 1 : 0;
     },
@@ -431,10 +439,6 @@ export function createScenery(
         roadsVisible = visible;
         stopSignGroup.visible = visible;
       }
-    },
-    setRoadEdgeDirt(visible: boolean) {
-      for (const mesh of layers.nearbyRoads.children)
-        if (mesh.name.startsWith('nearby-road-dirt')) mesh.visible = visible;
     },
   };
   const scenery = definition.scenery;
@@ -484,10 +488,10 @@ export function createScenery(
       a,
       b,
       width: 0,
-      minX: Math.min(a.x, b.x) - 3,
-      minZ: Math.min(a.z, b.z) - 3,
-      maxX: Math.max(a.x, b.x) + 3,
-      maxZ: Math.max(a.z, b.z) + 3,
+      minX: Math.min(a.x, b.x) - pavementEdgeReach,
+      minZ: Math.min(a.z, b.z) - pavementEdgeReach,
+      maxX: Math.max(a.x, b.x) + pavementEdgeReach,
+      maxZ: Math.max(a.z, b.z) + pavementEdgeReach,
     };
     pavementEdges.add(edge);
     if (!separated((a.x + b.x) / 2, (a.z + b.z) / 2)) junctionEdges.add(edge);
@@ -512,7 +516,6 @@ export function createScenery(
   const roads = new SpatialIndex<RoadSegment>();
   const buildingBatch = new Batch();
   const buildings = scenery.buildings;
-  let groundFootprint: MultiPolygon = [];
 
   function buildBuildings() {
     for (const building of buildings) {
@@ -687,7 +690,6 @@ export function createScenery(
     }
   }
 
-  const dirtMaterial = options.createRoadDirtMaterial?.();
   const roadBatch = new Batch(),
     raisedBatch = new Batch(),
     roadbedBatch = new Batch(),
@@ -697,7 +699,6 @@ export function createScenery(
     stopLineBatch = new Batch(),
     medianBatch = new Batch(),
     abutmentBatch = new Batch(),
-    dirtBatch = new Batch(),
     riverBatch = new Batch();
   const profiles = sceneryRoadProfiles(
     scenery.roads,
@@ -912,13 +913,12 @@ export function createScenery(
     batch: Batch,
     river: boolean,
     conesOnly = false,
-    verge = false,
     ends: (RoadEnd | undefined)[] = [],
     profile?: (typeof profiles)[number],
   ) {
     const elevation = profile?.raised ? profile.heightAt : undefined;
     if (!Number.isFinite(rawWidth)) return;
-    const width = THREE.MathUtils.clamp(rawWidth, 0.6, river ? 40 : verge ? 24.8 : 20);
+    const width = THREE.MathUtils.clamp(rawWidth, 0.6, river ? 40 : 20);
     const usesProfilePoints = profile !== undefined && points === profile.points;
     points = points.filter(
       (p, i) => i === 0 || Math.hypot(p[0] - points[i - 1][0], p[1] - points[i - 1][1]) >= 0.01,
@@ -933,7 +933,7 @@ export function createScenery(
       Math.hypot(points[0][0] - points.at(-1)![0], points[0][1] - points.at(-1)![1]) < 0.01;
     const widths = points.map((_, i) => {
       const end = i === 0 ? ends[0] : i === points.length - 1 ? ends[1] : undefined;
-      return end ? end.width + (verge ? 4.8 : 0) : width;
+      return end ? end.width : width;
     });
     const offsets = points.map(([x, z], i) => {
       const before = points[i - 1] ?? (closed ? points.at(-2)! : (ends[0]?.point ?? points[i]));
@@ -977,7 +977,7 @@ export function createScenery(
         (clearance(x, z) < width / 2 + 7 &&
           (!profile?.bridgeApproach || Math.abs(elevation(x, z) - terrain.heightAt(x, z)) < 3) &&
           profile?.road.structure !== 'bridge');
-      if (!conesOnly && !verge && profile?.road.structure !== 'bridge') {
+      if (!conesOnly && profile?.road.structure !== 'bridge') {
         // Waterway capsules share the same exclusion index as nearby roads.
         roads.add(river ? { ...segment, width: width + 2 } : segment);
       }
@@ -1045,13 +1045,9 @@ export function createScenery(
         const t0 = (length * j) / steps;
         const center = side((length * (j + 0.5)) / steps, 0);
         const elevated = elevation && !atGrade(center.x, center.z);
-        if (elevated && verge) {
-          finishOutline();
-          continue;
-        }
         const distance = clearance(center.x, center.z);
         if (elevated || separated(center.x, center.z)) connected = false;
-        if (!river && !verge && !elevated && !separated(center.x, center.z) && !completeMap) {
+        if (!river && !elevated && !separated(center.x, center.z) && !completeMap) {
           if (distance <= 0.5) connected = true;
           if (connected && distance >= width / 2 + 1.2) {
             const conePoints: Point[] = [];
@@ -1086,7 +1082,7 @@ export function createScenery(
         const geometryEnd = (length * Math.min(j + geometrySteps, steps)) / steps;
         const corners = [edge(t0, -1), edge(t0, 1), edge(geometryEnd, -1), edge(geometryEnd, 1)];
         if (river && [...corners, center].some((p) => roadBlocked(p.x, p.z))) continue;
-        if (!river && !verge && !elevated) {
+        if (!river && !elevated) {
           for (const [a, b] of [
             [corners[0], corners[2]],
             [corners[1], corners[3]],
@@ -1098,7 +1094,7 @@ export function createScenery(
             addPavementEdge(corners[2], corners[3]);
         }
         if (!river) {
-          const target = !verge && elevation && !elevated ? roadBatch : batch;
+          const target = elevation && !elevated ? roadBatch : batch;
           if (outlineBatch !== target) finishOutline();
           outlineBatch = target;
           if (!left.length) {
@@ -1108,16 +1104,11 @@ export function createScenery(
           left.push([corners[2].x, corners[2].z]);
           right.push([corners[3].x, corners[3].z]);
         }
-        if (verge) {
-          batch.roof(corners[0], corners[1], corners[2]);
-          batch.roof(corners[1], corners[3], corners[2]);
-          continue;
-        }
         const target = elevation && !elevated ? roadBatch : batch;
         const vertices = elevation && !elevated ? corners.map((p) => ({ ...p, y: 0 })) : corners;
         target.roof(vertices[0], vertices[1], vertices[2]);
         target.roof(vertices[1], vertices[3], vertices[2]);
-        if (elevated && profile && !verge) {
+        if (elevated && profile) {
           if (
             profile.road.structure !== 'bridge' &&
             Math.abs(center.y - ground(center.x, center.z)) < 2
@@ -1204,19 +1195,8 @@ export function createScenery(
     if (profile.selected && road.structure) continue;
     if (profile.raised) {
       const ends = [roadEnd(road, false), roadEnd(road, true)];
-      ribbon(profile.points, road.width, raisedBatch, false, false, false, ends, profile);
-      ribbon(
-        [...profile.points].reverse(),
-        road.width,
-        raisedBatch,
-        false,
-        true,
-        false,
-        [],
-        profile,
-      );
-      if (dirtMaterial && !road.structure)
-        ribbon(profile.points, road.width + 4.8, dirtBatch, false, false, true, ends, profile);
+      ribbon(profile.points, road.width, raisedBatch, false, false, ends, profile);
+      ribbon([...profile.points].reverse(), road.width, raisedBatch, false, true, [], profile);
       if (road.structure === 'bridge') {
         const data = buildBridgeGeometry(
           {
@@ -1268,10 +1248,8 @@ export function createScenery(
     }
     const points = profile.points;
     const ends = [roadEnd(road, false), roadEnd(road, true)];
-    ribbon(points, road.width, roadBatch, false, false, false, ends, profile);
-    ribbon([...points].reverse(), road.width, roadBatch, false, true, false, [], profile);
-    if (dirtMaterial)
-      ribbon(points, road.width + 4.8, dirtBatch, false, false, true, ends, profile);
+    ribbon(points, road.width, roadBatch, false, false, ends, profile);
+    ribbon([...points].reverse(), road.width, roadBatch, false, true, [], profile);
   }
   for (const [profileIndex, profile] of profiles.entries()) {
     const { road, curve } = profile;
@@ -1501,23 +1479,6 @@ export function createScenery(
   }
   const pavement = pavementFootprint(roadBatch);
   fillFootprint(roadBatch, pavement);
-  const selectedFootprint = new Batch();
-  for (let i = 0; i < courseSegments.length; i += 5) {
-    const a = courseSegments[i].a;
-    const b = courseSegments[Math.min(i + 4, courseSegments.length - 1)].b;
-    if (separated((a.x + b.x) / 2, (a.z + b.z) / 2)) continue;
-    const length = Math.hypot(b.x - a.x, b.z - a.z);
-    if (!length) continue;
-    const nx = ((b.z - a.z) / length) * halfWidth,
-      nz = (-(b.x - a.x) / length) * halfWidth;
-    const leftA = { x: a.x - nx, z: a.z - nz, y: 0 },
-      rightA = { x: a.x + nx, z: a.z + nz, y: 0 };
-    const leftB = { x: b.x - nx, z: b.z - nz, y: 0 },
-      rightB = { x: b.x + nx, z: b.z + nz, y: 0 };
-    selectedFootprint.roof(leftA, rightA, leftB);
-    selectedFootprint.roof(rightA, rightB, leftB);
-  }
-  groundFootprint = polygonClipping.union(pavement, pavementFootprint(selectedFootprint));
   for (const segment of courseSegments)
     if (!separated((segment.a.x + segment.b.x) / 2, (segment.a.z + segment.b.z) / 2))
       centerlines.add({
@@ -1531,15 +1492,6 @@ export function createScenery(
       });
   for (const segment of roadSegments.query(bounds))
     if (!segment.profile.road.structure) centerlines.add({ ...segment, width: 0 });
-  // Dirt keeps a band over the pavement edge, where its shader draws the spill onto the road.
-  if (dirtBatch.positions.length)
-    fillFootprint(
-      dirtBatch,
-      polygonClipping.difference(
-        pavementFootprint(dirtBatch),
-        polygonClipping.offset(groundFootprint, -dirtSpillWidth),
-      ),
-    );
   pavementEdges = new SpatialIndex<RoadSegment>();
   junctionEdges = new SpatialIndex<RoadSegment>();
   for (const rings of pavement)
@@ -1554,6 +1506,27 @@ export function createScenery(
         filletVertices: query.groundSurface.filletVertices,
       }
     : query;
+  const onDeck = (p: Vertex) =>
+    raisedPavement.isAsphalt(p) && Math.abs(p.y - ground(p.x, p.z)) > 0.15;
+  // Dirt spills from the pavement edges over ground-level asphalt and paint, never decks.
+  const addRoadDirt = (
+    material: THREE.MeshStandardMaterial,
+    geometries: THREE.BufferGeometry[],
+  ) => {
+    if (!options.addRoadDirt?.(material)) return;
+    for (const geometry of geometries) {
+      const positions = geometry.getAttribute('position');
+      const lateral = new Float32Array(positions.count);
+      const mainRoad = new Float32Array(positions.count);
+      for (let i = 0; i < positions.count; i++) {
+        const p = { x: positions.getX(i), y: positions.getY(i), z: positions.getZ(i) };
+        lateral[i] = onDeck(p) ? 3 : roadDistance(p.x, p.z);
+        mainRoad[i] = separated(p.x, p.z) ? 3 : surface.nearest(p.x, p.z).distance - halfWidth;
+      }
+      geometry.setAttribute('lateral', new THREE.BufferAttribute(lateral, 1));
+      geometry.setAttribute('mainRoad', new THREE.BufferAttribute(mainRoad, 1));
+    }
+  };
   const addDraped = (
     batch: Batch,
     parent: THREE.Group,
@@ -1583,7 +1556,7 @@ export function createScenery(
         z: positions.getZ(i + j),
       }));
       if (batch === raisedBatch && vertices.some((p) => !terrain.contains(p.x, p.z))) continue;
-      if (batch === dirtBatch || batch === raisedBatch) {
+      if (batch === raisedBatch) {
         kept.roof(vertices[0], vertices[1], vertices[2]);
       } else if (parent === layers.nearbyRoads) {
         const distance = pavementClearance;
@@ -1642,11 +1615,10 @@ export function createScenery(
     }
     // Long routes must not submit every surrounding road whenever one end is in view.
     const surfaceMaterial =
-      batch === dirtBatch && dirtMaterial
-        ? dirtMaterial
-        : parent === layers.nearbyRoads && options.createRoadMaterial
-          ? options.createRoadMaterial()
-          : material(color);
+      parent === layers.nearbyRoads && options.createRoadMaterial
+        ? options.createRoadMaterial()
+        : material(color);
+    const geometries: THREE.BufferGeometry[] = [];
     if (parent === layers.nearbyRoads) surfaceMaterial.flatShading = false;
     let index = 0;
     for (const chunk of kept.chunks()) {
@@ -1658,40 +1630,17 @@ export function createScenery(
         uv[i * 2 + 1] = positions.getZ(i) / 5;
       }
       unindexed.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
-      if (batch === dirtBatch) {
-        unindexed.setAttribute(
-          'lateral',
-          new THREE.Float32BufferAttribute(
-            Array.from({ length: positions.count }, (_, i) => {
-              const x = positions.getX(i),
-                z = positions.getZ(i);
-              return roadDistance(x, z);
-            }),
-            1,
-          ),
-        );
-        unindexed.setAttribute(
-          'mainRoad',
-          new THREE.Float32BufferAttribute(
-            Array.from({ length: positions.count }, (_, i) => {
-              const x = positions.getX(i),
-                z = positions.getZ(i);
-              return separated(x, z) ? 3 : surface.nearest(x, z).distance - halfWidth;
-            }),
-            1,
-          ),
-        );
-      }
       if (parent === layers.nearbyRoads) unindexed.deleteAttribute('normal');
       const geometry = mergeVertices(unindexed);
       if (parent === layers.nearbyRoads) geometry.computeVertexNormals();
       unindexed.dispose();
       const mesh = new THREE.Mesh(geometry, surfaceMaterial);
       mesh.name = index++ === 0 ? name : `${name}-${index}`;
-      if (batch === dirtBatch) mesh.renderOrder = 1;
       mesh.receiveShadow = true;
       parent.add(mesh);
+      geometries.push(geometry);
     }
+    if (batch === roadBatch) addRoadDirt(surfaceMaterial, geometries);
   };
   addDraped(roadBatch, layers.nearbyRoads, 0x55575a, 'nearby-road-surfaces', 0.035);
   addDraped(raisedBatch, layers.nearbyRoads, 0x55575a, 'nearby-road-decks', 0.035);
@@ -1704,9 +1653,7 @@ export function createScenery(
         y: batch.positions[i + j + 1],
         z: batch.positions[i + j + 2],
       }));
-      const p = vertices[0];
-      if (raisedPavement.isAsphalt(p) && Math.abs(p.y - ground(p.x, p.z)) > 0.15)
-        deckPaint.roof(vertices[0], vertices[1], vertices[2]);
+      if (onDeck(vertices[0])) deckPaint.roof(vertices[0], vertices[1], vertices[2]);
       else groundPaint.roof(...(vertices.map((p) => ({ ...p, y: 0 })) as [Vertex, Vertex, Vertex]));
     }
     batch.positions = deckPaint.positions;
@@ -1740,9 +1687,16 @@ export function createScenery(
     const surfaceMaterial = material(color);
     surfaceMaterial.side = THREE.DoubleSide;
     let index = 0;
-    for (const chunk of batch.chunks())
-      addBatch(layers.nearbyRoads, chunk, surfaceMaterial, index++ ? `${name}-${index}` : name);
-    if (![markingBatch, centerlineBatch, directionBatch, stopLineBatch].includes(batch)) {
+    const meshes = [...batch.chunks()].map((chunk) =>
+      addBatch(layers.nearbyRoads, chunk, surfaceMaterial, index++ ? `${name}-${index}` : name),
+    );
+    const paint = [markingBatch, centerlineBatch, directionBatch, stopLineBatch].includes(batch);
+    if (paint)
+      addRoadDirt(
+        surfaceMaterial,
+        meshes.flatMap((mesh) => (mesh ? [mesh.geometry] : [])),
+      );
+    if (!paint) {
       const positions = new Float32Array(batch.positions);
       appendStructure({
         positions,
@@ -1755,9 +1709,6 @@ export function createScenery(
       positions: new Float32Array(structurePositions),
       indices: new Uint32Array(structureIndices),
     };
-  addDraped(dirtBatch, layers.nearbyRoads, 0x99816b, 'nearby-road-dirt', 0.045);
-  if (dirtMaterial && !layers.nearbyRoads.getObjectByName('nearby-road-dirt'))
-    dirtMaterial.dispose();
   addDraped(riverBatch, layers.water, 0x397d89, 'draped-waterways', 0.065);
   if (waterBatch.positions.length) {
     const waterMaterial = material(0x397d89);
