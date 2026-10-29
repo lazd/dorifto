@@ -523,6 +523,10 @@ themselves from a shared patch (`addRoadDirt` in `surfaces.ts`), driven by each 
 distance from the pavement edge. It fades with surface slope and is masked at junctions,
 on bridge decks, and inside saved bridge and tunnel spans. Side-road spill hands off
 across the main road's outer shoulder so the two never stack.
+Complete-map start/finish paint follows the mapped pavement's center, direction, width,
+and terrain triangles rather than the course spline's approximation. Its dirt attributes
+are baked when the gates change, sharing the roads' shader and visibility switch.
+Checker tiles are batched into two meshes per line, with no per-frame geometry updates.
 Roads still stop at the imported 300 m corridor or the supported terrain boundary; they
 are scenery, not an unlimited navigable road network.
 Nearby-road copies aligned with the selected route

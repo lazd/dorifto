@@ -17,6 +17,7 @@ type Polygon = Bounds & { rings: SceneryPolygon };
 type RoadSegment = Bounds & { a: Point; b: Point; width: number; widthA?: number; widthB?: number };
 type Vertex = Point & { y: number };
 type MultiPolygon = SceneryPolygon[];
+type RoadCrossSection = { position: Point; tangent: Point; width: number };
 
 export interface SceneryOptions {
   createRoadMaterial?: () => THREE.MeshStandardMaterial;
@@ -422,6 +423,10 @@ export function createScenery(
     collisionMesh: undefined as TriangleMeshData | undefined,
     roadMesh: undefined as TriangleMeshData | undefined,
     structureMesh: undefined as TriangleMeshData | undefined,
+    roadCrossSection: undefined as
+      | ((position: Point, direction: Point) => RoadCrossSection | undefined)
+      | undefined,
+    setRoadDirtAttributes: undefined as ((geometries: THREE.BufferGeometry[]) => void) | undefined,
     stopSignGroup,
     isAsphalt: (position: { x: number; y?: number; z: number }) =>
       roadsVisible && (pavementSurface.isAsphalt(position) || raisedPavement.isAsphalt(position)),
@@ -735,6 +740,38 @@ export function createScenery(
       });
     }
   }
+  result.roadCrossSection = (position, direction) => {
+    const reach = definition.width / 2;
+    let distance = reach;
+    let section: RoadCrossSection | undefined;
+    for (const { a, b, profile } of roadSegments.query({
+      minX: position.x - reach,
+      maxX: position.x + reach,
+      minZ: position.z - reach,
+      maxZ: position.z + reach,
+    })) {
+      if (profile.raised) continue;
+      const dx = b.x - a.x,
+        dz = b.z - a.z;
+      const length = Math.hypot(dx, dz);
+      const dot = dx * direction.x + dz * direction.z;
+      if (!length || Math.abs(dot) / length < 0.85) continue;
+      // Intersect the mapped centerline with the timing plane, not a different lap distance.
+      const t = ((position.x - a.x) * direction.x + (position.z - a.z) * direction.z) / dot;
+      if (t < 0 || t > 1) continue;
+      const point = { x: a.x + dx * t, z: a.z + dz * t };
+      const offset = Math.hypot(point.x - position.x, point.z - position.z);
+      if (offset >= distance) continue;
+      distance = offset;
+      const sign = dot < 0 ? -1 : 1;
+      section = {
+        position: point,
+        tangent: { x: (sign * dx) / length, z: (sign * dz) / length },
+        width: THREE.MathUtils.clamp(profile.road.width, 0.6, 20),
+      };
+    }
+    return section;
+  };
   const roadPriority: Record<string, number> = {
     motorway: 6,
     trunk: 5,
@@ -1508,12 +1545,7 @@ export function createScenery(
     : query;
   const onDeck = (p: Vertex) =>
     raisedPavement.isAsphalt(p) && Math.abs(p.y - ground(p.x, p.z)) > 0.15;
-  // Dirt spills from the pavement edges over ground-level asphalt and paint, never decks.
-  const addRoadDirt = (
-    material: THREE.MeshStandardMaterial,
-    geometries: THREE.BufferGeometry[],
-  ) => {
-    if (!options.addRoadDirt?.(material)) return;
+  const setRoadDirtAttributes = (geometries: THREE.BufferGeometry[]) => {
     for (const geometry of geometries) {
       const positions = geometry.getAttribute('position');
       const lateral = new Float32Array(positions.count);
@@ -1526,6 +1558,14 @@ export function createScenery(
       geometry.setAttribute('lateral', new THREE.BufferAttribute(lateral, 1));
       geometry.setAttribute('mainRoad', new THREE.BufferAttribute(mainRoad, 1));
     }
+  };
+  result.setRoadDirtAttributes = setRoadDirtAttributes;
+  // Dirt spills from the pavement edges over ground-level asphalt and paint, never decks.
+  const addRoadDirt = (
+    material: THREE.MeshStandardMaterial,
+    geometries: THREE.BufferGeometry[],
+  ) => {
+    if (options.addRoadDirt?.(material)) setRoadDirtAttributes(geometries);
   };
   const addDraped = (
     batch: Batch,

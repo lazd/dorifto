@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { CourseDefinition } from './courses';
 import {
   courseCornerAt,
@@ -256,8 +257,10 @@ if (diffuseColor.a < ${material.transparent ? '0.01' : '0.5'}) discard;`,
     addRoadDirt(material, dirtEdge, dirtMin, dirtMax, roadDirtVisible);
   const white = paint(0xe1e6df);
   const dark = paint(0x20282b);
-  addDirt(white);
-  addDirt(dark);
+  for (const material of [white, dark]) {
+    if (overlay) addNearbyRoadDirt(material, roadDirtVisible, shoulder);
+    else addDirt(material);
+  }
   const segments = Math.ceil(length / 0.5);
   function ribbon(
     offset: number | ((fraction: number) => number),
@@ -361,8 +364,6 @@ if (diffuseColor.a < ${material.transparent ? '0.01' : '0.5'}) discard;`,
         line.name = 'double-yellow-center-line';
       }
   }
-  const columns = Math.ceil(definition.width / 0.5);
-  const tileWidth = definition.width / columns;
   // Complete map paints the course over scenery pavement and its markings, which sit higher.
   const gateLift = overlay ? 0.09 : 0.02;
   const gateTiles = new THREE.Group();
@@ -377,21 +378,30 @@ if (diffuseColor.a < ${material.transparent ? '0.01' : '0.5'}) discard;`,
     )) {
       const start = route.getPointAt(gateT);
       const startTangent = route.getTangentAt(gateT);
+      const onStructure = definition.structures?.some(
+        ({ start, end }) => gateT >= start && gateT <= end,
+      );
+      const mapped =
+        overlay && !onStructure ? scenery.roadCrossSection?.(start, startTangent) : undefined;
+      if (mapped) {
+        start.set(mapped.position.x, 0, mapped.position.z);
+        startTangent.set(mapped.tangent.x, 0, mapped.tangent.z);
+      }
+      const width = mapped?.width ?? definition.width;
+      const columns = Math.ceil(width / 0.5);
+      const tileWidth = width / columns;
+      const tiles: THREE.BufferGeometry[][] = [[], []];
       across.set(startTangent.z, 0, -startTangent.x).normalize();
       for (let row = 0; row < 2; row++) {
         for (let column = 0; column < columns; column++) {
-          const tile = new THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>(
-            new THREE.PlaneGeometry(tileWidth, 0.5),
-            (row + column) % 2 ? dark : white,
-          );
-          tile.rotation.set(-Math.PI / 2, 0, Math.atan2(startTangent.x, startTangent.z));
-          tile.position
-            .copy(start)
-            .addScaledVector(across, -definition.width / 2 + (column + 0.5) * tileWidth)
-            .addScaledVector(startTangent, row * 0.5)
-            .setY(gateLift);
-          tile.updateMatrix();
-          const geometry = tile.geometry.clone().applyMatrix4(tile.matrix);
+          const center = start
+            .clone()
+            .addScaledVector(across, -width / 2 + (column + 0.5) * tileWidth)
+            .addScaledVector(startTangent, (row - 0.5) * 0.5);
+          const geometry = new THREE.PlaneGeometry(tileWidth, 0.5)
+            .rotateX(-Math.PI / 2)
+            .rotateY(Math.atan2(startTangent.x, startTangent.z))
+            .translate(center.x, gateLift, center.z);
           const corners = geometry.getAttribute('position');
           geometry.setAttribute(
             'lateral',
@@ -404,14 +414,25 @@ if (diffuseColor.a < ${material.transparent ? '0.01' : '0.5'}) discard;`,
               1,
             ),
           );
-          tile.geometry.dispose();
-          tile.geometry = terrain.projectGeometry(geometry, gateLift);
+          geometry.setAttribute(
+            'structure',
+            new THREE.BufferAttribute(new Float32Array(corners.count).fill(onStructure ? 1 : 0), 1),
+          );
+          const projected = mapped
+            ? terrain.projectGroundGeometry(geometry, gateLift)
+            : terrain.projectGeometry(geometry, gateLift);
           geometry.dispose();
-          tile.position.set(0, 0, 0);
-          tile.rotation.set(0, 0, 0);
-          tile.receiveShadow = true;
-          gateTiles.add(tile);
+          if (overlay) scenery.setRoadDirtAttributes?.([projected]);
+          tiles[(row + column) % 2].push(projected);
         }
+      }
+      for (const [i, geometries] of tiles.entries()) {
+        const geometry = mergeGeometries(geometries);
+        for (const source of geometries) source.dispose();
+        if (!geometry) throw new Error('Unable to merge start/finish line geometry');
+        const mesh = new THREE.Mesh(geometry, i ? dark : white);
+        mesh.receiveShadow = true;
+        gateTiles.add(mesh);
       }
     }
   }
