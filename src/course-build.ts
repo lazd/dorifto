@@ -20,6 +20,7 @@ import {
 import { matchRoadStructures } from './road-structures.mjs';
 import { fetchCourseScenery, requestMappedNetwork } from './scenery-import';
 import { sceneryImportRevision } from './scenery-data';
+import type { GeographicDownloadCache } from './geographic-download.mjs';
 import {
   completeMapBounds,
   completeMapCorners,
@@ -43,6 +44,7 @@ export interface BuildRequest {
 }
 
 interface BuildOptions {
+  cache?: GeographicDownloadCache;
   rebuildTerrain?: boolean;
   refreshScenery?: boolean;
   progress?: (step: RoadBuildStep, detail?: string) => void;
@@ -60,6 +62,7 @@ export async function buildRoadCourse(
     raster = fetchTerrainRaster,
     detail = fetchTerrainDetail,
     fetchScenery = fetchCourseScenery,
+    cache,
   }: BuildOptions = {},
 ): Promise<RoadMap> {
   const definition: MapDefinition = roadMapDefinition(request.draft);
@@ -144,12 +147,15 @@ export async function buildRoadCourse(
       ? completeMapCorners(request.points, dimensions, 50)
       : undefined;
   const network = corners
-    ? requestMappedNetwork({
-        south: Math.min(...corners.map(({ lat }) => lat)),
-        west: Math.min(...corners.map(({ lon }) => lon)),
-        north: Math.max(...corners.map(({ lat }) => lat)),
-        east: Math.max(...corners.map(({ lon }) => lon)),
-      })
+    ? requestMappedNetwork(
+        {
+          south: Math.min(...corners.map(({ lat }) => lat)),
+          west: Math.min(...corners.map(({ lon }) => lon)),
+          north: Math.max(...corners.map(({ lat }) => lat)),
+          east: Math.max(...corners.map(({ lon }) => lon)),
+        },
+        cache,
+      )
     : undefined;
   const needsTerrainRebuild =
     rebuildTerrain ||
@@ -189,6 +195,7 @@ export async function buildRoadCourse(
             }
           : data;
       data.terrain = await raster(rasterSource, {
+        cache,
         resolution: 5,
         onProgress: (completed, total) => progress('terrain', `Tiles ${completed}/${total}`),
       });
@@ -225,7 +232,7 @@ export async function buildRoadCourse(
   };
   if (fetchesScenery) {
     progress('scenery');
-    course.scenery = await fetchScenery(course, definition, { progress, network });
+    course.scenery = await fetchScenery(course, definition, { progress, network, cache });
   } else if (!includeNearbyRoads && course.scenery?.roads.length) {
     course.scenery = { ...course.scenery, roads: [] };
   }
@@ -242,6 +249,7 @@ export async function buildRoadCourse(
     );
     const detailData = Object.assign({}, data, { roadwayLines });
     terrain.detail = await detail(detailData, {
+      cache,
       onProgress: (completed, total) => progress('corridor', `Tiles ${completed}/${total}`),
     });
     course.terrain = { ...terrain, detail: terrain.detail };
@@ -254,6 +262,7 @@ export async function buildRoadCourse(
       featured_lap: { points: request.points },
     };
     terrain.detail = await detail(detailData, {
+      cache,
       onProgress: (completed, total) => progress('corridor', `Tiles ${completed}/${total}`),
     });
     course.terrain = { ...terrain, detail: terrain.detail };
@@ -284,7 +293,10 @@ export async function reimportRoadCourse(
     const fetchScenery = options.fetchScenery ?? fetchCourseScenery;
     return {
       ...course,
-      scenery: await fetchScenery(course, definition, { progress: options.progress }),
+      scenery: await fetchScenery(course, definition, {
+        progress: options.progress,
+        cache: options.cache,
+      }),
     };
   }
   if (!course.courseBuilder)

@@ -2,6 +2,10 @@ import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { createServer } from 'vite';
 import { PbfWriter } from 'pbf';
+import { mkdtemp, readdir, rm } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { createDownloadCache } from '../scripts/download-cache.mjs';
 
 const extent = 4096;
 const metersPerDegree = (6371008.8 * Math.PI) / 180;
@@ -410,6 +414,48 @@ test('decodes supported scenery, holes, widths and clips to the terrain grid wit
   );
   assert.equal(rectangle.bounds.maxX - rectangle.bounds.minX, dimensions.width);
   assert.equal(rectangle.bounds.maxZ - rectangle.bounds.minZ, dimensions.height);
+});
+
+test('injected disk caches persist OSM and vector tiles across cache instances', async (t) => {
+  const cacheDir = await mkdtemp(path.join(os.tmpdir(), 'dorifto-scenery-'));
+  try {
+    t.mock.method(globalThis, 'fetch', async (input) => {
+      const url = String(input);
+      if (url === 'https://tiles.openfreemap.org/planet')
+        return Response.json({ tiles: ['https://tiles.example/{z}/{x}/{y}.pbf'] });
+      if (url.includes('/api/interpreter')) return Response.json(osmFixture());
+      return new Response(tileFixture(tileFromUrl(url)));
+    });
+    const first = await fetchCourseScenery(course(), 'complete-map', {
+      cache: createDownloadCache({ cacheDir }),
+    });
+    const files = await readdir(cacheDir);
+    assert.ok(files.length > 0);
+    assert.ok(
+      files.every((file) => file.endsWith('.bin')),
+      'atomic writes leave no temporary files',
+    );
+    const reopened = createDownloadCache({ cacheDir });
+    let reads = 0;
+    t.mock.method(globalThis, 'fetch', () => assert.fail('Cached tiles must not download'));
+    const second = await fetchCourseScenery(course(), 'complete-map', {
+      cache: {
+        async read(url) {
+          const bytes = await reopened.read(url);
+          assert.ok(bytes, 'every requested tile is present on disk');
+          reads++;
+          return bytes;
+        },
+        async write() {
+          assert.fail('Cache hits must not rewrite files');
+        },
+      },
+    });
+    assert.equal(reads, files.length);
+    assert.deepEqual(second, first);
+  } finally {
+    await rm(cacheDir, { recursive: true, force: true });
+  }
 });
 
 test('complete maps surface OSM service failures instead of inventing traffic controls', async (t) => {

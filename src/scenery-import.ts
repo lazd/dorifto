@@ -6,7 +6,11 @@ import type { MapDefinition, RoadMap } from './course-builder-data';
 import type { CourseScenery, SceneryPoint, SceneryPolygon } from './scenery-data';
 import { normalizeCourseScenery, sceneryImportRevision } from './scenery-data';
 import { defaultCompleteMapDimensions, validateCompleteMapDimensions } from './complete-map';
-import { geographicDownloadCache, geographicTiles } from './geographic-download.mjs';
+import {
+  geographicDownloadCache,
+  geographicTiles,
+  type GeographicDownloadCache,
+} from './geographic-download.mjs';
 
 const tileJsonUrl = 'https://tiles.openfreemap.org/planet';
 const zoom = 14;
@@ -528,8 +532,9 @@ function tileUrl(template: string, tile: Tile) {
     .replaceAll('{y}', String(tile.y));
 }
 
-async function loadTiles(tiles: Tile[], template: string) {
+async function loadTiles(tiles: Tile[], template: string, cache?: GeographicDownloadCache) {
   const responses = new Map<string, ArrayBuffer>();
+  const downloaded = new Set<string>();
   let next = 0;
   const workers = Array.from({ length: Math.min(concurrency, tiles.length) }, async () => {
     while (next < tiles.length) {
@@ -537,7 +542,12 @@ async function loadTiles(tiles: Tile[], template: string) {
       const tile = tiles[index];
       const url = tileUrl(template, tile);
       try {
-        responses.set(tile.key, await loadTile(url));
+        const cached = cache ? await cache.read(url) : undefined;
+        if (cached) responses.set(tile.key, new Uint8Array(cached).buffer);
+        else {
+          responses.set(tile.key, await loadTile(url));
+          if (cache) downloaded.add(tile.key);
+        }
       } catch (error) {
         throw new Error(
           `Could not acquire scenery tile ${tile.key}: ${error instanceof Error ? error.message : String(error)}`,
@@ -547,7 +557,7 @@ async function loadTiles(tiles: Tile[], template: string) {
     }
   });
   await Promise.all(workers);
-  return responses;
+  return { responses, downloaded };
 }
 
 function asNumber(value: unknown) {
@@ -669,10 +679,11 @@ export interface MappedNetworkRequest {
 async function fetchMappedNetworkTile(
   { south, west, north, east }: GeoBox,
   onRetry: (attempt: number, total: number) => void,
+  cache: GeographicDownloadCache,
 ) {
   const query = `[out:json][timeout:${overpassTimeoutSeconds}][bbox:${south},${west},${north},${east}];way["highway"~"^(motorway|trunk|primary|secondary|tertiary|residential|unclassified|living_street|service|track)(_link)?$"]->.roads;(.roads;node(w.roads)["highway"="stop"];nwr["amenity"="parking"];);out body geom qt;`;
   const cacheKey = `${overpassEndpoints[0]}?${new URLSearchParams({ data: query })}`;
-  const cached = await geographicDownloadCache.read(cacheKey);
+  const cached = await cache.read(cacheKey);
   if (cached) return JSON.parse(new TextDecoder().decode(cached)) as OsmElement[];
   const elements = await downloadScenery(
     overpassEndpoints,
@@ -695,16 +706,22 @@ async function fetchMappedNetworkTile(
     { method: 'POST', body: new URLSearchParams({ data: query }) },
     onRetry,
   );
-  await geographicDownloadCache.write(cacheKey, new TextEncoder().encode(JSON.stringify(elements)));
+  await cache.write(cacheKey, new TextEncoder().encode(JSON.stringify(elements)));
   return elements;
 }
 
-const networkTiles = new Map<string, Promise<OsmElement[]>>();
+const networkCaches = new WeakMap<GeographicDownloadCache, Map<string, Promise<OsmElement[]>>>();
 
 async function fetchMappedNetwork(
   box: GeoBox,
   onProgress: (label: string) => void,
+  cache: GeographicDownloadCache,
 ): Promise<OsmElement[]> {
+  let networkTiles = networkCaches.get(cache);
+  if (!networkTiles) {
+    networkTiles = new Map();
+    networkCaches.set(cache, networkTiles);
+  }
   const tiles = geographicTiles(box);
   const elements = new Map<string, OsmElement>();
   for (const [index, tile] of tiles.entries()) {
@@ -712,8 +729,10 @@ async function fetchMappedNetwork(
     onProgress(label);
     let pending = networkTiles.get(tile.key);
     if (!pending) {
-      pending = fetchMappedNetworkTile(tile, (attempt, total) =>
-        onProgress(`${label} (${attempt}/${total})`),
+      pending = fetchMappedNetworkTile(
+        tile,
+        (attempt, total) => onProgress(`${label} (${attempt}/${total})`),
+        cache,
       );
       networkTiles.set(tile.key, pending);
     }
@@ -727,12 +746,19 @@ async function fetchMappedNetwork(
 }
 
 /** Start the Complete map OpenStreetMap download; it only needs the geographic map square. */
-export function requestMappedNetwork(box: GeoBox): MappedNetworkRequest {
+export function requestMappedNetwork(
+  box: GeoBox,
+  cache: GeographicDownloadCache = geographicDownloadCache,
+): MappedNetworkRequest {
   const request: MappedNetworkRequest = {} as MappedNetworkRequest;
-  request.elements = fetchMappedNetwork(box, (label) => {
-    request.retry = label;
-    request.onRetry?.();
-  });
+  request.elements = fetchMappedNetwork(
+    box,
+    (label) => {
+      request.retry = label;
+      request.onRetry?.();
+    },
+    cache,
+  );
   // Callers may fail earlier stages before awaiting; the rejection is still observed when awaited.
   request.elements.catch(() => {});
   return request;
@@ -1129,10 +1155,12 @@ export async function fetchCourseScenery(
   {
     progress = () => {},
     network,
+    cache,
   }: {
     progress?: (step: 'network', detail?: string) => void;
     /** Complete map download already started from the geographic selection. */
     network?: MappedNetworkRequest;
+    cache?: GeographicDownloadCache;
   } = {},
 ): Promise<CourseScenery> {
   const definition: MapDefinition =
@@ -1166,14 +1194,18 @@ export async function fetchCourseScenery(
   if (completeMap && !network) {
     const a = localToLatLon(course, [bounds.minX, bounds.minZ]);
     const b = localToLatLon(course, [bounds.maxX, bounds.maxZ]);
-    network = requestMappedNetwork({
-      south: Math.min(a.lat, b.lat),
-      west: Math.min(a.lon, b.lon),
-      north: Math.max(a.lat, b.lat),
-      east: Math.max(a.lon, b.lon),
-    });
+    network = requestMappedNetwork(
+      {
+        south: Math.min(a.lat, b.lat),
+        west: Math.min(a.lon, b.lon),
+        north: Math.max(a.lat, b.lat),
+        east: Math.max(a.lon, b.lon),
+      },
+      cache,
+    );
   }
-  const tileData = await loadTiles(tiles, await fetchTileTemplate());
+  const template = await fetchTileTemplate();
+  const { responses: tileData, downloaded } = await loadTiles(tiles, template, cache);
   let mapped: ReturnType<typeof mappedNetworkScenery> | undefined;
   if (completeMap && network) {
     const request = network;
@@ -1250,6 +1282,8 @@ export async function fetchCourseScenery(
         );
       }
     }
+    if (cache && downloaded.has(tile.key))
+      await cache.write(tileUrl(template, tile), new Uint8Array(tileData.get(tile.key)!));
   }
   if (mapped) Object.assign(scenery, mapped);
   return normalizeCourseScenery(scenery);

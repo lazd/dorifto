@@ -67,10 +67,13 @@ test('full refresh rebuilds terrain and elevation without overwriting map identi
   course.coneSpacing = 37;
   course.venueName = 'Keep this venue';
   const original = structuredClone(course);
+  const cache = { read: async () => undefined, write: async () => {} };
   let detailFetched = false;
   const result = await reimportMap(course, {
     full: true,
+    cache,
     raster: async (source, options) => {
+      assert.strictEqual(options.cache, cache);
       assert.equal(source.slug, course.id);
       assert.deepEqual(source.featured_lap.points, roadDraftPoints(restoreRoadDraft(course)));
       assert.equal(options.resolution, 5);
@@ -80,11 +83,13 @@ test('full refresh rebuilds terrain and elevation without overwriting map identi
         detail: undefined,
       };
     },
-    detail: async () => {
+    detail: async (_, options) => {
+      assert.strictEqual(options.cache, cache);
       detailFetched = true;
       return undefined;
     },
-    fetchScenery: async (map) => {
+    fetchScenery: async (map, _, options) => {
+      assert.strictEqual(options.cache, cache);
       assert.notDeepEqual(map.elevation, course.elevation);
       return scenery;
     },

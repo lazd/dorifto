@@ -3,6 +3,8 @@ import { readFile, readdir, rename, writeFile, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createServer } from 'vite';
+import { createDownloadCache } from './download-cache.mjs';
+import { fetchTerrainDetail, fetchTerrainRaster } from './import-terrain.mjs';
 
 const tracksDirectory = fileURLToPath(new URL('../src/tracks/', import.meta.url));
 const usage = `Usage: npm run reimport-maps -- [--full] [map.json ...]
@@ -64,6 +66,7 @@ async function main(args) {
   let updated = 0;
   try {
     const { reimportRoadCourse } = await server.ssrLoadModule('/src/course-build.ts');
+    const cache = createDownloadCache();
     for (const { file, course } of maps) {
       if (!course.terrain && !supplied.length) {
         console.log(`Skipping ${path.basename(file)}: no geographic terrain`);
@@ -72,7 +75,10 @@ async function main(args) {
       console.log(`Reimporting ${course.name} (${full ? 'full map' : 'scenery'})…`);
       const result = await reimportRoadCourse(course, {
         full,
-        progress: (step) => console.log(`  ${step}`),
+        cache,
+        raster: fetchTerrainRaster,
+        detail: fetchTerrainDetail,
+        progress: (step, detail) => console.log(`  ${step}${detail ? `: ${detail}` : ''}`),
       });
       const temporary = `${file}.${process.pid}.tmp`;
       try {

@@ -1104,6 +1104,9 @@ npm run reimport-maps -- --full                        # also rebuild terrain an
 The script normalizes road fragments during scenery import, processes maps sequentially,
 and replaces each JSON file atomically after that map succeeds. It stops on errors; already
 completed maps remain updated. Scenery-only imports preserve routes, terrain, and settings.
+Downloads are cached on disk in `road-imports/cache/`: terrain reuses the importers'
+`terrain-<hash>.tif` files, while OSM and vector tiles use `geographic-<hash>.bin`.
+Delete these files to refresh downloads; browser caching is separate and unchanged.
 Full imports use the same build pipeline as the browser course builder, with its saved
 waypoints and routed sections, structure matching, 5 m USGS terrain and high-resolution
 road corridor, elevation repair, and scenery importer. New builder saves explicitly store
