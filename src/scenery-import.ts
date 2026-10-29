@@ -2,9 +2,11 @@ import { classifyRings, VectorTile } from '@mapbox/vector-tile';
 import { PbfReader } from 'pbf';
 import { roadClasses } from './road-selection';
 import { courseRoute, type CourseDefinition } from './courses';
-import type { MapDefinition } from './course-builder-data';
+import type { MapDefinition, RoadMap } from './course-builder-data';
 import type { CourseScenery, SceneryPoint, SceneryPolygon } from './scenery-data';
-import { completeMapSize, normalizeCourseScenery, sceneryImportRevision } from './scenery-data';
+import { normalizeCourseScenery, sceneryImportRevision } from './scenery-data';
+import { defaultCompleteMapDimensions, validateCompleteMapDimensions } from './complete-map';
+import { geographicDownloadCache, geographicTiles } from './geographic-download.mjs';
 
 const tileJsonUrl = 'https://tiles.openfreemap.org/planet';
 const zoom = 14;
@@ -18,9 +20,11 @@ const completeRoadClasses = new Set([
 const maxTiles = 64;
 const concurrency = 4;
 const timeoutMs = 12_000;
+const overpassTimeoutSeconds = 25;
+const overpassRequestTimeoutMs = 60_000;
 const overpassEndpoints = [
-  'https://overpass.private.coffee/api/interpreter',
   'https://overpass-api.de/api/interpreter',
+  'https://overpass.private.coffee/api/interpreter',
 ];
 const metersPerDegree = (6371008.8 * Math.PI) / 180;
 const maxTileCacheSize = 128;
@@ -187,20 +191,21 @@ function terrainGridBounds(course: CourseDefinition): Bounds {
   };
 }
 
-function completeMapBounds(course: CourseDefinition): Bounds {
+function completeMapBounds(course: RoadMap): Bounds {
   const points = course.points;
   const minX = Math.min(...points.map(([x]) => x));
   const maxX = Math.max(...points.map(([x]) => x));
   const minZ = Math.min(...points.map(([, z]) => z));
   const maxZ = Math.max(...points.map(([, z]) => z));
-  const half = completeMapSize / 2;
+  const dimensions = course.courseBuilder?.completeMapDimensions ?? defaultCompleteMapDimensions;
+  validateCompleteMapDimensions(dimensions);
   const centerX = (minX + maxX) / 2;
   const centerZ = (minZ + maxZ) / 2;
   return {
-    minX: centerX - half,
-    maxX: centerX + half,
-    minZ: centerZ - half,
-    maxZ: centerZ + half,
+    minX: centerX - dimensions.width / 2,
+    maxX: centerX + dimensions.width / 2,
+    minZ: centerZ - dimensions.height / 2,
+    maxZ: centerZ + dimensions.height / 2,
   };
 }
 
@@ -656,42 +661,26 @@ export interface GeoBox {
 
 export interface MappedNetworkRequest {
   elements: Promise<OsmElement[]>;
-  /** Attempt label such as "(2/2)" once the download has been retried. */
+  /** Current tile and, when retrying, the provider attempt. */
   retry?: string;
   onRetry?: () => void;
 }
 
-const osmTags = [
-  'highway',
-  'oneway',
-  'junction',
-  'lanes',
-  'layer',
-  'width',
-  'service',
-  'bridge',
-  'tunnel',
-  'amenity',
-  'parking',
-  'stop',
-  'direction',
-  'stop:direction',
-];
-
-async function fetchMappedNetwork(
+async function fetchMappedNetworkTile(
   { south, west, north, east }: GeoBox,
   onRetry: (attempt: number, total: number) => void,
 ) {
-  // Geometry and node ids come from a tagless `skel` output; `convert` adds only the tags we read.
-  const tags = osmTags.map((key) => `"${key}"=t["${key}"]`).join(',');
-  const query = `[out:json][timeout:25][bbox:${south},${west},${north},${east}];way["highway"~"^(motorway|trunk|primary|secondary|tertiary|residential|unclassified|living_street|service|track)(_link)?$"]->.roads;(.roads;node(w.roads)["highway"="stop"];nwr["amenity"="parking"];)->.all;.all out skel geom qt;.all convert tags ::id=id(),"osm:type"=type(),${tags};out qt;`;
+  const query = `[out:json][timeout:${overpassTimeoutSeconds}][bbox:${south},${west},${north},${east}];way["highway"~"^(motorway|trunk|primary|secondary|tertiary|residential|unclassified|living_street|service|track)(_link)?$"]->.roads;(.roads;node(w.roads)["highway"="stop"];nwr["amenity"="parking"];);out body geom qt;`;
+  const cacheKey = `${overpassEndpoints[0]}?${new URLSearchParams({ data: query })}`;
+  const cached = await geographicDownloadCache.read(cacheKey);
+  if (cached) return JSON.parse(new TextDecoder().decode(cached)) as OsmElement[];
   const elements = await downloadScenery(
     overpassEndpoints,
     'OpenStreetMap road network',
-    45_000,
+    overpassRequestTimeoutMs,
     async (response) => {
       const data = (await response.json()) as {
-        elements?: (OsmElement | { type: 'tags'; id: number; tags: Record<string, string> })[];
+        elements?: OsmElement[];
         remark?: string;
       };
       if (data.remark) {
@@ -706,27 +695,42 @@ async function fetchMappedNetwork(
     { method: 'POST', body: new URLSearchParams({ data: query }) },
     onRetry,
   );
-  const tagsById = new Map<string, Record<string, string>>();
-  for (const element of elements) {
-    if (element.type !== 'tags') continue;
-    const { 'osm:type': type, ...values } = element.tags;
-    tagsById.set(
-      `${type}/${element.id}`,
-      Object.fromEntries(Object.entries(values).filter(([, value]) => value !== '')),
-    );
+  await geographicDownloadCache.write(cacheKey, new TextEncoder().encode(JSON.stringify(elements)));
+  return elements;
+}
+
+const networkTiles = new Map<string, Promise<OsmElement[]>>();
+
+async function fetchMappedNetwork(
+  box: GeoBox,
+  onProgress: (label: string) => void,
+): Promise<OsmElement[]> {
+  const tiles = geographicTiles(box);
+  const elements = new Map<string, OsmElement>();
+  for (const [index, tile] of tiles.entries()) {
+    const label = `Tile ${index + 1}/${tiles.length}`;
+    onProgress(label);
+    let pending = networkTiles.get(tile.key);
+    if (!pending) {
+      pending = fetchMappedNetworkTile(tile, (attempt, total) =>
+        onProgress(`${label} (${attempt}/${total})`),
+      );
+      networkTiles.set(tile.key, pending);
+    }
+    try {
+      for (const element of await pending) elements.set(`${element.type}/${element.id}`, element);
+    } finally {
+      if (networkTiles.get(tile.key) === pending) networkTiles.delete(tile.key);
+    }
   }
-  return elements.flatMap((element) => {
-    if (element.type === 'tags') return [];
-    const tags = tagsById.get(`${element.type}/${element.id}`);
-    return [tags ? { ...element, tags: { ...element.tags, ...tags } } : element];
-  });
+  return [...elements.values()];
 }
 
 /** Start the Complete map OpenStreetMap download; it only needs the geographic map square. */
 export function requestMappedNetwork(box: GeoBox): MappedNetworkRequest {
   const request: MappedNetworkRequest = {} as MappedNetworkRequest;
-  request.elements = fetchMappedNetwork(box, (attempt, total) => {
-    request.retry = `(${attempt}/${total})`;
+  request.elements = fetchMappedNetwork(box, (label) => {
+    request.retry = label;
     request.onRetry?.();
   });
   // Callers may fail earlier stages before awaiting; the rejection is still observed when awaited.
@@ -1120,14 +1124,14 @@ function decodedFeature(
  * Network failures and routes exceeding the tile budget are reported to the caller.
  */
 export async function fetchCourseScenery(
-  course: CourseDefinition,
+  course: RoadMap,
   mode: boolean | MapDefinition,
   {
     progress = () => {},
     network,
   }: {
     progress?: (step: 'network', detail?: string) => void;
-    /** Complete map download already started from the geographic map square. */
+    /** Complete map download already started from the geographic selection. */
     network?: MappedNetworkRequest;
   } = {},
 ): Promise<CourseScenery> {

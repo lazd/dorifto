@@ -25,6 +25,47 @@ after(async () => {
 
 const colors = { ground: '#2a3f43', road: '#9aaeb4', start: '#e9f0f1' };
 
+test('mapped stop-sign previews build and serialize without a document', async () => {
+  const definition = JSON.parse(
+    await readFile(new URL('./fixtures/road-course.json', import.meta.url), 'utf8'),
+  );
+  definition.scenery = {
+    version: 1,
+    buildings: [],
+    water: [],
+    vegetation: [],
+    roads: [],
+    waterways: [],
+    stopSigns: [
+      {
+        point: definition.points[Math.floor(definition.points.length / 2)],
+        direction: [0, 1],
+        width: 8,
+      },
+    ],
+  };
+  const preview = createCoursePreviewModel(definition, colors, 24);
+  let textureDisposed = false;
+  try {
+    const sign = preview.group.getObjectByName('stop-sign');
+    assert.ok(sign, 'mapped stop signs are built without a document');
+    const face = sign.getObjectByName('stop-sign-face');
+    assert.ok(face.material.map.isDataTexture);
+    face.material.map.addEventListener('dispose', () => {
+      textureDisposed = true;
+    });
+    const restored = new ObjectLoader().parse(preview.group.toJSON());
+    assert.deepEqual(
+      restored.getObjectByName('stop-sign-face').material.map.image.data,
+      face.material.map.image.data,
+      'stop-sign textures survive worker serialization without a document',
+    );
+  } finally {
+    preview.dispose();
+  }
+  assert.ok(textureDisposed, 'preview textures are disposed along with geometry and materials');
+});
+
 test('nearby roads and rivers follow the rendered preview grid, not the finer game grid', async () => {
   const definition = JSON.parse(
     await readFile(new URL('./fixtures/road-course.json', import.meta.url), 'utf8'),

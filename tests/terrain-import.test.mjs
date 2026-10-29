@@ -9,6 +9,7 @@ import { createServer } from 'vite';
 import { fetchTerrainDetail, fetchTerrainRaster } from '../scripts/import-terrain.mjs';
 import { fetchTerrainRaster as downloadTerrainRaster } from '../src/terrain-import.mjs';
 import { geographicRasterSampler } from '../src/terrain-raster.mjs';
+import { geographicTiles } from '../src/geographic-download.mjs';
 import {
   convertTrack,
   fetchMissingElevation,
@@ -57,9 +58,10 @@ test('terrain downloads retry network and server failures without reusing a fail
       return geotiffResponse(url);
     },
   });
-  assert.equal(requests.length, 4);
+  assert.equal(requests.length, geographicTiles(raster).length + 3);
   assert.equal(requests[0].cache, undefined);
-  assert.ok(requests.slice(1).every(({ cache }) => cache === 'reload'));
+  assert.ok(requests.slice(1, 4).every(({ cache }) => cache === 'reload'));
+  assert.ok(requests.slice(4).every(({ cache }) => cache === undefined));
   assert.ok(raster.heights.every((height) => height === 120));
 });
 
@@ -108,10 +110,12 @@ test('terrain GeoTIFF cache reuses the request and never caches invalid response
     const raster = await fetchTerrainRaster(source, options);
     assert.equal(raster.heights.length, raster.columns * raster.rows);
     assert.ok(raster.heights.every((height) => height === 120));
+    const tileCount = geographicTiles(raster).length;
+    assert.equal(requests, tileCount);
     assert.deepEqual(await fetchTerrainRaster(source, options), raster);
-    assert.equal(requests, 1);
+    assert.equal(requests, tileCount);
     await fetchTerrainRaster(source, { ...options, resolution: 10 });
-    assert.equal(requests, 2);
+    assert.equal(requests, tileCount * 2);
     await assert.rejects(
       fetchTerrainRaster(source, {
         ...options,
@@ -120,7 +124,7 @@ test('terrain GeoTIFF cache reuses the request and never caches invalid response
       }),
       /Invalid USGS terrain GeoTIFF/,
     );
-    assert.equal((await readdir(cacheDir)).length, 2);
+    assert.equal((await readdir(cacheDir)).length, tileCount * 2);
   } finally {
     await rm(cacheDir, { recursive: true, force: true });
   }

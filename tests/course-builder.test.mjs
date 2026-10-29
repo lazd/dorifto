@@ -8,6 +8,7 @@ let server;
 let selection;
 let createLocationSearch;
 let builderData;
+let completeMap;
 before(async () => {
   server = await createServer({
     server: { middlewareMode: true, hmr: false, ws: false, watch: null },
@@ -16,6 +17,38 @@ before(async () => {
   selection = await server.ssrLoadModule('/src/road-selection.ts');
   ({ createLocationSearch } = await server.ssrLoadModule('/src/course-builder-search.ts'));
   builderData = await server.ssrLoadModule('/src/course-builder-data.ts');
+  completeMap = await server.ssrLoadModule('/src/complete-map.ts');
+});
+
+test('complete-map selections default to a square and allow rectangles within the area limit', () => {
+  const { width, height } = completeMap.defaultCompleteMapDimensions;
+  assert.equal(width, height);
+  assert.equal(width * height, completeMap.maximumCompleteMapArea);
+  const dimensions = { width: width * 2, height: height / 2 };
+  completeMap.validateCompleteMapDimensions(dimensions);
+  const origin = { lat: 38, lon: -121 };
+  const corners = completeMap.completeMapCorners([origin], dimensions);
+  const bounds = completeMap.completeMapBounds([origin], dimensions);
+  assert.ok(bounds.fits);
+  assert.ok(
+    Math.abs((corners[1].lon - corners[0].lon) * bounds.metersPerLongitude - dimensions.width) <
+      1e-6,
+  );
+  assert.ok(
+    Math.abs((corners[2].lat - corners[1].lat) * bounds.metersPerDegree - dimensions.height) < 1e-6,
+  );
+  assert.ok(
+    completeMap.completeMapBounds([origin, { lat: origin.lat, lon: corners[1].lon }], dimensions)
+      .fits,
+  );
+  assert.equal(completeMap.completeMapBounds(corners).fits, false);
+  for (const invalid of [
+    { width: width * 2, height },
+    { width: 0, height },
+    { width: NaN, height },
+    { width, height: -1 },
+  ])
+    assert.throws(() => completeMap.validateCompleteMapDimensions(invalid), /6.25/);
 });
 
 test('saved courses restore geographic routes and retain exact editable waypoints', async () => {
@@ -44,13 +77,35 @@ test('saved courses restore geographic routes and retain exact editable waypoint
   assert.equal(builderData.roadMapDefinition(editable.courseBuilder), 'nearby-roads');
   const completeMap = {
     ...editable,
-    courseBuilder: { ...editable.courseBuilder, definition: 'complete-map' },
+    courseBuilder: {
+      ...editable.courseBuilder,
+      definition: 'complete-map',
+      completeMapDimensions: { width: 5000, height: 1250 },
+    },
   };
   assert.equal(
     builderData.roadMapDefinition(
       builderData.readRoadMap(JSON.stringify(completeMap)).courseBuilder,
     ),
     'complete-map',
+  );
+  assert.deepEqual(
+    builderData.restoreRoadDraft(builderData.readRoadMap(JSON.stringify(completeMap)))
+      .completeMapDimensions,
+    completeMap.courseBuilder.completeMapDimensions,
+  );
+  assert.throws(
+    () =>
+      builderData.readRoadMap(
+        JSON.stringify({
+          ...completeMap,
+          courseBuilder: {
+            ...completeMap.courseBuilder,
+            completeMapDimensions: { width: 5000, height: 2500 },
+          },
+        }),
+      ),
+    /6.25/,
   );
   const restored = builderData.restoreRoadDraft(builderData.readRoadMap(JSON.stringify(editable)));
   assert.deepEqual(restored.sections, draft.sections);

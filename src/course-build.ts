@@ -20,7 +20,12 @@ import {
 import { matchRoadStructures } from './road-structures.mjs';
 import { fetchCourseScenery, requestMappedNetwork } from './scenery-import';
 import { sceneryImportRevision } from './scenery-data';
-import { completeMapSize } from './scenery-data';
+import {
+  completeMapBounds,
+  completeMapCorners,
+  defaultCompleteMapDimensions,
+  validateCompleteMapDimensions,
+} from './complete-map';
 
 export interface BuildRequest {
   points: GPSPoint[];
@@ -35,51 +40,6 @@ export interface BuildRequest {
   colors: CoursePreviewColors;
   closed: boolean;
   skipPreview: boolean;
-}
-
-function completeMapCoordinates(points: readonly GPSPoint[]) {
-  const origin = points[0];
-  if (!origin) return;
-  const metersPerLongitude = (6371008.8 * Math.PI * Math.cos((origin.lat * Math.PI) / 180)) / 180;
-  const metersPerDegree = (6371008.8 * Math.PI) / 180;
-  let minX = Infinity,
-    maxX = -Infinity,
-    minZ = Infinity,
-    maxZ = -Infinity;
-  for (const point of points) {
-    const x = (point.lon - origin.lon) * metersPerLongitude;
-    const z = (point.lat - origin.lat) * metersPerDegree;
-    minX = Math.min(minX, x);
-    maxX = Math.max(maxX, x);
-    minZ = Math.min(minZ, z);
-    maxZ = Math.max(maxZ, z);
-  }
-  return { origin, metersPerLongitude, metersPerDegree, minX, maxX, minZ, maxZ };
-}
-
-function fitsCompleteMap(points: readonly GPSPoint[]) {
-  const bounds = completeMapCoordinates(points);
-  return (
-    !bounds ||
-    (bounds.maxX - bounds.minX <= completeMapSize && bounds.maxZ - bounds.minZ <= completeMapSize)
-  );
-}
-
-function completeMapSquarePoints(points: readonly GPSPoint[], padding = 0): GPSPoint[] {
-  const bounds = completeMapCoordinates(points);
-  if (!bounds) throw new Error('Complete-map terrain requires selected course points.');
-  const centerX = (bounds.minX + bounds.maxX) / 2;
-  const centerZ = (bounds.minZ + bounds.maxZ) / 2;
-  const half = completeMapSize / 2 + padding;
-  return [
-    [-half, -half],
-    [half, -half],
-    [half, half],
-    [-half, half],
-  ].map(([x, z]) => ({
-    lat: bounds.origin.lat + (centerZ + z) / bounds.metersPerDegree,
-    lon: bounds.origin.lon + (centerX + x) / bounds.metersPerLongitude,
-  }));
 }
 
 interface BuildOptions {
@@ -103,13 +63,17 @@ export async function buildRoadCourse(
   }: BuildOptions = {},
 ): Promise<RoadMap> {
   const definition: MapDefinition = roadMapDefinition(request.draft);
+  const dimensions = request.draft.completeMapDimensions ?? defaultCompleteMapDimensions;
   validateImportRoute(
     request.points,
     request.closed,
     definition === 'complete-map' ? Infinity : undefined,
   );
-  if (definition === 'complete-map' && !fitsCompleteMap(request.points))
-    throw new Error('Complete-map roads must fit inside the moving 2.5 × 2.5 km map square.');
+  if (definition === 'complete-map') {
+    validateCompleteMapDimensions(dimensions);
+    if (!completeMapBounds(request.points, dimensions)?.fits)
+      throw new Error('Keep all selected roads inside the complete-map selection.');
+  }
   if (
     !request.name.trim() ||
     !Number.isFinite(request.width) ||
@@ -159,25 +123,38 @@ export async function buildRoadCourse(
     : request.existingCourse?.scenery?.roads.length
       ? 'nearby-roads'
       : 'course';
+  const dimensionsChanged =
+    definition === 'complete-map' &&
+    (dimensions.width !==
+      (request.existingCourse?.courseBuilder?.completeMapDimensions ?? defaultCompleteMapDimensions)
+        .width ||
+      dimensions.height !==
+        (
+          request.existingCourse?.courseBuilder?.completeMapDimensions ??
+          defaultCompleteMapDimensions
+        ).height);
   const fetchesScenery =
     refreshScenery ||
+    dimensionsChanged ||
     request.existingCourse?.scenery?.importRevision !== sceneryImportRevision ||
     definition !== previousDefinition;
-  // The Overpass query is the slowest download, so start it alongside terrain using a padded square.
-  const square =
+  // Start the slow Overpass query alongside terrain using the padded selection.
+  const corners =
     definition === 'complete-map' && fetchesScenery
-      ? completeMapSquarePoints(request.points, 50)
+      ? completeMapCorners(request.points, dimensions, 50)
       : undefined;
-  const network = square
+  const network = corners
     ? requestMappedNetwork({
-        south: Math.min(...square.map(({ lat }) => lat)),
-        west: Math.min(...square.map(({ lon }) => lon)),
-        north: Math.max(...square.map(({ lat }) => lat)),
-        east: Math.max(...square.map(({ lon }) => lon)),
+        south: Math.min(...corners.map(({ lat }) => lat)),
+        west: Math.min(...corners.map(({ lon }) => lon)),
+        north: Math.max(...corners.map(({ lat }) => lat)),
+        east: Math.max(...corners.map(({ lon }) => lon)),
       })
     : undefined;
   const needsTerrainRebuild =
-    rebuildTerrain || (definition === 'complete-map' && previousDefinition !== 'complete-map');
+    rebuildTerrain ||
+    dimensionsChanged ||
+    (definition === 'complete-map' && previousDefinition !== 'complete-map');
   const terrainRebuilt = !request.existingCourse || needsTerrainRebuild;
   if (request.existingCourse && !needsTerrainRebuild) {
     progress('course');
@@ -208,14 +185,18 @@ export async function buildRoadCourse(
         definition === 'complete-map'
           ? {
               ...data,
-              featured_lap: { points: completeMapSquarePoints(request.points) },
+              featured_lap: { points: completeMapCorners(request.points, dimensions) },
             }
           : data;
-      data.terrain = await raster(rasterSource, { resolution: 5 });
-    } catch (error) {
-      throw new Error("Sorry, we couldn't fetch elevation data. Try a different location.", {
-        cause: error,
+      data.terrain = await raster(rasterSource, {
+        resolution: 5,
+        onProgress: (completed, total) => progress('terrain', `Tiles ${completed}/${total}`),
       });
+    } catch (error) {
+      throw new Error(
+        `Could not download terrain. ${error instanceof Error ? error.message : String(error)}`,
+        { cause: error },
+      );
     }
     data.elevation = terrainElevationProfile(data);
     const converted = convertTrack(data, settings);
@@ -260,7 +241,9 @@ export async function buildRoadCourse(
       })),
     );
     const detailData = Object.assign({}, data, { roadwayLines });
-    terrain.detail = await detail(detailData);
+    terrain.detail = await detail(detailData, {
+      onProgress: (completed, total) => progress('corridor', `Tiles ${completed}/${total}`),
+    });
     course.terrain = { ...terrain, detail: terrain.detail };
   } else if (terrainRebuilt) {
     progress('corridor');
@@ -270,7 +253,9 @@ export async function buildRoadCourse(
       ...data,
       featured_lap: { points: request.points },
     };
-    terrain.detail = await detail(detailData);
+    terrain.detail = await detail(detailData, {
+      onProgress: (completed, total) => progress('corridor', `Tiles ${completed}/${total}`),
+    });
     course.terrain = { ...terrain, detail: terrain.detail };
   }
   if (!course.attribution?.includes('OpenStreetMap'))

@@ -176,16 +176,22 @@ test('full reimport and browser builds use identical saved draft input and outpu
   assert.deepEqual(rebuilt, browser);
 });
 
-test('complete-map builds request the OpenStreetMap network before downloading terrain', async (t) => {
+test('complete-map builds overlap the OpenStreetMap lookup with terrain downloads', async (t) => {
   const course = await fixture();
-  const draft = { ...restoreRoadDraft(course), definition: 'complete-map', structureLines: [] };
+  const draft = {
+    ...restoreRoadDraft(course),
+    definition: 'complete-map',
+    completeMapDimensions: { width: 5000, height: 1250 },
+    structureLines: [],
+  };
+  course.courseBuilder = { ...draft, completeMapDimensions: undefined };
   const requests = [];
   t.mock.method(globalThis, 'fetch', (input) => {
     requests.push(String(input));
     return new Promise(() => {});
   });
   let network;
-  await buildRoadCourse(
+  const result = await buildRoadCourse(
     {
       points: roadDraftPoints(draft),
       draft,
@@ -198,8 +204,24 @@ test('complete-map builds request the OpenStreetMap network before downloading t
       closed: !!draft.closingSection,
     },
     {
-      raster: async () => {
+      raster: async (source) => {
+        const { completeMapBounds } = await server.ssrLoadModule('/src/complete-map.ts');
         assert.match(requests.join(), /api\/interpreter/, 'Overpass overlaps terrain download');
+        const bounds = completeMapBounds(roadDraftPoints(draft), draft.completeMapDimensions);
+        const corners = source.featured_lap.points;
+        assert.ok(bounds.fits);
+        assert.ok(
+          Math.abs(
+            (corners[1].lon - corners[0].lon) * bounds.metersPerLongitude -
+              draft.completeMapDimensions.width,
+          ) < 1e-6,
+        );
+        assert.ok(
+          Math.abs(
+            (corners[2].lat - corners[1].lat) * bounds.metersPerDegree -
+              draft.completeMapDimensions.height,
+          ) < 1e-6,
+        );
         return { ...course.terrain, detail: undefined };
       },
       detail: async () => undefined,
@@ -212,4 +234,5 @@ test('complete-map builds request the OpenStreetMap network before downloading t
   );
   assert.ok(network?.elements instanceof Promise, 'scenery reuses the in-flight request');
   assert.equal(requests.length, 1);
+  assert.deepEqual(result.courseBuilder.completeMapDimensions, draft.completeMapDimensions);
 });

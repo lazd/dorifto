@@ -6,6 +6,7 @@ interface TerrainOptions {
   margin?: number;
   width?: number;
   fetch?: typeof fetch;
+  onProgress?: (completed: number, total: number) => void;
 }
 
 export function fetchTerrainRaster(

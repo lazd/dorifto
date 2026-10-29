@@ -8,6 +8,7 @@ const metersPerDegree = (6371008.8 * Math.PI) / 180;
 let server;
 let fetchCourseScenery;
 let sceneryImportRevision;
+let defaultCompleteMapDimensions;
 
 before(async () => {
   server = await createServer({
@@ -16,6 +17,7 @@ before(async () => {
   });
   ({ fetchCourseScenery } = await server.ssrLoadModule('/src/scenery-import.ts'));
   ({ sceneryImportRevision } = await server.ssrLoadModule('/src/scenery-data.ts'));
+  ({ defaultCompleteMapDimensions } = await server.ssrLoadModule('/src/complete-map.ts'));
 });
 
 after(async () => {
@@ -263,7 +265,6 @@ function osmFixture() {
     geometry: points.map(local),
     tags,
   });
-  // Mirrors the Overpass response: tagless geometry, then `convert`ed tag elements with blanks.
   const elements = [
     way(
       100,
@@ -310,16 +311,7 @@ function osmFixture() {
       { amenity: 'parking', parking: 'surface' },
     ),
   ];
-  return {
-    elements: [
-      ...elements.map(({ tags: _, ...element }) => element),
-      ...elements.map(({ type, id, tags }) => ({
-        type: 'tags',
-        id,
-        tags: { 'osm:type': type, width: '', ...tags },
-      })),
-    ],
-  };
+  return { elements };
 }
 
 test('decodes supported scenery, holes, widths and clips to the terrain grid with cached bounded requests', async (t) => {
@@ -394,8 +386,8 @@ test('decodes supported scenery, holes, widths and clips to the terrain grid wit
   assert.equal(withoutRoads.roads.length, 0);
   assert.equal(requests.filter((url) => url.endsWith('.pbf')).length, tileRequests.length);
   const complete = await fetchCourseScenery(definition, 'complete-map');
-  assert.equal(complete.bounds.maxX - complete.bounds.minX, 2000);
-  assert.equal(complete.bounds.maxZ - complete.bounds.minZ, 2000);
+  assert.equal(complete.bounds.maxX - complete.bounds.minX, defaultCompleteMapDimensions.width);
+  assert.equal(complete.bounds.maxZ - complete.bounds.minZ, defaultCompleteMapDimensions.height);
   assert.equal(complete.roads.length, 3, 'precise OSM roads replace tile road fragments');
   assert.equal(complete.roads.find((r) => r.roadClass === 'primary').lanes, 4);
   assert.equal(complete.parking.length, 1);
@@ -405,6 +397,19 @@ test('decodes supported scenery, holes, widths and clips to the terrain grid wit
     'an explicitly mapped all-way stop controls all four approaches',
   );
   assert.ok(complete.stopSigns.every((s) => Math.hypot(...s.direction) > 0.999));
+  const dimensions = {
+    width: defaultCompleteMapDimensions.width * 2,
+    height: defaultCompleteMapDimensions.height / 2,
+  };
+  const rectangle = await fetchCourseScenery(
+    {
+      ...definition,
+      courseBuilder: { completeMapDimensions: dimensions },
+    },
+    'complete-map',
+  );
+  assert.equal(rectangle.bounds.maxX - rectangle.bounds.minX, dimensions.width);
+  assert.equal(rectangle.bounds.maxZ - rectangle.bounds.minZ, dimensions.height);
 });
 
 test('complete maps surface OSM service failures instead of inventing traffic controls', async (t) => {
@@ -432,9 +437,10 @@ test('complete maps retry timed-out OSM lookups on another provider and identify
   const requests = [],
     progress = [];
   t.mock.method(console, 'warn', () => {});
-  t.mock.method(globalThis, 'fetch', async (input) => {
+  t.mock.method(globalThis, 'fetch', async (input, options) => {
     const url = String(input);
     if (url.includes('/api/interpreter')) {
+      assert.match(options.body.get('data'), /\[timeout:25\]/);
       requests.push(url);
       if (requests.length === 1) throw new DOMException('signal timed out', 'TimeoutError');
       return Response.json(osmFixture());
@@ -445,7 +451,10 @@ test('complete maps retry timed-out OSM lookups on another provider and identify
     progress: (stage, detail) => progress.push([stage, detail]),
   });
   assert.equal(result.stopSigns.length, 4);
-  assert.deepEqual(progress.at(-1), ['network', '(2/2)'], 'retries show the attempt count');
+  assert.ok(
+    progress.some(([stage, detail]) => stage === 'network' && detail?.endsWith('(2/2)')),
+    'retries show the tile and attempt count',
+  );
   assert.equal(new Set(requests).size, 2);
 });
 
@@ -458,7 +467,7 @@ test('exhausted OSM timeouts identify the provider instead of returning a raw ab
   });
   await assert.rejects(
     fetchCourseScenery(course(), 'complete-map'),
-    /OpenStreetMap road network could not be downloaded after 2 attempts.*timed out after 45 seconds.*overpass-api.de/,
+    /OpenStreetMap road network could not be downloaded after 2 attempts.*timed out after 60 seconds.*overpass.private.coffee/,
   );
 });
 
