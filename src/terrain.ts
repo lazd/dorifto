@@ -1366,7 +1366,12 @@ export function terrainGeometryTriangles(
   // Each query stamps the triangles it has yielded, instead of allocating a set per query.
   const stamps = new Uint32Array(index.count / 3);
   let query = 0;
-  const corner = (i: number) => new THREE.Vector3().fromBufferAttribute(position, index.getX(i));
+  // Yielded corners are reused by the next triangle, so consumers must not keep them.
+  const corners = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];
+  const load = (i: number) => {
+    for (let j = 0; j < 3; j++) corners[j].fromBufferAttribute(position, index.getX(i + j));
+    return corners;
+  };
   return function* ({ minX, maxX, minZ, maxZ }: ProjectionBounds) {
     const stamp = ++query;
     for (const [size, buckets] of levels)
@@ -1375,7 +1380,7 @@ export function terrainGeometryTriangles(
           for (const i of buckets.get(cellKey(x, z)) ?? []) {
             if (stamps[i / 3] === stamp) continue;
             stamps[i / 3] = stamp;
-            yield [corner(i), corner(i + 1), corner(i + 2)];
+            yield load(i);
           }
   };
 }

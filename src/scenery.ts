@@ -58,6 +58,10 @@ const maxPlantAttempts = 24000;
 const projectionSlice = 20_000;
 // Pavement edges are indexed far enough out to cover the terrain's roadside dirt verge.
 const pavementEdgeReach = 6;
+// Every road vertex looks up nearby pavement edges, so their buckets are small.
+const pavementEdgeCell = 8;
+// Largest error, in meters, of the interpolated edge distance that road dirt tolerates per triangle.
+const dirtErrorLimit = 0.5;
 export const highwayMedianProfile: readonly (readonly [number, number])[] = [
   [-0.305, -0.1],
   [-0.305, 0.075],
@@ -74,11 +78,14 @@ class SpatialIndex<T extends Bounds> {
   private cells = new Map<number, T[]>();
   private large: T[] = [];
 
+  /** `cell` is the bucket size in meters; dense indexes queried per vertex want small buckets. */
+  constructor(private readonly cell = 32) {}
+
   add(item: T) {
-    const x0 = Math.floor(item.minX / 32);
-    const z0 = Math.floor(item.minZ / 32);
-    const x1 = Math.floor(item.maxX / 32);
-    const z1 = Math.floor(item.maxZ / 32);
+    const x0 = Math.floor(item.minX / this.cell);
+    const z0 = Math.floor(item.minZ / this.cell);
+    const x1 = Math.floor(item.maxX / this.cell);
+    const z1 = Math.floor(item.maxZ / this.cell);
     if ((x1 - x0 + 1) * (z1 - z0 + 1) > 4096) {
       this.large.push(item);
       return;
@@ -95,7 +102,7 @@ class SpatialIndex<T extends Bounds> {
   some(x: number, z: number, predicate: (item: T) => boolean) {
     return (
       this.anyAt(
-        this.cells.get(cellKey(Math.floor(x / 32), Math.floor(z / 32))),
+        this.cells.get(cellKey(Math.floor(x / this.cell), Math.floor(z / this.cell))),
         x,
         z,
         predicate,
@@ -112,10 +119,10 @@ class SpatialIndex<T extends Bounds> {
   }
 
   query(bounds: Bounds) {
-    const x0 = Math.floor(bounds.minX / 32);
-    const z0 = Math.floor(bounds.minZ / 32);
-    const x1 = Math.floor(bounds.maxX / 32);
-    const z1 = Math.floor(bounds.maxZ / 32);
+    const x0 = Math.floor(bounds.minX / this.cell);
+    const z0 = Math.floor(bounds.minZ / this.cell);
+    const x1 = Math.floor(bounds.maxX / this.cell);
+    const z1 = Math.floor(bounds.maxZ / this.cell);
     const result: T[] = [];
     const overlaps = (item: T) =>
       item.minX <= bounds.maxX &&
@@ -138,8 +145,8 @@ class SpatialIndex<T extends Bounds> {
         for (const item of this.cells.get(cellKey(x, z)) ?? [])
           // An item spanning several cells is reported from the first of them in range.
           if (
-            Math.max(x0, Math.floor(item.minX / 32)) === x &&
-            Math.max(z0, Math.floor(item.minZ / 32)) === z &&
+            Math.max(x0, Math.floor(item.minX / this.cell)) === x &&
+            Math.max(z0, Math.floor(item.minZ / this.cell)) === z &&
             overlaps(item)
           )
             result.push(item);
@@ -458,8 +465,8 @@ export function* createSceneryTask(
   const stopSignGroup = new THREE.Group();
   stopSignGroup.name = 'nearby-road-stop-signs';
   let roadsVisible = true;
-  let pavementEdges = new SpatialIndex<RoadSegment>();
-  let junctionEdges = new SpatialIndex<RoadSegment>();
+  let pavementEdges = new SpatialIndex<RoadSegment>(pavementEdgeCell);
+  let junctionEdges = new SpatialIndex<RoadSegment>(pavementEdgeCell);
   let pavementSurface = new PavementSurface();
   let raisedPavement = new PavementSurface();
   let hasRaisedPavement = false;
@@ -2124,8 +2131,8 @@ export function* createSceneryTask(
       });
   for (const segment of roadSegments.query(bounds))
     if (!segment.profile.road.structure) centerlines.add({ ...segment, width: 0 });
-  pavementEdges = new SpatialIndex<RoadSegment>();
-  junctionEdges = new SpatialIndex<RoadSegment>();
+  pavementEdges = new SpatialIndex<RoadSegment>(pavementEdgeCell);
+  junctionEdges = new SpatialIndex<RoadSegment>(pavementEdgeCell);
   yield { message: 'Building nearby roads…', fraction: 0.1 };
   for (const rings of pavement)
     for (const ring of rings)
@@ -2306,7 +2313,7 @@ export function* createSceneryTask(
         error(ca.dirt, (c.dirt + a.dirt) / 2),
       ];
       const worst = Math.max(...errors);
-      if (worst > 0.05) {
+      if (worst > dirtErrorLimit) {
         if (errors[0] === worst) {
           refine(a, ab, c, depth + 1);
           refine(ab, b, c, depth + 1);
@@ -2324,7 +2331,7 @@ export function* createSceneryTask(
         y: (a.y + b.y + c.y) / 3,
         z: (a.z + b.z + c.z) / 3,
       });
-      if (error(center.dirt, (a.dirt + b.dirt + c.dirt) / 3) > 0.05) {
+      if (error(center.dirt, (a.dirt + b.dirt + c.dirt) / 3) > dirtErrorLimit) {
         refine(a, b, center, depth + 1);
         refine(b, c, center, depth + 1);
         refine(c, a, center, depth + 1);
@@ -2426,13 +2433,13 @@ export function* createSceneryTask(
         if (batch === raisedBatch) {
           kept.roof(vertices[0], vertices[1], vertices[2]);
         } else if (parent === layers.nearbyRoads) {
-          const distance = pavementClearance;
           const clipped: Vertex[] = [];
           const intersections: Vertex[] = [];
+          const distances = vertices.map(pavementClearance);
           vertices.forEach((p, i) => {
             const q = vertices[(i + 1) % 3],
-              dp = distance(p),
-              dq = distance(q);
+              dp = distances[i],
+              dq = distances[(i + 1) % 3];
             if (dp >= 0) clipped.push(p);
             if (dp >= 0 !== dq >= 0) {
               const t = dp / (dp - dq);
