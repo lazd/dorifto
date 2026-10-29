@@ -10,6 +10,9 @@ export const roadClasses = [
   'secondary',
   'tertiary',
   'minor',
+  'residential',
+  'unclassified',
+  'living_street',
   'service',
   'track',
 ];
@@ -84,7 +87,11 @@ export function cleanRoadRoute(points: readonly GPSPoint[]): GPSPoint[] {
   return result;
 }
 
-export function validateImportRoute(points: readonly GPSPoint[], closed = false) {
+export function validateImportRoute(
+  points: readonly GPSPoint[],
+  closed = false,
+  maximumLength = maximumRoadLength,
+) {
   if (
     points.length < 2 ||
     points.some(
@@ -94,8 +101,12 @@ export function validateImportRoute(points: readonly GPSPoint[], closed = false)
   )
     throw new Error('Select a route with valid geographic coordinates');
   const length = routeLength(points);
-  if (length < minimumRoadLength || length > maximumRoadLength)
-    throw new Error('Select between 100 m and 8 km of connected road');
+  if (length < minimumRoadLength || length > maximumLength)
+    throw new Error(
+      maximumLength === Infinity
+        ? 'Select at least 100 m of connected road'
+        : 'Select between 100 m and 8 km of connected road',
+    );
   const checked = closed ? [points.at(-2)!, ...points] : points;
   for (let i = 1; i < checked.length - 1; i++) {
     const a = checked[i - 1];
@@ -109,13 +120,17 @@ export function validateImportRoute(points: readonly GPSPoint[], closed = false)
   return length;
 }
 
-export function closeRoadLoop(points: readonly GPSPoint[], graph: RoadGraph) {
+export function closeRoadLoop(
+  points: readonly GPSPoint[],
+  graph: RoadGraph,
+  maximumLength = maximumRoadLength,
+) {
   const connection = graph.connect(points.at(-1)!, points[0], 2, {
     incoming: points.at(-2)!,
     outgoing: points[1],
-    maximumLength: maximumRoadLength - routeLength(points),
+    maximumLength: maximumLength - routeLength(points),
   });
-  validateImportRoute([...points, ...connection.slice(1)], true);
+  validateImportRoute([...points, ...connection.slice(1)], true, maximumLength);
   return connection;
 }
 
@@ -123,6 +138,7 @@ export function removeRouteWaypoint(
   sections: readonly GPSPoint[][],
   index: number,
   graph: RoadGraph,
+  maximumLength = maximumRoadLength,
 ) {
   if (!Number.isInteger(index) || index < 0 || index >= sections.length)
     throw new Error('Waypoint not found');
@@ -132,8 +148,12 @@ export function removeRouteWaypoint(
   const connection = graph.connect(sections[index - 1].at(-1)!, sections[index + 1].at(-1)!, 2);
   const result = [...sections.slice(0, index), connection, ...sections.slice(index + 2)];
   const points = result.flatMap((part, i) => (i ? part.slice(1) : part));
-  if (routeLength(points) > maximumRoadLength)
-    throw new Error('Removing this waypoint would create a route longer than 8 km.');
+  if (routeLength(points) > maximumLength)
+    throw new Error(
+      maximumLength === Infinity
+        ? 'Removing this waypoint would create an invalid route.'
+        : 'Removing this waypoint would create a route longer than 8 km.',
+    );
   return result;
 }
 

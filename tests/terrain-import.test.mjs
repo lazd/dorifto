@@ -336,6 +336,43 @@ test('terrain detail keeps only a corridor of high-resolution pixels along the r
   }
 });
 
+test('complete-map terrain detail samples separate imported road corridors without filling the gaps', async () => {
+  const cacheDir = await mkdtemp(path.join(os.tmpdir(), 'dorifto-terrain-'));
+  try {
+    const data = {
+      ...source,
+      roadwayLines: [
+        [
+          { lat: 39, lon: -120.996 },
+          { lat: 39.001, lon: -120.996 },
+        ],
+      ],
+    };
+    const detail = await fetchTerrainDetail(data, {
+      cacheDir,
+      resolution: 2,
+      width: 5,
+      fetch: async (url) => geotiffResponse(url),
+    });
+    const metersPerDegree = (6371008.8 * Math.PI) / 180;
+    const metersPerLongitude = metersPerDegree * Math.cos((39 * Math.PI) / 180);
+    const pixelWidth = ((detail.east - detail.west) * metersPerLongitude) / detail.columns;
+    const pixelHeight = ((detail.north - detail.south) * metersPerDegree) / detail.rows;
+    const retained = ({ lat, lon }) => {
+      const x = Math.round(((lon - detail.west) * metersPerLongitude) / pixelWidth - 0.5);
+      const y = Math.round(((detail.north - lat) * metersPerDegree) / pixelHeight - 0.5);
+      return detail.runs.some(
+        ([row, start, ...heights]) => row === y && x >= start && x < start + heights.length,
+      );
+    };
+    assert.ok(retained(source.featured_lap.points[0]));
+    assert.ok(retained(data.roadwayLines[0][0]));
+    assert.equal(retained({ lat: 39.0005, lon: -120.9985 }), false);
+  } finally {
+    await rm(cacheDir, { recursive: true, force: true });
+  }
+});
+
 test('raster sampler anti-aliases pixel stair-steps and keeps slopes continuous', () => {
   const bounds = { columns: 8, rows: 8, west: 0, east: 8, south: 0, north: 8 };
   const checkerboard = geographicRasterSampler({

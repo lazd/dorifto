@@ -170,7 +170,11 @@ export async function fetchTerrainDetail(
     throw new Error('Terrain detail resolution must be at least 1 m and width positive');
   // The game's anti-alias blur and cubic sampling each reach two pixels past stored data.
   const reach = width + resolution * 5;
-  const bounds = roadBounds(data, reach);
+  const lines = [data.featured_lap?.points, ...(data.roadwayLines ?? [])].filter(
+    (line) => Array.isArray(line) && line.length >= 2,
+  );
+  if (!lines.length) throw new Error('Terrain detail requires at least one road centerline');
+  const bounds = roadBounds({ ...data, featured_lap: { points: lines.flat() } }, reach);
   const raster = await downloadRaster(bounds, resolution, {
     cache,
     fetch,
@@ -185,24 +189,26 @@ export async function fetchTerrainDetail(
     ((north - lat) * bounds.metersPerDegree) / pixelHeight - 0.5,
   ];
   const keep = new Uint8Array(columns * rows);
-  const points = bounds.points.map(toPixel);
-  for (let i = 1; i < points.length; i++) {
-    const [ax, ay] = points[i - 1];
-    const [bx, by] = points[i];
-    const dx = (bx - ax) * pixelWidth;
-    const dy = (by - ay) * pixelHeight;
-    const lengthSquared = dx * dx + dy * dy || 1;
-    const x0 = Math.max(0, Math.floor(Math.min(ax, bx) - reach / pixelWidth));
-    const x1 = Math.min(columns - 1, Math.ceil(Math.max(ax, bx) + reach / pixelWidth));
-    const y0 = Math.max(0, Math.floor(Math.min(ay, by) - reach / pixelHeight));
-    const y1 = Math.min(rows - 1, Math.ceil(Math.max(ay, by) + reach / pixelHeight));
-    for (let y = y0; y <= y1; y++)
-      for (let x = x0; x <= x1; x++) {
-        const px = (x - ax) * pixelWidth;
-        const py = (y - ay) * pixelHeight;
-        const t = Math.max(0, Math.min(1, (px * dx + py * dy) / lengthSquared));
-        if (Math.hypot(px - t * dx, py - t * dy) <= reach) keep[y * columns + x] = 1;
-      }
+  for (const line of lines) {
+    const points = line.map(toPixel);
+    for (let i = 1; i < points.length; i++) {
+      const [ax, ay] = points[i - 1];
+      const [bx, by] = points[i];
+      const dx = (bx - ax) * pixelWidth;
+      const dy = (by - ay) * pixelHeight;
+      const lengthSquared = dx * dx + dy * dy || 1;
+      const x0 = Math.max(0, Math.floor(Math.min(ax, bx) - reach / pixelWidth));
+      const x1 = Math.min(columns - 1, Math.ceil(Math.max(ax, bx) + reach / pixelWidth));
+      const y0 = Math.max(0, Math.floor(Math.min(ay, by) - reach / pixelHeight));
+      const y1 = Math.min(rows - 1, Math.ceil(Math.max(ay, by) + reach / pixelHeight));
+      for (let y = y0; y <= y1; y++)
+        for (let x = x0; x <= x1; x++) {
+          const px = (x - ax) * pixelWidth;
+          const py = (y - ay) * pixelHeight;
+          const t = Math.max(0, Math.min(1, (px * dx + py * dy) / lengthSquared));
+          if (Math.hypot(px - t * dx, py - t * dy) <= reach) keep[y * columns + x] = 1;
+        }
+    }
   }
   const runs = [];
   for (let y = 0; y < rows; y++)

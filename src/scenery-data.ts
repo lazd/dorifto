@@ -1,6 +1,7 @@
 /** Saved map scenery in the course's local meter coordinates, independent of driving direction. */
 export type SceneryPoint = [number, number];
 export type SceneryPolygon = SceneryPoint[][];
+export const completeMapSize = 2000;
 
 /** Quarter-circle widening at the main pavement, tapering to the mapped branch width. */
 export function junctionRoadFlare(distance: number) {
@@ -42,6 +43,9 @@ export function joinSceneryRoads(roads: CourseScenery['roads']): CourseScenery['
           matches.length !== 1 ||
           Math.abs(matches[0].other.width - road.width) > 0.01 ||
           matches[0].other.roadClass !== road.roadClass ||
+          matches[0].other.oneway !== road.oneway ||
+          matches[0].other.centerline !== road.centerline ||
+          !!matches[0].other.oneway ||
           matches[0].other.structure !== road.structure ||
           (matches[0].other.layer ?? 0) !== (road.layer ?? 0)
         )
@@ -97,6 +101,7 @@ export function smoothSceneryLine(points: SceneryPoint[], width: number): Scener
 export interface CourseScenery {
   version: 1;
   importRevision?: number;
+  bounds?: { minX: number; minZ: number; maxX: number; maxZ: number };
   buildings: { rings: SceneryPolygon; height: number }[];
   water: { rings: SceneryPolygon }[];
   waterways: { points: SceneryPoint[]; width: number }[];
@@ -105,12 +110,14 @@ export interface CourseScenery {
     points: SceneryPoint[];
     width: number;
     roadClass?: string;
+    centerline?: 'double-yellow' | 'dashed-yellow';
+    oneway?: -1 | 1;
     structure?: 'bridge' | 'tunnel';
     layer?: number;
   }[];
 }
 
-export const sceneryImportRevision = 5;
+export const sceneryImportRevision = 6;
 
 /** Normalize decoded tile fragments once, before saving imported scenery. */
 export function normalizeCourseScenery(scenery: CourseScenery): CourseScenery {
@@ -139,6 +146,13 @@ export function validateCourseScenery(value: CourseScenery) {
     !Array.isArray(value.waterways) ||
     !Array.isArray(value.vegetation) ||
     !Array.isArray(value.roads) ||
+    (value.bounds !== undefined &&
+      (!Number.isFinite(value.bounds.minX) ||
+        !Number.isFinite(value.bounds.minZ) ||
+        !Number.isFinite(value.bounds.maxX) ||
+        !Number.isFinite(value.bounds.maxZ) ||
+        value.bounds.minX >= value.bounds.maxX ||
+        value.bounds.minZ >= value.bounds.maxZ)) ||
     !value.buildings.every(
       (b) => b && polygon(b.rings) && Number.isFinite(b.height) && b.height > 0 && b.height <= 1000,
     ) ||
@@ -153,6 +167,10 @@ export function validateCourseScenery(value: CourseScenery) {
         line(r.points) &&
         width(r.width) &&
         (r.roadClass === undefined || typeof r.roadClass === 'string') &&
+        (r.centerline === undefined ||
+          r.centerline === 'double-yellow' ||
+          r.centerline === 'dashed-yellow') &&
+        (r.oneway === undefined || r.oneway === -1 || r.oneway === 1) &&
         (r.structure === undefined || r.structure === 'bridge' || r.structure === 'tunnel') &&
         (r.layer === undefined || Number.isInteger(r.layer)),
     )

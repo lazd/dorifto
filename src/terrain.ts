@@ -30,7 +30,7 @@ import {
 type Point = { x: number; z: number };
 
 export class CourseTerrain {
-  readonly spacing = 1.5;
+  readonly spacing: number;
   readonly columns: number;
   readonly rows: number;
   readonly minX: number;
@@ -56,6 +56,8 @@ export class CourseTerrain {
   private groundTriangles?: ReturnType<typeof terrainGeometryTriangles>;
 
   constructor(definition: CourseDefinition, buildVisuals = true) {
+    const mapBounds = definition.scenery?.bounds;
+    this.spacing = mapBounds ? 5 : 1.5;
     this.halfWidth = definition.width / 2 + (definition.shoulderWidth ?? courseShoulderWidth);
     this.padRadius = definition.padRadius;
     // Driving direction must not change the heightfield or its banking.
@@ -120,10 +122,14 @@ export class CourseTerrain {
       bounds.expandByPoint(new THREE.Vector3(-this.padRadius, 0, -this.padRadius));
       bounds.expandByPoint(new THREE.Vector3(this.padRadius, 0, this.padRadius));
     }
-    this.minX = Math.floor((bounds.min.x - 200) / this.spacing) * this.spacing;
-    this.minZ = Math.floor((bounds.min.z - 200) / this.spacing) * this.spacing;
-    this.columns = Math.ceil((bounds.max.x + 200 - this.minX) / this.spacing) + 1;
-    this.rows = Math.ceil((bounds.max.z + 200 - this.minZ) / this.spacing) + 1;
+    const minX = Math.min(bounds.min.x - 200, mapBounds ? mapBounds.minX - 200 : Infinity);
+    const minZ = Math.min(bounds.min.z - 200, mapBounds ? mapBounds.minZ - 200 : Infinity);
+    const maxX = Math.max(bounds.max.x + 200, mapBounds ? mapBounds.maxX + 200 : -Infinity);
+    const maxZ = Math.max(bounds.max.z + 200, mapBounds ? mapBounds.maxZ + 200 : -Infinity);
+    this.minX = Math.floor(minX / this.spacing) * this.spacing;
+    this.minZ = Math.floor(minZ / this.spacing) * this.spacing;
+    this.columns = Math.ceil((maxX - this.minX) / this.spacing) + 1;
+    this.rows = Math.ceil((maxZ - this.minZ) / this.spacing) + 1;
     this.surface = new TerrainSurface(this.segments, this.halfWidth, this.padRadius);
     this.heights = new Float32Array(this.columns * this.rows);
     const positions = new Float32Array(this.heights.length * 3);

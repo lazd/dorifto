@@ -41,6 +41,17 @@ test('saved courses restore geographic routes and retain exact editable waypoint
   }
   const editable = { ...course, courseBuilder: draft };
   editable.courseBuilder.includeNearbyRoads = true;
+  assert.equal(builderData.roadMapDefinition(editable.courseBuilder), 'nearby-roads');
+  const completeMap = {
+    ...editable,
+    courseBuilder: { ...editable.courseBuilder, definition: 'complete-map' },
+  };
+  assert.equal(
+    builderData.roadMapDefinition(
+      builderData.readRoadMap(JSON.stringify(completeMap)).courseBuilder,
+    ),
+    'complete-map',
+  );
   const restored = builderData.restoreRoadDraft(builderData.readRoadMap(JSON.stringify(editable)));
   assert.deepEqual(restored.sections, draft.sections);
   assert.equal(restored.closingSection, draft.closingSection);
@@ -58,9 +69,26 @@ test('saved courses restore geographic routes and retain exact editable waypoint
     /Invalid saved course scenery/,
   );
   assert.throws(
+    () =>
+      builderData.readRoadMap(
+        JSON.stringify({ ...course, courseBuilder: { ...draft, definition: 'invalid' } }),
+      ),
+    /Invalid saved map definition/,
+  );
+  assert.throws(
     () => builderData.restoreRoadDraft({ ...course, terrain: undefined }),
     /geographic source/,
   );
+});
+
+test('builder exposes all three roadway definitions', async () => {
+  const html = await readFile(new URL('../course-builder.html', import.meta.url), 'utf8');
+  for (const [value, label] of [
+    ['course', 'Just the course'],
+    ['nearby-roads', 'Nearby roads'],
+    ['complete-map', 'Complete map'],
+  ])
+    assert.match(html, new RegExp(`<option value="${value}"[^>]*>${label}</option>`));
 });
 
 test('reading saved scenery preserves its data without a local migration', async () => {

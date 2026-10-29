@@ -19,8 +19,10 @@ import {
   readRoadMap,
   restoreRoadDraft,
   roadMapMeta,
+  roadMapDefinition,
   roadBuildSteps,
   roadDraftPoints,
+  type MapDefinition,
   type RoadBuildStep,
   type RoadMap,
 } from './course-builder-data';
@@ -32,7 +34,7 @@ import { startTextSpinner } from './text-spinner';
 import { download } from './download';
 import type { BuildRequest, BuildResponse } from './course-builder-worker';
 import { matchRoadStructures } from './road-structures.mjs';
-import { sceneryImportRevision } from './scenery-data';
+import { completeMapSize, sceneryImportRevision } from './scenery-data';
 import './course-builder.css';
 
 const embedded =
@@ -66,7 +68,7 @@ const widthInput = element<HTMLInputElement>('width');
 const transitionInput = element<HTMLInputElement>('terrain-transition');
 const centerLineInput = element<HTMLInputElement>('center-line');
 const shoulderInput = element<HTMLInputElement>('shoulder-width');
-const nearbyRoadsInput = element<HTMLInputElement>('nearby-roads');
+const mapDefinitionInput = element<HTMLSelectElement>('map-definition');
 const clearButton = element<HTMLButtonElement>('clear');
 const locationForm = element<HTMLFormElement>('location-form');
 const locationInput = element<HTMLInputElement>('location');
@@ -162,6 +164,65 @@ function routePoints() {
   return roadDraftPoints({ sections, closingSection, resolution: 5 });
 }
 
+function mapDefinition(): MapDefinition {
+  return mapDefinitionInput.value as MapDefinition;
+}
+
+function maximumLength() {
+  return mapDefinition() === 'complete-map' ? Infinity : maximumRoadLength;
+}
+
+function completeMapBounds(points: readonly GPSPoint[]) {
+  if (!points.length) return;
+  const origin = points[0];
+  const metersPerLongitude = (6371008.8 * Math.PI * Math.cos((origin.lat * Math.PI) / 180)) / 180;
+  const metersPerDegree = (6371008.8 * Math.PI) / 180;
+  let minX = Infinity,
+    maxX = -Infinity,
+    minZ = Infinity,
+    maxZ = -Infinity;
+  for (const point of points) {
+    const x = (point.lon - origin.lon) * metersPerLongitude;
+    const z = (point.lat - origin.lat) * metersPerDegree;
+    minX = Math.min(minX, x);
+    maxX = Math.max(maxX, x);
+    minZ = Math.min(minZ, z);
+    maxZ = Math.max(maxZ, z);
+  }
+  return {
+    origin,
+    metersPerLongitude,
+    metersPerDegree,
+    minX,
+    maxX,
+    minZ,
+    maxZ,
+    centerX: (minX + maxX) / 2,
+    centerZ: (minZ + maxZ) / 2,
+    fits: maxX - minX <= completeMapSize && maxZ - minZ <= completeMapSize,
+  };
+}
+
+function fitsCompleteMap(points: readonly GPSPoint[]) {
+  return completeMapBounds(points)?.fits ?? true;
+}
+
+function fitsCurrentCompleteMap(points: readonly GPSPoint[]) {
+  const current = completeMapBounds(routePoints());
+  if (!current) return true;
+  const half = completeMapSize / 2;
+  return points.every((point) => {
+    const x = (point.lon - current.origin.lon) * current.metersPerLongitude;
+    const z = (point.lat - current.origin.lat) * current.metersPerDegree;
+    return (
+      x >= current.centerX - half &&
+      x <= current.centerX + half &&
+      z >= current.centerZ - half &&
+      z <= current.centerZ + half
+    );
+  });
+}
+
 maplibregl.setWorkerUrl(mapWorkerUrl);
 const map = new maplibregl.Map({
   container: 'map',
@@ -241,10 +302,18 @@ function updateHover() {
     const points = routePoints();
     const previous = points.at(-1);
     const section = previous ? graph.connect(previous, snapped.point, 2) : [];
-    const tooLong = routeLength(points) + routeLength(section) > maximumRoadLength;
+    const candidate = [...points, ...section.slice(previous ? 1 : 0)];
+    const tooLong =
+      routeLength(candidate) > maximumLength() ||
+      (mapDefinition() === 'complete-map' &&
+        (!fitsCurrentCompleteMap(section) || !fitsCompleteMap(candidate)));
     previewRoute(section, tooLong);
     hoverNode.classList.toggle('route-hover-invalid', tooLong);
-    hoverNode.title = tooLong ? 'That would exceed 8 km. Choose a closer endpoint.' : '';
+    hoverNode.title = tooLong
+      ? mapDefinition() === 'complete-map'
+        ? 'Keep the course inside the 2 × 2 km map square.'
+        : 'That would exceed 8 km. Choose a closer endpoint.'
+      : '';
   } catch (error) {
     setRouteGeometry('hover-route', []);
     hoverNode.classList.add('route-hover-invalid');
@@ -282,20 +351,23 @@ function editorSnapshot() {
     shoulderWidth: Number(shoulderInput.value),
     terrainTransition: Number(transitionInput.value),
     doubleYellow: centerLineInput.checked,
-    includeNearbyRoads: nearbyRoadsInput.checked,
+    definition: mapDefinition(),
   });
 }
 
 function updateControls() {
   const points = routePoints();
   const length = routeLength(points);
-  element('distance').textContent =
-    `${(length / 1000).toFixed(1)}km / ${maximumRoadLength / 1000}km (max)${closingSection ? ' · Closed loop' : ''}`;
+  const complete = mapDefinition() === 'complete-map';
+  element('distance').textContent = complete
+    ? `${(length / 1000).toFixed(1)}km · 2 × 2 km map area${closingSection ? ' · Closed loop' : ''}`
+    : `${(length / 1000).toFixed(1)}km / ${maximumRoadLength / 1000}km (max)${closingSection ? ' · Closed loop' : ''}`;
   clearButton.disabled = !!worker || !sections.length;
   buildButton.disabled =
     !!worker ||
     length < minimumRoadLength ||
-    length > maximumRoadLength ||
+    length > maximumLength() ||
+    (complete && !fitsCompleteMap(points)) ||
     (editingSnapshot !== undefined &&
       editingSnapshot === editorSnapshot() &&
       !hasStructureRepair());
@@ -306,7 +378,7 @@ function updateControls() {
     shoulderInput,
     transitionInput,
     centerLineInput,
-    nearbyRoadsInput,
+    mapDefinitionInput,
   ])
     input.disabled = !!worker;
 }
@@ -373,7 +445,7 @@ function updatePreviewInfo() {
 function deleteWaypoint(index: number) {
   if (worker || view !== 'editor') return;
   try {
-    sections = removeRouteWaypoint(sections, index, graph);
+    sections = removeRouteWaypoint(sections, index, graph, maximumLength());
     closingSection = undefined;
     updateRoute();
   } catch (error) {
@@ -482,10 +554,47 @@ function updateRouteGeometry() {
   setRouteGeometry('selected-route', routePoints());
 }
 
+function updateCompleteMapBounds() {
+  const source = map.getSource('complete-map-square') as GeoJSONSource | undefined;
+  if (!source) return;
+  const bounds = mapDefinition() === 'complete-map' ? completeMapBounds(routePoints()) : undefined;
+  if (!bounds) {
+    source.setData({ type: 'FeatureCollection', features: [] });
+    return;
+  }
+  const half = completeMapSize / 2;
+  const coordinate = (x: number, z: number) => [
+    bounds.origin.lon + x / bounds.metersPerLongitude,
+    bounds.origin.lat + z / bounds.metersPerDegree,
+  ];
+  const west = bounds.centerX - half,
+    east = bounds.centerX + half,
+    south = bounds.centerZ - half,
+    north = bounds.centerZ + half;
+  const ring = [
+    coordinate(west, south),
+    coordinate(east, south),
+    coordinate(east, north),
+    coordinate(west, north),
+    coordinate(west, south),
+  ];
+  source.setData({
+    type: 'FeatureCollection',
+    features: [
+      {
+        type: 'Feature',
+        properties: {},
+        geometry: { type: 'Polygon', coordinates: [ring] },
+      },
+    ],
+  });
+}
+
 function updateRoute() {
   hideHover();
   invalidateCourse();
   updateRouteGeometry();
+  updateCompleteMapBounds();
   markers.splice(0).forEach((marker) => marker.remove());
   sections.forEach((section, i) => {
     const point = section.at(-1)!;
@@ -507,7 +616,7 @@ function updateRoute() {
         if (closingSection || worker || view !== 'editor') return;
         previewingClosure = true;
         try {
-          previewRoute(closeRoadLoop(routePoints(), graph));
+          previewRoute(closeRoadLoop(routePoints(), graph, maximumLength()));
         } catch (error) {
           node.title = error instanceof Error ? error.message : String(error);
         }
@@ -524,7 +633,7 @@ function updateRoute() {
             updateRoute();
             confirmAction('Loop reopened.');
           } else {
-            closingSection = closeRoadLoop(routePoints(), graph);
+            closingSection = closeRoadLoop(routePoints(), graph, maximumLength());
             updateRoute();
           }
           return;
@@ -599,6 +708,26 @@ map.on('load', () => {
     type: 'geojson',
     data: { type: 'FeatureCollection', features: [] },
   });
+  map.addSource('complete-map-square', {
+    type: 'geojson',
+    data: { type: 'FeatureCollection', features: [] },
+  });
+  map.addLayer({
+    id: 'complete-map-square-fill',
+    type: 'fill',
+    source: 'complete-map-square',
+    paint: { 'fill-color': theme.palette.accent, 'fill-opacity': 0.06 },
+  });
+  map.addLayer({
+    id: 'complete-map-square-outline',
+    type: 'line',
+    source: 'complete-map-square',
+    paint: {
+      'line-color': theme.palette.accent,
+      'line-width': 2,
+      'line-dasharray': [2, 1],
+    },
+  });
   map.addLayer({
     id: 'selected-route-outline',
     type: 'line',
@@ -630,6 +759,7 @@ map.on('load', () => {
     layout: { 'line-join': 'round', 'line-cap': 'round' },
   });
   updateRouteGeometry();
+  updateCompleteMapBounds();
   if (status.dataset.error !== 'true') guide();
 });
 for (const event of ['dragend', 'zoomend'] as const) {
@@ -664,8 +794,12 @@ map.on('click', (event) => {
     if (previous && routeLength(section) < 1)
       throw new Error('Choose a point farther along the road.');
     const next = [...routePoints(), ...section.slice(previous ? 1 : 0)];
-    if (routeLength(next) > maximumRoadLength)
+    if (routeLength(next) > maximumLength())
       throw new Error('That would exceed 8 km. Choose a closer endpoint or delete a waypoint.');
+    if (mapDefinition() === 'complete-map' && !fitsCompleteMap(next))
+      throw new Error('Keep all selected roads inside the moving 2 × 2 km map square.');
+    if (mapDefinition() === 'complete-map' && !fitsCurrentCompleteMap(section))
+      throw new Error('Click inside the current 2 × 2 km map square.');
     sections.push(section);
     hasLocated = true;
     updateRoute();
@@ -770,8 +904,21 @@ element<HTMLFormElement>('build-form').onsubmit = (event) => {
   if (buildButton.disabled) return;
   const existingCourse =
     editingCourse && editingRouteSnapshot === routeSnapshot() ? editingCourse : undefined;
+  const completeMapExpansion =
+    !!existingCourse &&
+    mapDefinition() === 'complete-map' &&
+    roadMapDefinition(
+      existingCourse.courseBuilder ?? {
+        sections: [],
+        resolution: 5,
+        includeNearbyRoads: !!existingCourse.scenery?.roads.length,
+      },
+    ) !== 'complete-map';
   try {
-    validateImportRoute(routePoints(), !!closingSection);
+    const selected = routePoints();
+    validateImportRoute(selected, !!closingSection, maximumLength());
+    if (mapDefinition() === 'complete-map' && !fitsCompleteMap(selected))
+      throw new Error('Keep all selected roads inside the moving 2 × 2 km map square.');
   } catch (error) {
     report(error);
     return;
@@ -869,7 +1016,8 @@ element<HTMLFormElement>('build-form').onsubmit = (event) => {
   buildSteps.replaceChildren();
   for (const [key, label] of Object.entries(roadBuildSteps)) {
     if (embedded && key === 'preview') continue;
-    if (existingCourse && (key === 'terrain' || key === 'corridor')) continue;
+    if (existingCourse && !completeMapExpansion && (key === 'terrain' || key === 'corridor'))
+      continue;
     const item = document.createElement('li');
     item.dataset.step = key;
     item.textContent = existingCourse && key === 'course' ? 'Updating course settings' : label;
@@ -894,7 +1042,8 @@ element<HTMLFormElement>('build-form').onsubmit = (event) => {
       sections,
       closingSection,
       structureLines: graph.structureLines(),
-      includeNearbyRoads: nearbyRoadsInput.checked,
+      definition: mapDefinition(),
+      includeNearbyRoads: mapDefinition() !== 'course',
       resolution:
         existingCourse?.courseBuilder?.resolution ?? existingCourse?.terrain?.resolution ?? 5,
     }),
@@ -1117,7 +1266,7 @@ function editSavedCourse() {
     widthInput.value = String(saved.width);
     shoulderInput.value = String(saved.shoulderWidth ?? courseShoulderWidth);
     centerLineInput.checked = !!saved.doubleYellow;
-    nearbyRoadsInput.checked = draft.includeNearbyRoads ?? !!saved.scenery?.roads.length;
+    mapDefinitionInput.value = roadMapDefinition(draft);
     transitionInput.value = String(saved.terrainTransition ?? defaultTerrainTransition);
     editingSnapshot = editorSnapshot();
     editingRouteSnapshot = routeSnapshot();
@@ -1146,7 +1295,7 @@ element<HTMLButtonElement>('new-course').onclick = () => {
   widthInput.value = widthInput.defaultValue;
   shoulderInput.value = shoulderInput.defaultValue;
   centerLineInput.checked = true;
-  nearbyRoadsInput.checked = true;
+  mapDefinitionInput.value = 'nearby-roads';
   transitionInput.value = transitionInput.defaultValue;
   seedDraftGraph();
   updateRoute();
@@ -1234,14 +1383,7 @@ window.addEventListener('pagehide', () => {
   previewWorker?.terminate();
 });
 
-for (const input of [
-  nameInput,
-  widthInput,
-  shoulderInput,
-  transitionInput,
-  centerLineInput,
-  nearbyRoadsInput,
-]) {
+for (const input of [nameInput, widthInput, shoulderInput, transitionInput, centerLineInput]) {
   input.addEventListener('input', () => {
     if (course) {
       invalidateCourse();
@@ -1250,3 +1392,8 @@ for (const input of [
     updateControls();
   });
 }
+mapDefinitionInput.addEventListener('change', () => {
+  const hadCourse = !!course;
+  updateRoute();
+  if (hadCourse) confirmAction('Settings changed. Save again to update the course.');
+});

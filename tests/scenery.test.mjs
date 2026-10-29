@@ -319,6 +319,133 @@ test('side-road junctions meet pavement and expose a shoulder coverage mask', ()
   assert.ok(result.junctionCones.length > 0, 'joined pavement retains junction barriers');
 });
 
+test('road markings show inferred centerlines and mapped one-way directions', () => {
+  const data = emptyScenery();
+  data.roads.push(
+    {
+      points: [
+        [24, -45],
+        [24, 45],
+      ],
+      width: 8,
+      centerline: 'double-yellow',
+    },
+    {
+      points: [
+        [42, -45],
+        [42, 45],
+      ],
+      width: 6,
+      centerline: 'dashed-yellow',
+    },
+    {
+      points: [
+        [60, -45],
+        [60, 45],
+      ],
+      width: 4,
+      oneway: -1,
+    },
+  );
+  const result = build(definition(data), terrain());
+  const double = result.group.getObjectByName('nearby-road-centerlines');
+  const arrows = result.group.getObjectByName('nearby-road-oneway-arrows');
+  assert.ok(double && double.geometry.getAttribute('position').count > 0);
+  assert.ok(arrows && arrows.geometry.getAttribute('position').count > 0);
+  const doubleXs = Array.from(double.geometry.getAttribute('position').array)
+    .filter((_value, index) => index % 3 === 0)
+    .filter((x) => Math.abs(x - 24) < 0.3);
+  assert.ok(doubleXs.some((x) => x < 24) && doubleXs.some((x) => x > 24));
+  const arrowPositions = arrows.geometry.getAttribute('position');
+  assert.ok(
+    Array.from({ length: arrowPositions.count }, (_, i) => i).some(
+      (i) =>
+        Math.abs(arrowPositions.getX(i) - 60) < 1e-4 &&
+        Math.abs(arrowPositions.getZ(i) + 28.35) < 1e-4,
+    ),
+    'negative one-way direction reverses the arrow against the source geometry',
+  );
+  assert.equal(result.group.getObjectByName('stop-sign'), undefined);
+});
+
+test('complete-map intersections widen minor roads and add stop lines and physical STOP signs', () => {
+  const data = emptyScenery();
+  data.bounds = { minX: -1000, minZ: -1000, maxX: 1000, maxZ: 1000 };
+  data.roads.push(
+    {
+      points: [
+        [20, 0],
+        [80, 0],
+      ],
+      width: 10,
+      roadClass: 'primary',
+      centerline: 'double-yellow',
+    },
+    {
+      points: [
+        [50, -40],
+        [50, 40],
+      ],
+      width: 6,
+      roadClass: 'residential',
+      centerline: 'dashed-yellow',
+    },
+  );
+  const result = build(definition(data), terrain());
+  const signs = result.stopSignGroup;
+  assert.equal(signs.children.length, 2, 'both minor-road approaches receive a sign');
+  assert.ok(signs.children.every((sign) => sign.name === 'stop-sign'));
+  assert.ok(
+    signs.children.every(
+      (sign) => sign.getObjectByName('stop-sign-text').geometry.getAttribute('position').count > 0,
+    ),
+  );
+  for (const sign of signs.children) {
+    const facing = new THREE.Vector3(0, 0, 1).applyQuaternion(sign.quaternion);
+    assert.ok(
+      facing.z * sign.position.z > 0,
+      'the sign face points toward traffic approaching from its side of the junction',
+    );
+  }
+  const stopLines = [];
+  result.group.traverse((object) => {
+    if (object.name.startsWith('nearby-road-stop-lines')) stopLines.push(object);
+  });
+  assert.equal(stopLines.length, 2);
+  for (const line of stopLines) {
+    const positions = line.geometry.getAttribute('position');
+    const xs = Array.from({ length: positions.count }, (_, i) => positions.getX(i));
+    const zs = Array.from({ length: positions.count }, (_, i) => positions.getZ(i));
+    assert.ok(Math.max(...xs) - Math.min(...xs) > 9, 'stop bars cross the minor road');
+    assert.ok(
+      Math.max(...zs) - Math.min(...zs) < 0.5,
+      `stop bars are perpendicular to travel: ${zs.join(', ')}`,
+    );
+  }
+  assert.equal(result.junctionCones.length, 0, 'complete-map junctions remain open to traffic');
+  assert.ok(result.group.getObjectByName('nearby-road-centerlines'));
+  assert.equal(result.isAsphalt({ x: 50, z: 0 }), true);
+  assert.equal(result.isAsphalt({ x: 53.5, z: 7 }), true, 'the branch flares into the junction');
+  assert.equal(result.isAsphalt({ x: 54.8, z: 7 }), false, 'the flare tapers to the mapped width');
+  const workerSurface = new PavementSurface(structuredClone(result.roadMesh));
+  assert.equal(workerSurface.isAsphalt({ x: 50, z: 0 }), true);
+  assert.equal(workerSurface.isAsphalt({ x: 53.5, z: 7 }), true);
+  result.setVisible('nearbyRoads', false);
+  assert.equal(signs.visible, false, 'road controls follow nearby-road visibility');
+  result.setVisible('nearbyRoads', true);
+  assert.equal(signs.visible, true);
+
+  const gradeSeparated = structuredClone(data);
+  gradeSeparated.roads[0].layer = 1;
+  const overpass = build(definition(gradeSeparated), terrain());
+  assert.equal(
+    overpass.stopSignGroup.children.length,
+    0,
+    'different road layers never get stop signs',
+  );
+  assert.equal(overpass.group.getObjectByName('nearby-road-stop-lines'), undefined);
+});
+
 test('road fragments are joined before smoothing, without joining branches or mutating saved data', () => {
   const roads = [
     {

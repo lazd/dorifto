@@ -2,12 +2,19 @@ import { classifyRings, VectorTile } from '@mapbox/vector-tile';
 import { PbfReader } from 'pbf';
 import { roadClasses } from './road-selection';
 import { courseRoute, type CourseDefinition } from './courses';
+import type { MapDefinition } from './course-builder-data';
 import type { CourseScenery, SceneryPoint, SceneryPolygon } from './scenery-data';
-import { normalizeCourseScenery, sceneryImportRevision } from './scenery-data';
+import { completeMapSize, normalizeCourseScenery, sceneryImportRevision } from './scenery-data';
 
 const tileJsonUrl = 'https://tiles.openfreemap.org/planet';
 const zoom = 14;
 const corridor = 300;
+const completeRoadClasses = new Set([
+  ...roadClasses,
+  'residential',
+  'unclassified',
+  'living_street',
+]);
 const maxTiles = 64;
 const concurrency = 4;
 const timeoutMs = 12_000;
@@ -124,6 +131,23 @@ function terrainGridBounds(course: CourseDefinition): Bounds {
     maxX: bounds.maxX + pad,
     minZ: bounds.minZ - pad,
     maxZ: bounds.maxZ + pad,
+  };
+}
+
+function completeMapBounds(course: CourseDefinition): Bounds {
+  const points = course.points;
+  const minX = Math.min(...points.map(([x]) => x));
+  const maxX = Math.max(...points.map(([x]) => x));
+  const minZ = Math.min(...points.map(([, z]) => z));
+  const maxZ = Math.max(...points.map(([, z]) => z));
+  const half = completeMapSize / 2;
+  const centerX = (minX + maxX) / 2;
+  const centerZ = (minZ + maxZ) / 2;
+  return {
+    minX: centerX - half,
+    maxX: centerX + half,
+    minZ: centerZ - half,
+    maxZ: centerZ + half,
   };
 }
 
@@ -364,6 +388,43 @@ function tilesForRoute(course: CourseDefinition, route: SceneryPoint[]): Tile[] 
   return tiles;
 }
 
+function tilesForMapBounds(course: CourseDefinition, bounds: Bounds): Tile[] {
+  const corners: SceneryPoint[] = [
+    [bounds.minX, bounds.minZ],
+    [bounds.minX, bounds.maxZ],
+    [bounds.maxX, bounds.minZ],
+    [bounds.maxX, bounds.maxZ],
+  ];
+  const tiles = new Map<string, Tile>();
+  const count = 2 ** zoom;
+  const tilePoints = corners.map((point) => {
+    const { lat, lon } = localToLatLon(course, point);
+    return tileCoordinate(lon, lat);
+  });
+  const minX = Math.max(0, Math.floor(Math.min(...tilePoints.map(({ x }) => x))));
+  const maxX = Math.min(count - 1, Math.floor(Math.max(...tilePoints.map(({ x }) => x))));
+  const minY = Math.max(0, Math.floor(Math.min(...tilePoints.map(({ y }) => y))));
+  const maxY = Math.min(count - 1, Math.floor(Math.max(...tilePoints.map(({ y }) => y))));
+  for (let x = minX; x <= maxX; x++)
+    for (let y = minY; y <= maxY; y++) {
+      const boundsForTile = tileLocalBounds(course, x, y);
+      if (
+        boundsForTile.maxX < bounds.minX ||
+        boundsForTile.minX > bounds.maxX ||
+        boundsForTile.maxZ < bounds.minZ ||
+        boundsForTile.minZ > bounds.maxZ
+      )
+        continue;
+      const key = `${zoom}/${x}/${y}`;
+      tiles.set(key, { x, y, z: zoom, key });
+    }
+  if (tiles.size > maxTiles)
+    throw new Error(
+      `Complete map scenery needs ${tiles.size} vector tiles at zoom ${zoom}; the limit is ${maxTiles}.`,
+    );
+  return [...tiles.values()];
+}
+
 async function fetchTileTemplate(): Promise<string> {
   if (!tileTemplate) {
     tileTemplate = (async () => {
@@ -456,6 +517,7 @@ function clippedLine(
   bounds: Bounds,
   routeSegments: ReturnType<typeof segmentsOf>,
   result: LocalLine[],
+  maxRouteDistance = corridor,
 ) {
   let current: LocalLine = [];
   const finish = () => {
@@ -481,7 +543,7 @@ function clippedLine(
         middle[0] <= bounds.maxX &&
         middle[1] >= bounds.minZ &&
         middle[1] <= bounds.maxZ;
-      if (insideBounds && distanceToRoute(middle, routeSegments) <= corridor) {
+      if (insideBounds && distanceToRoute(middle, routeSegments) <= maxRouteDistance) {
         if (!current.length) current.push(from);
         current.push(to);
       } else {
@@ -527,6 +589,7 @@ function decodedFeature(
   scenery: CourseScenery,
   seenPolygons: Set<string>,
   seenLines: Set<string>,
+  completeMap: boolean,
 ) {
   if (layer === 'building' && polygons.length) {
     const height = Math.max(
@@ -583,7 +646,10 @@ function decodedFeature(
   }
   if (
     layer === 'waterway' ||
-    (layer === 'transportation' && roadClasses.includes(String(properties.class)))
+    (layer === 'transportation' &&
+      (completeMap
+        ? completeRoadClasses.has(String(properties.class))
+        : roadClasses.includes(String(properties.class))))
   ) {
     const structure =
       properties.brunnel === 'bridge' || properties.brunnel === 'tunnel'
@@ -592,6 +658,27 @@ function decodedFeature(
     const layerNumber = asNumber(properties.layer);
     const roadLayer =
       layerNumber !== undefined && Number.isInteger(layerNumber) ? layerNumber : undefined;
+    const roadClass = String(properties.class);
+    const onewayValue = properties.oneway;
+    const oneway =
+      onewayValue === -1 || onewayValue === '-1' || onewayValue === 'reverse'
+        ? -1
+        : onewayValue === 1 || onewayValue === '1' || onewayValue === true || onewayValue === 'yes'
+          ? 1
+          : undefined;
+    const explicitMarking = String(properties.centerline ?? properties.marking ?? '');
+    const centerline =
+      oneway !== undefined
+        ? undefined
+        : explicitMarking === 'double-yellow' || explicitMarking === 'dashed-yellow'
+          ? explicitMarking
+          : ['primary', 'secondary'].includes(roadClass)
+            ? 'double-yellow'
+            : ['tertiary', 'minor', 'residential', 'unclassified', 'living_street'].includes(
+                  roadClass,
+                )
+              ? 'dashed-yellow'
+              : undefined;
     const width =
       asNumber(properties.width) ??
       (layer === 'waterway'
@@ -603,14 +690,23 @@ function decodedFeature(
             secondary: 8,
             tertiary: 7,
             minor: 6,
+            residential: 6,
+            unclassified: 6,
+            living_street: 5,
             service: 4,
             track: 3,
           }[String(properties.class)] ?? 5));
     for (const path of paths) {
       const lines: LocalLine[] = [];
-      clippedLine(path, bounds, routeSegments, lines);
+      clippedLine(
+        path,
+        bounds,
+        routeSegments,
+        lines,
+        completeMap && layer === 'transportation' ? Infinity : corridor,
+      );
       for (const points of lines) {
-        const key = `${layer}:${properties.class ?? ''}:${structure ?? ''}:${roadLayer ?? 0}:${lineSignature(points)}`;
+        const key = `${layer}:${properties.class ?? ''}:${structure ?? ''}:${roadLayer ?? 0}:${oneway ?? 0}:${lineSignature(points)}`;
         if (seenLines.has(key)) continue;
         seenLines.add(key);
         if (layer === 'waterway')
@@ -619,7 +715,9 @@ function decodedFeature(
           scenery.roads.push({
             points,
             width: Math.max(1, Math.min(60, width)),
-            roadClass: String(properties.class),
+            roadClass,
+            ...(centerline ? { centerline } : {}),
+            ...(oneway !== undefined ? { oneway: oneway as -1 | 1 } : {}),
             ...(structure ? { structure } : {}),
             ...(roadLayer !== undefined ? { layer: roadLayer } : {}),
           });
@@ -634,8 +732,12 @@ function decodedFeature(
  */
 export async function fetchCourseScenery(
   course: CourseDefinition,
-  includeNearbyRoads: boolean,
+  mode: boolean | MapDefinition,
 ): Promise<CourseScenery> {
+  const definition: MapDefinition =
+    typeof mode === 'boolean' ? (mode ? 'nearby-roads' : 'course') : mode;
+  const includeNearbyRoads = definition !== 'course';
+  const completeMap = definition === 'complete-map';
   const terrain = course.terrain;
   if (
     !terrain ||
@@ -653,15 +755,19 @@ export async function fetchCourseScenery(
     throw new Error('Course scenery requires valid terrain geographic bounds and origin.');
   const route = sampleRoute(course);
   const routeSegments = segmentsOf(route);
-  const tiles = tilesForRoute(course, route);
+  const mapBounds = completeMap ? completeMapBounds(course) : undefined;
+  const tiles = mapBounds ? tilesForMapBounds(course, mapBounds) : tilesForRoute(course, route);
   const template = await fetchTileTemplate();
   const tileData = await loadTiles(tiles, template);
-  const bounds = intersectBounds(terrainBounds(course), terrainGridBounds(course));
+  const bounds = mapBounds
+    ? intersectBounds(terrainBounds(course), mapBounds)
+    : intersectBounds(terrainBounds(course), terrainGridBounds(course));
   if (bounds.minX >= bounds.maxX || bounds.minZ >= bounds.maxZ)
     throw new Error('Course scenery bounds do not overlap the supported terrain grid.');
   const scenery: CourseScenery = {
     version: 1,
     importRevision: sceneryImportRevision,
+    ...(mapBounds ? { bounds: mapBounds } : {}),
     buildings: [],
     water: [],
     waterways: [],
@@ -691,7 +797,12 @@ export async function fetchCourseScenery(
       for (let i = 0; i < layer.length; i++) {
         const feature = layer.feature(i);
         const properties = feature.properties;
-        if (layerName === 'transportation' && !roadClasses.includes(String(properties.class)))
+        if (
+          layerName === 'transportation' &&
+          !(completeMap
+            ? completeRoadClasses.has(String(properties.class))
+            : roadClasses.includes(String(properties.class)))
+        )
           continue;
         const geometry = feature.loadGeometry();
         const paths = geometryToLocal(geometry, course, tile, layer.extent);
@@ -718,6 +829,7 @@ export async function fetchCourseScenery(
           scenery,
           seenPolygons,
           seenLines,
+          completeMap,
         );
       }
     }

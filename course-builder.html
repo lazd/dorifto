@@ -37,10 +37,14 @@
           </div>
           <ol id="waypoints"></ol>
           <form id="build-form">
-            <label class="switch-field"
-              >Include nearby roads
-              <input id="nearby-roads" class="switch" type="checkbox" role="switch" checked />
-            </label>
+            <div class="field">
+              <label for="map-definition">Definition</label>
+              <select id="map-definition">
+                <option value="course">Just the course</option>
+                <option value="nearby-roads" selected>Nearby roads</option>
+                <option value="complete-map">Complete map</option>
+              </select>
+            </div>
             <details class="advanced">
               <summary>Advanced</summary>
               <div class="field">

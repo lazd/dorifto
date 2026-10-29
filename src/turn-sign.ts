@@ -272,3 +272,127 @@ export function createTurnSignFactory() {
     return sign;
   };
 }
+
+function octagon(radius: number) {
+  const shape = new THREE.Shape();
+  for (let i = 0; i < 8; i++) {
+    const angle = Math.PI / 8 + (i * Math.PI) / 4;
+    const x = Math.cos(angle) * radius;
+    const y = Math.sin(angle) * radius;
+    if (i === 0) shape.moveTo(x, y);
+    else shape.lineTo(x, y);
+  }
+  shape.closePath();
+  return new THREE.ShapeGeometry(shape);
+}
+
+const stopGlyphs: Record<string, string[]> = {
+  S: ['01111', '10000', '10000', '01110', '00001', '00001', '11110'],
+  T: ['11111', '00100', '00100', '00100', '00100', '00100', '00100'],
+  O: ['01110', '10001', '10001', '10001', '10001', '10001', '01110'],
+  P: ['11110', '10001', '10001', '11110', '10000', '10000', '10000'],
+};
+
+function stopTextGeometry() {
+  const letters = 'STOP';
+  const cell = 0.03;
+  const gap = cell * 0.65;
+  const totalWidth = letters.length * 5 * cell + (letters.length - 1) * gap;
+  const height = 7 * cell;
+  const positions: number[] = [];
+  letters.split('').forEach((letter, index) => {
+    const rows = stopGlyphs[letter];
+    rows.forEach((row, y) => {
+      for (let x = 0; x < row.length; x++) {
+        if (row[x] !== '1') continue;
+        const left = -totalWidth / 2 + index * (5 * cell + gap) + x * cell;
+        const top = height / 2 - y * cell;
+        positions.push(
+          left,
+          top - cell,
+          0,
+          left + cell,
+          top - cell,
+          0,
+          left,
+          top,
+          0,
+          left + cell,
+          top - cell,
+          0,
+          left + cell,
+          top,
+          0,
+          left,
+          top,
+          0,
+        );
+      }
+    });
+  });
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
+export function createStopSignFactory() {
+  const postLength = boardBottom + boardHeight - postTopInset + postBuried;
+  const postGeometry = new THREE.BoxGeometry(postSize, postLength, postSize);
+  const postMaterial = new THREE.MeshStandardMaterial({
+    color: 0x858985,
+    metalness: 0.35,
+    roughness: 0.55,
+  });
+  const backMaterial = new THREE.MeshStandardMaterial({
+    color: 0xa9aba6,
+    metalness: 0.4,
+    roughness: 0.5,
+    side: THREE.DoubleSide,
+  });
+  const borderGeometry = octagon(0.39);
+  const faceGeometry = octagon(0.35);
+  const textGeometry = stopTextGeometry();
+  const borderMaterial = new THREE.MeshStandardMaterial({
+    color: 0xf2eee3,
+    roughness: 0.7,
+  });
+  const faceMaterial = new THREE.MeshStandardMaterial({
+    color: 0xc92227,
+    roughness: 0.72,
+    side: THREE.DoubleSide,
+  });
+  const textMaterial = new THREE.MeshStandardMaterial({
+    color: 0xffffff,
+    roughness: 0.7,
+    side: THREE.DoubleSide,
+  });
+
+  return () => {
+    const sign = new THREE.Group();
+    sign.name = 'stop-sign';
+    const post = new THREE.Mesh(postGeometry, postMaterial);
+    post.position.set(0, postLength / 2 - postBuried, postZ);
+    post.castShadow = true;
+    sign.add(post);
+
+    const boardY = boardBottom + boardHeight / 2;
+    const back = new THREE.Mesh(borderGeometry, backMaterial);
+    back.position.set(0, boardY, -0.004);
+    back.castShadow = true;
+    sign.add(back);
+    const border = new THREE.Mesh(borderGeometry, borderMaterial);
+    border.position.set(0, boardY, 0.006);
+    border.castShadow = true;
+    sign.add(border);
+    const face = new THREE.Mesh(faceGeometry, faceMaterial);
+    face.position.set(0, boardY, 0.008);
+    face.castShadow = true;
+    sign.add(face);
+    const text = new THREE.Mesh(textGeometry, textMaterial);
+    text.name = 'stop-sign-text';
+    text.position.set(0, boardY, 0.011);
+    sign.add(text);
+    return sign;
+  };
+}

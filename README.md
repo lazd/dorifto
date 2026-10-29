@@ -147,6 +147,12 @@ direct browser requests to OpenFreeMap and USGS, so an internet connection is ne
   All clicked waypoints are marked in driving order; click a marker to remove it
   and reconnect its neighbours. Hover over a road to preview the connecting route
   before adding a waypoint; hover **S** to preview loop closure.
+  **Definition** controls the imported roadway area: **Just the course** imports no
+  surrounding roads, **Nearby roads** imports the existing route corridor, and
+  **Complete map** imports roads across a moving 2 × 2 km square. Complete-map clicks
+  stay inside the visible square and are not limited by course length. Its terrain uses
+  a lower-resolution square-wide grid with high-resolution elevation detail reserved
+  for mapped road corridors.
   With at least three waypoints, click **S** to
   close a road-following loop (still capped at 8 km). Click **S** again or remove
   the final **Start/Finish** row to reopen it. Closing searches for a forward continuation rather than the shortest
@@ -446,21 +452,26 @@ cropped in-game screenshots.
 
 Real-world maps also save scenery from OpenFreeMap's OpenStreetMap-derived vector tiles:
 extruded buildings, water bodies and waterways, and vegetation scattered procedurally
-inside mapped landcover areas. **Include nearby roads** in the course builder adds surrounding
-roads with the game's normal, knockable cones across junction mouths, outside the selected
-course's pavement.
-Scenery tiles are downloaded in a bounded corridor when saving a map;
+inside mapped landcover areas. **Nearby roads** adds surrounding roads in the route corridor;
+**Complete map** treats mapped roads across the 2 × 2 km selection square as drivable
+network and does not place junction-mouth cones across that network. Same-level crossings
+join as widened pavement; the smaller road receives stop lines and octagonal STOP signs.
+One-way arrows use the mapped direction. Yellow centerlines are inferred from road class
+(double yellow for primary/secondary, dashed yellow for lower classes), since the map data
+does not reliably provide pavement paint; these markings are estimates, not surveyed facts.
+Traffic signals are not currently generated.
+Scenery tiles are downloaded in a bounded corridor or square when saving a map;
 driving and reopening the saved map do not request scenery. Editing and saving an older map
 adds its missing scenery without downloading elevation again. Buildings use mapped heights
 where available and estimates otherwise; tree and shrub positions are deterministic estimates,
-not surveyed individual plants. Vegetation is decorative, while buildings and junction cones
-have collision. Existing OSM/OpenFreeMap attribution is retained in exported maps.
+not surveyed individual plants. Vegetation is decorative, while buildings, nearby-road bridges,
+and signs have collision. Existing OSM/OpenFreeMap attribution is retained in exported maps.
 
 Settings > Track has independent **Buildings**, **Water**, **Trees and shrubs**, and
 **Nearby roads** switches (`?buildings=off`, `?water=off`, `?vegetation=off`,
 `?nearby-roads=off`). Hiding buildings removes their collision too; hiding nearby roads
-also removes their junction cones and collision. Junction cones remain enabled independently
-of the regular course cone-density setting.
+also removes their road collision and stop signs. Junction cones remain enabled independently
+of the regular course cone-density setting in corridor mode.
 Nearby-road surfaces share indexed vertices and are split into spatial chunks so off-screen
 sections of long routes can be culled. Road and waterway strips share bounded miter joins
 at bends, avoiding disconnected rectangular panels and gaps. Nearby-road corners are rounded

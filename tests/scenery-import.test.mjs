@@ -168,6 +168,45 @@ function tileFixture(tile) {
         { class: 'primary', brunnel: 'bridge', layer: 1 },
         tile,
       ),
+      feature(
+        'transportation',
+        9,
+        2,
+        [
+          [
+            [210, 220],
+            [245, 255],
+          ],
+        ],
+        { class: 'secondary' },
+        tile,
+      ),
+      feature(
+        'transportation',
+        10,
+        2,
+        [
+          [
+            [255, 215],
+            [285, 245],
+          ],
+        ],
+        { class: 'residential', oneway: '-1' },
+        tile,
+      ),
+      feature(
+        'transportation',
+        11,
+        2,
+        [
+          [
+            [215, 260],
+            [245, 290],
+          ],
+        ],
+        { class: 'tertiary' },
+        tile,
+      ),
     ],
   };
   const writer = new PbfWriter();
@@ -250,8 +289,31 @@ test('decodes supported scenery, holes, widths and clips to the terrain grid wit
   assert.equal(scenery.waterways.length, 1);
   assert.equal(scenery.waterways[0].width, 1.5);
   assert.ok(scenery.roads.length > 0);
-  assert.ok(scenery.roads.every((road) => road.structure === 'bridge' && road.layer === 1));
-  assert.ok(scenery.roads.every((road) => road.roadClass === 'primary'));
+  assert.ok(
+    scenery.roads.some(
+      (road) =>
+        road.roadClass === 'primary' &&
+        road.structure === 'bridge' &&
+        road.layer === 1 &&
+        road.centerline === 'double-yellow',
+    ),
+  );
+  assert.ok(
+    scenery.roads.some(
+      (road) => road.roadClass === 'secondary' && road.centerline === 'double-yellow',
+    ),
+  );
+  assert.ok(
+    scenery.roads.some(
+      (road) => road.roadClass === 'tertiary' && road.centerline === 'dashed-yellow',
+    ),
+  );
+  assert.ok(
+    scenery.roads.some(
+      (road) =>
+        road.roadClass === 'residential' && road.oneway === -1 && road.centerline === undefined,
+    ),
+  );
   assert.ok(maximumActive <= 4);
   const tileRequests = requests.filter((url) => url.endsWith('.pbf'));
   assert.ok(tileRequests.length > 0 && tileRequests.length <= 64);
@@ -259,6 +321,9 @@ test('decodes supported scenery, holes, widths and clips to the terrain grid wit
   const withoutRoads = await fetchCourseScenery(definition, false);
   assert.equal(withoutRoads.roads.length, 0);
   assert.equal(requests.filter((url) => url.endsWith('.pbf')).length, tileRequests.length);
+  const complete = await fetchCourseScenery(definition, 'complete-map');
+  assert.equal(complete.bounds.maxX - complete.bounds.minX, 2000);
+  assert.equal(complete.bounds.maxZ - complete.bounds.minZ, 2000);
 });
 
 test('rejects routes exceeding the vector tile budget before making network requests', async (t) => {

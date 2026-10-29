@@ -7,12 +7,14 @@ import { validateCourseScenery } from './scenery-data';
 export const roadBuildSteps = {
   starting: 'Starting the course builder',
   terrain: 'Downloading USGS terrain elevation data',
-  corridor: 'Downloading high-resolution USGS road elevation data',
   course: 'Sampling road elevation and building the course',
   scenery: 'Downloading nearby roads, buildings, water and vegetation',
+  corridor: 'Downloading high-resolution USGS road elevation data',
   preview: 'Building the 3D terrain preview',
   saving: 'Saving the course on this device',
 } as const;
+
+export type MapDefinition = 'course' | 'nearby-roads' | 'complete-map';
 
 export type RoadBuildStep = keyof typeof roadBuildSteps;
 
@@ -23,7 +25,13 @@ export interface RoadDraft {
   closingSection?: GPSPoint[];
   resolution: number;
   structureLines?: RoadStructureLine[];
+  definition?: MapDefinition;
+  /** Legacy saved setting, retained for older maps. */
   includeNearbyRoads?: boolean;
+}
+
+export function roadMapDefinition(draft: RoadDraft): MapDefinition {
+  return draft.definition ?? (draft.includeNearbyRoads ? 'nearby-roads' : 'course');
 }
 
 export function roadDraftPoints(draft: RoadDraft): GPSPoint[] {
@@ -60,6 +68,11 @@ export function readRoadMap(json: string): RoadMap {
   if (value.scenery !== undefined) {
     validateCourseScenery(value.scenery);
   }
+  if (
+    value.courseBuilder?.definition !== undefined &&
+    !['course', 'nearby-roads', 'complete-map'].includes(value.courseBuilder.definition)
+  )
+    throw new Error('Invalid saved map definition');
   return value;
 }
 

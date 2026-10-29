@@ -544,7 +544,7 @@ float aa = max(fwidth(edgeDistance), max(DIRT_FEATHER, junctionSoil * 0.15));`,
       scenery.setVisible('nearbyRoads', settings.showNearbyRoads);
       junctionsVisible.value = settings.showNearbyRoads ? 1 : 0;
     },
-    turnSignGroups,
+    turnSignGroups: [...turnSignGroups, scenery.stopSignGroup],
     terrain,
     setKerbs(visible: boolean) {
       for (const mesh of kerbMeshes) mesh.visible = visible;
