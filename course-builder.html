@@ -5,15 +5,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#101b20" />
     <title>Course builder</title>
-    <script type="module" crossorigin src="./assets/courseBuilder-CF4rD3Fn.js"></script>
-    <link rel="modulepreload" crossorigin href="./assets/course-builder-data-FmrsaYK9.js">
-    <link rel="stylesheet" crossorigin href="./assets/course-builder-data-DO3y67q4.css">
-    <link rel="stylesheet" crossorigin href="./assets/courseBuilder-CYl5MW5v.css">
+    <script type="module" crossorigin src="./assets/courseBuilder-BbpiEFQm.js"></script>
+    <link rel="modulepreload" crossorigin href="./assets/course-builder-storage-BXb4g95i.js">
+    <link rel="stylesheet" crossorigin href="./assets/course-builder-storage-DO3y67q4.css">
+    <link rel="stylesheet" crossorigin href="./assets/courseBuilder-QxHlA96R.css">
   </head>
   <body>
     <main class="builder" data-view="library">
       <aside class="panel">
-        <header><h1>Course builder</h1></header>
+        <header>
+          <h1>Course builder</h1>
+          <button id="import-course">Import</button>
+          <input id="import-file" type="file" accept=".json,application/json" hidden />
+        </header>
         <section id="library-panel" class="panel-body">
           <button id="new-course" class="button button-create">+ New course</button>
           <div
@@ -41,10 +45,14 @@
           </div>
           <ol id="waypoints"></ol>
           <form id="build-form">
-            <label class="switch-field"
-              >Include nearby roads
-              <input id="nearby-roads" class="switch" type="checkbox" role="switch" checked />
-            </label>
+            <div class="field">
+              <label for="map-definition">Definition</label>
+              <select id="map-definition">
+                <option value="course">Just the course</option>
+                <option value="nearby-roads" selected>Nearby roads</option>
+                <option value="complete-map">Complete map</option>
+              </select>
+            </div>
             <details class="advanced">
               <summary>Advanced</summary>
               <div class="field">
@@ -106,8 +114,9 @@
             <p id="preview-meta"></p>
           </div>
           <div class="viewport-toolbar">
-            <button id="edit-route">Edit</button
-            ><button id="play" class="button button-primary" disabled>Play</button>
+            <button id="edit-route">Edit</button>
+            <button id="download" hidden disabled>Download</button>
+            <button id="play" class="button button-primary" disabled>Play</button>
           </div>
         </section>
         <p id="empty-library" class="viewport-message">Create a course to get started.</p>
