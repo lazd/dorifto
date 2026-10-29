@@ -1541,6 +1541,8 @@ export function createScenery(
       const width = roadWidthAt(profile, distance);
       let medianX = center.x,
         medianZ = center.z,
+        oppositeX = center.x,
+        oppositeZ = center.z,
         medianWidth = 0;
       if (road.oneway) {
         let closest = Infinity;
@@ -1613,6 +1615,8 @@ export function createScenery(
           const offset = (width / 2 + gap / 2) / separation;
           medianX = center.x + (x - center.x) * offset;
           medianZ = center.z + (z - center.z) * offset;
+          oppositeX = x;
+          oppositeZ = z;
           medianWidth = Math.min(3, gap - 0.3);
         }
       }
@@ -1644,7 +1648,11 @@ export function createScenery(
         const direction = curve.getTangentAt((distance + along) / length);
         const x = point.x + medianX - center.x,
           z = point.z + medianZ - center.z;
-        const base = ground(x, z) + nearbyRoadLift;
+        const base =
+          (ground(point.x, point.z) +
+            ground(point.x + oppositeX - center.x, point.z + oppositeZ - center.z)) /
+            2 +
+          nearbyRoadLift;
         return highwayMedianProfile.map(([offset, height]) => ({
           x: x + direction.z * offset * scale,
           z: z - direction.x * offset * scale,
@@ -2553,11 +2561,17 @@ export function createScenery(
     if (!batch.positions.length) continue;
     const surfaceMaterial = material(color);
     surfaceMaterial.side = THREE.DoubleSide;
+    const paint = [markingBatch, centerlineBatch, directionBatch, stopLineBatch].includes(batch);
     let index = 0;
     const meshes = [...batch.chunks()].map((chunk) =>
-      addBatch(layers.nearbyRoads, chunk, surfaceMaterial, index++ ? `${name}-${index}` : name),
+      addBatch(
+        layers.nearbyRoads,
+        chunk,
+        surfaceMaterial,
+        index++ ? `${name}-${index}` : name,
+        !paint && batch !== medianReflectorBatch,
+      ),
     );
-    const paint = [markingBatch, centerlineBatch, directionBatch, stopLineBatch].includes(batch);
     if (paint)
       addRoadDirt(
         surfaceMaterial,

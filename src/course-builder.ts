@@ -316,7 +316,7 @@ function updateHover() {
     hoverNode.classList.toggle('route-hover-invalid', tooLong);
     hoverNode.title = tooLong
       ? mapDefinition() === 'complete-map'
-        ? 'Keep the course inside the 2 × 2 km map square.'
+        ? 'Keep the course inside the 5 × 5 km map square.'
         : 'That would exceed 8 km. Choose a closer endpoint.'
       : '';
   } catch (error) {
@@ -365,7 +365,7 @@ function updateControls() {
   const length = routeLength(points);
   const complete = mapDefinition() === 'complete-map';
   element('distance').textContent = complete
-    ? `${(length / 1000).toFixed(1)}km · 2 × 2 km map area${closingSection ? ' · Closed loop' : ''}`
+    ? `${(length / 1000).toFixed(1)}km · 5 × 5 km map area${closingSection ? ' · Closed loop' : ''}`
     : `${(length / 1000).toFixed(1)}km / ${maximumRoadLength / 1000}km (max)${closingSection ? ' · Closed loop' : ''}`;
   clearButton.disabled = !!worker || !sections.length;
   buildButton.disabled =
@@ -804,9 +804,9 @@ map.on('click', (event) => {
     if (routeLength(next) > maximumLength())
       throw new Error('That would exceed 8 km. Choose a closer endpoint or delete a waypoint.');
     if (mapDefinition() === 'complete-map' && !fitsCompleteMap(next))
-      throw new Error('Keep all selected roads inside the moving 2 × 2 km map square.');
+      throw new Error('Keep all selected roads inside the moving 5 × 5 km map square.');
     if (mapDefinition() === 'complete-map' && !fitsCurrentCompleteMap(section))
-      throw new Error('Click inside the current 2 × 2 km map square.');
+      throw new Error('Click inside the current 5 × 5 km map square.');
     sections.push(section);
     hasLocated = true;
     updateRoute();
@@ -927,7 +927,7 @@ element<HTMLFormElement>('build-form').onsubmit = (event) => {
     const selected = routePoints();
     validateImportRoute(selected, !!closingSection, maximumLength());
     if (mapDefinition() === 'complete-map' && !fitsCompleteMap(selected))
-      throw new Error('Keep all selected roads inside the moving 2 × 2 km map square.');
+      throw new Error('Keep all selected roads inside the moving 5 × 5 km map square.');
   } catch (error) {
     report(error);
     return;

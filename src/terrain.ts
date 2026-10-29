@@ -64,6 +64,7 @@ export class CourseTerrain {
   private groundTriangles?: ReturnType<typeof terrainGeometryTriangles>;
   private exteriorQuery?: HeightfieldData;
   private readonly riverChannels?: SceneryRiverChannels;
+  private readonly groundMeshes: THREE.Mesh[] = [];
 
   constructor(definition: CourseDefinition, buildVisuals = true) {
     const mapBounds = definition.scenery?.bounds;
@@ -1059,8 +1060,42 @@ export class CourseTerrain {
     material.polygonOffsetFactor = 2;
     material.polygonOffsetUnits = 2;
     this.mesh = new THREE.Mesh(geometry, material);
-    this.mesh.castShadow = true;
-    this.mesh.receiveShadow = true;
+    const terrainChunks = new Map<string, { indices: number[]; bounds: THREE.Box3 }>();
+    const position = geometry.getAttribute('position');
+    const index = geometry.getIndex()!;
+    const chunkVertex = new THREE.Vector3();
+    for (let i = 0; i < index.count; i += 3) {
+      const a = index.getX(i),
+        b = index.getX(i + 1),
+        c = index.getX(i + 2);
+      const x = (position.getX(a) + position.getX(b) + position.getX(c)) / 3;
+      const z = (position.getZ(a) + position.getZ(b) + position.getZ(c)) / 3;
+      const key = `${Math.floor(x / 256)},${Math.floor(z / 256)}`;
+      let chunk = terrainChunks.get(key);
+      if (!chunk) {
+        chunk = { indices: [], bounds: new THREE.Box3() };
+        terrainChunks.set(key, chunk);
+      }
+      chunk.indices.push(a, b, c);
+      for (const j of [a, b, c])
+        chunk.bounds.expandByPoint(chunkVertex.fromBufferAttribute(position, j));
+    }
+    for (const [key, chunk] of terrainChunks) {
+      const tile = new THREE.BufferGeometry();
+      for (const [name, attribute] of Object.entries(geometry.attributes))
+        tile.setAttribute(name, attribute);
+      tile.setIndex(chunk.indices);
+      tile.boundingBox = chunk.bounds;
+      tile.boundingSphere = chunk.bounds.getBoundingSphere(new THREE.Sphere());
+      const mesh = new THREE.Mesh(tile, material);
+      mesh.name = `terrain-${key}`;
+      mesh.receiveShadow = true;
+      this.groundMeshes.push(mesh);
+      this.mesh.add(mesh);
+    }
+    // Keep the full geometry for surface queries; only spatial chunks are drawn.
+    geometry.setDrawRange(0, 0);
+    this.setCastShadow(true);
     const bladeGeometry = new THREE.BufferGeometry();
     bladeGeometry.setAttribute(
       'position',
@@ -1249,6 +1284,11 @@ export class CourseTerrain {
       asphaltSpans,
       padRadius,
     };
+  }
+
+  setCastShadow(enabled: boolean) {
+    this.mesh.castShadow = enabled;
+    for (const mesh of this.groundMeshes) mesh.castShadow = enabled;
   }
 
   /** Extends the roadside dirt verge along scenery roads, given the distance to their pavement. */

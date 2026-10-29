@@ -571,7 +571,7 @@ async function start() {
       course.setTurnSignMode(turnSignMode);
       course.setLapGates(lapGateMode);
       course.terrain.grass.visible = showGrass;
-      course.terrain.mesh.castShadow = terrainCastsShadows();
+      course.terrain.setCastShadow(terrainCastsShadows());
       course.setKerbs(configurationState.getState().showKerbs);
       course.setRoadEdgeDirt(configurationState.getState().showRoadEdgeDirt);
       course.setScenery(configurationState.getState());
@@ -693,7 +693,7 @@ async function start() {
     ['showGrass'],
   );
   configurationState.subscribe(() => {
-    terrain.mesh.castShadow = terrainCastsShadows();
+    terrain.setCastShadow(terrainCastsShadows());
   }, ['terrainShadows']);
   configurationState.subscribe(() => {
     renderer.setPixelRatio(pixelRatio());

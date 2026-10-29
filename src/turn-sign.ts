@@ -293,13 +293,31 @@ const stopGlyphs: Record<string, string[]> = {
   P: ['11110', '10001', '10001', '11110', '10000', '10000', '10000'],
 };
 
-function stopTextGeometry() {
+function stopFaceTexture(halfHeight: number) {
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = 512;
+  const context = canvas.getContext('2d')!;
+  const scale = canvas.width / (halfHeight * 2);
+  context.setTransform(scale, 0, 0, -scale, canvas.width / 2, canvas.height / 2);
+  context.fillStyle = '#f2eee3';
+  context.fillRect(-halfHeight, -halfHeight, halfHeight * 2, halfHeight * 2);
+  context.fillStyle = '#c92227';
+  context.beginPath();
+  for (let i = 0; i < 8; i++) {
+    const angle = Math.PI / 8 + (i * Math.PI) / 4;
+    const x = Math.cos(angle) * 0.35;
+    const y = Math.sin(angle) * 0.35;
+    if (i === 0) context.moveTo(x, y);
+    else context.lineTo(x, y);
+  }
+  context.closePath();
+  context.fill();
+  context.fillStyle = '#ffffff';
   const letters = 'STOP';
-  const cell = 0.03;
+  const cell = 0.025;
   const gap = cell * 0.65;
   const totalWidth = letters.length * 5 * cell + (letters.length - 1) * gap;
   const height = 7 * cell;
-  const positions: number[] = [];
   letters.split('').forEach((letter, index) => {
     const rows = stopGlyphs[letter];
     rows.forEach((row, y) => {
@@ -307,33 +325,14 @@ function stopTextGeometry() {
         if (row[x] !== '1') continue;
         const left = -totalWidth / 2 + index * (5 * cell + gap) + x * cell;
         const top = height / 2 - y * cell;
-        positions.push(
-          left,
-          top - cell,
-          0,
-          left + cell,
-          top - cell,
-          0,
-          left,
-          top,
-          0,
-          left + cell,
-          top - cell,
-          0,
-          left + cell,
-          top,
-          0,
-          left,
-          top,
-          0,
-        );
+        context.fillRect(left, top - cell, cell, cell);
       }
     });
   });
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  geometry.computeVertexNormals();
-  return geometry;
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 8;
+  return texture;
 }
 
 export function createStopSignFactory() {
@@ -348,24 +347,21 @@ export function createStopSignFactory() {
     color: 0xa9aba6,
     metalness: 0.4,
     roughness: 0.5,
-    side: THREE.DoubleSide,
   });
-  const borderGeometry = octagon(0.39);
-  const faceGeometry = octagon(0.35);
-  const textGeometry = stopTextGeometry();
-  const borderMaterial = new THREE.MeshStandardMaterial({
-    color: 0xf2eee3,
-    roughness: 0.7,
-  });
+  const radius = 0.39;
+  const halfHeight = radius * Math.cos(Math.PI / 8);
+  const boardGeometry = octagon(radius);
+  const positions = boardGeometry.getAttribute('position');
+  const uv = boardGeometry.getAttribute('uv');
+  for (let i = 0; i < positions.count; i++)
+    uv.setXY(
+      i,
+      positions.getX(i) / (halfHeight * 2) + 0.5,
+      positions.getY(i) / (halfHeight * 2) + 0.5,
+    );
   const faceMaterial = new THREE.MeshStandardMaterial({
-    color: 0xc92227,
+    map: stopFaceTexture(halfHeight),
     roughness: 0.72,
-    side: THREE.DoubleSide,
-  });
-  const textMaterial = new THREE.MeshStandardMaterial({
-    color: 0xffffff,
-    roughness: 0.7,
-    side: THREE.DoubleSide,
   });
 
   return () => {
@@ -376,23 +372,16 @@ export function createStopSignFactory() {
     post.castShadow = true;
     sign.add(post);
 
-    const boardY = boardBottom + boardHeight / 2;
-    const back = new THREE.Mesh(borderGeometry, backMaterial);
+    const boardY = postLength - postBuried + postTopInset - halfHeight;
+    const back = new THREE.Mesh(boardGeometry, backMaterial);
     back.position.set(0, boardY, -0.004);
+    back.rotation.y = Math.PI;
     back.castShadow = true;
     sign.add(back);
-    const border = new THREE.Mesh(borderGeometry, borderMaterial);
-    border.position.set(0, boardY, 0.006);
-    border.castShadow = true;
-    sign.add(border);
-    const face = new THREE.Mesh(faceGeometry, faceMaterial);
-    face.position.set(0, boardY, 0.008);
+    const face = new THREE.Mesh(boardGeometry, faceMaterial);
+    face.position.set(0, boardY, 0);
     face.castShadow = true;
     sign.add(face);
-    const text = new THREE.Mesh(textGeometry, textMaterial);
-    text.name = 'stop-sign-text';
-    text.position.set(0, boardY, 0.011);
-    sign.add(text);
     return sign;
   };
 }

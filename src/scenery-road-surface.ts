@@ -11,7 +11,13 @@ import {
 
 type Sample = { x: number; z: number; height: number; distance: number };
 type EndPlane = { x: number; z: number; dx: number; dz: number; distance: number };
-type Segment = { a: Sample; b: Sample; width: number; endPlanes: EndPlane[] };
+type Segment = {
+  a: Sample;
+  b: Sample;
+  width: number;
+  endPlanes: EndPlane[];
+  carriageway?: { key: string; direction: number };
+};
 type Anchor = Sample & {
   slopeX: number;
   slopeZ: number;
@@ -104,7 +110,11 @@ export class SceneryRoadSurface {
             },
           ];
         });
-        return { samples, width: road.width, endPlanes };
+        const carriageway =
+          road.oneway && ['motorway', 'trunk'].includes(road.roadClass ?? '')
+            ? { key: `${road.roadClass}:${road.layer ?? 0}`, direction: road.oneway }
+            : undefined;
+        return { samples, width: road.width, endPlanes, carriageway };
       });
     const targets = new Map(
       [...anchors].map(([key, samples]) => [
@@ -129,6 +139,7 @@ export class SceneryRoadSurface {
           a,
           b,
           width,
+          carriageway: lines[line].carriageway,
           endPlanes: lines[line].endPlanes.filter(
             (plane) =>
               Math.min(
@@ -223,6 +234,16 @@ export class SceneryRoadSurface {
       surroundingHeight = 0,
       surroundingWeight = 0,
       surroundingBlend = 0;
+    const carriageways: {
+      x: number;
+      z: number;
+      dx: number;
+      dz: number;
+      edge: number;
+      height: number;
+      key: string;
+      direction: number;
+    }[] = [];
     const junctions = this.junctionCells.get(`${Math.floor(x / 32)},${Math.floor(z / 32)}`) ?? [];
     const junctionHeight = (roadIndex: number, profile: number) => {
       let sum = 0,
@@ -246,7 +267,11 @@ export class SceneryRoadSurface {
       .get(`${Math.floor(x / 32)},${Math.floor(z / 32)}`)
       ?.entries() ?? []) {
       let nearest = Infinity,
-        height = 0;
+        height = 0,
+        nearestX = 0,
+        nearestZ = 0,
+        directionX = 0,
+        directionZ = 0;
       const width = segments[0].width;
       for (const { a, b } of segments) {
         const dx = b.x - a.x,
@@ -258,6 +283,10 @@ export class SceneryRoadSurface {
         if (distance >= nearest) continue;
         nearest = distance;
         height = MathUtils.lerp(a.height, b.height, t);
+        nearestX = a.x + t * dx;
+        nearestZ = a.z + t * dz;
+        directionX = dx / Math.sqrt(length);
+        directionZ = dz / Math.sqrt(length);
       }
       const distance = nearest;
       const influence =
@@ -265,6 +294,17 @@ export class SceneryRoadSurface {
       if (!influence) continue;
       const edge = distance - width / 2;
       height = junctionHeight(roadIndex, height);
+      const carriageway = segments[0].carriageway;
+      if (carriageway && edge > 0 && edge < 12)
+        carriageways.push({
+          x: nearestX,
+          z: nearestZ,
+          dx: directionX,
+          dz: directionZ,
+          edge,
+          height,
+          ...carriageway,
+        });
       // Outside the protected roadbed, continuous distance weights avoid nearest-road cliffs.
       const weight = influence / Math.max(0.001, edge) ** 2;
       surroundingHeight += height * weight;
@@ -278,8 +318,30 @@ export class SceneryRoadSurface {
       profileHeight = height;
     }
     if (!blend) return ground;
-    if (closestEdge > 0)
+    if (closestEdge > 0) {
+      let medianHeight = 0,
+        medianGap = Infinity;
+      for (let i = 0; i < carriageways.length; i++) {
+        const a = carriageways[i];
+        for (let j = i + 1; j < carriageways.length; j++) {
+          const b = carriageways[j];
+          const gap = a.edge + b.edge;
+          if (
+            a.key !== b.key ||
+            gap > 12 ||
+            gap >= medianGap ||
+            (a.dx * b.dx + a.dz * b.dz) * a.direction * b.direction > -0.95 ||
+            (a.x - x) * (b.x - x) + (a.z - z) * (b.z - z) >= 0
+          )
+            continue;
+          // Grade narrow medians directly between pavement edges, not surrounding hills/roads.
+          medianHeight = MathUtils.lerp(a.height, b.height, a.edge / gap);
+          medianGap = gap;
+        }
+      }
+      if (medianGap < Infinity) return medianHeight;
       return MathUtils.lerp(ground, surroundingHeight / surroundingWeight, surroundingBlend);
+    }
     return MathUtils.lerp(ground, profileHeight, blend);
   }
 }

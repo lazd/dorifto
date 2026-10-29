@@ -1,7 +1,7 @@
 /** Saved map scenery in the course's local meter coordinates, independent of driving direction. */
 export type SceneryPoint = [number, number];
 export type SceneryPolygon = SceneryPoint[][];
-export const completeMapSize = 2000;
+export const completeMapSize = 5000;
 
 /** Quarter-circle widening at the main pavement, tapering to the mapped branch width. */
 export function junctionRoadFlare(distance: number) {
