@@ -10,7 +10,8 @@ import {
 } from './scenery-data';
 
 type Sample = { x: number; z: number; height: number; distance: number };
-type Segment = { a: Sample; b: Sample; width: number };
+type EndPlane = { x: number; z: number; dx: number; dz: number };
+type Segment = { a: Sample; b: Sample; width: number; endPlanes: EndPlane[] };
 type Anchor = Sample & {
   slopeX: number;
   slopeZ: number;
@@ -28,6 +29,11 @@ export class SceneryRoadSurface {
 
   constructor(roads: CourseScenery['roads'], height: (x: number, z: number) => number) {
     const junctions = sceneryJunctions(roads);
+    const bridgeEnds = new Set(
+      roads
+        .filter((road) => road.structure === 'bridge')
+        .flatMap((road) => [road.points[0], road.points.at(-1)!].map(sceneryPointKey)),
+    );
     const anchors = new Map<string, Anchor[]>();
     const lines = roads
       .filter((road) => !road.structure)
@@ -80,7 +86,22 @@ export class SceneryRoadSurface {
             anchors.set(key, shared);
           }
         }
-        return { samples, width: road.width };
+        const endPlanes = [0, samples.length - 1].flatMap((end) => {
+          const point = samples[end];
+          if (!bridgeEnds.has(sceneryPointKey([point.x, point.z]))) return [];
+          const neighbor = samples[end ? end - 1 : 1];
+          const length = Math.hypot(point.x - neighbor.x, point.z - neighbor.z);
+          if (!length) return [];
+          return [
+            {
+              x: point.x,
+              z: point.z,
+              dx: (point.x - neighbor.x) / length,
+              dz: (point.z - neighbor.z) / length,
+            },
+          ];
+        });
+        return { samples, width: road.width, endPlanes };
       });
     const targets = new Map(
       [...anchors].map(([key, samples]) => [
@@ -101,7 +122,7 @@ export class SceneryRoadSurface {
       for (let i = 1; i < samples.length; i++) {
         const a = samples[i - 1],
           b = samples[i];
-        const segment = { a, b, width };
+        const segment = { a, b, width, endPlanes: lines[line].endPlanes };
         const radius = width / 2 + 20;
         for (
           let x = Math.floor((Math.min(a.x, b.x) - radius) / 32);
@@ -163,13 +184,17 @@ export class SceneryRoadSurface {
     for (const segments of this.cells
       .get(`${Math.floor(x / 32)},${Math.floor(z / 32)}`)
       ?.values() ?? [])
-      for (const { a, b, width } of segments) {
+      for (const { a, b, width, endPlanes } of segments) {
         const dx = b.x - a.x,
           dz = b.z - a.z;
         const length = dx * dx + dz * dz;
         if (!length) continue;
         const t = MathUtils.clamp(((x - a.x) * dx + (z - a.z) * dz) / length, 0, 1);
-        nearest = Math.min(nearest, Math.hypot(x - a.x - t * dx, z - a.z - t * dz) - width / 2);
+        let distance = Math.hypot(x - a.x - t * dx, z - a.z - t * dz) - width / 2;
+        // A ground road stops at its abutment, not a round cap extending underneath the bridge.
+        for (const plane of endPlanes)
+          distance = Math.max(distance, (x - plane.x) * plane.dx + (z - plane.z) * plane.dz);
+        nearest = Math.min(nearest, distance);
       }
     return nearest;
   }
