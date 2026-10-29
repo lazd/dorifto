@@ -109,7 +109,7 @@ export async function buildRoadCourse(
     definition === 'complete-map' ? Infinity : undefined,
   );
   if (definition === 'complete-map' && !fitsCompleteMap(request.points))
-    throw new Error('Complete-map roads must fit inside the moving 5 × 5 km map square.');
+    throw new Error('Complete-map roads must fit inside the moving 2.5 × 2.5 km map square.');
   if (
     !request.name.trim() ||
     !Number.isFinite(request.width) ||

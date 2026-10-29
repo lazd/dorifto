@@ -316,7 +316,7 @@ function updateHover() {
     hoverNode.classList.toggle('route-hover-invalid', tooLong);
     hoverNode.title = tooLong
       ? mapDefinition() === 'complete-map'
-        ? 'Keep the course inside the 5 × 5 km map square.'
+        ? 'Keep the course inside the 2.5 × 2.5 km map square.'
         : 'That would exceed 8 km. Choose a closer endpoint.'
       : '';
   } catch (error) {
