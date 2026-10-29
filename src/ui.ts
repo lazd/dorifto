@@ -821,7 +821,6 @@ export function bindCoursePicker(
   const items = new Map<string, HTMLButtonElement>();
   let preview = selected;
   let previewToken = 0;
-  let previewTimer: ReturnType<typeof setTimeout> | undefined;
   let stopPreviewSpinner: (() => void) | undefined;
   let changing = false;
   let draft: { course?: CourseDefinition; name: string } | undefined;
@@ -1110,8 +1109,6 @@ export function bindCoursePicker(
 
   function stopPreview() {
     ++previewToken;
-    clearTimeout(previewTimer);
-    previewTimer = undefined;
     previewWorker?.terminate();
     previewWorker = undefined;
     preview3d?.dispose();
@@ -1148,8 +1145,6 @@ export function bindCoursePicker(
 
   async function buildPreview3d() {
     if (!picker.open || previewLoading || preview3d) return;
-    clearTimeout(previewTimer);
-    previewTimer = undefined;
     const course = preview;
     const token = ++previewToken;
     previewError('');
@@ -1239,10 +1234,6 @@ export function bindCoursePicker(
     renderRecords(course);
     render2d(course);
     syncBusy();
-    previewTimer = setTimeout(() => {
-      previewTimer = undefined;
-      void buildPreview3d();
-    }, 100);
   }
 
   function syncCourseName() {

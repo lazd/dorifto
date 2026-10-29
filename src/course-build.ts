@@ -6,7 +6,6 @@ import {
   type TrackSource,
 } from './track-conversion.mjs';
 import { validateImportRoute } from './road-selection';
-import type { CoursePreviewColors } from './course-preview-3d';
 import {
   restoreRoadDraft,
   roadMapDefinition,
@@ -32,9 +31,7 @@ export interface BuildRequest {
   draft: RoadDraft;
   terrainTransition: number;
   doubleYellow: boolean;
-  colors: CoursePreviewColors;
   closed: boolean;
-  skipPreview: boolean;
 }
 
 function completeMapCoordinates(points: readonly GPSPoint[]) {
@@ -92,7 +89,7 @@ interface BuildOptions {
 }
 
 export async function buildRoadCourse(
-  request: Omit<BuildRequest, 'colors' | 'skipPreview'>,
+  request: BuildRequest,
   {
     rebuildTerrain = false,
     refreshScenery = false,

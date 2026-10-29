@@ -126,6 +126,7 @@ const markers: maplibregl.Marker[] = [];
 const theme = courseBuilderTheme();
 const mapContainer = element('map');
 const inspection = element('inspection');
+const previewButton = element<HTMLButtonElement>('show-3d');
 let preview: CourseBuilderPreview | undefined;
 
 function notify(message: string, error = false) {
@@ -399,8 +400,7 @@ function hasStructureRepair() {
 
 function invalidateCourse() {
   showMap();
-  preview?.dispose();
-  preview = undefined;
+  stopLibraryPreview();
   course = undefined;
   courseJSON = undefined;
   courseSaved = false;
@@ -981,13 +981,7 @@ element<HTMLFormElement>('build-form').onsubmit = (event) => {
               item.tabIndex = active ? 0 : -1;
             }
           } else showPreview();
-          if (response.model)
-            preview = new CourseBuilderPreview(
-              element('preview'),
-              response.model,
-              { ...theme.preview, background: theme.palette.surface },
-              `Interactive 3D terrain preview of ${response.course.name}`,
-            );
+          showCourse2d();
           guide();
           if (saveError)
             notify(
@@ -1024,7 +1018,6 @@ element<HTMLFormElement>('build-form').onsubmit = (event) => {
   notifyParent({ type: 'course-builder:busy', busy: true });
   buildSteps.replaceChildren();
   for (const [key, label] of Object.entries(roadBuildSteps)) {
-    if (embedded && key === 'preview') continue;
     if (existingCourse && !completeMapExpansion && (key === 'terrain' || key === 'corridor'))
       continue;
     const item = document.createElement('li');
@@ -1059,9 +1052,7 @@ element<HTMLFormElement>('build-form').onsubmit = (event) => {
     }),
     terrainTransition: Number(transitionInput.value),
     doubleYellow: centerLineInput.checked,
-    colors: theme.preview,
     closed: !!closingSection,
-    skipPreview: embedded,
   } satisfies BuildRequest);
   updateControls();
 };
@@ -1180,6 +1171,81 @@ function stopLibraryPreview() {
   element('preview-status').hidden = true;
 }
 
+/** The 3D model takes seconds to build, so it is only generated when requested. */
+function showCourse2d() {
+  if (!course) return;
+  element('preview').innerHTML = coursePreviewSvg(course, {
+    size: 400,
+    padding: 64,
+    title: course.name,
+  });
+  previewButton.hidden = false;
+  previewButton.disabled = false;
+}
+
+function show3dPreview() {
+  if (!course || previewWorker || preview) return;
+  const version = previewVersion;
+  const shown = course;
+  const previewStatus = element('preview-status');
+  previewStatus.textContent = 'Building 3D preview...';
+  previewStatus.hidden = false;
+  previewButton.disabled = true;
+  stopPreviewSpinner = startTextSpinner(previewStatus);
+  const fail = (error: unknown) => {
+    if (version !== previewVersion) return;
+    previewWorker?.terminate();
+    previewWorker = undefined;
+    stopPreviewSpinner?.();
+    stopPreviewSpinner = undefined;
+    previewStatus.textContent = '3D preview unavailable. The 2D outline is still shown.';
+    previewButton.disabled = false;
+    report(error);
+  };
+  try {
+    const active = new Worker(new URL('./course-builder-worker.ts', import.meta.url), {
+      type: 'module',
+    });
+    previewWorker = active;
+    active.onmessage = (event: MessageEvent<BuildResponse>) => {
+      if (version !== previewVersion) return;
+      if (event.data.type === 'error') {
+        fail(new Error(event.data.message));
+        return;
+      }
+      if (event.data.type !== 'preview') return;
+      active.terminate();
+      previewWorker = undefined;
+      try {
+        element('preview').replaceChildren();
+        preview = new CourseBuilderPreview(
+          element('preview'),
+          event.data.model,
+          { ...theme.preview, background: theme.palette.surface },
+          `Interactive 3D terrain preview of ${shown.name}`,
+        );
+        stopPreviewSpinner?.();
+        stopPreviewSpinner = undefined;
+        previewStatus.hidden = true;
+        previewButton.hidden = true;
+      } catch (error) {
+        showCourse2d();
+        fail(error);
+      }
+    };
+    active.onerror = (event) => {
+      event.preventDefault();
+      fail(new Error(event.message || 'The preview worker could not load. Reload and try again.'));
+    };
+    active.onmessageerror = () => fail(new Error('The preview worker returned unreadable data.'));
+    active.postMessage({ type: 'preview', course: shown, colors: theme.preview });
+  } catch (error) {
+    fail(error);
+  }
+}
+
+previewButton.onclick = show3dPreview;
+
 async function selectMap(id: string) {
   const selected = savedMaps.find((item) => item.course.id === id);
   if (!selected) return;
@@ -1196,63 +1262,17 @@ async function selectMap(id: string) {
     item.setAttribute('aria-selected', String(active));
     item.tabIndex = active ? 0 : -1;
   }
-  const previewStatus = element('preview-status');
-  previewStatus.textContent = 'Loading preview...';
-  previewStatus.hidden = false;
-  stopPreviewSpinner = startTextSpinner(previewStatus);
+  showCourse2d();
   try {
     const json = await selected.handle.getFile();
     if (version !== previewVersion || view !== 'library') return;
     courseJSON = json;
-    const active = new Worker(new URL('./course-builder-worker.ts', import.meta.url), {
-      type: 'module',
-    });
-    previewWorker = active;
-    const fail = (error: unknown) => {
-      if (version !== previewVersion) return;
-      active.terminate();
-      previewWorker = undefined;
-      stopPreviewSpinner?.();
-      stopPreviewSpinner = undefined;
-      previewStatus.textContent =
-        'Preview unavailable. You can still edit or download this course.';
-      report(error);
-    };
-    active.onmessage = (event: MessageEvent<BuildResponse>) => {
-      if (version !== previewVersion || view !== 'library') return;
-      if (event.data.type === 'error') {
-        fail(new Error(event.data.message));
-        return;
-      }
-      if (event.data.type !== 'preview') return;
-      active.terminate();
-      previewWorker = undefined;
-      try {
-        preview = new CourseBuilderPreview(
-          element('preview'),
-          event.data.model,
-          { ...theme.preview, background: theme.palette.surface },
-          `Interactive preview of ${selected.course.name}`,
-        );
-        stopPreviewSpinner?.();
-        stopPreviewSpinner = undefined;
-        previewStatus.hidden = true;
-      } catch (error) {
-        fail(error);
-      }
-    };
-    active.onerror = (event) => {
-      event.preventDefault();
-      fail(new Error(event.message || 'The preview worker could not load. Reload and try again.'));
-    };
-    active.onmessageerror = () => fail(new Error('The preview worker returned unreadable data.'));
-    active.postMessage({ type: 'preview', course, colors: theme.preview });
     updatePreviewInfo();
   } catch (error) {
     if (version !== previewVersion || view !== 'library') return;
-    stopPreviewSpinner?.();
-    stopPreviewSpinner = undefined;
-    previewStatus.textContent = 'Preview unavailable. Reload the page and try again.';
+    const previewStatus = element('preview-status');
+    previewStatus.textContent = 'Course file unavailable. Reload the page and try again.';
+    previewStatus.hidden = false;
     report(error);
   }
 }

@@ -48,22 +48,34 @@ export interface TerrainQueryData extends HeightfieldData {
   nearbyRoadMesh?: TriangleMeshData;
 }
 
+/** Integer key for a spatial hash cell; cheaper than a string key in hot queries. */
+export function cellKey(cellX: number, cellZ: number) {
+  return cellX * 65536 + cellZ;
+}
+
+const pavementCell = 4;
+
 /** Uses the rendered footprint, so trimmed road panels never become invisible asphalt. */
 export class PavementSurface {
-  private readonly buckets = new Map<string, number[]>();
+  private readonly buckets = new Map<number, number[]>();
 
   constructor(private readonly mesh?: TriangleMeshData) {
     if (!mesh) return;
-    for (let i = 0; i < mesh.indices.length; i += 3) {
-      const vertices = [0, 1, 2].map((j) => mesh.indices[i + j] * 3);
-      const xs = vertices.map((v) => mesh.positions[v]);
-      const zs = vertices.map((v) => mesh.positions[v + 2]);
-      for (let x = Math.floor(Math.min(...xs) / 16); x <= Math.floor(Math.max(...xs) / 16); x++)
-        for (let z = Math.floor(Math.min(...zs) / 16); z <= Math.floor(Math.max(...zs) / 16); z++) {
-          const key = `${x},${z}`;
-          const bucket = this.buckets.get(key) ?? [];
-          bucket.push(i);
-          this.buckets.set(key, bucket);
+    const { positions: p, indices } = mesh;
+    for (let i = 0; i < indices.length; i += 3) {
+      const a = indices[i] * 3,
+        b = indices[i + 1] * 3,
+        c = indices[i + 2] * 3;
+      const minX = Math.floor(Math.min(p[a], p[b], p[c]) / pavementCell);
+      const maxX = Math.floor(Math.max(p[a], p[b], p[c]) / pavementCell);
+      const minZ = Math.floor(Math.min(p[a + 2], p[b + 2], p[c + 2]) / pavementCell);
+      const maxZ = Math.floor(Math.max(p[a + 2], p[b + 2], p[c + 2]) / pavementCell);
+      for (let x = minX; x <= maxX; x++)
+        for (let z = minZ; z <= maxZ; z++) {
+          const key = cellKey(x, z);
+          const bucket = this.buckets.get(key);
+          if (bucket) bucket.push(i);
+          else this.buckets.set(key, [i]);
         }
     }
   }
@@ -75,9 +87,11 @@ export class PavementSurface {
   heightAt(position: { x: number; y?: number; z: number }) {
     if (!this.mesh) return;
     const { positions: p, indices } = this.mesh;
-    for (const i of this.buckets.get(
-      `${Math.floor(position.x / 16)},${Math.floor(position.z / 16)}`,
-    ) ?? []) {
+    const bucket = this.buckets.get(
+      cellKey(Math.floor(position.x / pavementCell), Math.floor(position.z / pavementCell)),
+    );
+    if (!bucket) return;
+    for (const i of bucket) {
       const a = indices[i] * 3,
         b = indices[i + 1] * 3,
         c = indices[i + 2] * 3;
@@ -99,7 +113,7 @@ export class PavementSurface {
 }
 
 export class TerrainSurface {
-  private readonly buckets = new Map<string, number[]>();
+  private readonly buckets = new Map<number, number[]>();
 
   constructor(
     private readonly segments: SurfaceSegment[],
@@ -118,10 +132,10 @@ export class TerrainSurface {
           z <= Math.floor((Math.max(a.z, b.z) + 50) / 16);
           z++
         ) {
-          const key = `${x},${z}`;
-          const bucket = this.buckets.get(key) ?? [];
-          bucket.push(i);
-          this.buckets.set(key, bucket);
+          const key = cellKey(x, z);
+          const bucket = this.buckets.get(key);
+          if (bucket) bucket.push(i);
+          else this.buckets.set(key, [i]);
         }
       }
     });
@@ -134,7 +148,7 @@ export class TerrainSurface {
     let centerX = x;
     let centerZ = z;
     let fraction = 0;
-    for (const i of this.buckets.get(`${Math.floor(x / 16)},${Math.floor(z / 16)}`) ?? []) {
+    for (const i of this.buckets.get(cellKey(Math.floor(x / 16), Math.floor(z / 16))) ?? []) {
       const segment = this.segments[i];
       const dx = segment.b.x - segment.a.x;
       const dz = segment.b.z - segment.a.z;
@@ -145,7 +159,7 @@ export class TerrainSurface {
       );
       const ox = x - segment.a.x - t * dx;
       const oz = z - segment.a.z - t * dz;
-      const d = Math.hypot(ox, oz);
+      const d = Math.sqrt(ox * ox + oz * oz);
       if (d < distance) {
         distance = d;
         centerX = segment.a.x + t * dx;

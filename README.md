@@ -127,7 +127,7 @@ API proxy, Overpass request, or server-side import step. The builder does make
 direct browser requests to OpenFreeMap and USGS, so an internet connection is needed.
 
 - The library opens first, with route thumbnails and the first saved course selected
-  in an interactive 3D preview. Choose **Edit** to restore its route, name, and settings,
+  with a 2D outline; **3D preview** builds an interactive terrain preview on demand. Choose **Edit** to restore its route, name, and settings,
   or **+ New course** to start a new one. **Cancel** returns to the library without
   changing the saved course. **Save** stays disabled until the route, name, or settings
   differ from the opened course, and disables again if all changes are reverted.
@@ -225,9 +225,10 @@ direct browser requests to OpenFreeMap and USGS, so an internet connection is ne
   "Sorry, we couldn't fetch elevation data. Try a different location."
   Persistent CORS restrictions require a USGS-side fix; the browser cannot bypass them.
 - A Web Worker handles terrain decoding, elevation processing, course conversion,
-  JSON serialization, and 3D preview mesh generation. Cancel stops the worker.
+  JSON serialization, and on-demand 3D preview mesh generation. Cancel stops the worker.
   The map uses the game's dark teal/mint design tokens. When a build completes,
-  an interactive 3D terrain and road preview replaces the map. Terrain is a closed
+  a 2D outline replaces the map; **3D preview** shows an interactive 3D terrain and road
+  preview. Terrain is a closed
   block with outward-facing side walls and a flat underside; ambient fill lighting
   keeps all sides visible. Road and marking geometry is split along the preview
   terrain's triangles so the terrain cannot clip through those surfaces.
@@ -239,7 +240,7 @@ direct browser requests to OpenFreeMap and USGS, so an internet connection is ne
   Pending steps are muted; completed steps receive monochrome checkmarks. **Cancel**
   (or Escape) returns to the unchanged route.
   **Save** builds and saves the course, then returns directly to the course manager
-  with that course highlighted and its 3D preview shown. New courses are added to the
+  with that course highlighted and its 2D outline shown. New courses are added to the
   list; edited courses update their existing entry. **Edit** reopens the course,
   and **Play** currently downloads its JSON; game launch from OPFS is not yet wired.
   Editing the route or build settings
@@ -279,10 +280,10 @@ choose **Start race →** when ready. Real-road generation still runs entirely i
 the browser, including elevation fetching and terrain generation.
 When naming a new real-road course, press **Enter** to focus the location search and
 search for that name immediately.
-Embedded creation skips the unused 3D preview build. Course previews in Race setup
-start in 2D, then automatically begin building an interactive 3D terrain preview in a
-Web Worker 100 ms after the details appear, including after creating or editing a course.
-The completed preview appears automatically; use **2D** to return to the map or **3D**
+Course previews in Race setup and the course library show a 2D outline. The **3D** button
+builds an interactive 3D terrain preview in a Web Worker on demand; previews are never
+generated automatically, including after creating or editing a course.
+Use **2D** to return to the outline or **3D**
 to switch back. Switching courses or closing
 the chooser cancels pending preview generation and releases the preview.
 Toggling between 2D and 3D reuses the built preview and preserves its camera position.
@@ -293,7 +294,7 @@ Course names are changed in the editor rather than a separate Rename action.
 The chooser's course actions menu offers **Download** for any course, exporting its
 complete JSON, including terrain and attribution, as `<course-id>.json`.
 The standalone builder's **Play** button still downloads JSON rather than launching
-the game. The standalone builder still builds and shows its 3D preview after creation.
+the game. The standalone builder shows a 2D outline after creation; **3D preview** builds the terrain preview on demand.
 Downloaded files use the game's `CourseDefinition` format,
 including terrain and attribution; they can be added to `src/tracks/` and built
 like other imported courses. OpenStreetMap-derived data retains
@@ -1988,7 +1989,7 @@ The picker groups **Your tracks**, **Current layout** (when active), **Roads**,
 scrollable list of outline thumbnails, names and lap lengths (meters for courses
 under 1 km, otherwise kilometers). The current course is marked independently
 of the preview selection. Selecting a course updates its details and 2-D preview;
-building the larger 3-D preview is temporarily disabled.
+the **3D** button builds the larger 3-D preview on demand.
 **Load course** changes the course and closes the dialog on success. Loading
 errors remain visible in the dialog. While an unsaved random or custom course is
 active, a **Current layout** group lists it (marked Unsaved) so its records and

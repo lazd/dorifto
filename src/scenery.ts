@@ -3,7 +3,7 @@ import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { courseShoulderWidth, type CourseDefinition } from './courses';
 import type { CourseTerrain } from './terrain';
 import { projectTerrainGeometry } from './terrain';
-import { PavementSurface, TerrainSurface, type TriangleMeshData } from './terrain-query';
+import { PavementSurface, TerrainSurface, cellKey, type TriangleMeshData } from './terrain-query';
 import type { SceneryCategory, SceneryPoint, SceneryPolygon } from './scenery-data';
 import { junctionRoadFlare, sceneryJunctions, sceneryPointKey } from './scenery-data';
 import {
@@ -68,7 +68,7 @@ export const highwayMedianProfile: readonly (readonly [number, number])[] = [
 
 /** Small local indices keep vegetation rejection independent of the total map feature count. */
 class SpatialIndex<T extends Bounds> {
-  private cells = new Map<string, T[]>();
+  private cells = new Map<number, T[]>();
   private large: T[] = [];
 
   add(item: T) {
@@ -82,21 +82,30 @@ class SpatialIndex<T extends Bounds> {
     }
     for (let x = x0; x <= x1; x++)
       for (let z = z0; z <= z1; z++) {
-        const key = `${x},${z}`;
-        const bucket = this.cells.get(key) ?? [];
-        bucket.push(item);
-        this.cells.set(key, bucket);
+        const key = cellKey(x, z);
+        const bucket = this.cells.get(key);
+        if (bucket) bucket.push(item);
+        else this.cells.set(key, [item]);
       }
   }
 
   some(x: number, z: number, predicate: (item: T) => boolean) {
-    return [this.cells.get(`${Math.floor(x / 32)},${Math.floor(z / 32)}`) ?? [], this.large].some(
-      (items) =>
-        items.some(
-          (item) =>
-            x >= item.minX && x <= item.maxX && z >= item.minZ && z <= item.maxZ && predicate(item),
-        ),
+    return (
+      this.anyAt(
+        this.cells.get(cellKey(Math.floor(x / 32), Math.floor(z / 32))),
+        x,
+        z,
+        predicate,
+      ) || this.anyAt(this.large, x, z, predicate)
     );
+  }
+
+  private anyAt(items: T[] | undefined, x: number, z: number, predicate: (item: T) => boolean) {
+    if (items)
+      for (const item of items)
+        if (x >= item.minX && x <= item.maxX && z >= item.minZ && z <= item.maxZ && predicate(item))
+          return true;
+    return false;
   }
 
   query(bounds: Bounds) {
@@ -104,21 +113,34 @@ class SpatialIndex<T extends Bounds> {
     const z0 = Math.floor(bounds.minZ / 32);
     const x1 = Math.floor(bounds.maxX / 32);
     const z1 = Math.floor(bounds.maxZ / 32);
-    const candidates = new Set<T>(this.large);
+    const result: T[] = [];
+    const overlaps = (item: T) =>
+      item.minX <= bounds.maxX &&
+      item.maxX >= bounds.minX &&
+      item.minZ <= bounds.maxZ &&
+      item.maxZ >= bounds.minZ;
+    for (const item of this.large) if (overlaps(item)) result.push(item);
     if ((x1 - x0 + 1) * (z1 - z0 + 1) > 4096) {
-      for (const bucket of this.cells.values()) for (const item of bucket) candidates.add(item);
-    } else {
-      for (let x = x0; x <= x1; x++)
-        for (let z = z0; z <= z1; z++)
-          for (const item of this.cells.get(`${x},${z}`) ?? []) candidates.add(item);
+      const seen = new Set<T>();
+      for (const bucket of this.cells.values())
+        for (const item of bucket) {
+          if (seen.has(item)) continue;
+          seen.add(item);
+          if (overlaps(item)) result.push(item);
+        }
+      return result;
     }
-    return [...candidates].filter(
-      (item) =>
-        item.minX <= bounds.maxX &&
-        item.maxX >= bounds.minX &&
-        item.minZ <= bounds.maxZ &&
-        item.maxZ >= bounds.minZ,
-    );
+    for (let x = x0; x <= x1; x++)
+      for (let z = z0; z <= z1; z++)
+        for (const item of this.cells.get(cellKey(x, z)) ?? [])
+          // An item spanning several cells is reported from the first of them in range.
+          if (
+            Math.max(x0, Math.floor(item.minX / 32)) === x &&
+            Math.max(z0, Math.floor(item.minZ / 32)) === z &&
+            overlaps(item)
+          )
+            result.push(item);
+    return result;
   }
 }
 
@@ -187,7 +209,7 @@ function segmentDistance(x: number, z: number, a: Point, b: Point) {
   const dx = b.x - a.x,
     dz = b.z - a.z;
   const t = THREE.MathUtils.clamp(((x - a.x) * dx + (z - a.z) * dz) / (dx * dx + dz * dz), 0, 1);
-  return Math.hypot(x - a.x - t * dx, z - a.z - t * dz);
+  return Math.sqrt((x - a.x - t * dx) ** 2 + (z - a.z - t * dz) ** 2);
 }
 
 function nearPolygon(x: number, z: number, shape: Polygon, margin: number) {
@@ -2215,10 +2237,17 @@ export function createScenery(
   const refineRoadDirt = (batch: Batch) => {
     // Sample the shader's transition range, splitting on the original planes, not the terrain.
     type Sample = Vertex & { dirt: number };
-    const sample = (p: Vertex): Sample => ({
-      ...p,
-      dirt: roadDistance(p.x, p.z),
-    });
+    // Neighboring triangles share vertices and edge midpoints; sample each position once.
+    const known = new Map<number, number>();
+    const sample = (p: Vertex): Sample => {
+      const key = Math.round(p.x * 100) * 4e7 + Math.round(p.z * 100);
+      let dirt = known.get(key);
+      if (dirt === undefined) {
+        dirt = roadDistance(p.x, p.z);
+        known.set(key, dirt);
+      }
+      return { ...p, dirt };
+    };
     const error = (actual: number, interpolated: number) =>
       Math.abs(
         THREE.MathUtils.clamp(actual, -1.5, 0) - THREE.MathUtils.clamp(interpolated, -1.5, 0),
@@ -2231,7 +2260,16 @@ export function createScenery(
       });
     const result = new Batch();
     const refine = (a: Sample, b: Sample, c: Sample, depth: number) => {
-      if (depth === 8) {
+      // Distance changes by at most the triangle's longest edge, so a triangle whose corners are
+      // that far past the clamped range is flat there and needs no splitting.
+      const reach = Math.max(
+        Math.hypot(a.x - b.x, a.z - b.z),
+        Math.hypot(b.x - c.x, b.z - c.z),
+        Math.hypot(c.x - a.x, c.z - a.z),
+      );
+      const lowest = Math.min(a.dirt, b.dirt, c.dirt);
+      const highest = Math.max(a.dirt, b.dirt, c.dirt);
+      if (depth === 8 || highest <= -1.5 - reach || lowest >= reach) {
         result.roof(a, b, c);
         return;
       }

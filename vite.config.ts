@@ -79,6 +79,9 @@ export default defineConfig({
       },
     },
   },
+  server: {
+    hmr: false, // Turn off HMR completely to avoid OPFS issues
+  },
   // Keep the supplied glTF, its relative textures, binary, and license together.
   publicDir: 'models',
   // Ammo is imported by the physics worker, outside the initial page dependency scan.

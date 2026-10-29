@@ -23,6 +23,7 @@ import {
 } from './tunnels';
 import {
   TerrainSurface,
+  cellKey,
   cellTriangles,
   heightAt,
   normalAt,
@@ -1338,41 +1339,43 @@ export function terrainGeometryTriangles(
   _terrain: HeightfieldData,
   geometry: THREE.BufferGeometry,
 ) {
-  const levels = new Map<number, Map<string, number[]>>();
+  const levels = new Map<number, Map<number, number[]>>();
   const position = geometry.getAttribute('position');
   const index = geometry.getIndex();
   if (!index) throw new Error('Terrain projection requires indexed ground geometry');
   for (let i = 0; i < index.count; i += 3) {
-    const points = [0, 1, 2].map((j) =>
-      new THREE.Vector3().fromBufferAttribute(position, index.getX(i + j)),
-    );
-    const minX = Math.min(...points.map((p) => p.x));
-    const maxX = Math.max(...points.map((p) => p.x));
-    const minZ = Math.min(...points.map((p) => p.z));
-    const maxZ = Math.max(...points.map((p) => p.z));
+    const a = index.getX(i),
+      b = index.getX(i + 1),
+      c = index.getX(i + 2);
+    const minX = Math.min(position.getX(a), position.getX(b), position.getX(c));
+    const maxX = Math.max(position.getX(a), position.getX(b), position.getX(c));
+    const minZ = Math.min(position.getZ(a), position.getZ(b), position.getZ(c));
+    const maxZ = Math.max(position.getZ(a), position.getZ(b), position.getZ(c));
     // Fine road cells need small buckets; large landscape fans must not fill thousands of them.
     const size = 2 ** Math.ceil(Math.log2(Math.max(4, maxX - minX, maxZ - minZ)));
-    const buckets = levels.get(size) ?? new Map<string, number[]>();
+    const buckets = levels.get(size) ?? new Map<number, number[]>();
     levels.set(size, buckets);
     for (let z = Math.floor(minZ / size); z <= Math.floor(maxZ / size); z++)
       for (let x = Math.floor(minX / size); x <= Math.floor(maxX / size); x++) {
-        const key = `${x},${z}`;
-        const bucket = buckets.get(key) ?? [];
-        bucket.push(i);
-        buckets.set(key, bucket);
+        const key = cellKey(x, z);
+        const bucket = buckets.get(key);
+        if (bucket) bucket.push(i);
+        else buckets.set(key, [i]);
       }
   }
+  // Each query stamps the triangles it has yielded, instead of allocating a set per query.
+  const stamps = new Uint32Array(index.count / 3);
+  let query = 0;
+  const corner = (i: number) => new THREE.Vector3().fromBufferAttribute(position, index.getX(i));
   return function* ({ minX, maxX, minZ, maxZ }: ProjectionBounds) {
-    const seen = new Set<number>();
+    const stamp = ++query;
     for (const [size, buckets] of levels)
       for (let z = Math.floor(minZ / size); z <= Math.floor(maxZ / size); z++)
         for (let x = Math.floor(minX / size); x <= Math.floor(maxX / size); x++)
-          for (const i of buckets.get(`${x},${z}`) ?? []) {
-            if (seen.has(i)) continue;
-            seen.add(i);
-            yield [0, 1, 2].map((j) =>
-              new THREE.Vector3().fromBufferAttribute(position, index.getX(i + j)),
-            );
+          for (const i of buckets.get(cellKey(x, z)) ?? []) {
+            if (stamps[i / 3] === stamp) continue;
+            stamps[i / 3] = stamp;
+            yield [corner(i), corner(i + 1), corner(i + 2)];
           }
   };
 }

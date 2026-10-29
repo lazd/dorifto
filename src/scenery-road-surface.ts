@@ -1,4 +1,5 @@
 import { MathUtils } from 'three';
+import { cellKey } from './terrain-query';
 import { cleanRoadElevation, roadElevationSmoothing } from './road-elevation.mjs';
 import {
   anchorCorrections,
@@ -31,8 +32,8 @@ export const sceneryRoadBlendReach = 20;
 
 /** A common unbanked surface for ground roads, including their shared junction heights. */
 export class SceneryRoadSurface {
-  private readonly cells = new Map<string, Map<number, Segment[]>>();
-  private readonly junctionCells = new Map<string, Junction[]>();
+  private readonly cells = new Map<number, Map<number, Segment[]>>();
+  private readonly junctionCells = new Map<number, Junction[]>();
 
   constructor(roads: CourseScenery['roads'], height: (x: number, z: number) => number) {
     const junctions = sceneryJunctions(roads);
@@ -160,7 +161,7 @@ export class SceneryRoadSurface {
             z <= Math.floor((Math.max(a.z, b.z) + radius) / 32);
             z++
           ) {
-            const key = `${x},${z}`;
+            const key = cellKey(x, z);
             const roads = this.cells.get(key) ?? new Map<number, Segment[]>();
             const bucket = roads.get(line) ?? [];
             bucket.push(segment);
@@ -190,7 +191,7 @@ export class SceneryRoadSurface {
           cz <= Math.floor((z + junctionReach) / 32);
           cz++
         ) {
-          const key = `${cx},${cz}`;
+          const key = cellKey(cx, cz);
           const bucket = this.junctionCells.get(key) ?? [];
           bucket.push(junction);
           this.junctionCells.set(key, bucket);
@@ -200,7 +201,7 @@ export class SceneryRoadSurface {
 
   bankingWeight(x: number, z: number) {
     let distance = junctionReach;
-    for (const p of this.junctionCells.get(`${Math.floor(x / 32)},${Math.floor(z / 32)}`) ?? [])
+    for (const p of this.junctionCells.get(cellKey(Math.floor(x / 32), Math.floor(z / 32))) ?? [])
       distance = Math.min(distance, Math.hypot(x - p.x, z - p.z));
     return MathUtils.smoothstep(distance, 8, junctionReach);
   }
@@ -208,7 +209,7 @@ export class SceneryRoadSurface {
   pavementDistance(x: number, z: number) {
     let nearest = Infinity;
     for (const segments of this.cells
-      .get(`${Math.floor(x / 32)},${Math.floor(z / 32)}`)
+      .get(cellKey(Math.floor(x / 32), Math.floor(z / 32)))
       ?.values() ?? [])
       for (const { a, b, width, endPlanes } of segments) {
         const dx = b.x - a.x,
@@ -244,7 +245,7 @@ export class SceneryRoadSurface {
       key: string;
       direction: number;
     }[] = [];
-    const junctions = this.junctionCells.get(`${Math.floor(x / 32)},${Math.floor(z / 32)}`) ?? [];
+    const junctions = this.junctionCells.get(cellKey(Math.floor(x / 32), Math.floor(z / 32))) ?? [];
     const junctionHeight = (roadIndex: number, profile: number) => {
       let sum = 0,
         weights = 0,
@@ -264,7 +265,7 @@ export class SceneryRoadSurface {
       return weights ? MathUtils.lerp(profile, sum / weights, blend) : profile;
     };
     for (const [roadIndex, segments] of this.cells
-      .get(`${Math.floor(x / 32)},${Math.floor(z / 32)}`)
+      .get(cellKey(Math.floor(x / 32), Math.floor(z / 32)))
       ?.entries() ?? []) {
       let nearest = Infinity,
         height = 0,

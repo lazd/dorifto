@@ -264,6 +264,12 @@ input.switch::before {
 #preview canvas:active {
   cursor: grabbing;
 }
+#preview > svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  color: var(--color-accent);
+}
 .viewport-search {
   position: absolute;
   z-index: 2;
