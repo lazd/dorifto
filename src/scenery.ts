@@ -137,6 +137,25 @@ function inside(x: number, z: number, shape: Polygon) {
   return inRing(x, z, shape.rings[0]) && !shape.rings.slice(1).some((ring) => inRing(x, z, ring));
 }
 
+function segmentEntersPolygon(a: Point, b: Point, shape: Polygon, radius = 0) {
+  if (inside(a.x, a.z, shape) || inside(b.x, b.z, shape)) return true;
+  const side = (p: Point, q: Point, r: readonly number[]) =>
+    Math.sign((q.x - p.x) * (r[1] - p.z) - (q.z - p.z) * (r[0] - p.x));
+  return shape.rings.some((ring) =>
+    ring.some((c, i) => {
+      const d = ring[(i + 1) % ring.length];
+      const p = { x: c[0], z: c[1] },
+        q = { x: d[0], z: d[1] };
+      return (
+        (side(a, b, c) !== side(a, b, d) && side(p, q, [a.x, a.z]) !== side(p, q, [b.x, b.z])) ||
+        segmentDistance(c[0], c[1], a, b) < radius ||
+        segmentDistance(a.x, a.z, p, q) < radius ||
+        segmentDistance(b.x, b.z, p, q) < radius
+      );
+    }),
+  );
+}
+
 function segmentDistance(x: number, z: number, a: Point, b: Point) {
   const dx = b.x - a.x,
     dz = b.z - a.z;
@@ -479,7 +498,7 @@ export function createScenery(
     return Math.abs(dx * sx + dz * sz) / Math.hypot(sx, sz) > 0.85;
   };
   const obstacles = new SpatialIndex<Polygon>();
-  const groundAreas = new SpatialIndex<Polygon>();
+  const centerlines = new SpatialIndex<RoadSegment>();
   const roads = new SpatialIndex<RoadSegment>();
   const buildingBatch = new Batch();
   const buildings = scenery.buildings;
@@ -495,10 +514,12 @@ export function createScenery(
         shape.rings.some((ring) => ring.some(([x, z]) => !terrain.contains(x, z)))
       )
         continue;
+      // Mapped road widths are estimates; only a road driven through a footprint, or the course's
+      // own pavement, removes it.
       if (
-        groundAreas
+        centerlines
           .query(shape)
-          .some((area) => polygonClipping.intersection([shape.rings], [area.rings]).length)
+          .some(({ a, b, width }) => segmentEntersPolygon(a, b, shape, width / 2))
       )
         continue;
       obstacles.add({
@@ -1017,15 +1038,6 @@ export function createScenery(
           finishOutline();
           continue;
         }
-        if (
-          !river &&
-          !elevated &&
-          selectedRoadCopy(center.x, center.z, dx, dz, verge ? width - 4.8 : width)
-        ) {
-          connected = false;
-          finishOutline();
-          continue;
-        }
         const distance = clearance(center.x, center.z);
         if (elevated || separated(center.x, center.z)) connected = false;
         if (!river && !verge && !elevated && !separated(center.x, center.z) && !completeMap) {
@@ -1102,7 +1114,10 @@ export function createScenery(
             addPavementEdge(corners[0], corners[2]);
             addPavementEdge(corners[1], corners[3]);
           }
-          if (profile.major) {
+          if (
+            profile.major &&
+            (separated(center.x, center.z) || clearance(center.x, center.z) >= 0)
+          ) {
             const across = (a: Vertex, b: Vertex, t: number) => ({
               x: THREE.MathUtils.lerp(a.x, b.x, t),
               y: THREE.MathUtils.lerp(a.y, b.y, t) + 0.02,
@@ -1174,7 +1189,8 @@ export function createScenery(
   };
   for (const profile of profiles) {
     const { road } = profile;
-    if (profile.selected) continue;
+    // Ground copies merge into the course pavement; a copied structure would duplicate the course's deck.
+    if (profile.selected && road.structure) continue;
     if (profile.raised) {
       const ends = [roadEnd(road, false), roadEnd(road, true)];
       ribbon(profile.points, road.width, raisedBatch, false, false, false, ends, profile);
@@ -1491,13 +1507,19 @@ export function createScenery(
     selectedFootprint.roof(rightA, rightB, leftB);
   }
   groundFootprint = polygonClipping.union(pavement, pavementFootprint(selectedFootprint));
-  for (const batch of [roadBatch, selectedFootprint])
-    for (let i = 0; i < batch.positions.length; i += 9) {
-      const shape = polygon([
-        [0, 3, 6].map((j) => [batch.positions[i + j], batch.positions[i + j + 2]]),
-      ]);
-      if (shape) groundAreas.add(shape);
-    }
+  for (const segment of query.segments)
+    if (!separated((segment.a.x + segment.b.x) / 2, (segment.a.z + segment.b.z) / 2))
+      centerlines.add({
+        a: segment.a,
+        b: segment.b,
+        width: definition.width,
+        minX: Math.min(segment.a.x, segment.b.x) - definition.width / 2,
+        minZ: Math.min(segment.a.z, segment.b.z) - definition.width / 2,
+        maxX: Math.max(segment.a.x, segment.b.x) + definition.width / 2,
+        maxZ: Math.max(segment.a.z, segment.b.z) + definition.width / 2,
+      });
+  for (const segment of roadSegments.query(bounds))
+    if (!segment.profile.road.structure) centerlines.add({ ...segment, width: 0 });
   if (dirtBatch.positions.length)
     fillFootprint(
       dirtBatch,

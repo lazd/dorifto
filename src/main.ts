@@ -60,6 +60,8 @@ import {
   saveCourse,
 } from './saved-courses';
 import { openRoadMaps } from './course-builder-storage';
+import type { RoadMap } from './course-builder-data';
+import { sceneryImportRevision } from './scenery-data';
 import {
   bindGameUI,
   bindGameActions,
@@ -299,6 +301,32 @@ async function start() {
     ...courses.filter((course) => !storedCourses.some(({ id }) => id === course.id)),
   ];
   const availableCourses = combinedCourses();
+  // Saved maps from an older scenery import refetch it once, so import fixes reach existing maps.
+  async function refreshStaleScenery(next: CourseDefinition) {
+    if (
+      !next.terrain ||
+      next.scenery?.importRevision === undefined ||
+      next.scenery.importRevision === sceneryImportRevision ||
+      !storedCourses.some(({ id }) => id === next.id)
+    )
+      return next;
+    showLoading(`Updating ${next.name} scenery…`);
+    try {
+      const { reimportRoadCourse } = await import('./course-build');
+      const refreshed = await updateSavedCourse(
+        trackDirectory,
+        await reimportRoadCourse(next as RoadMap),
+      );
+      for (const list of [storedCourses, availableCourses]) {
+        const index = list.findIndex(({ id }) => id === refreshed.id);
+        if (index >= 0) list[index] = refreshed;
+      }
+      return refreshed;
+    } catch (error) {
+      console.warn(`Unable to update scenery for ${next.name}; using the saved copy.`, error);
+      return next;
+    }
+  }
   const courseId = courseUrl.searchParams.get('course');
   const requestedCourse =
     courseId === null ||
@@ -396,10 +424,12 @@ async function start() {
   lighting.apply(requestedTime);
   const [car, loadedDefinition] = await Promise.all([
     carLoad,
-    loadCourseDefinition(definition, (fraction) => {
-      mapProgress = fraction;
-      showAssetProgress();
-    }),
+    refreshStaleScenery(definition).then((current) =>
+      loadCourseDefinition(current, (fraction) => {
+        mapProgress = fraction;
+        showAssetProgress();
+      }),
+    ),
     loadTerrainSurfaces(),
   ]);
   const initialDefinition = { ...loadedDefinition, reverse: requestedReverse };
@@ -1293,8 +1323,9 @@ async function start() {
     showLoading('Loading map…', 0);
     try {
       await new Promise<void>((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
-      const nextDefinition = await loadCourseDefinition(build(), (fraction) =>
-        showLoading('Loading map…', fraction),
+      const nextDefinition = await loadCourseDefinition(
+        await refreshStaleScenery(build()),
+        (fraction) => showLoading('Loading map…', fraction),
       );
       showLoading('Loading map…');
       await new Promise<void>((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
