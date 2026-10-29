@@ -116,6 +116,50 @@ test('long elevated bridges get batched under-deck trusses; short and low bridge
   }
 });
 
+test('bridge pier feet embed their entire footprint below sloping ground', () => {
+  const length = bridgeDimensions.trussMinLength * 3;
+  const bridge = {
+    ...definition,
+    closed: false,
+    width: 17,
+    shoulderWidth: 0,
+    points: [
+      [0, 0],
+      [0, length],
+    ],
+    structures: [{ type: 'bridge', start: 0, end: 1 }],
+  };
+  const ground = (x, z) => -200 + x * 3 + z * 0.2;
+  const data = buildBridgeGeometry(
+    bridge,
+    (_x, z) => z * 0.02,
+    ground,
+    (geometry) => geometry.clone(),
+    { parts: 'substructure' },
+  );
+  assert.equal(data.deckSurfaceCount, 0);
+  let feet = 0;
+  for (const index of data.indices.subarray(0, data.concreteCount)) {
+    const [x, y, z] = data.positions.subarray(index * 3, index * 3 + 3);
+    if (y > -50) continue;
+    feet++;
+    assert.ok(
+      y <= ground(x, z) - bridgeDimensions.pierEmbedDepth + 1e-4,
+      'the downhill side of each footing is buried too',
+    );
+  }
+  assert.ok(feet > 0);
+  const deck = buildBridgeGeometry(
+    bridge,
+    () => 0,
+    ground,
+    (geometry) => geometry.clone(),
+    { parts: 'deck' },
+  );
+  assert.equal(deck.trussCount, 0);
+  assert.ok(deck.deckSurfaceCount > 0);
+});
+
 test('high bridges restore the entire raised shoulder band instead of leaving valley walls', () => {
   const highBridge = {
     ...definition,

@@ -63,3 +63,47 @@ export const difference = (subject: MultiPolygon, clip: MultiPolygon) =>
 
 export const intersection = (subject: MultiPolygon, clip: MultiPolygon) =>
   booleanOp(ClipType.Intersection, subject, clip);
+
+/** Add tangent circular fillets inside pavement notches, without trimming drivable pavement. */
+export function roundConcaveCorners(
+  polygons: MultiPolygon,
+  radiusAt: (point: SceneryPoint) => number,
+): MultiPolygon {
+  const rounded = polygons.map((rings) =>
+    rings.map((ring) => {
+      const points = ring.slice(0, -1),
+        result: SceneryPoint[] = [];
+      for (let i = 0; i < points.length; i++) {
+        const p = points[i],
+          before = points[(i + points.length - 1) % points.length],
+          after = points[(i + 1) % points.length];
+        const a = Math.hypot(before[0] - p[0], before[1] - p[1]);
+        const b = Math.hypot(after[0] - p[0], after[1] - p[1]);
+        const ux = (before[0] - p[0]) / a,
+          uz = (before[1] - p[1]) / a;
+        const vx = (after[0] - p[0]) / b,
+          vz = (after[1] - p[1]) / b;
+        const dot = Math.max(-1, Math.min(1, ux * vx + uz * vz));
+        const radius = radiusAt(p);
+        if (!radius || !a || !b || ux * vz - uz * vx < 0.1 || dot > 0.99) {
+          result.push(p);
+          continue;
+        }
+        const tangent = Math.sqrt((1 + dot) / (1 - dot));
+        const distance = Math.min(radius * tangent, a / 2, b / 2);
+        const r = distance / tangent;
+        const cx = p[0] + ((ux + vx) * distance) / (1 + dot);
+        const cz = p[1] + ((uz + vz) * distance) / (1 + dot);
+        const start = Math.atan2(p[1] + uz * distance - cz, p[0] + ux * distance - cx);
+        const sweep = -(Math.PI - Math.acos(dot));
+        const steps = Math.max(2, Math.ceil((-sweep * r) / 0.5));
+        for (let step = 0; step <= steps; step++) {
+          const angle = start + (sweep * step) / steps;
+          result.push([cx + Math.cos(angle) * r, cz + Math.sin(angle) * r]);
+        }
+      }
+      return [...result, result[0]];
+    }),
+  );
+  return union(rounded);
+}

@@ -1178,7 +1178,7 @@ export function projectTerrainGeometry(
   const attribute = source.getAttribute('position');
   const index = source.getIndex();
   // Optional per-vertex scalars (e.g. distance across a road ribbon), interpolated onto clipped pieces.
-  const scalars = (['lateral', 'structure'] as const)
+  const scalars = (['lateral', 'structure', 'elevation'] as const)
     .map((name) => ({ name, source: source.getAttribute(name), values: [] as number[] }))
     .filter(({ source }) => source);
   function* gridTriangles({ minX, maxX, minZ, maxZ }: ProjectionBounds) {

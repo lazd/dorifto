@@ -68,6 +68,82 @@ class SceneryRoadCurve extends THREE.Curve<THREE.Vector3> {
 
 const approachSmoothing = 15;
 
+/** Adjacent carriageways keep their decks but share one under-deck frame. */
+export function sceneryBridgeGroups<
+  T extends {
+    road: CourseScenery['roads'][number];
+    curve: THREE.Curve<THREE.Vector3>;
+    heightAt: (x: number, z: number) => number;
+  },
+>(profiles: T[]) {
+  const remaining = profiles.filter(({ road }) => road.structure === 'bridge');
+  const groups = [];
+  while (remaining.length) {
+    const first = remaining.shift()!;
+    const length = first.curve.getLength();
+    const steps = Math.max(4, Math.ceil(length / 12));
+    const match = remaining.findIndex((other) => {
+      if (
+        (first.road.layer ?? 0) !== (other.road.layer ?? 0) ||
+        Math.abs(other.curve.getLength() - length) > Math.max(4, length * 0.05)
+      )
+        return false;
+      const reverse = first.curve.getTangentAt(0.5).dot(other.curve.getTangentAt(0.5)) < 0;
+      for (let i = 0; i <= steps; i++) {
+        const t = i / steps,
+          u = reverse ? 1 - t : t;
+        const a = first.curve.getPointAt(t),
+          b = other.curve.getPointAt(u);
+        const tangent = first.curve.getTangentAt(t);
+        const delta = b.clone().sub(a);
+        const separation = Math.abs(delta.x * tangent.z - delta.z * tangent.x);
+        if (
+          Math.abs(tangent.dot(other.curve.getTangentAt(u))) < 0.98 ||
+          Math.abs(delta.dot(tangent)) >
+            Math.max(4, (Math.min(20, first.road.width) + Math.min(20, other.road.width)) / 2) ||
+          separation < 1 ||
+          separation > (Math.min(20, first.road.width) + Math.min(20, other.road.width)) / 2 + 4 ||
+          Math.abs(first.heightAt(a.x, a.z) - other.heightAt(b.x, b.z)) > 2
+        )
+          return false;
+      }
+      return true;
+    });
+    if (match < 0) {
+      groups.push({
+        members: [first],
+        curve: first.curve,
+        width: Math.min(20, first.road.width),
+        heightAt: first.heightAt,
+      });
+      continue;
+    }
+    const second = remaining.splice(match, 1)[0];
+    const reverse = first.curve.getTangentAt(0.5).dot(second.curve.getTangentAt(0.5)) < 0;
+    let width = 0;
+    const points: SceneryPoint[] = [];
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      const a = first.curve.getPointAt(t),
+        b = second.curve.getPointAt(reverse ? 1 - t : t);
+      const tangent = first.curve.getTangentAt(t);
+      const separation = Math.abs((b.x - a.x) * tangent.z - (b.z - a.z) * tangent.x);
+      points.push([(a.x + b.x) / 2, (a.z + b.z) / 2]);
+      width = Math.max(
+        width,
+        separation + Math.max(Math.min(20, first.road.width), Math.min(20, second.road.width)),
+      );
+    }
+    groups.push({
+      members: [first, second],
+      curve: new SceneryRoadCurve(points),
+      width,
+      heightAt: (x: number, z: number) => (first.heightAt(x, z) + second.heightAt(x, z)) / 2,
+    });
+  }
+  return groups;
+}
+
 /**
  * Smooths a profile without dropping below it: a running maximum followed by an average over
  * the same window. A radius of zero leaves a sample untouched.
@@ -135,7 +211,12 @@ export function sceneryRoadProfiles(
         const a = rounded[i - 1],
           b = rounded[i];
         const steps = needsProfile
-          ? Math.max(1, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / 2))
+          ? Math.max(
+              1,
+              Math.ceil(
+                Math.hypot(b[0] - a[0], b[1] - a[1]) / (road.structure === 'bridge' ? 2 : 0.5),
+              ),
+            )
           : 1;
         for (let j = 1; j <= steps; j++)
           points.push([
@@ -143,6 +224,7 @@ export function sceneryRoadProfiles(
             THREE.MathUtils.lerp(a[1], b[1], j / steps),
           ]);
       }
+
       const curve = new SceneryRoadCurve(points);
       const heights = points.map(([x, z], i) => {
         if (!needsProfile) return 0;
@@ -203,6 +285,128 @@ export function sceneryRoadProfiles(
     profile.raised = true;
   }
 
+  type Profile = (typeof profiles)[number];
+  const paired = new Map<Profile, { other: Profile; reverse: boolean }>();
+  const pairs = sceneryBridgeGroups(
+    profiles.map((profile) => ({
+      profile,
+      road: profile.road,
+      curve: profile.curve,
+      heightAt(x: number, z: number) {
+        const start = profile.curve.getPointAt(0),
+          end = profile.curve.getPointAt(1);
+        const delta = end.sub(start);
+        const t = THREE.MathUtils.clamp(
+          ((x - start.x) * delta.x + (z - start.z) * delta.z) / delta.lengthSq(),
+          0,
+          1,
+        );
+        return THREE.MathUtils.lerp(profile.heights[0], profile.heights.at(-1)!, t);
+      },
+    })),
+  );
+  const moves: { from: SceneryPoint; to: SceneryPoint; direction: SceneryPoint }[] = [];
+  const moveBridgeEnds = (profile: Profile, previous = profile.points) => {
+    for (const end of [false, true]) {
+      const point = end ? profile.points.at(-1)! : profile.points[0];
+      const inside = end ? profile.points.at(-2)! : profile.points[1];
+      const length = Math.hypot(point[0] - inside[0], point[1] - inside[1]);
+      moves.push({
+        from: end ? previous.at(-1)! : previous[0],
+        to: point,
+        direction: [(point[0] - inside[0]) / length, (point[1] - inside[1]) / length],
+      });
+    }
+  };
+  for (const { members, curve } of pairs) {
+    if (members.length !== 2) continue;
+    const [first, second] = members.map(({ profile }) => profile);
+    const reverse = first.curve.getTangentAt(0.5).dot(second.curve.getTangentAt(0.5)) < 0;
+    paired.set(first, { other: second, reverse });
+    paired.set(second, { other: first, reverse });
+    const direction = curve.getPointAt(1).sub(curve.getPointAt(0)).normalize();
+    const across = new THREE.Vector3(direction.z, 0, -direction.x);
+    const separation = second.curve.getPointAt(0.5).sub(first.curve.getPointAt(0.5)).dot(across);
+    const start = Math.max(
+      first.heights[0],
+      second.heights[reverse ? second.heights.length - 1 : 0],
+    );
+    const end = Math.max(
+      first.heights.at(-1)!,
+      second.heights[reverse ? 0 : second.heights.length - 1],
+    );
+    const steps = Math.max(1, Math.ceil(curve.getLength() / 2));
+    for (const [index, profile] of [first, second].entries()) {
+      const backwards = index === 1 && reverse;
+      const points: SceneryPoint[] = Array.from({ length: steps + 1 }, (_, i) => {
+        const point = curve
+          .getPointAt(backwards ? 1 - i / steps : i / steps)
+          .addScaledVector(across, ((index === 0 ? -1 : 1) * separation) / 2);
+        return [point.x, point.z];
+      });
+      const previous = profile.points;
+      profile.points = points;
+      profile.road = { ...profile.road, points };
+      profile.curve = new SceneryRoadCurve(points);
+      profile.heights = profile.curve.distances.map((distance) =>
+        THREE.MathUtils.lerp(
+          backwards ? end : start,
+          backwards ? start : end,
+          distance / profile.curve.getLength(),
+        ),
+      );
+      moveBridgeEnds(profile, previous);
+    }
+  }
+  for (const profile of profiles)
+    if (profile.road.structure === 'bridge' && !paired.has(profile)) moveBridgeEnds(profile);
+  for (const profile of profiles) {
+    if (profile.road.structure) continue;
+    const adjustments = moves.filter(({ from }) =>
+      [profile.points[0], profile.points.at(-1)!].some(
+        (p) => Math.hypot(p[0] - from[0], p[1] - from[1]) < 0.1,
+      ),
+    );
+    if (!adjustments.length) continue;
+    const length = profile.curve.getLength();
+    profile.points = profile.points.map(([x, z], i) => {
+      let px = x,
+        pz = z;
+      for (const { from, to, direction } of adjustments) {
+        const fromStart =
+          Math.hypot(profile.points[0][0] - from[0], profile.points[0][1] - from[1]) < 0.1;
+        const distance = fromStart
+          ? profile.curve.distances[i]
+          : length - profile.curve.distances[i];
+        const weight =
+          1 -
+          THREE.MathUtils.smoothstep(
+            distance,
+            Math.min(2, length / 4),
+            Math.min(approachSmoothing, length / 2),
+          );
+        px += (to[0] + direction[0] * distance - x) * weight;
+        pz += (to[1] + direction[1] * distance - z) * weight;
+      }
+      return [px, pz];
+    });
+    profile.road = { ...profile.road, points: profile.points };
+    profile.curve = new SceneryRoadCurve(profile.points);
+    profile.heights = profile.points.map(([x, z], i) => {
+      const tangent = profile.curve.getTangentAt(
+        profile.curve.distances[i] / profile.curve.getLength(),
+      );
+      return Math.max(
+        ...[-0.5, 0, 0.5].map((side) =>
+          ground(
+            x + tangent.z * side * Math.min(20, profile.road.width),
+            z - tangent.x * side * Math.min(20, profile.road.width),
+          ),
+        ),
+      );
+    });
+  }
+
   // When approach terrain cannot establish clearance, carry the fallback rise onto
   // connected ground roads rather than leaving a vertical step at the abutment.
   const approaches = profiles.flatMap((profile) =>
@@ -239,13 +443,17 @@ export function sceneryRoadProfiles(
     );
   type Approach = (typeof approaches)[number];
   const raiseDeck = ({ bridge, end }: Approach, raise: number) => {
-    if (raise > 0)
-      for (let i = 0; i < bridge.heights.length; i++)
-        bridge.heights[i] +=
+    if (raise <= 0) return;
+    const pair = paired.get(bridge);
+    for (const profile of pair ? [bridge, pair.other] : [bridge]) {
+      const anchor = profile !== bridge && pair?.reverse ? profile.points.length - 1 - end : end;
+      for (let i = 0; i < profile.heights.length; i++)
+        profile.heights[i] +=
           raise *
           (1 -
-            Math.abs(bridge.curve.distances[i] - bridge.curve.distances[end]) /
-              bridge.curve.getLength());
+            Math.abs(profile.curve.distances[i] - profile.curve.distances[anchor]) /
+              profile.curve.getLength());
+    }
   };
   // Decks are straight, so their whole length gives the abutment grade.
   const deckSlope = ({ bridge, end }: Approach) =>
@@ -259,25 +467,34 @@ export function sceneryRoadProfiles(
       const { i, t } = profile.curve.segment(reverse ? 1 - distance / length : distance / length);
       return THREE.MathUtils.lerp(profile.heights[i - 1], profile.heights[i], t);
     };
-    const step = Math.min(2, rampLength);
+    const step = Math.min(
+      rampLength,
+      reverse ? length - profile.curve.distances.at(-2)! : profile.curve.distances[1],
+    );
     return (sampleAt(step) - sampleAt(0)) / step;
   };
   for (const approach of approaches) raiseDeck(approach, -rise(approach));
-  // The eased offset below stays non-negative only while its slope term is at least
-  // -3 * rise / length, so lift a deck that would otherwise dive into the approach ground.
-  for (const approach of approaches) {
-    const { bridge, rampLength } = approach;
-    raiseDeck(
-      approach,
-      ((-(deckSlope(approach) - groundSlope(approach)) * rampLength) / 3 - rise(approach)) /
-        (1 + rampLength / (3 * bridge.curve.getLength())),
-    );
+  // The quintic offset stays non-negative with a slope term of at least -2.5 * rise / length.
+  // Lifting one abutment changes the opposite end's grade, including its paired deck.
+  for (let pass = 0; ; pass++) {
+    let raised = false;
+    for (const approach of approaches) {
+      const { bridge, rampLength } = approach;
+      const lift =
+        ((-(deckSlope(approach) - groundSlope(approach)) * rampLength) / 2.5 - rise(approach)) /
+        (1 + rampLength / (2.5 * bridge.curve.getLength()));
+      if (lift <= 1e-7) continue;
+      raiseDeck(approach, lift);
+      raised = true;
+    }
+    if (!raised) break;
+    if (pass === 127) throw new Error('Unable to match bridge approach grades');
   }
   for (const approach of approaches) {
     const { profile, distances, rampLength } = approach;
     const base = profile.heights.slice();
     const lift = rise(approach);
-    const slope = Math.max(deckSlope(approach) - groundSlope(approach), (-3 * lift) / rampLength);
+    const slope = Math.max(deckSlope(approach) - groundSlope(approach), (-2.5 * lift) / rampLength);
     // Ease the offset from the ground-following profile, not the height itself, so the
     // ramp keeps to the same surface the terrain is shaped to instead of cutting a chord
     // through crests below it.
@@ -285,7 +502,8 @@ export function sceneryRoadProfiles(
       if (distances[i] > rampLength) continue;
       const t = distances[i] / rampLength;
       const offset =
-        (2 * t ** 3 - 3 * t ** 2 + 1) * lift + (t ** 3 - 2 * t ** 2 + t) * rampLength * slope;
+        (1 - 10 * t ** 3 + 15 * t ** 4 - 6 * t ** 5) * lift +
+        (t - 6 * t ** 3 + 8 * t ** 4 - 3 * t ** 5) * rampLength * slope;
       profile.heights[i] = base[i] + Math.max(0, offset);
     }
     profile.raised = true;
@@ -293,6 +511,31 @@ export function sceneryRoadProfiles(
   }
 
   return profiles.map((profile) => {
+    const length = profile.curve.getLength();
+    const groundEnds = [profile.points[0], profile.points.at(-1)!].map(
+      (point) =>
+        profile.bridgeApproach &&
+        !profiles.some(
+          (other) =>
+            other.road.structure === 'bridge' &&
+            [other.points[0], other.points.at(-1)!].some(
+              (end) => Math.hypot(point[0] - end[0], point[1] - end[1]) < 0.1,
+            ),
+        ),
+    );
+    const groundBlendAt = (distance: number) =>
+      groundEnds.reduce(
+        (blend, grounded, end) =>
+          grounded
+            ? blend *
+              THREE.MathUtils.smoothstep(
+                end ? length - distance : distance,
+                Math.min(2, length / 4),
+                Math.min(approachSmoothing, length / 2),
+              )
+            : blend,
+        1,
+      );
     const segments = new Map<string, number[]>();
     if (profile.raised) {
       for (let i = 1; i < profile.points.length; i++) {
@@ -317,9 +560,11 @@ export function sceneryRoadProfiles(
     }
     return {
       ...profile,
+      groundBlendAt,
       heightAt(x: number, z: number) {
         let nearest = Infinity,
-          height = 0;
+          height = 0,
+          distanceAlong = 0;
         const candidates =
           segments.get(`${Math.floor(x / 32)},${Math.floor(z / 32)}`) ??
           profile.points.slice(1).map((_, i) => i + 1);
@@ -337,8 +582,15 @@ export function sceneryRoadProfiles(
           if (distance < nearest) {
             nearest = distance;
             height = THREE.MathUtils.lerp(profile.heights[i - 1], profile.heights[i], t);
+            distanceAlong = THREE.MathUtils.lerp(
+              profile.curve.distances[i - 1],
+              profile.curve.distances[i],
+              t,
+            );
           }
         }
+        if (profile.bridgeApproach)
+          height = THREE.MathUtils.lerp(ground(x, z), height, groundBlendAt(distanceAlong));
         if (profile.major && !profile.road.structure && !profile.bridgeApproach) {
           const blend = THREE.MathUtils.smoothstep(
             trackDistance(x, z),

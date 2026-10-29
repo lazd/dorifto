@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { difference, union } from '../src/polygon-boolean.ts';
+import { difference, union, roundConcaveCorners } from '../src/polygon-boolean.ts';
 
 const area = (polygons) =>
   polygons.reduce(
@@ -82,4 +82,35 @@ test('polygon booleans honour holes, overlaps and closed output rings', () => {
   assert.equal(area(difference([[square(0, 0, 10)]], [[square(5, 0, 10)]])), 50);
   const [[ring]] = union([[square(0, 0, 1)]]);
   assert.deepEqual(ring[0], ring.at(-1));
+});
+
+test('junction fillets add tangent circular corners without trimming pavement or rounding road ends', () => {
+  const pavement = union([
+    ribbon(
+      [
+        [-20, 0],
+        [20, 0],
+      ],
+      4,
+    ),
+    ribbon(
+      [
+        [0, 0],
+        [0, 20],
+      ],
+      2,
+    ),
+  ]);
+  const rounded = roundConcaveCorners(pavement, ([x, z]) =>
+    Math.abs(x) < 5 && Math.abs(z) < 7 ? 2 : 0,
+  );
+  assert.equal(area(difference(pavement, rounded)), 0, 'existing lanes remain paved');
+  assert.ok(Math.abs(area(rounded) - area(pavement) - 2 * (4 - Math.PI)) < 0.06);
+  for (const [x, z] of rounded[0][0]) {
+    if (Math.abs(x) > 2.01 && Math.abs(x) < 3.99 && z > 4.01 && z < 5.99)
+      assert.ok(
+        Math.abs(Math.hypot(Math.abs(x) - 4, z - 6) - 2) < 0.002,
+        'corner samples follow the requested circular radius',
+      );
+  }
 });

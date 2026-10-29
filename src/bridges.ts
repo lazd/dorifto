@@ -15,6 +15,7 @@ export const bridgeDimensions = {
   trussPierSpacing: 120,
   trussMaxDepth: 20,
   trussBeamWidth: 0.32,
+  pierEmbedDepth: 2,
 };
 
 export interface BridgeGeometry extends TriangleMeshData {
@@ -32,6 +33,7 @@ export function buildBridgeGeometry(
   options: {
     route?: THREE.Curve<THREE.Vector3>;
     allowPier?: (x: number, z: number) => boolean;
+    parts?: 'deck' | 'substructure';
   } = {},
 ): BridgeGeometry | undefined {
   const spans = definition.structures?.filter(({ type }) => type === 'bridge');
@@ -155,39 +157,50 @@ export function buildBridgeGeometry(
       1,
       Math.ceil(size / (truss ? bridgeDimensions.trussPierSpacing : pierSpacing)),
     );
-    // The existing asphalt/paint overlays sit immediately above this structural slab.
-    sweep(
-      start,
-      end,
-      -halfWidth - edgeWidth,
-      halfWidth + edgeWidth,
-      -deckThickness,
-      -0.015,
-      concrete,
-      true,
-    );
-    for (const side of [-1, 1]) {
-      const outer = side * (halfWidth + edgeWidth / 2);
-      sweep(start, end, outer - edgeWidth / 2, outer + edgeWidth / 2, -0.03, curbHeight, concrete);
-      // A continuous rail envelope keeps the bumper from hooking individual posts or rail gaps.
-      sweep(start, end, outer - 0.07, outer + 0.07, curbHeight, railingHeight + 0.07, barriers);
-      for (const rise of [0.8, railingHeight])
-        sweep(start, end, outer - 0.065, outer + 0.065, rise - 0.07, rise + 0.07, steel);
-      const posts = Math.max(1, Math.ceil(size / postSpacing));
-      for (let i = 0; i <= posts; i++) {
-        const t = THREE.MathUtils.lerp(start, end, i / posts);
-        const halfPost = Math.min(0.08 / length, (end - start) / 4);
+    if (options.parts !== 'substructure') {
+      // The existing asphalt/paint overlays sit immediately above this structural slab.
+      sweep(
+        start,
+        end,
+        -halfWidth - edgeWidth,
+        halfWidth + edgeWidth,
+        -deckThickness,
+        -0.015,
+        concrete,
+        true,
+      );
+      for (const side of [-1, 1]) {
+        const outer = side * (halfWidth + edgeWidth / 2);
         sweep(
-          Math.max(start, t - halfPost),
-          Math.min(end, t + halfPost),
-          outer - 0.07,
-          outer + 0.07,
+          start,
+          end,
+          outer - edgeWidth / 2,
+          outer + edgeWidth / 2,
+          -0.03,
           curbHeight,
-          railingHeight,
-          steel,
+          concrete,
         );
+        // A continuous rail envelope keeps the bumper from hooking individual posts or rail gaps.
+        sweep(start, end, outer - 0.07, outer + 0.07, curbHeight, railingHeight + 0.07, barriers);
+        for (const rise of [0.8, railingHeight])
+          sweep(start, end, outer - 0.065, outer + 0.065, rise - 0.07, rise + 0.07, steel);
+        const posts = Math.max(1, Math.ceil(size / postSpacing));
+        for (let i = 0; i <= posts; i++) {
+          const t = THREE.MathUtils.lerp(start, end, i / posts);
+          const halfPost = Math.min(0.08 / length, (end - start) / 4);
+          sweep(
+            Math.max(start, t - halfPost),
+            Math.min(end, t + halfPost),
+            outer - 0.07,
+            outer + 0.07,
+            curbHeight,
+            railingHeight,
+            steel,
+          );
+        }
       }
     }
+    if (options.parts === 'deck') continue;
     if (truss) {
       const panelsPerBay = Math.ceil(size / bays / bridgeDimensions.trussPanelLength);
       const panels = bays * panelsPerBay;
@@ -233,9 +246,18 @@ export function buildBridgeGeometry(
       for (const side of [-1, 1]) {
         const offset = side * halfWidth * 0.65;
         const p = point(offset, -deckThickness);
-        const bottom = ground(p.x, p.z) - p.y - deckThickness - 0.5;
-        if (bottom > -deckThickness - 2) continue;
-        const pierHalfWidth = truss ? THREE.MathUtils.clamp(-bottom * 0.025, 0.65, 2.5) : 0.65;
+        const clearance = p.y - ground(p.x, p.z);
+        if (clearance < 2) continue;
+        const pierHalfWidth = truss ? THREE.MathUtils.clamp(clearance * 0.025, 0.65, 2.5) : 0.65;
+        let bottom = Infinity;
+        for (const along of [-1, 0, 1]) {
+          const sample = frame(t + (along * pierHalfWidth) / length);
+          for (const across of [-1, 0, 1]) {
+            const foot = sample.point(offset + across * pierHalfWidth, 0);
+            bottom = Math.min(bottom, ground(foot.x, foot.z) - foot.y);
+          }
+        }
+        bottom -= bridgeDimensions.pierEmbedDepth;
         sweep(
           t - pierHalfWidth / length,
           t + pierHalfWidth / length,

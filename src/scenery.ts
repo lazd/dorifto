@@ -5,8 +5,8 @@ import type { CourseTerrain } from './terrain';
 import { projectTerrainGeometry } from './terrain';
 import { PavementSurface, TerrainSurface, type TriangleMeshData } from './terrain-query';
 import type { SceneryCategory, SceneryPoint, SceneryPolygon } from './scenery-data';
-import { junctionRoadFlare } from './scenery-data';
-import { sceneryRoadProfiles } from './scenery-roads';
+import { junctionRoadFlare, sceneryJunctions, sceneryPointKey } from './scenery-data';
+import { nearbyRoadLift, sceneryBridgeGroups, sceneryRoadProfiles } from './scenery-roads';
 import { buildBridgeGeometry, createBridgeMeshes } from './bridges';
 import { createStopSignFactory } from './turn-sign';
 import * as polygonClipping from './polygon-boolean';
@@ -696,6 +696,8 @@ export function createScenery(
   }
 
   const roadBatch = new Batch(),
+    groundRampBatch = new Batch(),
+    approachPavementBatch = new Batch(),
     raisedBatch = new Batch(),
     roadbedBatch = new Batch(),
     markingBatch = new Batch(),
@@ -1049,7 +1051,12 @@ export function createScenery(
       const finishOutline = () => {
         if (outlineBatch && left.length > 1) {
           outlineBatch.outlines ??= [];
-          outlineBatch.outlines.push([[...left, ...right.reverse()]]);
+          const outline = [[...left, ...right.reverse()]];
+          outlineBatch.outlines.push(outline);
+          if (profile?.bridgeApproach && outlineBatch !== roadBatch) {
+            approachPavementBatch.outlines ??= [];
+            approachPavementBatch.outlines.push(outline);
+          }
         }
         left = [];
         right = [];
@@ -1142,6 +1149,19 @@ export function createScenery(
         if (j % geometrySteps !== 0) continue;
         const geometryEnd = (length * Math.min(j + geometrySteps, steps)) / steps;
         const corners = [edge(t0, -1), edge(t0, 1), edge(geometryEnd, -1), edge(geometryEnd, 1)];
+        const distanceAlong = profile
+          ? THREE.MathUtils.lerp(
+              profile.curve.distances[i - 1],
+              profile.curve.distances[i],
+              (j + 0.5) / steps,
+            )
+          : 0;
+        const target =
+          elevation && !elevated
+            ? roadBatch
+            : profile?.bridgeApproach && profile.groundBlendAt(distanceAlong) < 1
+              ? groundRampBatch
+              : batch;
         if (river && [...corners, center].some((p) => roadBlocked(p.x, p.z))) continue;
         if (!river && !elevated) {
           for (const [a, b] of [
@@ -1155,7 +1175,6 @@ export function createScenery(
             addPavementEdge(corners[2], corners[3]);
         }
         if (!river) {
-          const target = elevation && !elevated ? roadBatch : batch;
           if (outlineBatch !== target) finishOutline();
           outlineBatch = target;
           if (!left.length) {
@@ -1165,10 +1184,28 @@ export function createScenery(
           left.push([corners[2].x, corners[2].z]);
           right.push([corners[3].x, corners[3].z]);
         }
-        const target = elevation && !elevated ? roadBatch : batch;
         const vertices = elevation && !elevated ? corners.map((p) => ({ ...p, y: 0 })) : corners;
-        target.roof(vertices[0], vertices[1], vertices[2]);
-        target.roof(vertices[1], vertices[3], vertices[2]);
+        // Edge-only vertices would interpolate the dirt mask across the entire approach.
+        const columns = profile?.bridgeApproach && elevated ? Math.ceil(width / 2) : 1;
+        const across = (a: Vertex, b: Vertex, t: number, lift = 0): Vertex => ({
+          x: THREE.MathUtils.lerp(a.x, b.x, t),
+          y: THREE.MathUtils.lerp(a.y, b.y, t) + lift,
+          z: THREE.MathUtils.lerp(a.z, b.z, t),
+        });
+        let a = vertices[0],
+          b = vertices[2];
+        for (let column = 1; column <= columns; column++) {
+          const c = across(vertices[0], vertices[1], column / columns);
+          const d = across(vertices[2], vertices[3], column / columns);
+          if (elevation && columns > 1) {
+            c.y = elevation(c.x, c.z);
+            d.y = elevation(d.x, d.z);
+          }
+          target.roof(a, c, b);
+          target.roof(c, d, b);
+          a = c;
+          b = d;
+        }
         if (elevated && profile) {
           if (
             profile.road.structure !== 'bridge' &&
@@ -1181,18 +1218,13 @@ export function createScenery(
             profile.major &&
             (separated(center.x, center.z) || clearance(center.x, center.z) >= 0)
           ) {
-            const across = (a: Vertex, b: Vertex, t: number) => ({
-              x: THREE.MathUtils.lerp(a.x, b.x, t),
-              y: THREE.MathUtils.lerp(a.y, b.y, t) + 0.02,
-              z: THREE.MathUtils.lerp(a.z, b.z, t),
-            });
             for (const sign of [-1, 1]) {
               const from = sign < 0 ? 0.6 / width : 1 - 0.72 / width;
               const to = from + 0.12 / width;
-              const a = across(corners[0], corners[1], from);
-              const b = across(corners[0], corners[1], to);
-              const c = across(corners[2], corners[3], from);
-              const d = across(corners[2], corners[3], to);
+              const a = across(corners[0], corners[1], from, 0.02);
+              const b = across(corners[0], corners[1], to, 0.02);
+              const c = across(corners[2], corners[3], from, 0.02);
+              const d = across(corners[2], corners[3], to, 0.02);
               const markings = profileBatch(markingBatch, profile);
               markings.roof(a, b, c);
               markings.roof(b, d, c);
@@ -1251,6 +1283,10 @@ export function createScenery(
     for (const value of data.positions) structurePositions.push(value);
     for (const index of data.indices) structureIndices.push(index + offset);
   };
+  const bridgeGroups = sceneryBridgeGroups(profiles.filter((profile) => !profile.selected));
+  const sharedBridgeProfiles = new Set(
+    bridgeGroups.filter(({ members }) => members.length > 1).flatMap(({ members }) => members),
+  );
   for (const profile of profiles) {
     const { road } = profile;
     // Ground copies merge into the course pavement; a copied structure would duplicate the course's deck.
@@ -1270,18 +1306,22 @@ export function createScenery(
             shoulderWidth: 0,
             structures: [{ type: 'bridge', start: 0, end: 1 }],
           },
-          profile.heightAt,
+          (x, z) => profile.heightAt(x, z) - nearbyRoadLift,
           ground,
           (source, lift) => {
             const geometry = source.clone();
             const positions = geometry.getAttribute('position');
             for (let i = 0; i < positions.count; i++)
-              positions.setY(i, profile.heightAt(positions.getX(i), positions.getZ(i)) + lift);
+              positions.setY(
+                i,
+                profile.heightAt(positions.getX(i), positions.getZ(i)) - nearbyRoadLift + lift,
+              );
             return geometry;
           },
           {
             route: profile.curve,
             allowPier: (x, z) => surface.nearest(x, z).distance > halfWidth + 4,
+            parts: sharedBridgeProfiles.has(profile) ? 'deck' : undefined,
           },
         );
         if (data) {
@@ -1313,6 +1353,30 @@ export function createScenery(
     const batch = profileBatch(roadBatch, profile);
     ribbon(points, road.width, batch, false, false, ends, profile);
     ribbon([...points].reverse(), road.width, batch, false, true, [], profile);
+  }
+  for (const { members, curve, width, heightAt } of bridgeGroups) {
+    if (members.length < 2) continue;
+    const data = buildBridgeGeometry(
+      {
+        ...definition,
+        flat: false,
+        width,
+        shoulderWidth: 0,
+        structures: [{ type: 'bridge', start: 0, end: 1 }],
+      },
+      (x, z) => heightAt(x, z) - nearbyRoadLift,
+      ground,
+      (source) => source.clone(),
+      {
+        route: curve,
+        parts: 'substructure',
+        allowPier: (x, z) => surface.nearest(x, z).distance > halfWidth + 4,
+      },
+    );
+    if (data) {
+      layers.nearbyRoads.add(createBridgeMeshes(data));
+      appendStructure({ positions: data.positions, indices: data.collisionIndices });
+    }
   }
   for (const [profileIndex, profile] of profiles.entries()) {
     const { road, curve } = profile;
@@ -1548,14 +1612,45 @@ export function createScenery(
     for (const [a, b, c] of triangles)
       roadBatch.roof({ ...points[a], y: 0 }, { ...points[b], y: 0 }, { ...points[c], y: 0 });
   }
-  const groundPavement = pavementFootprint(roadBatch);
+  const junctionCorners = new SpatialIndex<Bounds & { radius: number }>();
+  const junctionKeys = sceneryJunctions(scenery.roads);
+  const junctionWidths = new Map<string, number>();
+  for (const road of scenery.roads) {
+    if (road.structure) continue;
+    for (const p of road.points) {
+      const key = sceneryPointKey(p);
+      if (junctionKeys.has(key))
+        junctionWidths.set(key, Math.max(junctionWidths.get(key) ?? 0, road.width));
+    }
+  }
+  for (const [key, width] of junctionWidths) {
+    const [x, z] = key.split(',').map(Number);
+    const reach = width + 2;
+    junctionCorners.add({
+      minX: x - reach,
+      maxX: x + reach,
+      minZ: z - reach,
+      maxZ: z + reach,
+      radius: THREE.MathUtils.clamp(width / 2, 2, 8),
+    });
+  }
+  const groundPavement = polygonClipping.roundConcaveCorners(
+    pavementFootprint(roadBatch),
+    ([x, z]) => {
+      let radius = 0;
+      junctionCorners.some(x, z, (junction) => {
+        radius = Math.max(radius, junction.radius);
+        return false;
+      });
+      return radius;
+    },
+  );
   fillFootprint(roadBatch, groundPavement);
   const tunnelRoads = tunnelBatches.get(roadBatch);
   const tunnelPavement = tunnelRoads ? pavementFootprint(tunnelRoads) : [];
   if (tunnelRoads) fillFootprint(tunnelRoads, tunnelPavement);
-  const pavement = tunnelPavement.length
-    ? polygonClipping.union(groundPavement, tunnelPavement)
-    : groundPavement;
+  const approachPavement = pavementFootprint(approachPavementBatch);
+  const pavement = polygonClipping.union(groundPavement, tunnelPavement, approachPavement);
   for (const segment of courseSegments)
     if (!separated((segment.a.x + segment.b.x) / 2, (segment.a.z + segment.b.z) / 2))
       centerlines.add({
@@ -1583,6 +1678,38 @@ export function createScenery(
         filletVertices: query.groundSurface.filletVertices,
       }
     : query;
+  if (groundRampBatch.positions.length) {
+    const source = groundRampBatch.geometry();
+    const positions = source.getAttribute('position');
+    source.setAttribute(
+      'elevation',
+      new THREE.Float32BufferAttribute(
+        Array.from(
+          { length: positions.count },
+          (_, i) =>
+            positions.getY(i) - ground(positions.getX(i), positions.getZ(i)) - nearbyRoadLift,
+        ),
+        1,
+      ),
+    );
+    let projected: THREE.BufferGeometry;
+    try {
+      projected = options.projectGroundGeometry
+        ? options.projectGroundGeometry(source, nearbyRoadLift)
+        : projectTerrainGeometry(groundQuery, source, nearbyRoadLift);
+    } finally {
+      source.dispose();
+    }
+    const points = projected.getAttribute('position');
+    const elevations = projected.getAttribute('elevation');
+    for (let i = 0; i < points.count; i++)
+      raisedBatch.positions.push(
+        points.getX(i),
+        points.getY(i) + elevations.getX(i),
+        points.getZ(i),
+      );
+    projected.dispose();
+  }
   const onDeck = (p: Vertex) =>
     raisedPavement.isAsphalt(p) && Math.abs(p.y - ground(p.x, p.z)) > 0.15;
   const appendTunnelBatch = (batch: Batch, target: Batch, lift: number) => {
@@ -1601,13 +1728,16 @@ export function createScenery(
       const positions = geometry.getAttribute('position');
       const lateral = new Float32Array(positions.count);
       const mainRoad = new Float32Array(positions.count);
+      const structure = new Float32Array(positions.count);
       for (let i = 0; i < positions.count; i++) {
         const p = { x: positions.getX(i), y: positions.getY(i), z: positions.getZ(i) };
-        lateral[i] = onDeck(p) ? 3 : roadDistance(p.x, p.z);
+        lateral[i] = roadDistance(p.x, p.z);
         mainRoad[i] = separated(p.x, p.z) ? 3 : surface.nearest(p.x, p.z).distance - halfWidth;
+        structure[i] = THREE.MathUtils.smoothstep(Math.abs(p.y - ground(p.x, p.z)), 0.05, 0.5);
       }
       geometry.setAttribute('lateral', new THREE.BufferAttribute(lateral, 1));
       geometry.setAttribute('mainRoad', new THREE.BufferAttribute(mainRoad, 1));
+      geometry.setAttribute('structure', new THREE.BufferAttribute(structure, 1));
     }
   };
   result.setRoadDirtAttributes = setRoadDirtAttributes;
@@ -1692,7 +1822,10 @@ export function createScenery(
       if (batch === raisedBatch) {
         raisedPavement = new PavementSurface(mesh);
         hasRaisedPavement = true;
-        appendStructure(mesh);
+        const collisionPositions = positions.slice();
+        for (let i = 1; i < collisionPositions.length; i += 3)
+          collisionPositions[i] -= nearbyRoadLift;
+        appendStructure({ positions: collisionPositions, indices: mesh.indices });
       } else pavementSurface = new PavementSurface(mesh);
       if (result.roadMesh) {
         const previous = result.roadMesh;
@@ -1711,6 +1844,7 @@ export function createScenery(
         ? options.createRoadMaterial()
         : material(color);
     const geometries: THREE.BufferGeometry[] = [];
+    let deckMaterial: THREE.MeshStandardMaterial | undefined;
     if (parent === layers.nearbyRoads) surfaceMaterial.flatShading = false;
     let index = 0;
     for (const chunk of kept.chunks()) {
@@ -1726,13 +1860,24 @@ export function createScenery(
       const geometry = mergeVertices(unindexed);
       if (parent === layers.nearbyRoads) geometry.computeVertexNormals();
       unindexed.dispose();
-      const mesh = new THREE.Mesh(geometry, surfaceMaterial);
+      const elevated =
+        batch === raisedBatch &&
+        chunk.positions.every(
+          (_, i, p) => i % 3 !== 0 || Math.abs(p[i + 1] - ground(p[i], p[i + 2])) >= 0.5,
+        );
+      if (elevated && !deckMaterial) {
+        deckMaterial = options.createRoadMaterial?.() ?? material(color);
+        deckMaterial.flatShading = false;
+      }
+      const mesh = new THREE.Mesh(geometry, elevated ? deckMaterial : surfaceMaterial);
       mesh.name = index++ === 0 ? name : `${name}-${index}`;
       mesh.receiveShadow = true;
       parent.add(mesh);
-      geometries.push(geometry);
+      if (!elevated) geometries.push(geometry);
     }
-    if (batch === roadBatch) addRoadDirt(surfaceMaterial, geometries);
+    if (geometries.length) {
+      if (batch === roadBatch || batch === raisedBatch) addRoadDirt(surfaceMaterial, geometries);
+    } else surfaceMaterial.dispose();
   };
   addDraped(roadBatch, layers.nearbyRoads, 0x55575a, 'nearby-road-surfaces', 0.035);
   addDraped(raisedBatch, layers.nearbyRoads, 0x55575a, 'nearby-road-decks', 0.035);

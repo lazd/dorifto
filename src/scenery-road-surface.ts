@@ -7,20 +7,22 @@ import {
   smoothAlong,
   smoothSceneryLine,
   type CourseScenery,
-  type SceneryPoint,
 } from './scenery-data';
 
 type Sample = { x: number; z: number; height: number; distance: number };
 type Segment = { a: Sample; b: Sample; width: number };
+type Anchor = Sample & { slopeX: number; slopeZ: number; through: boolean; width: number };
+type Junction = Anchor & { inner: number };
+const junctionReach = 30;
 
 /** A common unbanked surface for ground roads, including their shared junction heights. */
 export class SceneryRoadSurface {
-  private readonly cells = new Map<string, Segment[]>();
-  private readonly junctionCells = new Map<string, SceneryPoint[]>();
+  private readonly cells = new Map<string, Map<number, Segment[]>>();
+  private readonly junctionCells = new Map<string, Junction[]>();
 
   constructor(roads: CourseScenery['roads'], height: (x: number, z: number) => number) {
     const junctions = sceneryJunctions(roads);
-    const anchors = new Map<string, Sample[]>();
+    const anchors = new Map<string, Anchor[]>();
     const lines = roads
       .filter((road) => !road.structure)
       .map((road) => {
@@ -54,7 +56,20 @@ export class SceneryRoadSurface {
           const key = sceneryPointKey([samples[i].x, samples[i].z]);
           if (junctions.has(key)) {
             const shared = anchors.get(key) ?? [];
-            shared.push(samples[i]);
+            const before = Math.max(0, i - 1),
+              after = Math.min(samples.length - 1, i + 1);
+            const dx = samples[after].x - samples[before].x;
+            const dz = samples[after].z - samples[before].z;
+            const length = Math.hypot(dx, dz);
+            const grade =
+              (smoothed[after] - smoothed[before]) / (distances[after] - distances[before]);
+            shared.push({
+              ...samples[i],
+              slopeX: (grade * dx) / length,
+              slopeZ: (grade * dz) / length,
+              through: i > 0 && i < samples.length - 1,
+              width: road.width,
+            });
             anchors.set(key, shared);
           }
         }
@@ -66,7 +81,7 @@ export class SceneryRoadSurface {
         samples.reduce((sum, p) => sum + p.height, 0) / samples.length,
       ]),
     );
-    for (const { samples, width } of lines) {
+    for (const [line, { samples, width }] of lines.entries()) {
       const deltas = anchorCorrections(
         samples.map((p) => p.distance),
         samples.flatMap((p) => {
@@ -92,29 +107,47 @@ export class SceneryRoadSurface {
             z++
           ) {
             const key = `${x},${z}`;
-            const bucket = this.cells.get(key) ?? [];
+            const roads = this.cells.get(key) ?? new Map<number, Segment[]>();
+            const bucket = roads.get(line) ?? [];
             bucket.push(segment);
-            this.cells.set(key, bucket);
+            roads.set(line, bucket);
+            this.cells.set(key, roads);
           }
       }
     }
     for (const samples of anchors.values()) {
-      const { x, z } = samples[0];
-      for (let cx = Math.floor((x - 30) / 32); cx <= Math.floor((x + 30) / 32); cx++)
-        for (let cz = Math.floor((z - 30) / 32); cz <= Math.floor((z + 30) / 32); cz++) {
+      const main = [...samples].sort(
+        (a, b) => Number(b.through) - Number(a.through) || b.width - a.width,
+      )[0];
+      const junction: Junction = {
+        ...main,
+        height: targets.get(sceneryPointKey([main.x, main.z]))!,
+        inner: Math.min(15, Math.max(...samples.map((p) => p.width)) / 2 + 7),
+      };
+      const { x, z } = junction;
+      for (
+        let cx = Math.floor((x - junctionReach) / 32);
+        cx <= Math.floor((x + junctionReach) / 32);
+        cx++
+      )
+        for (
+          let cz = Math.floor((z - junctionReach) / 32);
+          cz <= Math.floor((z + junctionReach) / 32);
+          cz++
+        ) {
           const key = `${cx},${cz}`;
           const bucket = this.junctionCells.get(key) ?? [];
-          bucket.push([x, z]);
+          bucket.push(junction);
           this.junctionCells.set(key, bucket);
         }
     }
   }
 
   bankingWeight(x: number, z: number) {
-    let distance = 30;
+    let distance = junctionReach;
     for (const p of this.junctionCells.get(`${Math.floor(x / 32)},${Math.floor(z / 32)}`) ?? [])
-      distance = Math.min(distance, Math.hypot(x - p[0], z - p[1]));
-    return MathUtils.smoothstep(distance, 8, 30);
+      distance = Math.min(distance, Math.hypot(x - p.x, z - p.z));
+    return MathUtils.smoothstep(distance, 8, junctionReach);
   }
 
   heightAt(x: number, z: number, ground: number) {
@@ -122,21 +155,50 @@ export class SceneryRoadSurface {
     let sum = 0,
       weights = 0,
       blend = 0;
-    for (const { a, b, width } of this.cells.get(`${Math.floor(x / 32)},${Math.floor(z / 32)}`) ??
-      []) {
-      const dx = b.x - a.x,
-        dz = b.z - a.z;
-      const length = dx * dx + dz * dz;
-      if (!length) continue;
-      const t = MathUtils.clamp(((x - a.x) * dx + (z - a.z) * dz) / length, 0, 1);
-      const distance = Math.hypot(x - a.x - t * dx, z - a.z - t * dz);
+    for (const segments of this.cells
+      .get(`${Math.floor(x / 32)},${Math.floor(z / 32)}`)
+      ?.values() ?? []) {
+      let nearest = Infinity,
+        height = 0;
+      const width = segments[0].width;
+      for (const { a, b } of segments) {
+        const dx = b.x - a.x,
+          dz = b.z - a.z;
+        const length = dx * dx + dz * dz;
+        if (!length) continue;
+        const t = MathUtils.clamp(((x - a.x) * dx + (z - a.z) * dz) / length, 0, 1);
+        const distance = Math.hypot(x - a.x - t * dx, z - a.z - t * dz);
+        if (distance >= nearest) continue;
+        nearest = distance;
+        height = MathUtils.lerp(a.height, b.height, t);
+      }
+      const distance = nearest;
       const influence = 1 - MathUtils.smoothstep(distance, width / 2 + 7, width / 2 + 20);
       if (!influence) continue;
       const weight = influence / (1 + distance * distance);
-      sum += MathUtils.lerp(a.height, b.height, t) * weight;
+      sum += height * weight;
       weights += weight;
       blend = Math.max(blend, influence);
     }
-    return weights ? MathUtils.lerp(ground, sum / weights, blend) : ground;
+    if (!weights) return ground;
+    let height = sum / weights,
+      junctionSum = 0,
+      junctionWeights = 0,
+      junctionBlend = 0;
+    for (const junction of this.junctionCells.get(`${Math.floor(x / 32)},${Math.floor(z / 32)}`) ??
+      []) {
+      const distance = Math.hypot(x - junction.x, z - junction.z);
+      const weight = 1 - MathUtils.smoothstep(distance, junction.inner, junctionReach);
+      junctionSum +=
+        (junction.height +
+          (x - junction.x) * junction.slopeX +
+          (z - junction.z) * junction.slopeZ) *
+        weight;
+      junctionWeights += weight;
+      junctionBlend = Math.max(junctionBlend, weight);
+    }
+    if (junctionWeights)
+      height = MathUtils.lerp(height, junctionSum / junctionWeights, junctionBlend);
+    return MathUtils.lerp(ground, height, blend);
   }
 }

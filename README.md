@@ -198,6 +198,8 @@ direct browser requests to OpenFreeMap and USGS, so an internet connection is ne
   (3 m sidewalls, 6.5 m at the crown), not a surveyed reconstruction of a specific tunnel.
   Tagged bridges render a concrete deck with raised edge curbs, metal railings/posts,
   and paired piers grounded in the saved terrain where there is sufficient clearance.
+  Pier feet extend below the lowest terrain sample across their full footprint, including
+  sloping hillsides.
   Spans at least 120 m long with at least 12 m of center clearance also get green steel
   under-deck trusses: upper/lower chords, alternating diagonals, verticals and cross-bracing.
   Truss depth follows available ground clearance, capped at 20 m, and these bridges use
@@ -547,13 +549,32 @@ is interpolated from the two terrain approaches. When those approaches do not pr
 clearance over the selected road, a 6.5 m deck-surface clearance fallback raises the span
 and blends back onto connected approach roads. This is an approximation, not surveyed
 freeway elevation; layer numbers preserve ordering metadata but do not encode meters.
+Adjacent, aligned mapped bridge carriageways at the same elevation share one under-deck
+truss and support layout, while retaining their separate decks, lanes, markings and rails.
+Paired decks use identical lengths, aligned abutment planes and a common elevation profile;
+connected approaches follow the adjusted endpoints and grade without changing the saved map.
+Approaches use half-meter samples and a quintic transition to ease into the deck grade.
+Their final heading and full-width cross-section match the deck before blending back
+into the mapped bend, preventing open seams at the pavement edges.
+At ground-road merges, the full approach width follows the displayed terrain and shares
+the continuing road's outer dirt boundary; asphalt lift remains visual-only.
+Approach ribbons include interior samples so baked edge dirt stays at the shoulders
+instead of interpolating across the full road width.
+Pavement texture offsets remain visual only: bridge and approach collision stays at the
+roadbed level, avoiding a raised asphalt lip where it meets ground-road collision.
+Staggered spans, different layers and vertically separated bridges remain independent.
 Support piers are omitted near the selected road. Raised pavement does not widen the
 track's junctions, erase its paint, or place junction cones underneath. Hiding nearby roads
 also removes their structure collision. Nearby tunnel spans are omitted from surface
 scenery rather than drawn as false intersections; separate underground bores and portals
 are not reconstructed. Edit and save older maps to refresh their nearby-road structure tags.
 Road class alone never elevates a road or creates a bridge. Ground highways share the same
-smoothed surface as small roads. Four-lane two-way highways and closely spaced, oppositely
+smoothed surface as small roads. Ground junctions share a graded plane aligned with the
+through road, easing into branch grades over 30 m rather than blending uphill terrain
+into bumps across the intersection. Each road contributes its nearest profile once,
+independent of how densely its map nodes are sampled. Inside junction corners receive
+tangent circular pavement fillets, shared by asphalt, dirt boundaries, and road coverage.
+Four-lane two-way highways and closely spaced, oppositely
 directed major carriageways receive a low modeled center divide, interrupted at intersecting
 roads. This median is an approximation, not a surveyed barrier design. Tagged bridges retain
 their full-width level deck cross-sections, white edge lines, and grounded approach embankments. Their
