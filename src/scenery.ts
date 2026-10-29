@@ -14,7 +14,13 @@ import * as polygonClipping from './polygon-boolean';
 type Point = { x: number; z: number };
 type Bounds = { minX: number; minZ: number; maxX: number; maxZ: number };
 type Polygon = Bounds & { rings: SceneryPolygon };
-type RoadSegment = Bounds & { a: Point; b: Point; width: number; widthA?: number; widthB?: number };
+type RoadSegment = Bounds & {
+  a: Point;
+  b: Point;
+  width: number;
+  widthA?: number;
+  widthB?: number;
+};
 type Vertex = Point & { y: number };
 type MultiPolygon = SceneryPolygon[];
 type RoadCrossSection = { position: Point; tangent: Point; width: number };
@@ -210,7 +216,10 @@ function clipToBounds(points: Point[], bounds: Bounds) {
       if (dp >= 0) output.push(p);
       if (dp >= 0 !== dq >= 0) {
         const t = dp / (dp - dq);
-        output.push({ x: THREE.MathUtils.lerp(p.x, q.x, t), z: THREE.MathUtils.lerp(p.z, q.z, t) });
+        output.push({
+          x: THREE.MathUtils.lerp(p.x, q.x, t),
+          z: THREE.MathUtils.lerp(p.z, q.z, t),
+        });
       }
     });
     points = output;
@@ -494,7 +503,10 @@ export function createScenery(
     if (da < 0 && db < 0) return;
     if (da < 0 !== db < 0) {
       const t = da / (da - db);
-      const intersection = { x: a.x + (b.x - a.x) * t, z: a.z + (b.z - a.z) * t };
+      const intersection = {
+        x: a.x + (b.x - a.x) * t,
+        z: a.z + (b.z - a.z) * t,
+      };
       if (da < 0) a = intersection;
       else b = intersection;
     }
@@ -760,7 +772,10 @@ export function createScenery(
     if (!tunnel) tunnelBatches.set(batch, (tunnel = new Batch()));
     return tunnel;
   };
-  type IndexedRoadSegment = RoadSegment & { profile: RoadProfile; profileIndex: number };
+  type IndexedRoadSegment = RoadSegment & {
+    profile: RoadProfile;
+    profileIndex: number;
+  };
   type RoadIntersection = {
     point: Point;
     small: RoadProfile;
@@ -846,7 +861,10 @@ export function createScenery(
     const t = (acx * cdz - acz * cdx) / denominator;
     const u = (acx * abz - acz * abx) / denominator;
     if (t < 0 || t > 1 || u < 0 || u > 1) return;
-    return { point: { x: a.x + t * abx, z: a.z + t * abz }, tangent: { x: abx, z: abz } };
+    return {
+      point: { x: a.x + t * abx, z: a.z + t * abz },
+      tangent: { x: abx, z: abz },
+    };
   };
   for (const segment of roadSegments.query(bounds)) {
     for (const other of roadSegments.query(segment)) {
@@ -953,8 +971,16 @@ export function createScenery(
       const a = { x: x + rightX * left, y, z: z + rightZ * left };
       const b = { x: x + rightX * halfWidth, y, z: z + rightZ * halfWidth };
       const lineDepth = 0.45;
-      const c = { x: a.x + inboundX * lineDepth, y, z: a.z + inboundZ * lineDepth };
-      const d = { x: b.x + inboundX * lineDepth, y, z: b.z + inboundZ * lineDepth };
+      const c = {
+        x: a.x + inboundX * lineDepth,
+        y,
+        z: a.z + inboundZ * lineDepth,
+      };
+      const d = {
+        x: b.x + inboundX * lineDepth,
+        y,
+        z: b.z + inboundZ * lineDepth,
+      };
       stopLineBatch.roof(a, b, c);
       stopLineBatch.roof(b, d, c);
       if (!terrain.contains(signX, signZ)) continue;
@@ -1073,7 +1099,10 @@ export function createScenery(
           outlineBatch.outlines ??= [];
           const outline = [[...left, ...right.reverse()]];
           outlineBatch.outlines.push(outline);
-          if (profile?.bridgeApproach && outlineBatch !== roadBatch) {
+          if (
+            (profile?.bridgeApproach || profile?.road.structure === 'bridge') &&
+            outlineBatch !== roadBatch
+          ) {
             approachPavementBatch.outlines ??= [];
             approachPavementBatch.outlines.push(outline);
           }
@@ -1346,7 +1375,10 @@ export function createScenery(
         );
         if (data) {
           layers.nearbyRoads.add(createBridgeMeshes(data));
-          appendStructure({ positions: data.positions, indices: data.collisionIndices });
+          appendStructure({
+            positions: data.positions,
+            indices: data.collisionIndices,
+          });
         }
         for (const end of [0, 1]) {
           const center = profile.curve.getPointAt(end);
@@ -1395,7 +1427,10 @@ export function createScenery(
     );
     if (data) {
       layers.nearbyRoads.add(createBridgeMeshes(data));
-      appendStructure({ positions: data.positions, indices: data.collisionIndices });
+      appendStructure({
+        positions: data.positions,
+        indices: data.collisionIndices,
+      });
     }
   }
   const medianBaseWidth = highwayMedianProfile.at(-1)![0] - highwayMedianProfile[0][0];
@@ -1509,7 +1544,12 @@ export function createScenery(
       }
       if (!medianWidth) continue;
       const crossingRoad = roadSegments
-        .query({ minX: medianX - 20, maxX: medianX + 20, minZ: medianZ - 20, maxZ: medianZ + 20 })
+        .query({
+          minX: medianX - 20,
+          maxX: medianX + 20,
+          minZ: medianZ - 20,
+          maxZ: medianZ + 20,
+        })
         .some((segment) => {
           if (
             segment.profile === profile ||
@@ -1544,7 +1584,12 @@ export function createScenery(
         if (previous) medianEnds.push({ section: previous.end, reverse: false, road });
         medianEnds.push({ section: start, reverse: true, road });
       }
-      medianSections.push({ start, end, tangent, reflector: distance % 12 === 2 });
+      medianSections.push({
+        start,
+        end,
+        tangent,
+        reflector: distance % 12 === 2,
+      });
       previous = { distance, end };
     }
     if (previous) medianEnds.push({ section: previous.end, reverse: false, road });
@@ -1592,7 +1637,11 @@ export function createScenery(
     for (let i = 0; i < a.section.length; i++) {
       const p = a.section[i];
       const q = match.section[a.reverse === match.reverse ? a.section.length - 1 - i : i];
-      const shared = { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2, z: (p.z + q.z) / 2 };
+      const shared = {
+        x: (p.x + q.x) / 2,
+        y: (p.y + q.y) / 2,
+        z: (p.z + q.z) / 2,
+      };
       Object.assign(p, shared);
       Object.assign(q, shared);
     }
@@ -1890,7 +1939,11 @@ export function createScenery(
       const mainRoad = new Float32Array(positions.count);
       const structure = new Float32Array(positions.count);
       for (let i = 0; i < positions.count; i++) {
-        const p = { x: positions.getX(i), y: positions.getY(i), z: positions.getZ(i) };
+        const p = {
+          x: positions.getX(i),
+          y: positions.getY(i),
+          z: positions.getZ(i),
+        };
         lateral[i] = roadDistance(p.x, p.z);
         mainRoad[i] = separated(p.x, p.z) ? 3 : surface.nearest(p.x, p.z).distance - halfWidth;
         structure[i] = THREE.MathUtils.smoothstep(Math.abs(p.y - ground(p.x, p.z)), 0.05, 0.5);
@@ -2053,7 +2106,10 @@ export function createScenery(
         const collisionPositions = positions.slice();
         for (let i = 1; i < collisionPositions.length; i += 3)
           collisionPositions[i] -= nearbyRoadLift;
-        appendStructure({ positions: collisionPositions, indices: mesh.indices });
+        appendStructure({
+          positions: collisionPositions,
+          indices: mesh.indices,
+        });
       } else pavementSurface = new PavementSurface(mesh);
       if (result.roadMesh) {
         const previous = result.roadMesh;
@@ -2247,7 +2303,14 @@ export function createScenery(
       transform.updateMatrix();
       (tree ? trees : shrubs).push(transform.matrix.clone());
       (tree ? shades : shrubShades).push(random());
-      occupied.add({ x, z, minX: x - 5, maxX: x + 5, minZ: z - 5, maxZ: z + 5 });
+      occupied.add({
+        x,
+        z,
+        minX: x - 5,
+        maxX: x + 5,
+        minZ: z - 5,
+        maxZ: z + 5,
+      });
     }
   }
   function instances(

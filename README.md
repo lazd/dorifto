@@ -560,6 +560,8 @@ At ground-road merges, the full approach width follows the displayed terrain and
 the continuing road's outer dirt boundary; asphalt lift remains visual-only.
 Approach ribbons include interior samples so baked edge dirt stays at the shoulders
 instead of interpolating across the full road width.
+Bridge decks and approaches share their outer dirt boundary, so their joins do not
+become false dirt-covered pavement edges.
 Terrain-projected pavement adaptively adds samples where interpolated shoulder dirt
 would spill into the road. Refinement is static, limited to the dirt transition, and
 preserves the original surface planes and collision.
@@ -602,8 +604,10 @@ rendered landscape triangles, including simplified distant patches, rather than 
 collision grid. Their surfaces and a 6 m band on either side retain native terrain detail;
 unrelated landscape remains simplified. This changes visual tessellation, not the heightfield
 or collision. Separately, Complete maps locally refine terrain cells where coarse interpolation
-disagrees with road grades, with matching collision and crack-free neighboring cells, so adjacent
-uphill roads cannot push triangles into pavement. Horizontal water surfaces are clipped to that same landscape at their estimated
+disagrees with road grades or river channels, with matching collision and crack-free neighboring
+cells, so adjacent uphill roads cannot push triangles into pavement. Rivers occupy channels
+one meter below the original local surface, with gradual six-meter banks. Ground-road pavement
+and its immediate support remain intact; bridges span the lowered riverbed. Horizontal water surfaces are clipped to that same landscape at their estimated
 level. Rivers and shallow water are clipped to ground-road pavement boundaries, including
 side roads and parking areas, while water continues beneath bridges. This is static
 map-loading work, not a per-frame projection.

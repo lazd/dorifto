@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { SceneryRoadSurface } from './scenery-road-surface';
+import { SceneryRiverChannels } from './scenery-river-channels';
 import { terrainVisualIndices } from './terrain-visual-indices';
 import { courseProfileHeight, courseRoute, courseShoulderWidth } from './courses';
 import type { CourseDefinition } from './courses';
@@ -85,7 +86,11 @@ export class CourseTerrain {
         definition.closed === false ? fraction(t + 5 / length) : (t + 5 / length) % 1,
       );
       const bend = Math.atan2(before.z * after.x - before.x * after.z, before.dot(after));
-      return { a, b, bank: -THREE.MathUtils.clamp((bend / 10) * 2.5, -0.065, 0.065) };
+      return {
+        a,
+        b,
+        bank: -THREE.MathUtils.clamp((bend / 10) * 2.5, -0.065, 0.065),
+      };
     });
     if (definition.elevation || definition.bankingScale !== undefined) {
       // Generated corners need gradual roll-in/out, especially at high banking.
@@ -254,7 +259,7 @@ export class CourseTerrain {
     if (roadSurface)
       for (const segment of this.segments)
         segment.bank *= roadSurface.bankingWeight(segment.a.x, segment.a.z);
-    const surfaceHeight = (
+    const uncutSurfaceHeight = (
       x: number,
       z: number,
       near: ReturnType<typeof this.nearest>,
@@ -269,6 +274,25 @@ export class CourseTerrain {
       );
       const blend = overlay ? 1 - tunnelCut(near) : corridor;
       return THREE.MathUtils.lerp(height, roadSurface.heightAt(x, z, height), blend);
+    };
+    const riverChannels = definition.scenery?.waterways.length
+      ? new SceneryRiverChannels(definition.scenery.waterways, (x, z) =>
+          uncutSurfaceHeight(x, z, this.nearest(x, z), blendStart),
+        )
+      : undefined;
+    const surfaceHeight = (
+      x: number,
+      z: number,
+      near: ReturnType<typeof this.nearest>,
+      start: number,
+    ) => {
+      const height = uncutSurfaceHeight(x, z, near, start);
+      if (!riverChannels) return height;
+      const pavementDistance = Math.min(
+        roadSurface?.pavementDistance(x, z) ?? Infinity,
+        overlay ? Infinity : near.distance - this.halfWidth,
+      );
+      return riverChannels.heightAt(x, z, height, pavementDistance);
     };
     const vertex = (
       i: number,
@@ -316,7 +340,10 @@ export class CourseTerrain {
         continue;
       }
       const scale = (snapStart + line * this.spacing) / near.distance;
-      const snapped = { x: near.x + (px - near.x) * scale, z: near.z + (pz - near.z) * scale };
+      const snapped = {
+        x: near.x + (px - near.x) * scale,
+        z: near.z + (pz - near.z) * scale,
+      };
       warp.set(i, snapped);
       vertex(i, snapped.x, snapped.z, undefined, snapStart);
     }
@@ -464,13 +491,20 @@ export class CourseTerrain {
       const point = (i: number) =>
         i < vertexCount
           ? { x: positions[i * 3], z: positions[i * 3 + 2] }
-          : { x: fillet[(i - vertexCount) * 3], z: fillet[(i - vertexCount) * 3 + 2] };
+          : {
+              x: fillet[(i - vertexCount) * 3],
+              z: fillet[(i - vertexCount) * 3 + 2],
+            };
       const line = (i: number) =>
         warp!.has(i) ? Math.round(roadDistances[i] / this.spacing) : Number.NaN;
       const key = (p: number, q: number) =>
         line(p) < line(q) ? p * vertexCount + q : q * vertexCount + p;
       // Each subdividable triangle's two edges between its lines, each from the inner line.
-      const triangles: { cell: number; crossings?: number[][]; corners: number[] }[] = [];
+      const triangles: {
+        cell: number;
+        crossings?: number[][];
+        corners: number[];
+      }[] = [];
       const blocked = new Set<number>();
       for (let z = 0; z < this.rows - 1; z++)
         for (let x = 0; x < this.columns - 1; x++) {
@@ -566,7 +600,11 @@ export class CourseTerrain {
         for (let x = 0; x < cellWidth; x++) {
           const cx = this.minX + (x + 0.5) * this.spacing;
           const cz = this.minZ + (z + 0.5) * this.spacing;
-          if (roadSurface.pavementDistance(cx, cz) > this.spacing * Math.SQRT2) continue;
+          if (
+            roadSurface.pavementDistance(cx, cz) > this.spacing * Math.SQRT2 &&
+            !riverChannels?.near(cx, cz, this.spacing * Math.SQRT2)
+          )
+            continue;
           for (const [u, v] of [
             [0.5, 0.5],
             [0.25, 0.25],
@@ -847,7 +885,9 @@ export class CourseTerrain {
     material.onBeforeCompile = (shader) => {
       shader.uniforms.grassMap = { value: grassMap };
       shader.uniforms.grassNormalMap = { value: grassNormalMap };
-      shader.uniforms.grassRoughnessMap = { value: grassRoughnessMap ?? grassMap };
+      shader.uniforms.grassRoughnessMap = {
+        value: grassRoughnessMap ?? grassMap,
+      };
       shader.uniforms.soilMap = { value: soilMap };
       shader.uniforms.soilNormalMap = { value: soilNormalMap };
       shader.uniforms.soilRoughnessMap = { value: soilRoughnessMap ?? soilMap };
@@ -1069,7 +1109,11 @@ export class CourseTerrain {
               ? Math.hypot(px, pz) - this.padRadius
               : this.nearest(px, pz).distance - this.halfWidth;
           if (distance > 3.4 && distance < 10) {
-            placements.push({ x: px, z: pz, blades: 3 + Math.floor(random() * 6) });
+            placements.push({
+              x: px,
+              z: pz,
+              blades: 3 + Math.floor(random() * 6),
+            });
           }
         }
       }
@@ -1220,7 +1264,12 @@ export class CourseTerrain {
   }
 }
 
-type ProjectionBounds = { minX: number; maxX: number; minZ: number; maxZ: number };
+type ProjectionBounds = {
+  minX: number;
+  maxX: number;
+  minZ: number;
+  maxZ: number;
+};
 type TerrainTriangles = (bounds: ProjectionBounds) => Iterable<readonly THREE.Vector3[]>;
 
 /** Index the rendered triangles once; coarse patches do not follow the physics grid's cells. */
@@ -1281,7 +1330,11 @@ export function projectTerrainGeometry(
   const index = source.getIndex();
   // Optional per-vertex scalars (e.g. distance across a road ribbon), interpolated onto clipped pieces.
   const scalars = (['lateral', 'structure', 'elevation'] as const)
-    .map((name) => ({ name, source: source.getAttribute(name), values: [] as number[] }))
+    .map((name) => ({
+      name,
+      source: source.getAttribute(name),
+      values: [] as number[],
+    }))
     .filter(({ source }) => source);
   function* gridTriangles({ minX, maxX, minZ, maxZ }: ProjectionBounds) {
     const pad = terrain.warpedCells ? 1 : 0;
@@ -1317,7 +1370,10 @@ export function projectTerrainGeometry(
   }
   for (let i = 0; i < (index?.count ?? attribute.count); i += 3) {
     const vertices = [0, 1, 2].map((j) => (index ? index.getX(i + j) : i + j));
-    const triangle = vertices.map((v) => ({ x: attribute.getX(v), z: attribute.getZ(v) }));
+    const triangle = vertices.map((v) => ({
+      x: attribute.getX(v),
+      z: attribute.getZ(v),
+    }));
     const [a, b, c] = triangle;
     const area = (b.x - a.x) * (c.z - a.z) - (c.x - a.x) * (b.z - a.z);
     const scalarAt = (
@@ -1359,7 +1415,10 @@ export function projectTerrainGeometry(
             if (dp >= 0) output.push(p);
             if (dp >= 0 !== dq >= 0) {
               const t = dp / (dp - dq);
-              output.push({ x: p.x + (q.x - p.x) * t, z: p.z + (q.z - p.z) * t });
+              output.push({
+                x: p.x + (q.x - p.x) * t,
+                z: p.z + (q.z - p.z) * t,
+              });
             }
           });
           polygon = output;
