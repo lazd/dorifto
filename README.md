@@ -574,13 +574,20 @@ are not reconstructed. Edit and save older maps to refresh their nearby-road str
 Road class alone never elevates a road or creates a bridge. Ground highways share the same
 smoothed surface as small roads. Ground junctions share a graded plane aligned with the
 through road, easing into branch grades over 30 m rather than blending uphill terrain
-into bumps across the intersection. Outside junctions, the closest width-aware road
+into bumps across the intersection. Junction grading only affects its connected roads,
+so hillside intersections cannot lift an unrelated highway below. Outside junctions, the closest width-aware road
 profile controls the full cross-section, without influence from distant uphill roads
 or the density of map nodes. Inside junction corners receive
 tangent circular pavement fillets, shared by asphalt, dirt boundaries, and road coverage.
 Four-lane two-way highways and closely spaced, oppositely
-directed major carriageways receive a low modeled center divide, interrupted at intersecting
-roads. This median is an approximation, not a surveyed barrier design. Tagged bridges retain
+directed major carriageways receive a narrow, sloped concrete Jersey barrier with yellow
+reflectors, interrupted at intersecting roads. Barrier sections join continuously and share
+their modeled profile with collision; only exposed ends are capped so the structure
+contact-normal fix lets cars slide along the sides without catching internal section caps.
+Carriageway pairing excludes intervening roads; reflectors are visual-only. This median is an
+approximation. Nearby facing ends at road-fragment handoffs share a cross-section, including
+their collision, without closing intersection openings. It is not a
+surveyed barrier design. Tagged bridges retain
 their full-width level deck cross-sections, white edge lines, and grounded approach embankments. Their
 bridge approaches share the deck's endpoint heights across the entire pavement width,
 even when no clearance fallback is needed, and concrete abutments close the gap beneath
@@ -594,8 +601,12 @@ Terrain-draped roads and waterways are projected onto the actual
 rendered landscape triangles, including simplified distant patches, rather than the denser
 collision grid. Their surfaces and a 6 m band on either side retain native terrain detail;
 unrelated landscape remains simplified. This changes visual tessellation, not the heightfield
-or collision. Horizontal water surfaces are clipped to that same landscape at their estimated
-level. This is static map-loading work, not a per-frame projection.
+or collision. Separately, Complete maps locally refine terrain cells where coarse interpolation
+disagrees with road grades, with matching collision and crack-free neighboring cells, so adjacent
+uphill roads cannot push triangles into pavement. Horizontal water surfaces are clipped to that same landscape at their estimated
+level. Rivers and shallow water are clipped to ground-road pavement boundaries, including
+side roads and parking areas, while water continues beneath bridges. This is static
+map-loading work, not a per-frame projection.
 Vegetation classification respects specific landcover
 subclasses, including scrub within a broader grass class.
 Trees and shrubs use smooth-shaded, rounded silhouettes with baked foliage color variation.

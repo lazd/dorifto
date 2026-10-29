@@ -42,6 +42,16 @@ const maxPlants = 4000;
 const maxPlantAttempts = 24000;
 // Pavement edges are indexed far enough out to cover the terrain's roadside dirt verge.
 const pavementEdgeReach = 6;
+export const highwayMedianProfile: readonly (readonly [number, number])[] = [
+  [-0.305, -0.1],
+  [-0.305, 0.075],
+  [-0.175, 0.255],
+  [-0.075, 0.81],
+  [0.075, 0.81],
+  [0.175, 0.255],
+  [0.305, 0.075],
+  [0.305, -0.1],
+];
 
 /** Small local indices keep vegetation rejection independent of the total map feature count. */
 class SpatialIndex<T extends Bounds> {
@@ -603,97 +613,106 @@ export function createScenery(
   }
 
   const waterBatch = new Batch();
-  let waterBudget = 80000;
-  for (const body of scenery.water) {
-    const shape = polygon(body.rings);
-    if (!shape) continue;
-    const boundary = clipToBounds(
-      shape.rings[0].map(([x, z]) => ({ x, z })),
-      bounds,
-    );
-    if (boundary.length < 3) continue;
-    obstacles.add({
-      ...shape,
-      minX: shape.minX - 3,
-      minZ: shape.minZ - 3,
-      maxX: shape.maxX + 3,
-      maxZ: shape.maxZ + 3,
-    });
-    const heights: number[] = [];
-    boundary.forEach(({ x, z }, i) => {
-      const { x: bx, z: bz } = boundary[(i + 1) % boundary.length];
-      const count = Math.min(32, Math.max(1, Math.ceil(Math.hypot(bx - x, bz - z) / 8)));
-      for (let j = 0; j < count; j++)
-        heights.push(
-          ground(THREE.MathUtils.lerp(x, bx, j / count), THREE.MathUtils.lerp(z, bz, j / count)),
-        );
-    });
-    heights.sort((a, b) => a - b);
-    const level = heights[Math.floor((heights.length - 1) * 0.35)] + 0.12;
-    const { points, triangles } = triangulate(shape);
-    // Without hydrological terrain carving, only expose a shallow, horizontal local surface.
-    // Clip against ground instead of raising an entire hillside (or a road) to a lake's level.
-    const emit = (a: Point, b: Point, c: Point, depth = 0) => {
-      if (--waterBudget < 0) return;
-      const edges = [
-        [a, b],
-        [b, c],
-        [c, a],
-      ];
-      const longest = edges.reduce((best, edge) =>
-        Math.hypot(edge[0].x - edge[1].x, edge[0].z - edge[1].z) >
-        Math.hypot(best[0].x - best[1].x, best[0].z - best[1].z)
-          ? edge
-          : best,
+  const buildWaterBodies = (pavement: MultiPolygon) => {
+    let waterBudget = 80000;
+    for (const body of scenery.water) {
+      const shape = polygon(body.rings);
+      if (!shape) continue;
+      const boundary = clipToBounds(
+        shape.rings[0].map(([x, z]) => ({ x, z })),
+        bounds,
       );
-      if (depth < 18 && Math.hypot(longest[0].x - longest[1].x, longest[0].z - longest[1].z) > 3) {
-        const [p, q] = longest;
-        const r = [a, b, c].find((v) => v !== p && v !== q)!;
-        const mid = { x: (p.x + q.x) / 2, z: (p.z + q.z) / 2 };
-        emit(p, mid, r, depth + 1);
-        emit(mid, q, r, depth + 1);
-        return;
-      }
-      if (
-        [a, b, c, { x: (a.x + b.x + c.x) / 3, z: (a.z + b.z + c.z) / 3 }].some((p) =>
-          roadBlocked(p.x, p.z),
-        )
-      )
-        return;
-      let clipped = [a, b, c].map((p) => ({ ...p, y: ground(p.x, p.z) }));
-      for (const [limit, sign] of [
-        [level - 0.025, -1],
-        [level - 0.65, 1],
-      ]) {
-        const output: Vertex[] = [];
-        clipped.forEach((p, i) => {
-          const q = clipped[(i + 1) % clipped.length];
-          const dp = (p.y - limit) * sign,
-            dq = (q.y - limit) * sign;
-          if (dp >= 0) output.push(p);
-          if (dp >= 0 !== dq >= 0) {
-            const t = dp / (dp - dq);
-            output.push({
-              x: THREE.MathUtils.lerp(p.x, q.x, t),
-              y: limit,
-              z: THREE.MathUtils.lerp(p.z, q.z, t),
-            });
-          }
-        });
-        clipped = output;
-      }
-      for (let i = 1; i + 1 < clipped.length; i++)
-        waterBatch.roof(
-          { ...clipped[0], y: level },
-          { ...clipped[i], y: level },
-          { ...clipped[i + 1], y: level },
+      if (boundary.length < 3) continue;
+      obstacles.add({
+        ...shape,
+        minX: shape.minX - 3,
+        minZ: shape.minZ - 3,
+        maxX: shape.maxX + 3,
+        maxZ: shape.maxZ + 3,
+      });
+      const heights: number[] = [];
+      boundary.forEach(({ x, z }, i) => {
+        const { x: bx, z: bz } = boundary[(i + 1) % boundary.length];
+        const count = Math.min(32, Math.max(1, Math.ceil(Math.hypot(bx - x, bz - z) / 8)));
+        for (let j = 0; j < count; j++)
+          heights.push(
+            ground(THREE.MathUtils.lerp(x, bx, j / count), THREE.MathUtils.lerp(z, bz, j / count)),
+          );
+      });
+      heights.sort((a, b) => a - b);
+      const level = heights[Math.floor((heights.length - 1) * 0.35)] + 0.12;
+      // Without hydrological terrain carving, only expose a shallow, horizontal local surface.
+      // Clip against ground instead of raising an entire hillside (or a road) to a lake's level.
+      const emit = (a: Point, b: Point, c: Point, depth = 0) => {
+        if (--waterBudget < 0) return;
+        const edges = [
+          [a, b],
+          [b, c],
+          [c, a],
+        ];
+        const longest = edges.reduce((best, edge) =>
+          Math.hypot(edge[0].x - edge[1].x, edge[0].z - edge[1].z) >
+          Math.hypot(best[0].x - best[1].x, best[0].z - best[1].z)
+            ? edge
+            : best,
         );
-    };
-    for (const [a, b, c] of triangles) {
-      const clipped = clipToBounds([points[a], points[b], points[c]], bounds);
-      for (let i = 1; i + 1 < clipped.length; i++) emit(clipped[0], clipped[i], clipped[i + 1]);
+        if (
+          depth < 18 &&
+          Math.hypot(longest[0].x - longest[1].x, longest[0].z - longest[1].z) > 3
+        ) {
+          const [p, q] = longest;
+          const r = [a, b, c].find((v) => v !== p && v !== q)!;
+          const mid = { x: (p.x + q.x) / 2, z: (p.z + q.z) / 2 };
+          emit(p, mid, r, depth + 1);
+          emit(mid, q, r, depth + 1);
+          return;
+        }
+        if (
+          [a, b, c, { x: (a.x + b.x + c.x) / 3, z: (a.z + b.z + c.z) / 3 }].some((p) =>
+            roadBlocked(p.x, p.z),
+          )
+        )
+          return;
+        let clipped = [a, b, c].map((p) => ({ ...p, y: ground(p.x, p.z) }));
+        for (const [limit, sign] of [
+          [level - 0.025, -1],
+          [level - 0.65, 1],
+        ]) {
+          const output: Vertex[] = [];
+          clipped.forEach((p, i) => {
+            const q = clipped[(i + 1) % clipped.length];
+            const dp = (p.y - limit) * sign,
+              dq = (q.y - limit) * sign;
+            if (dp >= 0) output.push(p);
+            if (dp >= 0 !== dq >= 0) {
+              const t = dp / (dp - dq);
+              output.push({
+                x: THREE.MathUtils.lerp(p.x, q.x, t),
+                y: limit,
+                z: THREE.MathUtils.lerp(p.z, q.z, t),
+              });
+            }
+          });
+          clipped = output;
+        }
+        for (let i = 1; i + 1 < clipped.length; i++)
+          waterBatch.roof(
+            { ...clipped[0], y: level },
+            { ...clipped[i], y: level },
+            { ...clipped[i + 1], y: level },
+          );
+      };
+      for (const rings of polygonClipping.difference([shape.rings], pavement)) {
+        const visible = polygon(rings);
+        if (!visible) continue;
+        const { points, triangles } = triangulate(visible);
+        for (const [a, b, c] of triangles) {
+          const clipped = clipToBounds([points[a], points[b], points[c]], bounds);
+          for (let i = 1; i + 1 < clipped.length; i++) emit(clipped[0], clipped[i], clipped[i + 1]);
+        }
+      }
     }
-  }
+  };
 
   const roadBatch = new Batch(),
     groundRampBatch = new Batch(),
@@ -705,6 +724,7 @@ export function createScenery(
     directionBatch = new Batch(),
     stopLineBatch = new Batch(),
     medianBatch = new Batch(),
+    medianReflectorBatch = new Batch(),
     abutmentBatch = new Batch(),
     riverBatch = new Batch();
   const tunnelCourse =
@@ -1378,6 +1398,25 @@ export function createScenery(
       appendStructure({ positions: data.positions, indices: data.collisionIndices });
     }
   }
+  const medianBaseWidth = highwayMedianProfile.at(-1)![0] - highwayMedianProfile[0][0];
+  const medianCaps = THREE.ShapeUtils.triangulateShape(
+    highwayMedianProfile.map(([x, y]) => new THREE.Vector2(x, y)),
+    [],
+  );
+  const medianEnds: {
+    section: Vertex[];
+    reverse: boolean;
+    road: RoadProfile['road'];
+    joined?: boolean;
+  }[] = [];
+  const medianSections: {
+    start: Vertex[];
+    end: Vertex[];
+    tangent: Point;
+    reflector: boolean;
+  }[] = [];
+  const shoulderHeight = highwayMedianProfile[5][1];
+  const topHeight = highwayMedianProfile[4][1];
   for (const [profileIndex, profile] of profiles.entries()) {
     const { road, curve } = profile;
     if (
@@ -1387,6 +1426,7 @@ export function createScenery(
     )
       continue;
     const length = curve.getLength();
+    let previous: { distance: number; end: Vertex[] } | undefined;
     for (let distance = 2; distance < length - 2; distance += 2) {
       const center = curve.getPointAt(distance / length);
       const tangent = curve.getTangentAt(distance / length);
@@ -1428,6 +1468,34 @@ export function createScenery(
           const separation = Math.hypot(x - center.x, z - center.z);
           const gap = separation - (road.width + other.road.width) / 2;
           if (gap < 0.6 || gap > 12 || separation >= closest) continue;
+          const acrossX = x - center.x,
+            acrossZ = z - center.z;
+          const interveningRoad = roadSegments
+            .query({
+              minX: Math.min(center.x, x),
+              maxX: Math.max(center.x, x),
+              minZ: Math.min(center.z, z),
+              maxZ: Math.max(center.z, z),
+            })
+            .some((segment) => {
+              if (
+                segment.profile === profile ||
+                segment.profile === other ||
+                segment.profile.road.structure ||
+                (segment.profile.road.layer ?? 0) !== (road.layer ?? 0)
+              )
+                return false;
+              const dx = segment.b.x - segment.a.x,
+                dz = segment.b.z - segment.a.z;
+              const denominator = acrossX * dz - acrossZ * dx;
+              if (Math.abs(denominator) < 1e-8) return false;
+              const ax = segment.a.x - center.x,
+                az = segment.a.z - center.z;
+              const across = (ax * dz - az * dx) / denominator;
+              const along = (ax * acrossZ - az * acrossX) / denominator;
+              return across > 0 && across < 1 && along >= 0 && along <= 1;
+            });
+          if (interveningRoad) continue;
           closest = separation;
           if (profileIndex > segment.profileIndex) {
             medianWidth = 0;
@@ -1456,28 +1524,113 @@ export function createScenery(
           return segmentDistance(medianX, medianZ, segment.a, segment.b) < segment.width / 2 + 5;
         });
       if (crossingRoad || !terrain.contains(medianX, medianZ)) continue;
-      const corners = [-1, 1].flatMap((along) =>
-        [-1, 1].map((side) => {
-          const x = medianX + tangent.x * along + (tangent.z * side * medianWidth) / 2;
-          const z = medianZ + tangent.z * along - (tangent.x * side * medianWidth) / 2;
-          return { x, z, y: ground(x, z) + 0.22 };
-        }),
-      );
-      if (corners.some((p) => !terrain.contains(p.x, p.z))) continue;
-      medianBatch.roof(corners[0], corners[1], corners[2]);
-      medianBatch.roof(corners[1], corners[3], corners[2]);
-      for (const [a, b] of [
-        [0, 1],
-        [1, 3],
-        [3, 2],
-        [2, 0],
-      ]) {
-        const p = corners[a],
-          q = corners[b];
-        const lowerP = { ...p, y: p.y - 0.2 },
-          lowerQ = { ...q, y: q.y - 0.2 };
-        medianBatch.triangle(p, lowerP, q);
-        medianBatch.triangle(q, lowerP, lowerQ);
+      const scale = Math.min(1, medianWidth / medianBaseWidth);
+      const section = (along: number) => {
+        const point = curve.getPointAt((distance + along) / length);
+        const direction = curve.getTangentAt((distance + along) / length);
+        const x = point.x + medianX - center.x,
+          z = point.z + medianZ - center.z;
+        const base = ground(x, z) + nearbyRoadLift;
+        return highwayMedianProfile.map(([offset, height]) => ({
+          x: x + direction.z * offset * scale,
+          z: z - direction.x * offset * scale,
+          y: base + height,
+        }));
+      };
+      const start = previous?.distance === distance - 2 ? previous.end : section(-1);
+      const end = section(1);
+      if ([...start, ...end].some((p) => !terrain.contains(p.x, p.z))) continue;
+      if (previous?.distance !== distance - 2) {
+        if (previous) medianEnds.push({ section: previous.end, reverse: false, road });
+        medianEnds.push({ section: start, reverse: true, road });
+      }
+      medianSections.push({ start, end, tangent, reflector: distance % 12 === 2 });
+      previous = { distance, end };
+    }
+    if (previous) medianEnds.push({ section: previous.end, reverse: false, road });
+  }
+  const endCenter = (section: Vertex[]) => ({
+    x: (section[0].x + section.at(-1)!.x) / 2,
+    y: (section[0].y + section.at(-1)!.y) / 2,
+    z: (section[0].z + section.at(-1)!.z) / 2,
+  });
+  // Width/class fragments can hand median ownership to the opposite carriageway.
+  for (const a of medianEnds) {
+    if (a.joined) continue;
+    const center = endCenter(a.section);
+    const direction = new THREE.Vector2(
+      a.section[0].z - a.section.at(-1)!.z,
+      a.section.at(-1)!.x - a.section[0].x,
+    )
+      .normalize()
+      .multiplyScalar(a.reverse ? -1 : 1);
+    let closest = 4;
+    let match: (typeof medianEnds)[number] | undefined;
+    for (const b of medianEnds) {
+      if (
+        b === a ||
+        b.joined ||
+        b.road === a.road ||
+        b.road.roadClass !== a.road.roadClass ||
+        (b.road.layer ?? 0) !== (a.road.layer ?? 0)
+      )
+        continue;
+      const other = endCenter(b.section);
+      const distance = Math.hypot(center.x - other.x, center.z - other.z);
+      if (distance >= closest || Math.abs(center.y - other.y) > 1) continue;
+      const facing = new THREE.Vector2(
+        b.section[0].z - b.section.at(-1)!.z,
+        b.section.at(-1)!.x - b.section[0].x,
+      )
+        .normalize()
+        .multiplyScalar(b.reverse ? -1 : 1);
+      if (direction.dot(facing) > -0.95) continue;
+      closest = distance;
+      match = b;
+    }
+    if (!match) continue;
+    for (let i = 0; i < a.section.length; i++) {
+      const p = a.section[i];
+      const q = match.section[a.reverse === match.reverse ? a.section.length - 1 - i : i];
+      const shared = { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2, z: (p.z + q.z) / 2 };
+      Object.assign(p, shared);
+      Object.assign(q, shared);
+    }
+    a.joined = match.joined = true;
+  }
+  for (const { section, reverse, joined } of medianEnds) {
+    if (joined) continue;
+    for (const [a, b, c] of medianCaps)
+      if (reverse) medianBatch.triangle(section[a], section[c], section[b]);
+      else medianBatch.triangle(section[a], section[b], section[c]);
+  }
+  for (const { start, end, tangent, reflector } of medianSections) {
+    for (let i = 0; i < start.length; i++) {
+      const j = (i + 1) % start.length;
+      medianBatch.triangle(start[i], end[i], start[j]);
+      medianBatch.triangle(start[j], end[i], end[j]);
+    }
+    if (reflector) {
+      for (const side of [-1, 1]) {
+        const vertices = [-0.06, 0.06].flatMap((along) =>
+          [topHeight - 0.21, topHeight - 0.13].map((height) => {
+            const lower = side < 0 ? 2 : 5,
+              upper = side < 0 ? 3 : 4;
+            const at = (section: Vertex[]) => {
+              const a = section[lower],
+                b = section[upper];
+              return new THREE.Vector3(a.x, a.y, a.z).lerp(
+                new THREE.Vector3(b.x, b.y, b.z),
+                (height - shoulderHeight) / (topHeight - shoulderHeight),
+              );
+            };
+            return at(start)
+              .lerp(at(end), (along + 1) / 2)
+              .add(new THREE.Vector3(tangent.z, 0, -tangent.x).multiplyScalar(side * 0.005));
+          }),
+        );
+        medianReflectorBatch.triangle(vertices[0], vertices[1], vertices[2]);
+        medianReflectorBatch.triangle(vertices[1], vertices[3], vertices[2]);
       }
     }
   }
@@ -1646,6 +1799,13 @@ export function createScenery(
     },
   );
   fillFootprint(roadBatch, groundPavement);
+  // Only surface pavement interrupts water; bridges and underground roads do not.
+  if (riverBatch.positions.length)
+    fillFootprint(
+      riverBatch,
+      polygonClipping.difference(pavementFootprint(riverBatch), groundPavement),
+    );
+  buildWaterBodies(groundPavement);
   const tunnelRoads = tunnelBatches.get(roadBatch);
   const tunnelPavement = tunnelRoads ? pavementFootprint(tunnelRoads) : [];
   if (tunnelRoads) fillFootprint(tunnelRoads, tunnelPavement);
@@ -1990,7 +2150,8 @@ export function createScenery(
     [centerlineBatch, 0xf0c928, 'nearby-road-centerlines'],
     [directionBatch, 0xe9e9e4, 'nearby-road-oneway-arrows'],
     [stopLineBatch, 0xe9e9e4, 'nearby-road-stop-lines'],
-    [medianBatch, 0xa39e91, 'nearby-road-medians'],
+    [medianBatch, 0xb4b1a6, 'nearby-road-medians'],
+    [medianReflectorBatch, 0xf4c143, 'nearby-road-median-reflectors'],
   ] as const) {
     if (!batch.positions.length) continue;
     const surfaceMaterial = material(color);
@@ -2005,7 +2166,7 @@ export function createScenery(
         surfaceMaterial,
         meshes.flatMap((mesh) => (mesh ? [mesh.geometry] : [])),
       );
-    if (!paint) {
+    if (!paint && batch !== medianReflectorBatch) {
       const positions = new Float32Array(batch.positions);
       appendStructure({
         positions,

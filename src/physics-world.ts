@@ -113,7 +113,8 @@ export function createPhysicsWorld(
   const vector = new Ammo.btVector3(0, -9.81, 0);
   world.setGravity(vector);
   const contours =
-    (terrain.flippedCells || terrain.warpedCells) && contourCollider(Ammo, groundTerrain);
+    (terrain.flippedCells || terrain.warpedCells || terrain.filletCells) &&
+    contourCollider(Ammo, groundTerrain);
   const structures =
     terrain.collisionMesh &&
     triangleCollider(
@@ -254,7 +255,8 @@ function contourCollider(Ammo: typeof AmmoFactory, terrain: HeightfieldData) {
   for (let z = 0; z < rows - 1; z++)
     for (let x = 0; x < columns - 1; x++) {
       const cell = z * (columns - 1) + x;
-      if (!flippedCells?.[cell] && !warpedCells?.[cell]) continue;
+      if (!flippedCells?.[cell] && !warpedCells?.[cell] && !terrain.filletCells?.has(cell))
+        continue;
       const i = z * columns + x;
       for (const corner of [i, i + 1, i + columns, i + columns + 1]) {
         sunk[corner] = 1;

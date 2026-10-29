@@ -11,8 +11,14 @@ import {
 
 type Sample = { x: number; z: number; height: number; distance: number };
 type Segment = { a: Sample; b: Sample; width: number };
-type Anchor = Sample & { slopeX: number; slopeZ: number; through: boolean; width: number };
-type Junction = Anchor & { inner: number };
+type Anchor = Sample & {
+  slopeX: number;
+  slopeZ: number;
+  through: boolean;
+  width: number;
+  roadIndex: number;
+};
+type Junction = Anchor & { inner: number; roads: ReadonlySet<number> };
 const junctionReach = 30;
 
 /** A common unbanked surface for ground roads, including their shared junction heights. */
@@ -25,7 +31,7 @@ export class SceneryRoadSurface {
     const anchors = new Map<string, Anchor[]>();
     const lines = roads
       .filter((road) => !road.structure)
-      .map((road) => {
+      .map((road, roadIndex) => {
         const points = smoothSceneryLine(road.points, road.width, junctions);
         const samples: Sample[] = [{ x: points[0][0], z: points[0][1], height: 0, distance: 0 }];
         for (let i = 1; i < points.length; i++) {
@@ -69,6 +75,7 @@ export class SceneryRoadSurface {
               slopeZ: (grade * dz) / length,
               through: i > 0 && i < samples.length - 1,
               width: road.width,
+              roadIndex,
             });
             anchors.set(key, shared);
           }
@@ -123,6 +130,7 @@ export class SceneryRoadSurface {
         ...main,
         height: targets.get(sceneryPointKey([main.x, main.z]))!,
         inner: Math.min(15, Math.max(...samples.map((p) => p.width)) / 2 + 7),
+        roads: new Set(samples.map((p) => p.roadIndex)),
       };
       const { x, z } = junction;
       for (
@@ -150,14 +158,31 @@ export class SceneryRoadSurface {
     return MathUtils.smoothstep(distance, 8, junctionReach);
   }
 
+  pavementDistance(x: number, z: number) {
+    let nearest = Infinity;
+    for (const segments of this.cells
+      .get(`${Math.floor(x / 32)},${Math.floor(z / 32)}`)
+      ?.values() ?? [])
+      for (const { a, b, width } of segments) {
+        const dx = b.x - a.x,
+          dz = b.z - a.z;
+        const length = dx * dx + dz * dz;
+        if (!length) continue;
+        const t = MathUtils.clamp(((x - a.x) * dx + (z - a.z) * dz) / length, 0, 1);
+        nearest = Math.min(nearest, Math.hypot(x - a.x - t * dx, z - a.z - t * dz) - width / 2);
+      }
+    return nearest;
+  }
+
   heightAt(x: number, z: number, ground: number) {
     // Keep a road's full cross-section on its own profile, not a blend with uphill neighbors.
     let profileHeight = ground,
       closest = Infinity,
-      blend = 0;
-    for (const segments of this.cells
+      blend = 0,
+      closestRoad = -1;
+    for (const [roadIndex, segments] of this.cells
       .get(`${Math.floor(x / 32)},${Math.floor(z / 32)}`)
-      ?.values() ?? []) {
+      ?.entries() ?? []) {
       let nearest = Infinity,
         height = 0;
       const width = segments[0].width;
@@ -178,6 +203,7 @@ export class SceneryRoadSurface {
       const score = distance / (width / 2 + 7);
       if (score >= closest) continue;
       closest = score;
+      closestRoad = roadIndex;
       blend = influence;
       profileHeight = height;
     }
@@ -188,6 +214,7 @@ export class SceneryRoadSurface {
       junctionBlend = 0;
     for (const junction of this.junctionCells.get(`${Math.floor(x / 32)},${Math.floor(z / 32)}`) ??
       []) {
+      if (!junction.roads.has(closestRoad)) continue;
       const distance = Math.hypot(x - junction.x, z - junction.z);
       const weight = 1 - MathUtils.smoothstep(distance, junction.inner, junctionReach);
       junctionSum +=

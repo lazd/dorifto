@@ -17,13 +17,14 @@ let sceneryBridgeGroups;
 let validateCourseScenery;
 let SceneryRoadSurface;
 let CourseTerrain;
+let highwayMedianProfile;
 const groups = [];
 before(async () => {
   server = await createServer({
     server: { middlewareMode: true, hmr: false, ws: false, watch: null },
     appType: 'custom',
   });
-  ({ createScenery } = await server.ssrLoadModule('/src/scenery.ts'));
+  ({ createScenery, highwayMedianProfile } = await server.ssrLoadModule('/src/scenery.ts'));
   ({ smoothSceneryLine, joinSceneryRoads, normalizeCourseScenery } =
     await server.ssrLoadModule('/src/scenery-data.ts'));
   ({ PavementSurface } = await server.ssrLoadModule('/src/terrain-query.ts'));
@@ -566,8 +567,46 @@ test('ground highways stay grounded and medians open at intersections, including
       .children.filter((o) => o.name.startsWith('nearby-road-medians'));
     assert.ok(medians.length);
     const ray = new THREE.Raycaster(new THREE.Vector3(40, 10, 40), new THREE.Vector3(0, -1, 0));
-    assert.ok(ray.intersectObjects(medians).length, 'the center divide is modeled');
-    ray.ray.origin.z = 0;
+    const top = ray.intersectObjects(medians)[0];
+    assert.ok(top, 'the center divide is modeled');
+    assert.ok(
+      Math.abs(
+        top.point.y -
+          nearbyRoadLift -
+          Math.max(...highwayMedianProfile.map(([, height]) => height)),
+      ) < 1e-5,
+      'the divider has the concrete barrier height, not a low curb',
+    );
+    const side = highwayMedianProfile.filter(([offset]) => offset > 0);
+    for (let i = 1; i < side.length; i++) {
+      const offset = (side[i - 1][0] + side[i][0]) / 2;
+      const height = (side[i - 1][1] + side[i][1]) / 2;
+      ray.set(new THREE.Vector3(45, height + nearbyRoadLift, 40), new THREE.Vector3(-1, 0, 0));
+      const wall = ray.intersectObjects(medians)[0];
+      assert.ok(wall, 'the barrier has solid sides');
+      assert.ok(
+        Math.abs(wall.point.x - 40 - offset) < 1e-5,
+        'the barrier uses the shared sloped cross-section',
+      );
+    }
+    const reflectors = result.group
+      .getObjectByName('nearbyRoads')
+      .children.filter((o) => o.name.startsWith('nearby-road-median-reflectors'));
+    assert.ok(reflectors.length, 'the concrete barrier carries yellow reflectors');
+    const marker = reflectors[0].geometry;
+    const markerPoint = new THREE.Triangle()
+      .setFromAttributeAndIndices(marker.getAttribute('position'), 0, 1, 2)
+      .getMidpoint(new THREE.Vector3());
+    const direction = Math.sign(markerPoint.x - 40);
+    ray.set(
+      markerPoint.clone().add(new THREE.Vector3(direction * 2, 0, 0)),
+      new THREE.Vector3(-direction, 0, 0),
+    );
+    assert.ok(
+      reflectors.includes(ray.intersectObjects([...reflectors, ...medians])[0]?.object),
+      'reflectors sit outside the concrete instead of being hidden inside it',
+    );
+    ray.set(new THREE.Vector3(40, 10, 0), new THREE.Vector3(0, -1, 0));
     assert.equal(
       ray.intersectObjects(medians).length,
       0,
@@ -1058,6 +1097,60 @@ test('water stays shallow and level; waterways and crossing roads drape below el
       if (Math.abs(positions.getX(i)) < 1) beneath = true;
     }
     assert.ok(beneath, 'ground ribbon continues beneath bridge instead of climbing deck');
+  }
+});
+
+test('water clips to ground-road pavement without cutting out water beneath bridges', () => {
+  for (const completeMap of [false, true]) {
+    const data = emptyScenery();
+    if (completeMap) data.bounds = { minX: -100, minZ: -120, maxX: 100, maxZ: 120 };
+    data.roads = [
+      {
+        points: [
+          [30, -80],
+          [30, 80],
+        ],
+        width: 6,
+      },
+      {
+        points: [
+          [70, -80],
+          [70, 80],
+        ],
+        width: 6,
+        structure: 'bridge',
+      },
+    ];
+    data.waterways = [
+      {
+        points: [
+          [15, 30],
+          [85, 30],
+        ],
+        width: 5,
+      },
+    ];
+    data.water = [{ rings: [square(15, -40, 85, -20)] }];
+    const result = build(
+      definition(data),
+      terrain((_x, z) => (Math.abs(z) > 60 ? 5 : 0)),
+    );
+    const water = result.group.getObjectByName('water');
+    const ray = new THREE.Raycaster();
+    const wet = (x, z) => {
+      ray.set(new THREE.Vector3(x, 10, z), new THREE.Vector3(0, -1, 0));
+      return ray.intersectObject(water).length > 0;
+    };
+    for (const z of [-30, 30]) {
+      for (const offset of [-2.9, 0, 2.9])
+        assert.equal(wet(30 + offset, z), false, 'water never covers the ground-road width');
+      for (const x of [26.9, 33.1, 67.1, 70, 72.9])
+        assert.equal(
+          wet(x, z),
+          true,
+          'water meets the pavement edge and continues beneath bridges',
+        );
+    }
   }
 });
 

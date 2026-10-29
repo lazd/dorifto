@@ -557,6 +557,108 @@ export class CourseTerrain {
         this.filletCells = new Map([...cells].filter(([, indices]) => indices.length > 6));
       }
     }
+    if (overlay && roadSurface) {
+      // Resolve conflicting road grades locally instead of letting a coarse triangle lift pavement.
+      const refined = new Set<number>();
+      const cellWidth = this.columns - 1;
+      const steps = 4;
+      for (let z = 0; z < this.rows - 1; z++)
+        for (let x = 0; x < cellWidth; x++) {
+          const cx = this.minX + (x + 0.5) * this.spacing;
+          const cz = this.minZ + (z + 0.5) * this.spacing;
+          if (roadSurface.pavementDistance(cx, cz) > this.spacing * Math.SQRT2) continue;
+          for (const [u, v] of [
+            [0.5, 0.5],
+            [0.25, 0.25],
+            [0.75, 0.75],
+            [0.25, 0.75],
+            [0.75, 0.25],
+          ]) {
+            const px = this.minX + (x + u) * this.spacing;
+            const pz = this.minZ + (z + v) * this.spacing;
+            if (
+              Math.abs(
+                surfaceHeight(px, pz, this.nearest(px, pz), blendStart) - this.heightAt(px, pz),
+              ) <= 0.1
+            )
+              continue;
+            refined.add(z * cellWidth + x);
+            break;
+          }
+        }
+      const cells = new Map<number, number[]>();
+      const points = new Map<string, number>();
+      const vertexCount = this.heights.length;
+      const point = (gx: number, gz: number) => {
+        if (gx % steps === 0 && gz % steps === 0) return (gz / steps) * this.columns + gx / steps;
+        const key = `${gx},${gz}`;
+        let index = points.get(key);
+        if (index !== undefined) return index;
+        const x = this.minX + (gx / steps) * this.spacing;
+        const z = this.minZ + (gz / steps) * this.spacing;
+        const near = this.nearest(x, z);
+        index = vertexCount + fillet.length / 3;
+        points.set(key, index);
+        fillet.push(x, surfaceHeight(x, z, near, blendStart), z);
+        const corner = Math.floor(gz / steps) * this.columns + Math.floor(gx / steps);
+        vegetation.push(near.distance - this.halfWidth, vegetation[corner * 2 + 1]);
+        return index;
+      };
+      const affected = new Set(refined);
+      for (const cell of refined) {
+        const x = cell % cellWidth,
+          z = Math.floor(cell / cellWidth);
+        for (const [dx, dz] of [
+          [-1, 0],
+          [1, 0],
+          [0, -1],
+          [0, 1],
+        ])
+          if (x + dx >= 0 && x + dx < cellWidth && z + dz >= 0 && z + dz < this.rows - 1)
+            affected.add((z + dz) * cellWidth + x + dx);
+      }
+      for (const cell of affected) {
+        const x = cell % cellWidth,
+          z = Math.floor(cell / cellWidth);
+        const indices: number[] = [];
+        if (refined.has(cell)) {
+          for (let v = 0; v < steps; v++)
+            for (let u = 0; u < steps; u++) {
+              const a = point(x * steps + u, z * steps + v);
+              const b = point(x * steps + u + 1, z * steps + v);
+              const c = point(x * steps + u, z * steps + v + 1);
+              const d = point(x * steps + u + 1, z * steps + v + 1);
+              indices.push(a, c, b, b, c, d);
+            }
+        } else {
+          // Neighboring cells share every refined edge point, so the transition cannot crack.
+          const boundary: number[] = [];
+          for (const [ax, az, bx, bz, neighbor] of [
+            [0, 0, 0, steps, x > 0 ? cell - 1 : -1],
+            [0, steps, steps, steps, z < this.rows - 2 ? cell + cellWidth : -1],
+            [steps, steps, steps, 0, x < cellWidth - 1 ? cell + 1 : -1],
+            [steps, 0, 0, 0, z > 0 ? cell - cellWidth : -1],
+          ]) {
+            const count = refined.has(neighbor) ? steps : 1;
+            for (let i = 0; i < count; i++)
+              boundary.push(
+                point(
+                  x * steps + ax + ((bx - ax) * i) / count,
+                  z * steps + az + ((bz - az) * i) / count,
+                ),
+              );
+          }
+          const center = point(x * steps + steps / 2, z * steps + steps / 2);
+          for (let i = 0; i < boundary.length; i++)
+            indices.push(center, boundary[i], boundary[(i + 1) % boundary.length]);
+        }
+        cells.set(cell, indices);
+      }
+      if (fillet.length) {
+        this.filletVertices = new Float32Array(fillet);
+        this.filletCells = cells;
+      }
+    }
     if (bridgeSpans.length && rasterHeight && !definition.flat && !overlay) {
       const lower = (x: number, z: number, height: number) => {
         const near = this.nearest(x, z);
