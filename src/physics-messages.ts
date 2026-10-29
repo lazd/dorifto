@@ -260,5 +260,5 @@ export interface PhysicsSnapshot {
 
 export type PhysicsResponse =
   | PhysicsSnapshot
-  | { type: 'startup'; stage: string }
+  | { type: 'startup'; stage: string; fraction: number }
   | { type: 'error'; revision: number; message: string; stack?: string };

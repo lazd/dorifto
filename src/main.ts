@@ -4,7 +4,14 @@ import { vehicleDimensions } from './car-geometry';
 import { racingLinePath } from './racing-line';
 import { DrivingControls, updateVehicleLights } from './controls';
 import { inputBindings, keyboardActionForCode } from './input-bindings';
-import { createCourse } from './course';
+import { createCourse, createCourseTask } from './course';
+import {
+  createLoadTimer,
+  runAsync,
+  stageProgress,
+  type LoadStep,
+  type StageWeights,
+} from './load-task';
 import {
   courses,
   courseSpawn,
@@ -367,13 +374,26 @@ async function start() {
         ? generateCourse(seed)
         : availableCourses.find((course) => course.id === (requestedCourse ?? 'hillside'));
   if (!definition) throw new Error(`Unknown course: ${requestedCourse}`);
+  // Each stage's share of the loading bar; a stage reports its own progress from 0 to 1.
+  const startupStages = { download: 0.05, course: 0.6, physics: 0.15, finish: 0.2 };
+  const switchStages = { download: 0.08, course: 0.67, physics: 0.25 };
+  const physicsOnlyStages = { physics: 1 };
+  let loadStages: StageWeights = startupStages;
+  let loadTimer = createLoadTimer(`startup, ${definition.name}`);
+  const showStage = (stage: string, message: string, fraction = 0) => {
+    loadTimer.stage(stage);
+    showLoading(message, stageProgress(loadStages, stage, fraction));
+  };
+  const showCourseStep = ({ message, fraction }: LoadStep) =>
+    showStage('course', message, fraction);
   // Download the car while the sky, lighting, and course are built.
   let modelProgress = 0;
   let mapProgress = 0;
   const showAssetProgress = () =>
-    showLoading(
+    showStage(
+      'download',
       mapProgress < 1 ? `Loading map: ${definition.name}…` : 'Loading models…',
-      0.1 * (modelProgress + mapProgress),
+      (modelProgress + mapProgress) / 2,
     );
   const carLoad = loadCar((fraction) => {
     modelProgress = fraction;
@@ -446,10 +466,12 @@ async function start() {
     },
     { ...defaultRaceOptions },
   );
-  showLoading('Loading map…');
+  showStage('course', 'Building terrain…');
   await new Promise<void>((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
-  const initialCourse = createCourse(scene, initialDefinition, car.width);
-  showLoading('Starting physics…', 0.2);
+  const initialCourse = await runAsync(
+    createCourseTask(scene, initialDefinition, car.width),
+    showCourseStep,
+  );
   // The picker may change while the model is loading.
   const selectedTime = configurationState.getState().timeOfDay;
   lighting.apply(selectedTime);
@@ -563,7 +585,9 @@ async function start() {
     race: RaceOptions = raceOptions,
   ) {
     const ownsCourse = existingCourse === undefined;
-    const course = existingCourse ?? createCourse(scene, nextDefinition, car.width);
+    const course =
+      existingCourse ??
+      (await runAsync(createCourseTask(scene, nextDefinition, car.width), showCourseStep));
     let physics: ReturnType<typeof createPhysicsClient> | undefined;
     try {
       const spawn = courseSpawn(nextDefinition);
@@ -575,8 +599,9 @@ async function start() {
       course.setKerbs(configurationState.getState().showKerbs);
       course.setRoadEdgeDirt(configurationState.getState().showRoadEdgeDirt);
       course.setScenery(configurationState.getState());
+      showStage('physics', 'Starting physics…');
       physics = createPhysicsClient({
-        onStartupProgress: (stage) => showLoading(stage),
+        onStartupProgress: (stage, fraction) => showStage('physics', stage, fraction),
         race,
         bots: nextBots,
         botsOnly: nextBotsOnly,
@@ -1007,6 +1032,8 @@ async function start() {
     audio.reset();
     clearLapRecording();
     gameState.update({ status: { visible: true, error: false, message: 'Resetting race…' } });
+    loadStages = physicsOnlyStages;
+    loadTimer = createLoadTimer('bot reset');
     const previousSettings = configurationState.getState();
     try {
       const url = new URL(location.href);
@@ -1034,6 +1061,7 @@ async function start() {
       history.replaceState(null, '', botsUrl);
       cameraNeedsReset = true;
       gameState.update({ status: { visible: false, error: false, message: '' } });
+      loadTimer.finish();
     } catch (error) {
       configurationState.update({
         driveMode: previousSettings.driveMode,
@@ -1322,13 +1350,16 @@ async function start() {
     audio.reset();
     clearLapRecording();
     showLoading('Loading map…', 0);
+    loadStages = switchStages;
+    loadTimer = createLoadTimer('course switch');
+    showStage('download', 'Loading map…');
     try {
       await new Promise<void>((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
       const nextDefinition = await loadCourseDefinition(
         await refreshStaleScenery(build()),
-        (fraction) => showLoading('Loading map…', fraction),
+        (fraction) => showStage('download', 'Loading map…', fraction),
       );
-      showLoading('Loading map…');
+      showStage('course', 'Building terrain…');
       await new Promise<void>((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
       const race = {
         ...nextRace,
@@ -1337,7 +1368,6 @@ async function start() {
             ? ('track-limits' as const)
             : nextRace.mode,
       };
-      showLoading('Starting physics…');
       const next = await createCourseSession(
         { ...nextDefinition, reverse },
         undefined,
@@ -1367,6 +1397,7 @@ async function start() {
       refreshSavedRuns();
       configurationState.update({ courseReverse: reverse });
       gameState.update({ status: { visible: false, error: false, message: '' } });
+      loadTimer.finish();
       await refreshRealDriver();
       await refreshRecordLap();
       return nextDefinition;
@@ -1950,7 +1981,7 @@ async function start() {
   }
 
   reset('Initial spawn');
-  showLoading('Loading your record lap…', 0.4);
+  showStage('finish', 'Loading your record lap…');
   await Promise.all([refreshRecordLap(), refreshRealDriver()]);
   const warmupCamera = camera.clone();
   warmupCamera.position.copy(car.chassis.position).add(new THREE.Vector3(5, 3, 6));
@@ -2005,7 +2036,7 @@ async function start() {
     placeholderSky.colorSpace = THREE.SRGBColorSpace;
     placeholderSky.needsUpdate = true;
     for (const [index, interior] of [false, true].entries()) {
-      showLoading('Compiling shaders…', 0.45 + 0.2 * index);
+      showStage('finish', 'Compiling shaders…', 0.1 + 0.3 * index);
       car.setMirrors(interior ? 'cabin' : 'fpv', warmMirrorResolution, passengerMirror);
       const view = interior ? mirrorWarmupCamera : warmupCamera;
       scene.background = index % 2 ? placeholderSky : sky;
@@ -2015,11 +2046,11 @@ async function start() {
     }
     scene.background = sky;
     placeholderSky.dispose();
-    showLoading('Preparing rear-view mirrors…', 0.85);
+    showStage('finish', 'Preparing rear-view mirrors…', 0.7);
     car.setMirrors('cabin', warmMirrorResolution, passengerMirror);
     await renderer.compileAsync(scene, mirrorWarmupCamera);
     await car.warmMirrors(renderer, scene, mirrorWarmupCamera);
-    showLoading('Preparing the ghost car…', 0.95);
+    showStage('finish', 'Preparing the ghost car…', 0.85);
     restoreLighting();
     car.setMirrors('fpv', configurationState.getState().mirrorResolution);
     ghost.visible = true;
@@ -2037,6 +2068,7 @@ async function start() {
     renderer.setRenderTarget(previousTarget);
   }
   gameState.update({ status: { visible: false, error: false, message: '' } });
+  loadTimer.finish();
   document.querySelectorAll('.hide-when-loading').forEach((node) => {
     node.classList.remove('hide-when-loading');
   });

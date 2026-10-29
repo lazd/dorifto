@@ -48,7 +48,7 @@ interface PhysicsClientOptions {
   audio: Pick<VehicleAudio, 'hitCone' | 'hitTurnSign'>;
   lights(): PhysicsInput['lights'];
   onError(error: Error): void;
-  onStartupProgress?(stage: string): void;
+  onStartupProgress?(stage: string, fraction: number): void;
 }
 
 export function createPhysicsClient({
@@ -268,7 +268,7 @@ export function createPhysicsClient({
       console.debug(
         `[Physics startup +${((performance.now() - startupStarted) / 1000).toFixed(2)}s] ${data.stage}`,
       );
-      onStartupProgress?.(data.stage);
+      onStartupProgress?.(data.stage, data.fraction);
       return;
     }
     pendingResponses--;

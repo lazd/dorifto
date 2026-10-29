@@ -20,7 +20,8 @@ import {
 import { createTrainingGates } from './racing-line';
 import type { ConfigurationState, LapGateMode } from './configuration-state';
 import { createTrainingGateGeometry, createTrainingGateMaterial } from './training-gates';
-import { createScenery } from './scenery';
+import { createSceneryTask } from './scenery';
+import { runSync, scaleTask } from './load-task';
 
 export const coneDimensions = {
   height: 0.595,
@@ -32,6 +33,15 @@ export const coneDimensions = {
 };
 
 export function createCourse(scene: THREE.Scene, definition: CourseDefinition, carWidth: number) {
+  return runSync(createCourseTask(scene, definition, carWidth));
+}
+
+/** Builds the course as a task that yields progress, so a caller can run it in slices. */
+export function* createCourseTask(
+  scene: THREE.Scene,
+  definition: CourseDefinition,
+  carWidth: number,
+) {
   const group = new THREE.Group();
   group.name = 'course';
   function dispose() {
@@ -56,7 +66,7 @@ export function createCourse(scene: THREE.Scene, definition: CourseDefinition, c
     group.clear();
   }
   try {
-    const course = buildCourse(group, definition, carWidth);
+    const course = yield* buildCourse(group, definition, carWidth);
     scene.add(group);
     return { ...course, dispose };
   } catch (error) {
@@ -65,21 +75,31 @@ export function createCourse(scene: THREE.Scene, definition: CourseDefinition, c
   }
 }
 
-function buildCourse(scene: THREE.Group, definition: CourseDefinition, carWidth: number) {
+function* buildCourse(scene: THREE.Group, definition: CourseDefinition, carWidth: number) {
   const route = courseRoute({ ...definition, reverse: false });
+  yield { message: 'Building terrain…', fraction: 0 };
   const terrain = new CourseTerrain(definition);
   // A complete map's roads are the pavement; the course only marks a route over them.
   const overlay = definition.scenery?.bounds !== undefined && definition.padRadius === undefined;
   terrain.grass.name = 'roadside-grass';
   scene.add(terrain.mesh);
   const roadDirtVisible = { value: 1 };
-  const scenery = createScenery(definition, terrain, {
-    createRoadMaterial: () => surfaceMaterial('asphalt'),
-    addRoadDirt: (material) =>
-      addNearbyRoadDirt(material, roadDirtVisible, definition.shoulderWidth ?? courseShoulderWidth),
-    projectGroundGeometry: (source, lift, horizontal) =>
-      terrain.projectGroundGeometry(source, lift, horizontal),
-  });
+  const scenery = yield* scaleTask(
+    createSceneryTask(definition, terrain, {
+      createRoadMaterial: () => surfaceMaterial('asphalt'),
+      addRoadDirt: (material) =>
+        addNearbyRoadDirt(
+          material,
+          roadDirtVisible,
+          definition.shoulderWidth ?? courseShoulderWidth,
+        ),
+      projectGroundGeometry: (source, lift, horizontal) =>
+        terrain.projectGroundGeometry(source, lift, horizontal),
+    }),
+    0.2,
+    0.97,
+  );
+  yield { message: 'Placing cones and signs…', fraction: 0.97 };
   scene.add(scenery.group);
   if (definition.scenery?.roads.length)
     terrain.setSceneryRoadDistance((x, z) => scenery.pavementEdgeDistance(x, z));

@@ -84,7 +84,7 @@ function lapState(laps: LapTimer): LapState {
 export function createPhysicsSimulation(
   Ammo: typeof AmmoFactory,
   data: PhysicsInit,
-  progress: (stage: string) => void = () => {},
+  progress: (stage: string, fraction: number) => void = () => {},
 ) {
   const botsOnly = data.botsOnly ?? false;
   if (botsOnly && !data.bots?.length) throw new Error('Bots-only mode requires at least one bot');
@@ -132,7 +132,7 @@ export function createPhysicsSimulation(
     data.terrain.padRadius,
     data.terrain.asphaltSpans,
   );
-  progress('Indexing road surfaces…');
+  progress('Indexing road surfaces…', 0.1);
   const nearbyPavement = new PavementSurface(data.terrain.nearbyRoadMesh);
   let laps = new LapTimer(data.definition, data.race);
   const resources = createPhysicsResources(Ammo);
@@ -163,9 +163,9 @@ export function createPhysicsSimulation(
     }
     return map;
   };
-  progress('Building terrain collision…');
+  progress('Building terrain collision…', 0.15);
   const simulationWorld = createPhysicsWorld(Ammo, resources, data.terrain);
-  progress('Creating vehicle physics…');
+  progress('Creating vehicle physics…', 0.85);
   const playerPhysics = botsOnly
     ? null
     : createVehiclePhysics({
@@ -180,7 +180,10 @@ export function createPhysicsSimulation(
         laps,
       });
   const bots = (data.bots ?? []).map((options, index) => {
-    progress(`Preparing bot ${index + 1} of ${data.bots?.length ?? 0}…`);
+    progress(
+      `Preparing bot ${index + 1} of ${data.bots?.length ?? 0}…`,
+      0.85 + (0.1 * index) / (data.bots?.length ?? 1),
+    );
     const botCar: PhysicsCar =
       botsOnly && index === 0
         ? car

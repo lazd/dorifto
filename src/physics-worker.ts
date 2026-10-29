@@ -13,18 +13,18 @@ self.onmessage = ({ data }: MessageEvent<PhysicsRequest>) => {
     if (failed) return;
     try {
       if (data.type === 'init') {
-        respond({ type: 'startup', stage: 'Loading physics engine…' });
+        respond({ type: 'startup', stage: 'Loading physics engine…', fraction: 0 });
         const [{ default: AmmoFactory }, { createPhysicsSimulation }] = await Promise.all([
           import('ammojs-typed'),
           import('./physics-simulation'),
         ]);
-        respond({ type: 'startup', stage: 'Initializing physics engine…' });
+        respond({ type: 'startup', stage: 'Initializing physics engine…', fraction: 0.05 });
         // The upstream Emscripten factory writes to its receiver.
         const Ammo = await AmmoFactory.call({});
-        simulation = createPhysicsSimulation(Ammo, data.data, (stage) =>
-          respond({ type: 'startup', stage }),
+        simulation = createPhysicsSimulation(Ammo, data.data, (stage, fraction) =>
+          respond({ type: 'startup', stage, fraction }),
         );
-        respond({ type: 'startup', stage: 'Preparing first physics snapshot…' });
+        respond({ type: 'startup', stage: 'Preparing first physics snapshot…', fraction: 0.95 });
       }
       if (!simulation) throw new Error('Physics worker has not been initialized');
       const snapshot = simulation.handle(data);
