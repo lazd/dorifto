@@ -552,6 +552,7 @@ export function createScenery(
   const buildings = scenery.buildings;
 
   function buildBuildings() {
+    const footprintsByHeight = new Map<number, MultiPolygon>();
     for (const building of buildings) {
       const shape = polygon(building.rings);
       // A cut-off building would expose its interior; omit footprints beyond supported terrain.
@@ -561,6 +562,18 @@ export function createScenery(
         shape.rings.some((ring) => ring.some(([x, z]) => !terrain.contains(x, z)))
       )
         continue;
+      const height = THREE.MathUtils.clamp(building.height, 2, 150);
+      const footprints = footprintsByHeight.get(height) ?? [];
+      footprints.push(shape.rings);
+      footprintsByHeight.set(height, footprints);
+    }
+    // Tile-clipped copies can overlap without having identical footprint signatures.
+    const mergedBuildings = [...footprintsByHeight].flatMap(([height, footprints]) =>
+      polygonClipping.union(footprints).map((rings) => ({ rings, height })),
+    );
+    for (const building of mergedBuildings) {
+      const shape = polygon(building.rings);
+      if (!shape) continue;
       // Mapped road widths are estimates; only a road driven through a footprint, or the course's
       // own pavement, removes it.
       if (
