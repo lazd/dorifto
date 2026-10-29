@@ -38,6 +38,8 @@ export interface SceneryOptions {
 const categories: SceneryCategory[] = ['buildings', 'water', 'vegetation', 'nearbyRoads'];
 const maxPlants = 4000;
 const maxPlantAttempts = 24000;
+// Covers nearbyRoadDirtMaterial's spill, which reaches up to 1.45 m onto the pavement.
+const dirtSpillWidth = 1.5;
 
 /** Small local indices keep vegetation rejection independent of the total map feature count. */
 class SpatialIndex<T extends Bounds> {
@@ -1529,10 +1531,14 @@ export function createScenery(
       });
   for (const segment of roadSegments.query(bounds))
     if (!segment.profile.road.structure) centerlines.add({ ...segment, width: 0 });
+  // Dirt keeps a band over the pavement edge, where its shader draws the spill onto the road.
   if (dirtBatch.positions.length)
     fillFootprint(
       dirtBatch,
-      polygonClipping.difference(pavementFootprint(dirtBatch), groundFootprint),
+      polygonClipping.difference(
+        pavementFootprint(dirtBatch),
+        polygonClipping.offset(groundFootprint, -dirtSpillWidth),
+      ),
     );
   pavementEdges = new SpatialIndex<RoadSegment>();
   junctionEdges = new SpatialIndex<RoadSegment>();

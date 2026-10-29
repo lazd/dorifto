@@ -1,4 +1,13 @@
-import { ClipType, FillRule, PolyTreeD, booleanOpDWithPolyTree, type PathD } from 'clipper2-ts';
+import {
+  ClipType,
+  EndType,
+  FillRule,
+  JoinType,
+  PolyTreeD,
+  booleanOpDWithPolyTree,
+  inflatePathsD,
+  type PathD,
+} from 'clipper2-ts';
 import type { SceneryPoint, SceneryPolygon } from './scenery-data';
 
 type MultiPolygon = SceneryPolygon[];
@@ -63,3 +72,17 @@ export const difference = (subject: MultiPolygon, clip: MultiPolygon) =>
 
 export const intersection = (subject: MultiPolygon, clip: MultiPolygon) =>
   booleanOp(ClipType.Intersection, subject, clip);
+
+/** Grows (positive) or shrinks (negative) polygons by a distance, with rounded corners. */
+export function offset(polygons: MultiPolygon, delta: number) {
+  const tree = new PolyTreeD();
+  booleanOpDWithPolyTree(
+    ClipType.Union,
+    inflatePathsD(paths(polygons), delta, JoinType.Round, EndType.Polygon, 2, precision),
+    [],
+    tree,
+    FillRule.NonZero,
+    precision,
+  );
+  return multiPolygon(tree);
+}
