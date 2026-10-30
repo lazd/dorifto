@@ -5,10 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#101b20" />
     <title>Course builder</title>
-    <script type="module" crossorigin src="./assets/courseBuilder-BlxZA9bT.js"></script>
-    <link rel="modulepreload" crossorigin href="./assets/course-builder-storage-Cp4oNinK.js">
+    <script type="module" crossorigin src="./assets/courseBuilder-CLES7QO1.js"></script>
+    <link rel="modulepreload" crossorigin href="./assets/course-builder-storage-BpmAk4NS.js">
     <link rel="stylesheet" crossorigin href="./assets/course-builder-storage-DO3y67q4.css">
-    <link rel="stylesheet" crossorigin href="./assets/courseBuilder-QxHlA96R.css">
+    <link rel="stylesheet" crossorigin href="./assets/courseBuilder-D_VDDy3N.css">
   </head>
   <body>
     <main class="builder" data-view="library">
@@ -55,6 +55,26 @@
             </div>
             <details class="advanced">
               <summary>Advanced</summary>
+              <div id="map-dimensions" hidden>
+                <div class="field">
+                  <label for="map-width">Map width (km)</label>
+                  <input id="map-width" type="number" min="0.001" step="any" value="2.5" required />
+                </div>
+                <div class="field">
+                  <label for="map-height">Map height (km)</label>
+                  <input
+                    id="map-height"
+                    type="number"
+                    min="0.001"
+                    step="any"
+                    value="2.5"
+                    required
+                  />
+                </div>
+                <p class="field-hint">
+                  Drag the map corners or enter dimensions. Maximum area: 6.25 km².
+                </p>
+              </div>
               <div class="field">
                 <label for="width">Road width (m)</label>
                 <input id="width" type="number" min="3" max="30" step="0.5" value="8" required />
@@ -114,6 +134,7 @@
             <p id="preview-meta"></p>
           </div>
           <div class="viewport-toolbar">
+            <button id="show-3d" hidden>3D preview</button>
             <button id="edit-route">Edit</button>
             <button id="download" hidden disabled>Download</button>
             <button id="play" class="button button-primary" disabled>Play</button>
