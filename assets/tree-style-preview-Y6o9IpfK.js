@@ -1,4 +1,4 @@
-import{i as e,o as t}from"./scenery-CFJ0KYNT.js";function n(n,r){let i=document.querySelector(`#tree-style-preview`);if(i)return i.dispatchEvent(new Event(`coursechange`)),i;let a=document.querySelector(`#vegetation-detail`)?.closest(`section`);if(!a)throw Error(`Vegetation settings are not available`);let o=document.createElement(`div`);o.className=`field`,o.id=`tree-style-preview`,o.innerHTML=`
+import{i as e,o as t}from"./scenery-C9ZJK4AA.js";function n(n,r){let i=document.querySelector(`#tree-style-preview`);if(i)return i.dispatchEvent(new Event(`coursechange`)),i;let a=document.querySelector(`#vegetation-detail`)?.closest(`section`);if(!a)throw Error(`Vegetation settings are not available`);let o=document.createElement(`div`);o.className=`field`,o.id=`tree-style-preview`,o.innerHTML=`
     <label for="tree-style">Vegetation rendering</label>
     <p id="tree-style-description">Baked pine, oak, aspen and three bush styles.
       Performance uses shorter mesh ranges and fewer bushes; Quality draws more detail.
