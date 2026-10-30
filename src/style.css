@@ -3,7 +3,7 @@
   --accent: #9ee8d5;
   --border: #525c59;
   --surface-sunken: #10191f;
-  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-family: Menlo, 'SF Mono', Monaco, 'Courier New', monospace;
   color: #eef6f5;
   background: #10191f;
   font-synthesis: none;
