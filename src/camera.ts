@@ -392,7 +392,11 @@ export function createDrivingCamera(
     chasePosition.copy(camera.position);
     chaseQuaternion.copy(camera.quaternion);
     const halfHeight = Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2);
-    mapZoom = THREE.MathUtils.clamp(mapZoom * Math.exp(controls.mapZoom * dt), 0.02, 4);
+    mapZoom = THREE.MathUtils.clamp(
+      mapZoom * Math.exp(controls.mapZoom * dt + controls.mapWheelZoom),
+      0.02,
+      4,
+    );
     const height =
       mapZoom *
       1.1 *
@@ -401,6 +405,9 @@ export function createDrivingCamera(
     // With +Z at the top of this view, screen-right points toward -X.
     mapOffset.x -= controls.cameraX * panSpeed * dt;
     mapOffset.z -= controls.cameraY * panSpeed * dt;
+    mapOffset.x += controls.mapDragX * 2 * panSpeed * camera.aspect;
+    mapOffset.z += controls.mapDragY * 2 * panSpeed;
+    controls.mapDragX = controls.mapDragY = controls.mapWheelZoom = 0;
     mapTarget.copy(mapCenter).add(mapOffset);
     mapPosition.set(mapTarget.x, mapBounds.max.y + height, mapTarget.z);
     mapMatrix.lookAt(mapPosition, mapTarget, mapUp);

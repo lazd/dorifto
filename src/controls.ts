@@ -81,8 +81,25 @@ export class DrivingControls {
   cameraX = 0;
   cameraY = 0;
   mapZoom = 0;
+  mapDragX = 0;
+  mapDragY = 0;
+  mapWheelZoom = 0;
   lookBehind = false;
-  mapView = false;
+  private mapViewActive = false;
+  private mapPointer: number | null = null;
+  private mapPointerX = 0;
+  private mapPointerY = 0;
+  private inputEnabled = true;
+
+  get mapView() {
+    return this.mapViewActive;
+  }
+
+  set mapView(active: boolean) {
+    this.mapViewActive = active;
+    if (!active) this.clearMapMouse();
+    this.updateMapCursor();
+  }
   resetRequested = false;
   cameraRequested = false;
   lightingRequested: LightingRequest | null = null;
@@ -120,7 +137,62 @@ export class DrivingControls {
     document.body.style.cursor = hidden ? 'none' : '';
   }
 
-  constructor() {
+  private updateMapCursor() {
+    const cursor = this.mapView ? (this.mapPointer === null ? 'grab' : 'grabbing') : '';
+    if (this.surface && this.surface.style.cursor !== cursor) this.surface.style.cursor = cursor;
+  }
+
+  private clearMapMouse() {
+    if (this.mapPointer !== null && this.surface?.hasPointerCapture(this.mapPointer))
+      this.surface.releasePointerCapture(this.mapPointer);
+    this.mapPointer = null;
+    this.mapDragX = this.mapDragY = this.mapWheelZoom = 0;
+    this.updateMapCursor();
+  }
+
+  constructor(private readonly surface?: HTMLElement) {
+    const mapMouseEnabled = () =>
+      this.mapView &&
+      this.inputEnabled &&
+      this.focused &&
+      !document.hidden &&
+      !inputBindings.isCaptureActive();
+    surface?.addEventListener('pointerdown', (event) => {
+      if (!mapMouseEnabled() || event.pointerType !== 'mouse' || event.button !== 0) return;
+      event.preventDefault();
+      this.mapPointer = event.pointerId;
+      this.mapPointerX = event.clientX;
+      this.mapPointerY = event.clientY;
+      surface.setPointerCapture(event.pointerId);
+      this.updateMapCursor();
+    });
+    surface?.addEventListener('pointermove', (event) => {
+      if (event.pointerId !== this.mapPointer) return;
+      this.mapDragX += (event.clientX - this.mapPointerX) / surface.clientWidth;
+      this.mapDragY += (event.clientY - this.mapPointerY) / surface.clientHeight;
+      this.mapPointerX = event.clientX;
+      this.mapPointerY = event.clientY;
+    });
+    const endDrag = (event: PointerEvent) => {
+      if (event.pointerId !== this.mapPointer) return;
+      this.mapPointer = null;
+      if (surface?.hasPointerCapture(event.pointerId))
+        surface.releasePointerCapture(event.pointerId);
+      this.updateMapCursor();
+    };
+    surface?.addEventListener('pointerup', endDrag);
+    surface?.addEventListener('pointercancel', endDrag);
+    surface?.addEventListener('lostpointercapture', endDrag);
+    surface?.addEventListener(
+      'wheel',
+      (event) => {
+        if (!mapMouseEnabled()) return;
+        event.preventDefault();
+        const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? surface.clientHeight : 1;
+        this.mapWheelZoom += event.deltaY * unit * 0.001;
+      },
+      { passive: false },
+    );
     window.addEventListener('mousemove', () => this.setCursorHidden(false));
     window.addEventListener('mousedown', () => this.setCursorHidden(false));
     window.addEventListener('blur', () => {
@@ -137,6 +209,7 @@ export class DrivingControls {
   }
 
   clear() {
+    this.clearMapMouse();
     this.keys.clear();
     this.steer = this.throttle = this.brake = this.reverse = 0;
     this.cameraX = this.cameraY = 0;
@@ -172,6 +245,7 @@ export class DrivingControls {
     allowReset = false,
     driveMode: DriveMode = 'grip',
   ) {
+    this.inputEnabled = enabled;
     const available = typeof navigator.getGamepads === 'function';
     const pads = available ? Array.from(navigator.getGamepads()) : [];
     const pad =

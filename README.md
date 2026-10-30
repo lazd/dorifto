@@ -1385,6 +1385,7 @@ the default bindings; remapped bindings are reflected in the in-app diagrams.
 | S                   | Turn on the stereo / next station / off after the last station                         |
 
 Map view switches instantly in both directions, without an animated camera flight.
+Drag with the mouse to pan the map; use the scroll wheel to zoom in and out.
 Each U press advances one step; holding it does not repeat. Restoring the HUD preserves
 normal visibility rules (for example, the tach stays hidden in cabin view).
 Use `?hide-ui=0` through `?hide-ui=4` to start at a visibility level; U updates the

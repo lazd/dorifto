@@ -524,7 +524,7 @@ async function start() {
   configurationState.subscribe(({ speedUnit }) => car.setSpeedUnit(speedUnit), ['speedUnit']);
   scene.add(car.chassis, ...car.wheels, ...car.hubs, car.underglow);
   const ghost = createGhostCar(scene, car);
-  const controls = new DrivingControls();
+  const controls = new DrivingControls(renderer.domElement);
   const audio = new VehicleAudio(
     ({ muted, ...sound }) => {
       if (configurationState.getState().muted !== muted) configurationState.update({ muted });
