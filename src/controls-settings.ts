@@ -261,7 +261,7 @@ export function bindControlsSettings(reportError: (error: Error) => void): void 
         );
       }
     }
-    for (const [action] of axisRows) {
+    for (const action of [...axisRows.map(([action]) => action), 'cameraY' as const]) {
       const binding = inputBindings.get().controller.axes[action];
       const select = container.querySelector<HTMLSelectElement>(`[data-axis="${action}"]`);
       const invert = container.querySelector<HTMLInputElement>(`[data-invert="${action}"]`);
@@ -381,7 +381,7 @@ export function bindControlsSettings(reportError: (error: Error) => void): void 
     else if (device === 'controller') startControllerCapture(action as ControllerAction, target);
   });
 
-  axesRoot.addEventListener('change', (event) => {
+  container.addEventListener('change', (event) => {
     const target = event.target;
     if (!(target instanceof HTMLSelectElement || target instanceof HTMLInputElement)) return;
     const action = (target.dataset.axis ?? target.dataset.invert) as AxisAction | undefined;
@@ -390,7 +390,7 @@ export function bindControlsSettings(reportError: (error: Error) => void): void 
     if (target instanceof HTMLSelectElement)
       next.controller.axes[action].index = Number(target.value);
     else next.controller.axes[action].inverted = target.checked;
-    commit(next, 'Map controls saved.');
+    commit(next, action === 'cameraY' ? 'Driving controls saved.' : 'Map controls saved.');
   });
 
   container.querySelector<HTMLButtonElement>('[data-reset]')!.addEventListener('click', () => {

@@ -20,7 +20,7 @@ export function installTreeStylePreview(scene: THREE.Scene, reportError: (error:
       Vegetation detail controls density; Ultra tree ranges are 180 / 300 / 450 meters.</p>
     <select id="tree-style" aria-describedby="tree-style-description">
       <option value="performance">Performance</option>
-      <option value="quality">Quality</option>
+      <option value="quality" selected>Quality</option>
       <option value="ultra">Ultra</option>
     </select>
     <label for="tree-transition">Smooth transitions</label>
@@ -36,8 +36,8 @@ export function installTreeStylePreview(scene: THREE.Scene, reportError: (error:
   const initial = new URL(location.href).searchParams.get('tree-style');
   if (initial === 'performance' || initial === 'quality' || initial === 'ultra')
     select.value = initial;
-  transition.checked = new URL(location.href).searchParams.get('tree-transition') === 'on';
-  function apply() {
+  transition.checked = new URL(location.href).searchParams.get('tree-transition') !== 'off';
+  function apply(event?: Event) {
     try {
       const mode = select.value;
       if (mode !== 'performance' && mode !== 'quality' && mode !== 'ultra')
@@ -45,10 +45,13 @@ export function installTreeStylePreview(scene: THREE.Scene, reportError: (error:
       setVegetationMode(scene, mode);
       setVegetationTransition(scene, transition.checked);
       transition.disabled = mode === 'ultra';
-      const url = new URL(location.href);
-      url.searchParams.set('tree-style', mode);
-      url.searchParams.set('tree-transition', transition.checked ? 'on' : 'off');
-      history.replaceState(null, '', url);
+      if (event?.type === 'change') {
+        const url = new URL(location.href);
+        if (event.target === select) url.searchParams.set('tree-style', mode);
+        if (event.target === transition)
+          url.searchParams.set('tree-transition', transition.checked ? 'on' : 'off');
+        history.replaceState(null, '', url);
+      }
       status.textContent =
         mode === 'ultra'
           ? '3D meshes only. Higher GPU cost; no baked-to-mesh transition.'
