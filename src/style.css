@@ -48,6 +48,28 @@ body:not(.chase-view) #fps-counter {
   bottom: 12px;
   transform: none;
 }
+/* Shown by ?debug=1; sits above the loading status and clear of the FPS counter. */
+.debug-log {
+  position: fixed;
+  z-index: 3;
+  bottom: var(--space-7);
+  left: 50%;
+  transform: translateX(-50%);
+  min-width: 16rem;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--color-backdrop);
+  color: var(--color-text);
+  font:
+    var(--text-xs) / 1.4 ui-monospace,
+    monospace;
+  font-variant-numeric: tabular-nums;
+  white-space: pre;
+  pointer-events: none;
+}
+.debug-log-total {
+  font-weight: 700;
+}
 button,
 a {
   -webkit-tap-highlight-color: transparent;

@@ -1,3 +1,5 @@
+import type { DebugLog, DebugRow } from './debug-log';
+
 /** Progress reported by a long-running task: a status message and its completed fraction (0 to 1). */
 export interface LoadStep {
   message: string;
@@ -64,21 +66,32 @@ export function stageProgress(weights: StageWeights, stage: string, fraction = 0
   throw new Error(`Unknown load stage: ${stage}`);
 }
 
-/** Records when each load stage starts, so `finish` can log where the time went for comparison. */
-export function createLoadTimer(label: string) {
+const stageNames: Record<string, string> = { course: 'course build' };
+const stageName = (stage: string) => stageNames[stage] ?? stage;
+
+/** Records when each load stage starts, so `finish` can report where the time went. */
+export function createLoadTimer(label: string, debug?: DebugLog) {
   const started = performance.now();
   const stages: [string, number][] = [];
+  const total = debug?.row('total', true);
+  let current: DebugRow | undefined;
   return {
     stage(name: string) {
-      if (stages.at(-1)?.[0] !== name) stages.push([name, performance.now()]);
+      if (stages.at(-1)?.[0] === name) return;
+      current?.done();
+      current = debug?.row(stageName(name));
+      stages.push([name, performance.now()]);
     },
-    finish() {
+    finish(detail?: string) {
       const end = performance.now();
+      current?.done();
+      total?.done();
       const seconds = (ms: number) => (ms / 1000).toFixed(1);
       const parts = stages.map(
-        ([name, start], i) => `${name} ${seconds((stages[i + 1]?.[1] ?? end) - start)}s`,
+        ([name, start], i) => `${stageName(name)} ${seconds((stages[i + 1]?.[1] ?? end) - start)}s`,
       );
-      console.info(`[Load] ${label}: ${seconds(end - started)}s total (${parts.join(', ')})`);
+      const where = detail ? `${label} (${detail})` : label;
+      console.info(`[Load] ${where}: ${seconds(end - started)}s total (${parts.join(', ')})`);
     },
   };
 }

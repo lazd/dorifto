@@ -5,6 +5,7 @@ import { racingLinePath } from './racing-line';
 import { DrivingControls, updateVehicleLights } from './controls';
 import { inputBindings, keyboardActionForCode } from './input-bindings';
 import { createCourse, createCourseTask } from './course';
+import { createDebugLog } from './debug-log';
 import {
   createLoadTimer,
   runAsync,
@@ -135,6 +136,8 @@ const configurationState = createConfigurationState();
 let ui: ReturnType<typeof bindGameUI>;
 
 async function start() {
+  const debugLog = createDebugLog(new URL(location.href).searchParams.get('debug') === '1');
+  let loadTimer = createLoadTimer('startup', debugLog);
   await browserStorage.open(await navigator.storage.getDirectory(), localStorage, (error) =>
     showError(error, false),
   );
@@ -379,7 +382,6 @@ async function start() {
   const switchStages = { download: 0.08, course: 0.67, physics: 0.25 };
   const physicsOnlyStages = { physics: 1 };
   let loadStages: StageWeights = startupStages;
-  let loadTimer = createLoadTimer(`startup, ${definition.name}`);
   const showStage = (stage: string, message: string, fraction = 0) => {
     loadTimer.stage(stage);
     showLoading(message, stageProgress(loadStages, stage, fraction));
@@ -1033,7 +1035,7 @@ async function start() {
     clearLapRecording();
     gameState.update({ status: { visible: true, error: false, message: 'Resetting race…' } });
     loadStages = physicsOnlyStages;
-    loadTimer = createLoadTimer('bot reset');
+    loadTimer = createLoadTimer('bot reset', debugLog);
     const previousSettings = configurationState.getState();
     try {
       const url = new URL(location.href);
@@ -1351,7 +1353,7 @@ async function start() {
     clearLapRecording();
     showLoading('Loading map…', 0);
     loadStages = switchStages;
-    loadTimer = createLoadTimer('course switch');
+    loadTimer = createLoadTimer('course switch', debugLog);
     showStage('download', 'Loading map…');
     try {
       await new Promise<void>((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
@@ -2068,7 +2070,7 @@ async function start() {
     renderer.setRenderTarget(previousTarget);
   }
   gameState.update({ status: { visible: false, error: false, message: '' } });
-  loadTimer.finish();
+  loadTimer.finish(definition.name);
   document.querySelectorAll('.hide-when-loading').forEach((node) => {
     node.classList.remove('hide-when-loading');
   });
