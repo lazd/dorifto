@@ -3,10 +3,15 @@ import models from './vegetation-assets/models.json';
 import pineUrl from './vegetation-assets/pine.png';
 import oakUrl from './vegetation-assets/oak.png';
 import barkUrl from './vegetation-assets/bark.jpg';
+import aspenUrl from './vegetation-assets/aspen.png';
+import ashUrl from './vegetation-assets/ash.png';
+import aspenBarkUrl from './vegetation-assets/aspen-bark.jpg';
+import { plantGuides } from './vegetation-guides';
 
 export { THREE };
-export const treeSpecies = ['pine', 'oak', 'fir'] as const;
-export type PlantSpecies = (typeof treeSpecies)[number] | 'bush';
+export const treeSpecies = ['pine', 'oak', 'aspen'] as const;
+export const bushSpecies = ['bushPine', 'bushAsh', 'bushAspen'] as const;
+export type PlantSpecies = (typeof treeSpecies)[number] | (typeof bushSpecies)[number];
 
 export function vegetationGeometry(data: typeof models.rock1) {
   const geometry = new THREE.BufferGeometry();
@@ -31,25 +36,32 @@ export function detailedPlants() {
   const branchesMaterial = new THREE.MeshStandardMaterial({ map: bark, roughness: 1 });
   const pine = vegetationTexture(pineUrl);
   const oak = vegetationTexture(oakUrl);
+  const aspen = vegetationTexture(aspenUrl);
+  const ash = vegetationTexture(ashUrl);
+  const aspenBark = vegetationTexture(aspenBarkUrl);
+  aspenBark.wrapS = aspenBark.wrapT = THREE.RepeatWrapping;
+  const aspenBranches = new THREE.MeshStandardMaterial({ map: aspenBark, roughness: 1 });
+  const leaves = { pine, oak, aspen, bushPine: pine, bushAsh: ash, bushAspen: aspen };
   return Object.fromEntries(
-    [...treeSpecies, 'bush' as const].map((species) => [
+    [...treeSpecies, ...bushSpecies].map((species) => [
       species,
       [
         {
           geometry: vegetationGeometry(models[species].branches),
-          material: branchesMaterial,
+          material: species === 'aspen' ? aspenBranches : branchesMaterial,
           name: 'tree-trunks',
         },
         {
           geometry: vegetationGeometry(models[species].leaves),
           material: new THREE.MeshStandardMaterial({
-            map: species === 'pine' || species === 'fir' ? pine : oak,
-            color: species === 'fir' ? 0xb5c9b3 : 0xffffff,
+            map: leaves[species],
+            color: plantGuides[species].leaves.tint,
             roughness: 1,
             side: THREE.DoubleSide,
-            alphaTest: 0.4,
+            alphaTest: plantGuides[species].leaves.alphaTest,
+            forceSinglePass: true,
           }),
-          name: species === 'bush' ? 'shrubs' : 'tree-crowns',
+          name: species.startsWith('bush') ? 'shrubs' : 'tree-crowns',
         },
       ],
     ]),

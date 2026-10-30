@@ -1,7 +1,8 @@
 #!/usr/bin/env node
-import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, writeFile } from 'node:fs/promises';
 import * as THREE from 'three';
 import draco from 'draco3dgltf';
+import { createServer } from 'vite';
 
 const output = new URL('../src/vegetation-assets/', import.meta.url);
 const library = new URL('../node_modules/@dgreenheck/ez-tree/', import.meta.url);
@@ -9,13 +10,6 @@ await mkdir(output, { recursive: true });
 
 // EZ-Tree eagerly loads textures. This geometry-only offline pass never decodes images.
 const loadTexture = THREE.TextureLoader.prototype.load;
-THREE.TextureLoader.prototype.load = () => new THREE.Texture();
-let Tree;
-try {
-  ({ Tree } = await import('@dgreenheck/ez-tree'));
-} finally {
-  THREE.TextureLoader.prototype.load = loadTexture;
-}
 
 function packed(geometry) {
   return {
@@ -30,72 +24,34 @@ function packed(geometry) {
 }
 
 const models = {};
-for (const [species, preset, height] of [
-  ['pine', 'pine_small', 15],
-  ['oak', 'oak_small', 10],
-  ['fir', 'pine_small', 13],
-  ['bush', 'bush_1', 1.5],
-]) {
-  const options = JSON.parse(
-    await readFile(new URL(`src/lib/presets/${preset}.json`, library), 'utf8'),
-  );
-  options.seed = { pine: 11744, oak: 30895, fir: 27731, bush: 45590 }[species];
-  if (species === 'pine' || species === 'fir') {
-    options.branch.children[0] = species === 'fir' ? 28 : 23;
-    options.branch.sections[0] = 9;
-    options.branch.sections[1] = 4;
-    options.branch.segments[0] = 6;
-    options.branch.segments[1] = 3;
-    options.leaves.count = 8;
-    options.leaves.size *= 2.4;
-    if (species === 'fir') {
-      options.branch.start[1] = 0.06;
-      options.branch.angle[1] = 92;
-      options.branch.gnarliness[0] = 0.005;
-      options.branch.gnarliness[1] = 0.025;
-      options.branch.length[1] = 13;
-    }
-  } else {
-    if (species === 'bush') options.branch.levels = 2;
-    options.branch.children[0] = 4;
-    options.branch.children[1] = 3;
-    options.branch.children[2] = 2;
-    for (const level of [0, 1, 2, 3]) {
-      options.branch.sections[level] = Math.min(5, options.branch.sections[level]);
-      options.branch.segments[level] = level === 0 ? 6 : 3;
-    }
-    options.leaves.count = 6;
-    options.leaves.size *= species === 'bush' ? 1.6 : 1.8;
-  }
-  const tree = new Tree();
-  tree.options.copy(options);
-  tree.generate();
-  const box = new THREE.Box3().setFromObject(tree);
-  const scale = height / (box.max.y - box.min.y);
-  let radius = 0;
-  for (const mesh of [tree.branchesMesh, tree.leavesMesh]) {
-    const position = mesh.geometry.getAttribute('position');
-    for (let i = 0; i < position.count; i++) {
-      radius = Math.max(radius, Math.hypot(position.getX(i), position.getZ(i)));
+const generator = await createServer({
+  cacheDir: 'node_modules/.vite-vegetation-generator',
+  configFile: false,
+  server: { middlewareMode: true, hmr: false, ws: false, watch: null },
+  optimizeDeps: { noDiscovery: true, include: [] },
+});
+THREE.TextureLoader.prototype.load = () => new THREE.Texture();
+try {
+  const { generateVegetationModels } = await generator.ssrLoadModule('/src/vegetation-presets.ts');
+  for (const [species, parts] of Object.entries(await generateVegetationModels())) {
+    models[species] = {};
+    for (const [part, geometry] of Object.entries(parts)) {
+      models[species][part] = packed(geometry);
+      console.log(`${species} ${part}: ${geometry.index.count / 3} triangles`);
+      geometry.dispose();
     }
   }
-  const horizontal = Math.min(scale, { pine: 2.9, oak: 3.4, fir: 2.6, bush: 1 }[species] / radius);
-  models[species] = {};
-  for (const [part, mesh] of [
-    ['branches', tree.branchesMesh],
-    ['leaves', tree.leavesMesh],
-  ]) {
-    mesh.geometry.translate(0, -box.min.y, 0).scale(horizontal, scale, horizontal);
-    models[species][part] = packed(mesh.geometry);
-    console.log(`${species} ${part}: ${mesh.geometry.index.count / 3} triangles`);
-    mesh.geometry.dispose();
-    mesh.material.dispose();
-  }
+} finally {
+  THREE.TextureLoader.prototype.load = loadTexture;
+  await generator.close();
 }
 
 for (const [source, target] of [
   ['src/lib/assets/leaves/pine_color.png', 'pine.png'],
   ['src/lib/assets/leaves/oak_color.png', 'oak.png'],
+  ['src/lib/assets/leaves/aspen_color.png', 'aspen.png'],
+  ['src/lib/assets/leaves/ash_color.png', 'ash.png'],
+  ['src/lib/assets/bark/birch_color_1k.jpg', 'aspen-bark.jpg'],
   ['src/lib/assets/bark/pine_color_1k.jpg', 'bark.jpg'],
   ['LICENSE', 'EZ-TREE-LICENSE.txt'],
 ])

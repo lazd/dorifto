@@ -3,18 +3,22 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import models from './vegetation-assets/models.json';
 import pineAtlas from './vegetation-assets/pine-atlas.webp';
 import oakAtlas from './vegetation-assets/oak-atlas.webp';
-import firAtlas from './vegetation-assets/fir-atlas.webp';
-import bushAtlas from './vegetation-assets/bush-atlas.webp';
+import aspenAtlas from './vegetation-assets/aspen-atlas.webp';
+import bushPineAtlas from './vegetation-assets/bushPine-atlas.webp';
+import bushAshAtlas from './vegetation-assets/bushAsh-atlas.webp';
+import bushAspenAtlas from './vegetation-assets/bushAspen-atlas.webp';
 import rock1Url from './vegetation-assets/rock1.webp';
 import {
   detailedPlants,
   treeSpecies,
+  bushSpecies,
   vegetationGeometry,
   vegetationTexture,
   type PlantSpecies,
 } from './vegetation-models';
 
 export type VegetationDetail = 'low' | 'medium' | 'high';
+export type VegetationMode = 'performance' | 'quality';
 type Kind = 'trees' | 'bush' | 'rocks';
 type Part = { geometry: THREE.BufferGeometry; material: THREE.Material; name: string };
 export interface VegetationPlacements {
@@ -24,28 +28,42 @@ export interface VegetationPlacements {
 
 export const vegetationDetails = {
   low: { near: 0, trees: 500, bush: 85, rocks: 65, density: 0.35 },
-  medium: { near: 105, trees: 650, bush: 125, rocks: 105, density: 0.65 },
-  high: { near: 155, trees: 800, bush: 180, rocks: 160, density: 1 },
+  medium: { near: 65, trees: 650, bush: 105, rocks: 105, density: 0.65 },
+  high: { near: 95, trees: 800, bush: 125, rocks: 160, density: 1 },
 } as const;
 
-export function setVegetationDetail(parent: THREE.Object3D, detail: VegetationDetail) {
+export function setVegetationMode(parent: THREE.Object3D, mode: VegetationMode) {
+  parent.traverse((object) => {
+    if (!(object instanceof THREE.LOD) || !object.userData.vegetationKind) return;
+    object.userData.vegetationMode = mode;
+    applyDetail(object, object.userData.vegetationDetail ?? 'medium');
+  });
+}
+
+function applyDetail(lod: THREE.LOD, detail: VegetationDetail) {
   const settings = vegetationDetails[detail];
+  const kind = lod.userData.vegetationKind as Kind;
+  const performance = lod.userData.vegetationMode !== 'quality';
+  if (kind === 'trees' || kind === 'bush') {
+    lod.levels[1].distance =
+      kind === 'trees'
+        ? Math.min(settings.near, performance ? 65 : 95)
+        : Math.min(settings.near, performance ? 30 : 55);
+    lod.levels[2].distance =
+      kind === 'trees' ? Math.min(settings.trees, performance ? 300 : 600) : settings.bush;
+  } else lod.levels[1].distance = settings.rocks;
+  lod.traverse((object) => {
+    if (!(object instanceof THREE.InstancedMesh) || !object.userData.groundCoverCount) return;
+    const density = settings.density * (kind === 'bush' && performance ? 0.6 : 1);
+    object.count = Math.ceil(object.userData.groundCoverCount * density);
+  });
+}
+
+export function setVegetationDetail(parent: THREE.Object3D, detail: VegetationDetail) {
   parent.traverse((object) => {
     if (object instanceof THREE.LOD && object.userData.vegetationKind) {
-      const kind = object.userData.vegetationKind as Kind;
-      const levels = object.levels;
-      if (kind === 'trees' || kind === 'bush') {
-        levels[1].distance = kind === 'trees' ? settings.near : Math.min(settings.near, 65);
-        levels[2].distance = kind === 'trees' ? settings.trees : settings.bush;
-        if (object.userData.previewMeshes) {
-          levels[2].distance = Math.min(levels[2].distance, kind === 'trees' ? 250 : 125);
-        }
-      } else {
-        levels[1].distance = settings[kind];
-      }
-    }
-    if (object instanceof THREE.InstancedMesh && object.userData.groundCoverCount) {
-      object.count = Math.ceil(object.userData.groundCoverCount * settings.density);
+      object.userData.vegetationDetail = detail;
+      applyDetail(object, detail);
     }
   });
 }
@@ -78,20 +96,26 @@ function cutout(species: PlantSpecies, parts: Part[], url: string): Part {
   cards.forEach((card) => card.dispose());
   return {
     geometry,
-    material: new THREE.MeshStandardMaterial({
+    material: new THREE.MeshBasicMaterial({
       map: vegetationTexture(url),
-      roughness: 1,
       alphaTest: 0.35,
       side: THREE.DoubleSide,
       forceSinglePass: true,
     }),
-    name: species === 'bush' ? 'shrubs' : 'tree-crowns',
+    name: species.startsWith('bush') ? 'shrubs' : 'tree-crowns',
   };
 }
 
 export function addVegetation(plants: THREE.Group, placements: Record<Kind, VegetationPlacements>) {
   const detailed = detailedPlants();
-  const atlases = { pine: pineAtlas, oak: oakAtlas, fir: firAtlas, bush: bushAtlas };
+  const atlases = {
+    pine: pineAtlas,
+    oak: oakAtlas,
+    aspen: aspenAtlas,
+    bushPine: bushPineAtlas,
+    bushAsh: bushAshAtlas,
+    bushAspen: bushAspenAtlas,
+  };
   const resources = new THREE.Group();
   resources.name = 'vegetation-resources';
   resources.visible = false;
@@ -110,7 +134,7 @@ export function addVegetation(plants: THREE.Group, placements: Record<Kind, Vege
     }
     if (!entries.matrices.length) return;
     const chunks = new Map<string, number[]>();
-    const chunkSize = kind === 'trees' ? 128 : 64;
+    const chunkSize = 64;
     entries.matrices.forEach((matrix, index) => {
       const key = `${Math.floor(matrix.elements[12] / chunkSize)}/${Math.floor(matrix.elements[14] / chunkSize)}`;
       const indices = chunks.get(key) ?? [];
@@ -129,7 +153,7 @@ export function addVegetation(plants: THREE.Group, placements: Record<Kind, Vege
         entries.matrices[indices[0]].elements[13],
         (z + 0.5) * chunkSize,
       );
-      if (kind === 'rocks') {
+      if (kind !== 'trees') {
         // Prefix counts then remain spatially uniform at every detail setting.
         indices.sort((a, b) => entries.shades[a] - entries.shades[b]);
       }
@@ -143,9 +167,9 @@ export function addVegetation(plants: THREE.Group, placements: Record<Kind, Vege
             mesh.setMatrixAt(i, entries.matrices[index]);
             mesh.setColorAt(i, tint.setScalar(0.78 + entries.shades[index] * 0.22));
           });
-          if (kind === 'rocks') mesh.userData.groundCoverCount = indices.length;
+          if (kind !== 'trees') mesh.userData.groundCoverCount = indices.length;
           mesh.castShadow = level === 0;
-          mesh.receiveShadow = true;
+          mesh.receiveShadow = level === 0;
           mesh.computeBoundingSphere();
           group.add(mesh);
         }
@@ -170,7 +194,25 @@ export function addVegetation(plants: THREE.Group, placements: Record<Kind, Vege
     const parts = detailed[species];
     batches('trees', mixed[i], parts, [cutout(species, parts, atlases[species])], species);
   }
-  batches('bush', placements.bush, detailed.bush, [cutout('bush', detailed.bush, bushAtlas)]);
+  const bushes = bushSpecies.map(() => ({
+    matrices: [] as THREE.Matrix4[],
+    shades: [] as number[],
+  }));
+  placements.bush.matrices.forEach((matrix, i) => {
+    const shade = placements.bush.shades[i];
+    const entry = bushes[Math.min(bushSpecies.length - 1, Math.floor(shade * bushSpecies.length))];
+    entry.matrices.push(matrix);
+    entry.shades.push((shade * bushSpecies.length) % 1);
+  });
+  for (const [i, species] of bushSpecies.entries()) {
+    batches(
+      'bush',
+      bushes[i],
+      detailed[species],
+      [cutout(species, detailed[species], atlases[species])],
+      species,
+    );
+  }
   const rocks = ['rock1', 'rock2', 'rock3'] as const;
   const rockMaterial = new THREE.MeshStandardMaterial({
     map: vegetationTexture(rock1Url),

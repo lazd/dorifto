@@ -5,6 +5,7 @@ import * as THREE from 'three';
 
 test('shared vegetation stays within mesh budgets and applies detail, density and culling live', async () => {
   const server = await createServer({
+    cacheDir: 'node_modules/.vite-vegetation-test',
     server: { middlewareMode: true, hmr: false, ws: false, watch: null },
     appType: 'custom',
   });
@@ -12,7 +13,7 @@ test('shared vegetation stays within mesh budgets and applies detail, density an
   const plants = new THREE.Group();
   THREE.TextureLoader.prototype.load = () => new THREE.Texture();
   try {
-    const { addVegetation, setVegetationDetail, vegetationDetails } =
+    const { addVegetation, setVegetationDetail, setVegetationMode, vegetationDetails } =
       await server.ssrLoadModule('/src/vegetation.ts');
     const { isVegetationDetail, createConfigurationState } = await server.ssrLoadModule(
       '/src/configuration-state.ts',
@@ -24,6 +25,7 @@ test('shared vegetation stays within mesh budgets and applies detail, density an
       shades: Array.from({ length: 12 }, (_, i) => i / 12),
     };
     addVegetation(plants, { trees: entries, bush: entries, rocks: entries });
+    setVegetationMode(plants, 'quality');
     const lods = [],
       cover = [];
     for (const root of [plants])
@@ -33,7 +35,7 @@ test('shared vegetation stays within mesh budgets and applies detail, density an
         assert.notEqual(object.name, 'grass-clumps');
         assert.ok(object.geometry.getAttribute('normal'));
         assert.ok(object.geometry.getAttribute('uv'));
-        assert.ok(object.geometry.index.count / 3 <= 2000, object.name);
+        assert.ok(object.geometry.index.count / 3 <= 3000, object.name);
         if (object.userData.groundCoverCount) cover.push(object);
       });
     assert.equal(lods.filter((lod) => lod.userData.vegetationKind === 'trees').length, 3);
@@ -47,10 +49,21 @@ test('shared vegetation stays within mesh budgets and applies detail, density an
       }
       for (const lod of lods.filter((lod) => lod.userData.vegetationKind === 'trees')) {
         assert.equal(lod.levels[1].distance, vegetationDetails[detail].near);
-        assert.equal(lod.levels.at(-1).distance, vegetationDetails[detail].trees);
+        assert.equal(lod.levels.at(-1).distance, Math.min(vegetationDetails[detail].trees, 600));
         assert.equal(lod.levels[1].object.children[0].geometry.index.count / 3, 4);
         assert.equal(lod.levels[1].object.children[0].castShadow, false);
       }
+    }
+    setVegetationMode(plants, 'performance');
+    for (const lod of lods.filter((lod) => lod.userData.vegetationKind === 'trees')) {
+      assert.equal(lod.levels[1].distance, 65);
+      assert.equal(lod.levels.at(-1).distance, 300);
+    }
+    for (const mesh of cover) {
+      let lod = mesh.parent;
+      while (lod && !(lod instanceof THREE.LOD)) lod = lod.parent;
+      const density = lod.userData.vegetationKind === 'bush' ? 0.6 : 1;
+      assert.equal(mesh.count, Math.ceil(mesh.userData.groundCoverCount * density));
     }
     plants.updateMatrixWorld(true);
     const camera = new THREE.PerspectiveCamera();

@@ -2,8 +2,9 @@
 import { createServer } from 'vite';
 import { writeFile } from 'node:fs/promises';
 
-const species = new Set(['pine', 'oak', 'fir', 'bush']);
+const species = new Set(['pine', 'oak', 'aspen', 'bushPine', 'bushAsh', 'bushAspen']);
 const server = await createServer({
+  cacheDir: 'node_modules/.vite-vegetation-bake',
   server: { port: 8790, strictPort: true },
   plugins: [
     {
@@ -23,7 +24,7 @@ const server = await createServer({
               response.end('ok');
               species.delete(name);
               if (!species.size) {
-                console.log('All four tree atlases baked.');
+                console.log('All six vegetation atlases baked.');
                 setTimeout(() => {
                   void vite.close();
                 }, 500);
@@ -71,7 +72,7 @@ try {
     const response = await fetch('/bake?species=' + species, { method: 'POST', body: blob });
     if (!response.ok) throw new Error(await response.text());
   }
-  document.querySelector('#status').textContent = 'Baked all four species.';
+  document.querySelector('#status').textContent = 'Baked all six species.';
 } catch (error) { document.querySelector('#status').textContent = error.stack; console.error(error); }
 </script></body></html>`);
           } catch (error) {
