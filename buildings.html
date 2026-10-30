@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Dorifto — Building styles</title>
+    <script type="module" crossorigin src="./assets/buildings-Ch_6qUrf.js"></script>
+    <link rel="modulepreload" crossorigin href="./assets/three.core-BREHV5Uh.js">
+    <link rel="modulepreload" crossorigin href="./assets/OrbitControls-BE0QgZI0.js">
+    <link rel="modulepreload" crossorigin href="./assets/scenery-ndbG7i5M.js">
+    <link rel="stylesheet" crossorigin href="./assets/buildings-DkdX_2-M.css">
+  </head>
+  <body>
+    <main>
+      <header class="demo-toolbar">
+        <div>
+          <h1>Little houses, big variety</h1>
+          <p>Drag to orbit · Scroll to zoom · Right-drag to pan</p>
+        </div>
+        <button id="reset-view" type="button">Reset view</button>
+      </header>
+      <div id="building-view" aria-label="Interactive 3D building style gallery"></div>
+      <nav id="building-labels" aria-label="Focus a building style"></nav>
+      <p class="demo-caption">Click a style to inspect it. Shared game geometry and textures.</p>
+      <p id="demo-error" role="alert" hidden></p>
+    </main>
+  </body>
+</html>

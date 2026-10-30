@@ -6,8 +6,11 @@
     <meta name="theme-color" content="#10191f" />
     <meta name="referrer" content="no-referrer" />
     <title>Dorifto — Z32 Playground</title>
-    <script type="module" crossorigin src="./assets/game-CeuDTCft.js"></script>
-    <link rel="modulepreload" crossorigin href="./assets/course-builder-storage-BpmAk4NS.js">
+    <script type="module" crossorigin src="./assets/game-D4exAMEZ.js"></script>
+    <link rel="modulepreload" crossorigin href="./assets/three.core-BREHV5Uh.js">
+    <link rel="modulepreload" crossorigin href="./assets/OrbitControls-BE0QgZI0.js">
+    <link rel="modulepreload" crossorigin href="./assets/scenery-ndbG7i5M.js">
+    <link rel="modulepreload" crossorigin href="./assets/course-builder-storage-BFKuprAS.js">
     <link rel="stylesheet" crossorigin href="./assets/course-builder-storage-DO3y67q4.css">
     <link rel="stylesheet" crossorigin href="./assets/game-BYZdfnl-.css">
   </head>
@@ -1343,9 +1346,10 @@
               </section>
               <section class="illustrated-setting">
                 <div class="field">
-                  <label for="show-vegetation">Trees and shrubs</label>
+                  <label for="show-vegetation">Trees, shrubs and rocks</label>
                   <p id="vegetation-description">
-                    Procedural vegetation scattered within mapped landcover areas.
+                    Mixed tree species and ground cover placed using satellite canopy and mapped
+                    landcover.
                   </p>
                   <input
                     class="switch"
@@ -1354,6 +1358,19 @@
                     type="checkbox"
                     aria-describedby="vegetation-description"
                   />
+                </div>
+              </section>
+              <section class="illustrated-setting">
+                <div class="field">
+                  <label for="vegetation-detail">Vegetation detail</label>
+                  <p id="vegetation-detail-description">
+                    Detail, draw distance and density of trees, shrubs and rocks.
+                  </p>
+                  <select id="vegetation-detail" aria-describedby="vegetation-detail-description">
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                  </select>
                 </div>
               </section>
               <section class="illustrated-setting">
@@ -1527,7 +1544,7 @@
           <button class="button button-secondary" type="submit" form="bots-dialog-close">
             Cancel
           </button>
-          <button class="button button-primary bots-apply" type="button">Start race</button>
+          <button class="button button-primary bots-apply" type="button">Apply</button>
         </div>
       </div>
     </dialog>
