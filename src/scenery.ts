@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
+import { mergeVertices } from './merge-vertices';
 import { courseShoulderWidth, type CourseDefinition } from './courses';
 import type { CourseTerrain } from './terrain';
 import { projectTerrainGeometry } from './terrain';
@@ -2567,6 +2567,24 @@ export function* createSceneryTask(
     });
     const groundPaint = new Batch(),
       deckPaint = new Batch();
+    // Neighboring paint vertices share one wide query, filtered to each vertex's own 20 m reach.
+    let nearby:
+      | { x: number; z: number; segments: ReturnType<typeof roadSegments.query> }
+      | undefined;
+    const nearbySegments = (x: number, z: number) => {
+      if (!nearby || Math.abs(x - nearby.x) > 16 || Math.abs(z - nearby.z) > 16)
+        nearby = {
+          x,
+          z,
+          segments: roadSegments.query({
+            minX: x - 36,
+            maxX: x + 36,
+            minZ: z - 36,
+            maxZ: z + 36,
+          }),
+        };
+      return nearby.segments;
+    };
     for (let i = 0; i < batch.positions.length; i += 9) {
       if (i && i % (projectionSlice * 9) === 0) yield progress(0.2 * (i / batch.positions.length));
       const vertices = [0, 3, 6].map((j) => ({
@@ -2618,23 +2636,31 @@ export function* createSceneryTask(
         if (batch === groundEdgeBatch) {
           let nearest = Infinity;
           let road: RoadProfile | undefined;
-          for (const { a, b, profile, distance } of roadSegments.query({
-            minX: point.x - 20,
-            maxX: point.x + 20,
-            minZ: point.z - 20,
-            maxZ: point.z + 20,
-          })) {
-            if (!profile.major || profile.road.structure) continue;
+          for (const { a, b, profile, distance, minX, maxX, minZ, maxZ } of nearbySegments(
+            point.x,
+            point.z,
+          )) {
+            if (
+              minX > point.x + 20 ||
+              maxX < point.x - 20 ||
+              minZ > point.z + 20 ||
+              maxZ < point.z - 20 ||
+              !profile.major ||
+              profile.road.structure
+            )
+              continue;
             const dx = b.x - a.x,
               dz = b.z - a.z;
+            const along = segmentDistance(point.x, point.z, a, b);
+            // Road widths are capped at 20 m, so a segment this far can't beat the current best.
+            if (along - 10 >= nearest) continue;
             const t = THREE.MathUtils.clamp(
               ((point.x - a.x) * dx + (point.z - a.z) * dz) / (dx * dx + dz * dz),
               0,
               1,
             );
             const edgeDistance = Math.abs(
-              segmentDistance(point.x, point.z, a, b) -
-                roadWidthAt(profile, distance + t * Math.hypot(dx, dz)) / 2,
+              along - roadWidthAt(profile, distance + t * Math.hypot(dx, dz)) / 2,
             );
             if (edgeDistance >= nearest) continue;
             nearest = edgeDistance;
