@@ -29,7 +29,7 @@ function yieldToBrowser() {
 export async function runAsync<T>(
   task: LoadTask<T>,
   onStep: (step: LoadStep) => void,
-  sliceMs = 250,
+  sliceMs = 40,
 ): Promise<T> {
   let sliceStart = performance.now();
   while (true) {

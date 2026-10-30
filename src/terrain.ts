@@ -1403,6 +1403,7 @@ export function projectTerrainGeometry(
       name,
       source: source.getAttribute(name),
       values: [] as number[],
+      corners: [0, 0, 0] as [number, number, number],
     }))
     .filter(({ source }) => source);
   function* gridTriangles({ minX, maxX, minZ, maxZ }: ProjectionBounds) {
@@ -1421,54 +1422,93 @@ export function projectTerrainGeometry(
           });
       }
   }
-  function clip(polygon: Point[], a: Point, b: Point) {
-    const side = (p: Point) => (b.x - a.x) * (p.z - a.z) - (b.z - a.z) * (p.x - a.x);
-    const result: Point[] = [];
-    for (let i = 0; i < polygon.length; i++) {
-      const p = polygon[i];
-      const q = polygon[(i + 1) % polygon.length];
-      const dp = side(p);
-      const dq = side(q);
-      if (dp >= 0) result.push(p);
+  // Polygons are flat x, z pairs in scratch arrays, so clipping allocates nothing per terrain triangle.
+  const scratch: [number[], number[]] = [[], []];
+  function clip(
+    source: number[],
+    target: number[],
+    ax: number,
+    az: number,
+    bx: number,
+    bz: number,
+  ) {
+    target.length = 0;
+    const count = source.length / 2;
+    for (let i = 0; i < count; i++) {
+      const j = (i + 1) % count;
+      const px = source[i * 2],
+        pz = source[i * 2 + 1],
+        qx = source[j * 2],
+        qz = source[j * 2 + 1];
+      const dp = (bx - ax) * (pz - az) - (bz - az) * (px - ax);
+      const dq = (bx - ax) * (qz - az) - (bz - az) * (qx - ax);
+      if (dp >= 0) target.push(px, pz);
       if (dp < 0 !== dq < 0) {
         const t = dp / (dp - dq);
-        result.push({ x: p.x + t * (q.x - p.x), z: p.z + t * (q.z - p.z) });
+        target.push(px + t * (qx - px), pz + t * (qz - pz));
       }
     }
-    return result;
   }
   for (let i = 0; i < (index?.count ?? attribute.count); i += 3) {
     const vertices = [0, 1, 2].map((j) => (index ? index.getX(i + j) : i + j));
-    const triangle = vertices.map((v) => ({
-      x: attribute.getX(v),
-      z: attribute.getZ(v),
-    }));
-    const [a, b, c] = triangle;
-    const area = (b.x - a.x) * (c.z - a.z) - (c.x - a.x) * (b.z - a.z);
+    const [va, vb, vc] = vertices;
+    const ax = attribute.getX(va),
+      az = attribute.getZ(va),
+      bx = attribute.getX(vb),
+      bz = attribute.getZ(vb),
+      cx = attribute.getX(vc),
+      cz = attribute.getZ(vc);
+    const area = (bx - ax) * (cz - az) - (cx - ax) * (bz - az);
     if (Math.abs(area) < 1e-8) continue;
-    const scalarAt = (scalar: Pick<THREE.BufferAttribute, 'getX'>, p: Point) => {
-      if (!area) return 0;
-      const wb = ((p.x - a.x) * (c.z - a.z) - (c.x - a.x) * (p.z - a.z)) / area;
-      const wc = ((b.x - a.x) * (p.z - a.z) - (p.x - a.x) * (b.z - a.z)) / area;
-      const [la, lb, lc] = vertices.map((v) => scalar.getX(v));
-      return la + (lb - la) * wb + (lc - la) * wc;
+    // Barycentric weights of `p` in this source triangle, applied to any per-vertex value.
+    let wb = 0,
+      wc = 0;
+    const weigh = (px: number, pz: number) => {
+      wb = ((px - ax) * (cz - az) - (cx - ax) * (pz - az)) / area;
+      wc = ((bx - ax) * (pz - az) - (px - ax) * (bz - az)) / area;
     };
+    const blend = (la: number, lb: number, lc: number) => la + (lb - la) * wb + (lc - la) * wc;
+    const levels = [attribute.getY(va), attribute.getY(vb), attribute.getY(vc)] as const;
+    for (const scalar of scalars)
+      scalar.corners = [scalar.source!.getX(va), scalar.source!.getX(vb), scalar.source!.getX(vc)];
     const bounds = {
-      minX: Math.min(...triangle.map((p) => p.x)),
-      maxX: Math.max(...triangle.map((p) => p.x)),
-      minZ: Math.min(...triangle.map((p) => p.z)),
-      maxZ: Math.max(...triangle.map((p) => p.z)),
+      minX: Math.min(ax, bx, cx),
+      maxX: Math.max(ax, bx, cx),
+      minZ: Math.min(az, bz, cz),
+      maxZ: Math.max(az, bz, cz),
     };
     for (const corners of (renderedTriangles ?? gridTriangles)(bounds)) {
-      const points = [corners[0], corners[2], corners[1]];
-      const plane = new THREE.Plane().setFromCoplanarPoints(points[0], points[1], points[2]);
-      if (Math.abs(plane.normal.y) < 1e-8) continue;
-      const height = (p: Point) =>
-        -(plane.constant + plane.normal.x * p.x + plane.normal.z * p.z) / plane.normal.y;
-      let polygon = triangle;
-      for (let edge = 0; edge < 3 && polygon.length; edge++)
-        polygon = clip(polygon, points[edge], points[(edge + 1) % 3]);
-      const level = (p: Point) => scalarAt({ getX: (i: number) => attribute.getY(i) }, p);
+      const [c0, c1, c2] = corners;
+      // Buckets are coarser than triangles, so most candidates don't reach the source triangle.
+      if (
+        Math.max(c0.x, c1.x, c2.x) < bounds.minX ||
+        Math.min(c0.x, c1.x, c2.x) > bounds.maxX ||
+        Math.max(c0.z, c1.z, c2.z) < bounds.minZ ||
+        Math.min(c0.z, c1.z, c2.z) > bounds.maxZ
+      )
+        continue;
+      // The plane through (c0, c2, c1), unnormalized: height = -(d + nx * x + nz * z) / ny.
+      const ux = c1.x - c2.x,
+        uy = c1.y - c2.y,
+        uz = c1.z - c2.z;
+      const vx = c0.x - c2.x,
+        vy = c0.y - c2.y,
+        vz = c0.z - c2.z;
+      const nx = uy * vz - uz * vy,
+        ny = uz * vx - ux * vz,
+        nz = ux * vy - uy * vx;
+      if (Math.abs(ny / Math.hypot(nx, ny, nz)) < 1e-8) continue;
+      const d = -(nx * c0.x + ny * c0.y + nz * c0.z);
+      const height = (px: number, pz: number) => -(d + nx * px + nz * pz) / ny;
+      let polygon: number[] = [ax, az, bx, bz, cx, cz];
+      const points = [c0, c2, c1];
+      for (let edge = 0; edge < 3 && polygon.length; edge++) {
+        const target = polygon === scratch[0] ? scratch[1] : scratch[0];
+        const from = points[edge],
+          to = points[(edge + 1) % 3];
+        clip(polygon, target, from.x, from.z, to.x, to.z);
+        polygon = target;
+      }
       if (horizontal)
         for (const [depth, sign] of horizontal === 'river'
           ? [[0.025, -1]]
@@ -1476,27 +1516,36 @@ export function projectTerrainGeometry(
               [0.025, -1],
               [0.65, 1],
             ]) {
-          const output: Point[] = [];
-          polygon.forEach((p, i) => {
-            const q = polygon[(i + 1) % polygon.length];
-            const dp = (height(p) - level(p) + depth) * sign;
-            const dq = (height(q) - level(q) + depth) * sign;
-            if (dp >= 0) output.push(p);
+          const output: number[] = [];
+          const count = polygon.length / 2;
+          const side = (k: number) => {
+            weigh(polygon[k * 2], polygon[k * 2 + 1]);
+            return (height(polygon[k * 2], polygon[k * 2 + 1]) - blend(...levels) + depth) * sign;
+          };
+          for (let k = 0; k < count; k++) {
+            const m = (k + 1) % count;
+            const dp = side(k);
+            const dq = side(m);
+            if (dp >= 0) output.push(polygon[k * 2], polygon[k * 2 + 1]);
             if (dp >= 0 !== dq >= 0) {
               const t = dp / (dp - dq);
-              output.push({
-                x: p.x + (q.x - p.x) * t,
-                z: p.z + (q.z - p.z) * t,
-              });
+              output.push(
+                polygon[k * 2] + (polygon[m * 2] - polygon[k * 2]) * t,
+                polygon[k * 2 + 1] + (polygon[m * 2 + 1] - polygon[k * 2 + 1]) * t,
+              );
             }
-          });
+          }
           polygon = output;
         }
-      for (let j = 1; j < polygon.length - 1; j++) {
-        for (const p of [polygon[0], polygon[j], polygon[j + 1]]) {
-          positions.push(p.x, horizontal ? level(p) : height(p) + lift, p.z);
-          uv.push(p.x / 5, p.z / 5);
-          for (const scalar of scalars) scalar.values.push(scalarAt(scalar.source, p));
+      const count = polygon.length / 2;
+      for (let j = 1; j < count - 1; j++) {
+        for (const k of [0, j, j + 1]) {
+          const px = polygon[k * 2],
+            pz = polygon[k * 2 + 1];
+          weigh(px, pz);
+          positions.push(px, horizontal ? blend(...levels) : height(px, pz) + lift, pz);
+          uv.push(px / 5, pz / 5);
+          for (const scalar of scalars) scalar.values.push(blend(...scalar.corners));
         }
       }
     }

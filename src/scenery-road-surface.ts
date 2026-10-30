@@ -216,8 +216,16 @@ export class SceneryRoadSurface {
           dz = b.z - a.z;
         const length = dx * dx + dz * dz;
         if (!length) continue;
-        const t = MathUtils.clamp(((x - a.x) * dx + (z - a.z) * dz) / length, 0, 1);
-        let distance = Math.hypot(x - a.x - t * dx, z - a.z - t * dz) - width / 2;
+        const t = Math.min(1, Math.max(0, ((x - a.x) * dx + (z - a.z) * dz) / length));
+        const ox = x - a.x - t * dx,
+          oz = z - a.z - t * dz;
+        const squared = ox * ox + oz * oz;
+        // Without end planes the distance can only fall, so skip segments that can't beat `nearest`.
+        if (!endPlanes.length) {
+          const limit = nearest + width / 2;
+          if (limit <= 0 || squared >= limit * limit) continue;
+        }
+        let distance = Math.sqrt(squared) - width / 2;
         // A ground road stops at its abutment, not a round cap extending underneath the bridge.
         for (const plane of endPlanes)
           distance = Math.max(distance, (x - plane.x) * plane.dx + (z - plane.z) * plane.dz);
@@ -279,17 +287,19 @@ export class SceneryRoadSurface {
           dz = b.z - a.z;
         const length = dx * dx + dz * dz;
         if (!length) continue;
-        const t = MathUtils.clamp(((x - a.x) * dx + (z - a.z) * dz) / length, 0, 1);
-        const distance = Math.hypot(x - a.x - t * dx, z - a.z - t * dz);
-        if (distance >= nearest) continue;
-        nearest = distance;
+        const t = Math.min(1, Math.max(0, ((x - a.x) * dx + (z - a.z) * dz) / length));
+        const ox = x - a.x - t * dx,
+          oz = z - a.z - t * dz;
+        const squared = ox * ox + oz * oz;
+        if (squared >= nearest) continue;
+        nearest = squared;
         height = MathUtils.lerp(a.height, b.height, t);
         nearestX = a.x + t * dx;
         nearestZ = a.z + t * dz;
         directionX = dx / Math.sqrt(length);
         directionZ = dz / Math.sqrt(length);
       }
-      const distance = nearest;
+      const distance = Math.sqrt(nearest);
       const influence =
         1 - MathUtils.smoothstep(distance, width / 2 + 7, width / 2 + sceneryRoadBlendReach);
       if (!influence) continue;
