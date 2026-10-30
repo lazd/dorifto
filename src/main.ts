@@ -2029,6 +2029,31 @@ async function start() {
           best: laps.best,
           lastCones: laps.lastCones,
         };
+    const finished = replay
+      ? replay.recording.finished &&
+        replay.time >= (replay.recording.lapStarts[replay.recording.lapTimes.length] ?? Infinity)
+      : laps.finished;
+    const invalid = !replaying && laps.invalid;
+    const cones = replaying ? 0 : laps.conesHit;
+    const previousLapTelemetry = gameState.getState().lapTelemetry;
+    const lapTelemetry =
+      previousLapTelemetry.lap === timing.lap &&
+      previousLapTelemetry.finished === finished &&
+      previousLapTelemetry.invalid === invalid &&
+      previousLapTelemetry.last === timing.last &&
+      previousLapTelemetry.best === timing.best &&
+      previousLapTelemetry.cones === cones &&
+      previousLapTelemetry.lastCones === timing.lastCones
+        ? previousLapTelemetry
+        : {
+            lap: timing.lap,
+            finished,
+            invalid,
+            last: timing.last,
+            best: timing.best,
+            cones,
+            lastCones: timing.lastCones,
+          };
     const braking = replaying
       ? playbackFrame.braking && !reversing
       : watching
@@ -2038,19 +2063,13 @@ async function start() {
           : controls.brake > 0;
     gameState.update({
       controllerStatus: controls.controllerStatus,
+      lapTelemetry,
       telemetry: {
         speed: shownSpeed,
         rpm: engine.rpm,
         gear: engine.gear,
         limiter: engine.limiterCut,
-        ...timing,
-        finished: replay
-          ? replay.recording.finished &&
-            replay.time >=
-              (replay.recording.lapStarts[replay.recording.lapTimes.length] ?? Infinity)
-          : laps.finished,
-        invalid: !replaying && laps.invalid,
-        cones: replaying ? 0 : laps.conesHit,
+        current: timing.current,
         driving: spawnBrakeHeld
           ? 'brakes-held'
           : handbrake

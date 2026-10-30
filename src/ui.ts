@@ -1995,7 +1995,6 @@ export function bindGameUI(
   const hudVisibility = createHudVisibilityCycle();
   bindCourseHud();
   const speed = bindText('#speed');
-  const gear = bindText('#gear');
   const displayGear = bindSegmentedReadout('#gear-led', 1);
   const tachometer = bindTachometer();
   const speedUnitLabel = bindText('#speed-unit-label');
@@ -2036,9 +2035,6 @@ export function bindGameUI(
   const current = bindTextBlind('#lap-current');
   const currentLap = element('#lap-current');
   const best = bindText('#lap-best');
-  const record = element('.minimap-best');
-  let previousBest = game.getState().telemetry.best;
-  let recordAnimation: Animation | undefined;
   const controller = bindText('#controller-status');
   createDrivingTuning(element('#drift-tuning-sliders'), configuration, reportError);
   bindDialog('#tuning', '#drift-tuning');
@@ -2338,42 +2334,38 @@ export function bindGameUI(
   );
   game.subscribe(
     (state) => {
+      controller(state.controllerStatus);
+    },
+    ['controllerStatus'],
+  );
+  let previousGear: number | undefined;
+  game.subscribe(
+    (state) => {
       const t = state.telemetry;
       updateSpeed();
-      const displayedGear = t.gear < 0 ? 'R' : t.gear === 0 ? 'N' : String(t.gear);
-      gear(displayedGear);
-      displayGear(displayedGear);
-      lap(t.finished ? '🏁' : t.lap ? String(t.lap) : '--');
-      current(formatLapTime(t.lap ? t.current : null));
-      if (currentLap.classList.contains('is-invalid') !== t.invalid) {
+      if (t.gear !== previousGear) {
+        displayGear(t.gear < 0 ? 'R' : t.gear === 0 ? 'N' : String(t.gear));
+        previousGear = t.gear;
+      }
+      current(formatLapTime(state.lapTelemetry.lap ? t.current : null));
+    },
+    ['telemetry'],
+  );
+  let previousLapTelemetry: GameState['lapTelemetry'] | undefined;
+  game.subscribe(
+    ({ lapTelemetry: t }) => {
+      if (t.lap !== previousLapTelemetry?.lap || t.finished !== previousLapTelemetry?.finished) {
+        lap(t.finished ? '🏁' : t.lap ? String(t.lap) : '--');
+      }
+      if (t.invalid !== previousLapTelemetry?.invalid) {
         currentLap.classList.toggle('is-invalid', t.invalid);
         currentLap.setAttribute('aria-label', t.invalid ? 'Invalid lap time' : 'Current lap time');
         currentLap.title = t.invalid ? 'All four tires left the track: lap is invalid' : '';
       }
-      best(formatLapTime(t.best));
-      if (t.best !== previousBest) {
-        recordAnimation?.cancel();
-        if (
-          t.best !== null &&
-          (previousBest === null || t.best < previousBest) &&
-          state.lapRecorder.mode !== 'replay'
-        ) {
-          const gold = getComputedStyle(record).getPropertyValue('--record-color');
-          const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
-          recordAnimation = record.animate(
-            [
-              { color: gold, opacity: 1 },
-              { color: gold, opacity: reducedMotion ? 1 : 0.35 },
-              { color: gold, opacity: 1 },
-            ],
-            { duration: 500, iterations: 4, easing: 'ease-in-out' },
-          );
-        }
-        previousBest = t.best;
-      }
-      controller(state.controllerStatus);
+      if (t.best !== previousLapTelemetry?.best) best(formatLapTime(t.best));
+      previousLapTelemetry = t;
     },
-    ['telemetry', 'controllerStatus'],
+    ['lapTelemetry'],
   );
   return {
     getCourseWeights,

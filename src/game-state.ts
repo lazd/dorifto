@@ -37,14 +37,7 @@ export interface GameState {
     rpm: number;
     gear: number;
     limiter: boolean;
-    lap: number;
-    finished: boolean;
-    invalid: boolean;
     current: number;
-    last: number | null;
-    best: number | null;
-    cones: number;
-    lastCones: number | null;
     driving:
       | 'brakes-held'
       | 'handbrake'
@@ -54,6 +47,15 @@ export interface GameState {
       | 'burnout'
       | 'sliding'
       | 'driving';
+  }>;
+  lapTelemetry: Readonly<{
+    lap: number;
+    finished: boolean;
+    invalid: boolean;
+    last: number | null;
+    best: number | null;
+    cones: number;
+    lastCones: number | null;
   }>;
 }
 
@@ -70,15 +72,17 @@ export function createGameState() {
       rpm: idleRpm,
       gear: 1,
       limiter: false,
+      current: 0,
+      driving: 'brakes-held',
+    },
+    lapTelemetry: {
       lap: 0,
       finished: false,
       invalid: false,
-      current: 0,
       last: null,
       best: null,
       cones: 0,
       lastCones: null,
-      driving: 'brakes-held',
     },
   });
 }
