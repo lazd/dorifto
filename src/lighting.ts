@@ -321,9 +321,10 @@ export function createLighting(
     apply: applyTimeOfDay,
     setupMaterials,
     /** `clearDistance` pushes fog beyond that range, e.g. so the map view sees the whole course. */
-    update(clearDistance?: number) {
+    update(clearDistance?: number, treeDrawDistance = 0) {
       fog.near = clearDistance ?? fogNear;
-      fog.far = clearDistance === undefined ? fogFar : clearDistance * 2;
+      fog.far =
+        clearDistance === undefined ? Math.max(fogFar, treeDrawDistance + 500) : clearDistance * 2;
     },
   };
 }

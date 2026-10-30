@@ -16,11 +16,15 @@ import {
   vegetationTexture,
   type PlantSpecies,
 } from './vegetation-models';
+import { defaultTreeSettings, type TreeSettings } from './tree-settings';
 
-export type VegetationDetail = 'low' | 'medium' | 'high';
-export type VegetationMode = 'performance' | 'quality' | 'ultra';
 type Kind = 'trees' | 'bush' | 'rocks';
-type Part = { geometry: THREE.BufferGeometry; material: THREE.Material; name: string };
+type Part = {
+  geometry: THREE.BufferGeometry;
+  basicGeometry?: THREE.BufferGeometry;
+  material: THREE.Material;
+  name: string;
+};
 type VegetationTime = 'noon' | 'sunset' | 'night';
 const lightingAtlases = import.meta.glob<string>('./vegetation-assets/*-atlas-*.webp', {
   eager: true,
@@ -46,11 +50,7 @@ export interface VegetationPlacements {
   shades: number[];
 }
 
-export const vegetationDetails = {
-  low: { near: 0, trees: 500, ultraTrees: 180, bush: 85, rocks: 65, density: 0.35 },
-  medium: { near: 65, trees: 650, ultraTrees: 300, bush: 105, rocks: 105, density: 0.65 },
-  high: { near: 95, trees: 800, ultraTrees: 450, bush: 125, rocks: 160, density: 1 },
-} as const;
+const treeDensities = [0.2, 0.4, 0.65, 0.8, 1];
 
 const transitionWidth = 20;
 const chunkRadius = Math.SQRT2 * 32;
@@ -59,7 +59,6 @@ const cameraPosition = new THREE.Vector3();
 
 class PlantLOD extends THREE.LOD {
   override update(camera: THREE.Camera) {
-    super.update(camera);
     lodPosition.setFromMatrixPosition(this.matrixWorld);
     cameraPosition.setFromMatrixPosition(camera.matrixWorld);
     const zoom =
@@ -67,21 +66,15 @@ class PlantLOD extends THREE.LOD {
         ? camera.zoom
         : 1;
     const distance = lodPosition.distanceTo(cameraPosition) / zoom;
-    if (this.userData.vegetationMode === 'ultra') {
-      this.levels[0].object.visible = distance < this.levels[2].distance;
-      this.levels[1].object.visible = false;
-      this.levels[2].object.visible = !this.levels[0].object.visible;
-      return;
-    }
-    if (!this.userData.vegetationTransition) return;
-    if (
-      this.levels[1].distance > 0 &&
-      Math.abs(distance - this.levels[1].distance) < chunkRadius + transitionWidth / 2 &&
-      distance < this.levels[2].distance
-    ) {
-      this.levels[0].object.visible = true;
-      this.levels[1].object.visible = true;
-    }
+    const visible = distance < this.levels[2].distance;
+    const bakedOnly = this.userData.treeQuality === 1 || this.userData.trackBakedOnly;
+    const bakeDistance = this.levels[1].distance;
+    const overlap = this.userData.treeSmoothTransitions ? chunkRadius + transitionWidth / 2 : 0;
+    this.levels[0].object.visible =
+      visible && !bakedOnly && (bakeDistance === 0 || distance < bakeDistance + overlap);
+    this.levels[1].object.visible =
+      visible && (bakedOnly || (bakeDistance > 0 && distance >= bakeDistance - overlap));
+    this.levels[2].object.visible = !visible;
   }
 }
 
@@ -118,59 +111,48 @@ function transitionMaterial(source: THREE.Material, distant: boolean) {
   return material;
 }
 
-export function setVegetationTransition(parent: THREE.Object3D, enabled: boolean) {
-  parent.traverse((object) => {
-    if (!(object instanceof PlantLOD)) return;
-    object.userData.vegetationTransition = enabled;
-    applyDetail(object, object.userData.vegetationDetail ?? 'medium');
-  });
-}
-
-export function setVegetationMode(parent: THREE.Object3D, mode: VegetationMode) {
+export function setVegetationSettings(
+  parent: THREE.Object3D,
+  settings: Readonly<TreeSettings & { showGrass: boolean }>,
+) {
   parent.traverse((object) => {
     if (!(object instanceof THREE.LOD) || !object.userData.vegetationKind) return;
-    object.userData.vegetationMode = mode;
-    applyDetail(object, object.userData.vegetationDetail ?? 'medium');
+    const rocks = object.userData.vegetationKind === 'rocks';
+    object.visible = rocks ? settings.showGrass : settings.treeDrawDistance > 0;
+    const density = rocks ? 0.65 : treeDensities[settings.treeDensity - 1];
+    if (object instanceof PlantLOD) {
+      object.userData.treeQuality = settings.treeQuality;
+      object.userData.treeSmoothTransitions = settings.treeSmoothTransitions;
+      object.userData.trackBakedOnly = settings.treeNearTrackOnly && !object.userData.nearTrack;
+      object.levels[1].distance = settings.treeBakeDistance;
+      object.levels[2].distance = settings.treeDrawDistance;
+    }
+    const range =
+      settings.treeSmoothTransitions && settings.treeQuality > 1 && !object.userData.trackBakedOnly
+        ? settings.treeBakeDistance
+        : 0;
+    object.traverse((child) => {
+      if (!(child instanceof THREE.InstancedMesh)) return;
+      child.count = Math.ceil(child.userData.groundCoverCount * density);
+      if (child.userData.highGeometry) {
+        child.geometry =
+          settings.treeQuality === 2 ? child.userData.basicGeometry : child.userData.highGeometry;
+      }
+      const uniform = child.material.userData.vegetationRange;
+      if (uniform) uniform.value = range;
+    });
   });
 }
 
-function applyDetail(lod: THREE.LOD, detail: VegetationDetail) {
-  const settings = vegetationDetails[detail];
-  const kind = lod.userData.vegetationKind as Kind;
-  const performance = (lod.userData.vegetationMode ?? 'performance') === 'performance';
-  const ultra = lod.userData.vegetationMode === 'ultra';
-  if (kind === 'trees' || kind === 'bush') {
-    lod.levels[1].distance =
-      kind === 'trees'
-        ? Math.min(settings.near, performance ? 65 : 95)
-        : Math.min(settings.near, performance ? 30 : 55);
-    lod.levels[2].distance =
-      kind === 'trees'
-        ? ultra
-          ? settings.ultraTrees
-          : Math.min(settings.trees, performance ? 300 : 600)
-        : settings.bush;
-    if (ultra) lod.levels[1].distance = lod.levels[2].distance;
-  } else lod.levels[1].distance = settings.rocks;
-  lod.traverse((object) => {
-    if (object instanceof THREE.Mesh) {
-      const range = object.material.userData.vegetationRange;
-      if (range)
-        range.value = lod.userData.vegetationTransition && !ultra ? lod.levels[1].distance : 0;
-    }
-    if (!(object instanceof THREE.InstancedMesh) || !object.userData.groundCoverCount) return;
-    const density = settings.density * (kind === 'bush' && performance ? 0.6 : 1);
-    object.count = Math.ceil(object.userData.groundCoverCount * density);
-  });
-}
-
-export function setVegetationDetail(parent: THREE.Object3D, detail: VegetationDetail) {
-  parent.traverse((object) => {
-    if (object instanceof THREE.LOD && object.userData.vegetationKind) {
-      object.userData.vegetationDetail = detail;
-      applyDetail(object, detail);
-    }
-  });
+function basicFoliageGeometry(source: THREE.BufferGeometry) {
+  const geometry = source.clone();
+  const indices = source.getIndex()!;
+  const reduced: number[] = [];
+  // Keep complete leaf cards, not isolated triangles, so alpha-tested foliage remains intact.
+  for (let i = 0; i < indices.count; i += 24)
+    for (let j = 0; j < 12 && i + j < indices.count; j++) reduced.push(indices.getX(i + j));
+  geometry.setIndex(reduced);
+  return geometry;
 }
 
 function cutout(species: PlantSpecies, parts: Part[], url: string): Part {
@@ -224,7 +206,11 @@ function cutout(species: PlantSpecies, parts: Part[], url: string): Part {
   };
 }
 
-export function addVegetation(plants: THREE.Group, placements: Record<Kind, VegetationPlacements>) {
+export function addVegetation(
+  plants: THREE.Group,
+  placements: Record<Kind, VegetationPlacements>,
+  trackEdgeDistance: (x: number, z: number) => number,
+) {
   const detailed = detailedPlants();
   const sourceMaterials = new Set<THREE.Material>(
     Object.values(detailed).flatMap((parts) => parts.map((part) => part.material)),
@@ -249,13 +235,23 @@ export function addVegetation(plants: THREE.Group, placements: Record<Kind, Vege
     distant?: Part[],
     species?: PlantSpecies,
   ) {
+    let offTrackParts: Part[] | undefined;
+    let offTrackDistant: Part[] | undefined;
     if (distant) {
       distant.forEach((part) => sourceMaterials.add(part.material));
       parts = parts.map((part) => ({
         ...part,
         material: transitionMaterial(part.material, false),
       }));
+      offTrackParts = parts.map((part) => ({
+        ...part,
+        material: transitionMaterial(part.material, false),
+      }));
       distant = distant.map((part) => ({
+        ...part,
+        material: transitionMaterial(part.material, true),
+      }));
+      offTrackDistant = distant.map((part) => ({
         ...part,
         material: transitionMaterial(part.material, true),
       }));
@@ -268,24 +264,34 @@ export function addVegetation(plants: THREE.Group, placements: Record<Kind, Vege
       }
     }
     // Keep ownership even when a course has no placements for a particular model.
-    for (const part of [...parts, ...(distant ?? [])]) {
+    for (const part of [
+      ...parts,
+      ...(offTrackParts ?? []),
+      ...(distant ?? []),
+      ...(offTrackDistant ?? []),
+    ]) {
       resources.add(new THREE.Mesh(part.geometry, part.material));
+      if (part.basicGeometry) resources.add(new THREE.Mesh(part.basicGeometry, part.material));
     }
     if (!entries.matrices.length) return;
     const chunks = new Map<string, number[]>();
     const chunkSize = 64;
     entries.matrices.forEach((matrix, index) => {
-      const key = `${Math.floor(matrix.elements[12] / chunkSize)}/${Math.floor(matrix.elements[14] / chunkSize)}`;
+      const x = matrix.elements[12],
+        z = matrix.elements[14];
+      const nearTrack = distant && trackEdgeDistance(x, z) <= 20;
+      const key = `${Math.floor(x / chunkSize)}/${Math.floor(z / chunkSize)}/${nearTrack ? 1 : 0}`;
       const indices = chunks.get(key) ?? [];
       indices.push(index);
       chunks.set(key, indices);
     });
     const tint = new THREE.Color();
     for (const [key, indices] of chunks) {
-      const [x, z] = key.split('/').map(Number);
+      const [x, z, nearTrack] = key.split('/').map(Number);
       const lod = distant ? new PlantLOD() : new THREE.LOD();
       lod.name = `${kind}-lod`;
       lod.userData.vegetationKind = kind;
+      lod.userData.nearTrack = Boolean(nearTrack);
       if (species) lod.userData.treeSpecies = species;
       lod.position.set(
         (x + 0.5) * chunkSize,
@@ -294,10 +300,16 @@ export function addVegetation(plants: THREE.Group, placements: Record<Kind, Vege
       );
       // Prefix counts then remain spatially uniform at every detail setting.
       indices.sort((a, b) => entries.shades[a] - entries.shades[b]);
-      for (const [level, meshes] of [parts, ...(distant ? [distant] : [])].entries()) {
+      const baked = nearTrack ? distant : offTrackDistant;
+      const meshes = nearTrack ? parts : (offTrackParts ?? parts);
+      for (const [level, levelParts] of [meshes, ...(baked ? [baked] : [])].entries()) {
         const group = new THREE.Group();
-        for (const part of meshes) {
+        for (const part of levelParts) {
           const mesh = new THREE.InstancedMesh(part.geometry, part.material, indices.length);
+          if (part.basicGeometry) {
+            mesh.userData.highGeometry = part.geometry;
+            mesh.userData.basicGeometry = part.basicGeometry;
+          }
           mesh.name = part.name;
           mesh.position.copy(lod.position).multiplyScalar(-1);
           indices.forEach((index, i) => {
@@ -306,13 +318,13 @@ export function addVegetation(plants: THREE.Group, placements: Record<Kind, Vege
           });
           mesh.userData.groundCoverCount = indices.length;
           mesh.castShadow = level === 0;
-          mesh.receiveShadow = level === 0;
+          mesh.receiveShadow = level === 0 && part.name !== 'tree-crowns' && part.name !== 'shrubs';
           mesh.computeBoundingSphere();
           group.add(mesh);
         }
         lod.addLevel(group, level ? 105 : 0, 0.1);
       }
-      lod.addLevel(new THREE.Group(), kind === 'trees' ? 650 : 100, 0.1);
+      lod.addLevel(new THREE.Group(), distant ? defaultTreeSettings.treeDrawDistance : 105, 0.1);
       plants.add(lod);
     }
   }
@@ -328,7 +340,10 @@ export function addVegetation(plants: THREE.Group, placements: Record<Kind, Vege
     entry.shades.push((shade * 3) % 1);
   });
   for (const [i, species] of treeSpecies.entries()) {
-    const parts = detailed[species];
+    const parts = detailed[species].map((part) => ({
+      ...part,
+      basicGeometry: part.name === 'tree-trunks' ? undefined : basicFoliageGeometry(part.geometry),
+    }));
     batches('trees', mixed[i], parts, [cutout(species, parts, atlases[species])], species);
   }
   const bushes = bushSpecies.map(() => ({
@@ -345,7 +360,11 @@ export function addVegetation(plants: THREE.Group, placements: Record<Kind, Vege
     batches(
       'bush',
       bushes[i],
-      detailed[species],
+      detailed[species].map((part) => ({
+        ...part,
+        basicGeometry:
+          part.name === 'tree-trunks' ? undefined : basicFoliageGeometry(part.geometry),
+      })),
       [cutout(species, detailed[species], atlases[species])],
       species,
     );
@@ -370,7 +389,7 @@ export function addVegetation(plants: THREE.Group, placements: Record<Kind, Vege
       },
     ]);
   }
-  setVegetationDetail(plants, 'medium');
+  setVegetationSettings(plants, { ...defaultTreeSettings, showGrass: true });
   sourceMaterials.forEach((material) => material.dispose());
   // Plants never move; hidden LODs otherwise recompute thousands of matrices each render.
   plants.updateWorldMatrix(true, true);

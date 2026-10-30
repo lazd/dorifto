@@ -274,6 +274,7 @@ export function createDrivingCamera(
     cameraStyle: ConfigurationState['cameraStyle'],
     reversing: boolean,
     cabinHeadMotion = true,
+    treeDrawDistance = 0,
   ) {
     if (mapShown) {
       // Resume the driving camera from its saved pose, not from the map.
@@ -377,7 +378,7 @@ export function createDrivingCamera(
     previousCameraStyle = cameraStyle;
     mapShown = controls.mapView;
     if (mapShown) showMap(dt);
-    else setClipping(near);
+    else setClipping(near, Math.max(drivingFar, treeDrawDistance + 500));
   }
 
   function setClipping(near: number, far = drivingFar) {

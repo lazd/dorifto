@@ -17,7 +17,8 @@ import { buildBridgeGeometry, createBridgeMeshes } from './bridges';
 import { createStopSignFactory } from './turn-sign';
 import * as polygonClipping from './polygon-boolean';
 import { runSync, type LoadStep, type LoadTask } from './load-task';
-import { addVegetation, setVegetationDetail, type VegetationDetail } from './vegetation';
+import { addVegetation, setVegetationSettings } from './vegetation';
+import type { TreeSettings } from './tree-settings';
 import {
   buildingAppearance,
   buildingFlatRoofColumn,
@@ -506,8 +507,8 @@ export function* createSceneryTask(
   };
   const result = {
     group,
-    setVegetationDetail(detail: VegetationDetail) {
-      setVegetationDetail(layers.vegetation, detail);
+    setVegetationSettings(settings: Readonly<TreeSettings & { showGrass: boolean }>) {
+      setVegetationSettings(layers.vegetation, settings);
     },
     collisionMesh: undefined as TriangleMeshData | undefined,
     roadMesh: undefined as TriangleMeshData | undefined,
@@ -3053,11 +3054,21 @@ export function* createSceneryTask(
         }
       }
     }
-    addVegetation(layers.vegetation, {
-      trees: { matrices: trees, shades },
-      bush: { matrices: shrubs, shades: shrubShades },
-      rocks: { matrices: rockMatrices, shades: rockShades },
-    });
+    const trackSurface = completeMap
+      ? new TerrainSurface(query.segments, query.halfWidth, query.padRadius)
+      : surface;
+    addVegetation(
+      layers.vegetation,
+      {
+        trees: { matrices: trees, shades },
+        bush: { matrices: shrubs, shades: shrubShades },
+        rocks: { matrices: rockMatrices, shades: rockShades },
+      },
+      (x, z) =>
+        definition.padRadius !== undefined
+          ? Math.hypot(x, z) - definition.padRadius
+          : trackSurface.nearest(x, z).distance - halfWidth,
+    );
     return result;
   }
   const chunks = new Map<string, { lod: THREE.LOD; plants: THREE.Group }>();

@@ -19,6 +19,7 @@ import {
 } from './turn-sign';
 import { createTrainingGates } from './racing-line';
 import type { ConfigurationState, LapGateMode } from './configuration-state';
+import type { TreeSettings } from './tree-settings';
 import { createTrainingGateGeometry, createTrainingGateMaterial } from './training-gates';
 import { createSceneryTask } from './scenery';
 import { runSync, scaleTask } from './load-task';
@@ -595,14 +596,14 @@ if (diffuseColor.a < ${material.transparent ? '0.01' : '0.5'}) discard;`,
     setScenery(
       settings: Pick<
         ConfigurationState,
-        'showBuildings' | 'showWater' | 'showVegetation' | 'showNearbyRoads' | 'vegetationDetail'
-      >,
+        'showBuildings' | 'showWater' | 'showGrass' | 'showNearbyRoads'
+      > &
+        TreeSettings,
     ) {
       scenery.setVisible('buildings', settings.showBuildings);
       scenery.setVisible('water', settings.showWater);
-      scenery.setVisible('vegetation', settings.showVegetation);
       scenery.setVisible('nearbyRoads', settings.showNearbyRoads);
-      scenery.setVegetationDetail(settings.vegetationDetail);
+      scenery.setVegetationSettings(settings);
       junctionsVisible.value = terrain.sceneryRoadsVisible.value = settings.showNearbyRoads ? 1 : 0;
     },
     turnSignGroups: [...turnSignGroups, scenery.stopSignGroup],

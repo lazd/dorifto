@@ -430,7 +430,7 @@ See [the implementation plan](docs/bot-drivers.md) for architecture and mileston
 ## UI and game state
 
 The toolbar's **Settings** button opens a modal with **Controls**, **Audio**, **Video**,
-**Camera**, **HUD & aids**, and **Track** categories. Drive mode and tuning profiles live in
+**Camera**, **HUD & aids**, **Track**, and **Map** categories. Drive mode and tuning profiles live in
 **Tuning**, opened by the toolbar button showing the current mode and profile.
 The **Bots** action lives in the race standings panel, including when driving alone.
 Settings and tuning
@@ -529,9 +529,28 @@ and signs have collision. Existing OSM/OpenFreeMap attribution is retained in ex
 Open [buildings.html](./buildings.html) for an orbitable gallery of single and joined-section building styles,
 using the same geometry and textures as the game.
 
-Settings > Track has independent **Buildings**, **Water**, **Trees and shrubs**, and
-**Nearby roads** switches (`?buildings=off`, `?water=off`, `?vegetation=off`,
-`?nearby-roads=off`). Hiding buildings removes their collision too; hiding nearby roads
+Settings > Map has independent **Buildings**, **Water**, and **Grass & rocks**
+switches (`?buildings=off`, `?water=off`, `?grass=off`). Its **Trees** section also controls shrubs:
+
+- **Tree draw distance**: 0 (off) to 5 km, in 50 m steps. Off disables the other tree controls.
+- **Tree density**: 1 to 5; higher values retain more of the deterministic plant placements.
+- **Tree quality**: Low uses baked trees only; Medium uses meshes with reduced foliage geometry;
+  High uses the full meshes.
+- **Bake distance**: 0 to 5 km, in 50 m steps. Meshes render inside this distance and baked trees
+  beyond it; 0 means meshes only. Disabled at Low quality.
+- **Smooth transitions** blends baked trees and meshes, and defaults to on.
+- **Quality trees near track only** defaults to on. Only trees and shrubs within 20 m of
+  the track edge can use meshes; all others stay baked, even with Bake distance set to 0.
+  Toggle with `tree-near-track-only=on|off`.
+
+Defaults are 600 m draw distance, density 3, High quality, and 150 m bake distance.
+The sliders use `tree-draw-distance`, `tree-density`, `tree-quality` (1–3), and
+`tree-bake-distance` URL parameters; smooth transitions use `tree-transition=on|off`.
+Defaults are not added to the URL until a control changes. Older vegetation URLs remain supported.
+Shrubs follow tree controls; rocks follow the grass switch independently.
+
+Settings > Track retains **Nearby roads** (`?nearby-roads=off`), cones, kerbs, turn signs, and
+road-edge dirt. Hiding buildings removes their collision too; hiding nearby roads
 also removes their road collision and stop signs. Junction cones remain enabled independently
 of the regular course cone-density setting in corridor mode.
 Nearby-road surfaces share indexed vertices and are split into spatial chunks so off-screen
@@ -679,9 +698,10 @@ side roads and parking areas, while water continues beneath bridges. This is sta
 map-loading work, not a per-frame projection.
 Vegetation classification respects specific landcover
 subclasses, including scrub within a broader grass class.
-Trees and shrubs use smooth-shaded, rounded silhouettes with baked foliage color variation.
-Shared instanced meshes keep foliage to at most 160 triangles per crown, without transparent
-leaf layers, animated noise, or per-frame geometry updates.
+Trees and shrubs share instanced meshes and baked distant silhouettes. Medium quality retains
+fewer complete leaf-card pairs than High, reducing mesh geometry without rebuilding placements.
+Density changes adjust instance counts; no geometry or DOM is rebuilt per frame.
+Mesh foliage casts shadows but does not receive them, avoiding headlight shadow flicker.
 Edit and save an older scenery map to refresh landcover classification; Save is enabled
 when the saved scenery needs this upgrade.
 
@@ -691,7 +711,7 @@ from physics;
 Inactive roadside cones and hidden sign variants are created outside the collision world,
 avoiding expensive overlapping broadphase pairs during map loading. Enabling them later
 registers their already-positioned bodies normally.
-**Grass tufts** off (`?grass=off`) hides the decorative blades. Both help
+**Grass & rocks** off (`?grass=off`) hides the decorative blades and landscaped rocks. Both help
 performance on long imported tracks, which carry hundreds of cones.
 **Road-edge dirt** off (`?road-edge-dirt=off`) hides the decorative dirt and pebbles
 spilled onto the pavement without changing grip or collisions. It defaults to on

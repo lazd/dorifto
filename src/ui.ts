@@ -28,7 +28,7 @@ import {
   type RunSummary,
 } from './lap-recording';
 import './course-picker.css';
-import { bindSettingsLayout } from './settings';
+import { bindSettingsLayout, bindTreeSettings } from './settings';
 import { bindControlsSettings } from './controls-settings';
 import {
   isCameraStyle,
@@ -40,7 +40,6 @@ import {
   isPixelRatio,
   isSpeedUnit,
   isTerrainShadows,
-  isVegetationDetail,
   isTimeOfDay,
   type ConfigurationState,
   type LapGateMode,
@@ -2052,6 +2051,7 @@ export function bindGameUI(
   bindDialog('#tuning', '#drift-tuning');
   bindDialog('#settings', '#settings-dialog');
   bindSettingsLayout();
+  bindTreeSettings(configuration, reportError);
   bindControlsSettings(reportError);
   bindDialog(
     '#bots',
@@ -2200,14 +2200,6 @@ export function bindGameUI(
     (terrainShadows) => ({ terrainShadows }),
     isTerrainShadows,
   );
-  select<ConfigurationState['vegetationDetail']>(
-    '#vegetation-detail',
-    'vegetation-detail',
-    'vegetationDetail',
-    (state) => state.vegetationDetail,
-    (vegetationDetail) => ({ vegetationDetail }),
-    isVegetationDetail,
-  );
   select<'on' | 'off'>(
     '#cabin-head-motion',
     'head-motion',
@@ -2273,14 +2265,6 @@ export function bindGameUI(
     'showWater',
     (state) => (state.showWater ? 'on' : 'off'),
     (value) => ({ showWater: value === 'on' }),
-    isToggle,
-  );
-  select<'on' | 'off'>(
-    '#show-vegetation',
-    'vegetation',
-    'showVegetation',
-    (state) => (state.showVegetation ? 'on' : 'off'),
-    (value) => ({ showVegetation: value === 'on' }),
     isToggle,
   );
   select<'on' | 'off'>(

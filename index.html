@@ -628,6 +628,9 @@
           >
             Track
           </button>
+          <button id="settings-map-tab" type="button" role="tab" aria-controls="settings-map-panel">
+            Map
+          </button>
         </div>
         <div class="category-panels">
           <section
@@ -1224,6 +1227,62 @@
             </div>
           </section>
           <section
+            id="settings-map-panel"
+            role="tabpanel"
+            aria-labelledby="settings-map-tab"
+            hidden
+          >
+            <h3>Map</h3>
+            <p>Landscape, buildings and vegetation.</p>
+            <div class="illustrated-settings">
+              <section class="illustrated-setting">
+                <div class="field">
+                  <label for="show-buildings">Buildings</label>
+                  <p id="buildings-description">
+                    Mapped building footprints with estimated heights. Turning this off also
+                    disables building collision.
+                  </p>
+                  <input
+                    class="switch"
+                    role="switch"
+                    id="show-buildings"
+                    type="checkbox"
+                    aria-describedby="buildings-description"
+                  />
+                </div>
+              </section>
+              <section class="illustrated-setting">
+                <div class="field">
+                  <label for="show-water">Water</label>
+                  <p id="water-description">Mapped lakes, rivers and streams.</p>
+                  <input
+                    class="switch"
+                    role="switch"
+                    id="show-water"
+                    type="checkbox"
+                    aria-describedby="water-description"
+                  />
+                </div>
+              </section>
+              <section class="illustrated-setting">
+                <div class="field">
+                  <label for="show-grass">Grass &amp; rocks</label>
+                  <p id="grass-description">Decorative grass clumps and landscaped rocks.</p>
+                  <input
+                    class="switch"
+                    role="switch"
+                    id="show-grass"
+                    type="checkbox"
+                    aria-describedby="grass-description"
+                  />
+                </div>
+              </section>
+            </div>
+            <h4>Trees</h4>
+            <p>Tree settings also apply to shrubs.</p>
+            <div id="tree-settings" class="illustrated-settings"></div>
+          </section>
+          <section
             id="settings-track-panel"
             role="tabpanel"
             aria-labelledby="settings-track-tab"
@@ -1314,64 +1373,6 @@
               </section>
               <section class="illustrated-setting">
                 <div class="field">
-                  <label for="show-buildings">Buildings</label>
-                  <p id="buildings-description">
-                    Mapped building footprints with estimated heights. Turning this off also
-                    disables building collision.
-                  </p>
-                  <input
-                    class="switch"
-                    role="switch"
-                    id="show-buildings"
-                    type="checkbox"
-                    aria-describedby="buildings-description"
-                  />
-                </div>
-              </section>
-              <section class="illustrated-setting">
-                <div class="field">
-                  <label for="show-water">Water</label>
-                  <p id="water-description">Mapped lakes, rivers and streams.</p>
-                  <input
-                    class="switch"
-                    role="switch"
-                    id="show-water"
-                    type="checkbox"
-                    aria-describedby="water-description"
-                  />
-                </div>
-              </section>
-              <section class="illustrated-setting">
-                <div class="field">
-                  <label for="show-vegetation">Trees, shrubs and rocks</label>
-                  <p id="vegetation-description">
-                    Mixed tree species and ground cover placed using satellite canopy and mapped
-                    landcover.
-                  </p>
-                  <input
-                    class="switch"
-                    role="switch"
-                    id="show-vegetation"
-                    type="checkbox"
-                    aria-describedby="vegetation-description"
-                  />
-                </div>
-              </section>
-              <section class="illustrated-setting">
-                <div class="field">
-                  <label for="vegetation-detail">Vegetation detail</label>
-                  <p id="vegetation-detail-description">
-                    Detail, draw distance and density of trees, shrubs and rocks.
-                  </p>
-                  <select id="vegetation-detail" aria-describedby="vegetation-detail-description">
-                    <option value="low">Low</option>
-                    <option value="medium">Medium</option>
-                    <option value="high">High</option>
-                  </select>
-                </div>
-              </section>
-              <section class="illustrated-setting">
-                <div class="field">
                   <label for="show-nearby-roads">Nearby roads</label>
                   <p id="nearby-roads-description">
                     Show saved nearby roads and their collision-enabled junction cones,
@@ -1448,34 +1449,6 @@
                       <ellipse cx="187" cy="68" rx="3" ry="2" transform="rotate(-35 187 68)" />
                       <ellipse cx="158" cy="31" rx="2.5" ry="1.5" />
                       <ellipse cx="206" cy="44" rx="2" ry="1.5" />
-                    </g>
-                  </svg>
-                </div>
-              </section>
-              <section class="illustrated-setting">
-                <div class="field">
-                  <label for="show-grass">Grass tufts</label>
-                  <p id="grass-description">Add small clumps of grass beside the track.</p>
-                  <input
-                    class="switch"
-                    role="switch"
-                    id="show-grass"
-                    type="checkbox"
-                    aria-describedby="grass-description"
-                  />
-                </div>
-                <div
-                  class="setting-illustration"
-                  role="img"
-                  aria-label="Illustration of small grass clumps beside the road"
-                >
-                  <svg viewBox="0 0 224 126" aria-hidden="true">
-                    <path class="illustration-road" d="M40 126 Q68 85 112 78 T190 26" />
-                    <path class="illustration-line" d="M40 126 Q68 85 112 78 T190 26" />
-                    <g class="illustration-grass">
-                      <path
-                        d="M34 80 L30 64 M34 80 L40 62 M34 80 L45 72 M70 56 L65 40 M70 56 L73 36 M70 56 L81 45 M147 116 L141 100 M147 116 L150 94 M147 116 L160 101 M178 91 L173 74 M178 91 L182 69 M178 91 L191 79"
-                      />
                     </g>
                   </svg>
                 </div>

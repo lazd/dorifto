@@ -54,6 +54,28 @@
   grid-column: 1 / -1;
 }
 
+.setting-range {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-2);
+}
+
+.setting-range > p,
+.setting-range > input {
+  grid-column: 1 / -1;
+}
+
+.setting-range > input {
+  width: 100%;
+  margin: 0;
+  accent-color: var(--color-accent);
+}
+
+.setting-value {
+  color: var(--color-accent);
+  font-variant-numeric: tabular-nums;
+}
+
 .setting-illustration {
   --illustration-road: #43525b;
   --illustration-line: #c0c8bc;

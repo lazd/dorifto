@@ -54,11 +54,11 @@ import {
   isPixelRatio,
   isSpeedUnit,
   isTerrainShadows,
-  isVegetationDetail,
   isTimeOfDay,
   readMirrorResolution,
   type ConfigurationState,
 } from './configuration-state';
+import { defaultTreeSettings, readTreeSettings, treeSliders } from './tree-settings';
 import { createGameState, type SavedRunOption } from './game-state';
 import { loadTuningPresets } from './tuning-presets';
 import {
@@ -257,7 +257,18 @@ async function start() {
       ) === 'on',
     pixelRatio: readOption('pixel-ratio', 'auto', isPixelRatio),
     terrainShadows: readOption('terrain-shadows', 'auto', isTerrainShadows),
-    vegetationDetail: readOption('vegetation-detail', 'medium', isVegetationDetail),
+    ...readParams(
+      [
+        ...treeSliders.map(({ parameter }) => parameter),
+        'tree-style',
+        'tree-transition',
+        'tree-near-track-only',
+        'vegetation-detail',
+        'vegetation',
+      ],
+      readTreeSettings,
+      defaultTreeSettings,
+    ),
     showFps:
       readOption(
         'fps',
@@ -270,7 +281,6 @@ async function start() {
     showRoadEdgeDirt: readToggle('road-edge-dirt'),
     showBuildings: readToggle('buildings'),
     showWater: readToggle('water'),
-    showVegetation: readToggle('vegetation'),
     showNearbyRoads: readToggle('nearby-roads'),
     lapGateMode: readOption('lap-gates', 'off', isLapGateMode),
     racingLineMode: readOption('race-line', 'off', isRacingLineMode),
@@ -666,8 +676,6 @@ async function start() {
       );
       drivingCamera.reset(spawn.heading);
       lighting.setupMaterials();
-      const { installTreeStylePreview } = await import('./tree-style-preview');
-      installTreeStylePreview(scene, (error) => showError(error, false));
       return { course, terrain: course.terrain, spawn, laps, physics, drivingCamera };
     } catch (error) {
       physics?.dispose(!botsOnly);
@@ -699,7 +707,7 @@ async function start() {
     ({ coneMode }) => {
       physics.setCones(coneMode !== 'off', coneMode === 'corners');
     },
-    ['coneMode'],
+    ['coneMode', 'showNearbyRoads'],
   );
   configurationState.subscribe(
     ({ turnSignMode }) => {
@@ -711,9 +719,16 @@ async function start() {
   configurationState.subscribe(
     (settings) => {
       course.setScenery(settings);
-      physics.setCones(settings.coneMode !== 'off', settings.coneMode === 'corners');
     },
-    ['showBuildings', 'showWater', 'showVegetation', 'showNearbyRoads', 'vegetationDetail'],
+    [
+      'showBuildings',
+      'showWater',
+      'showGrass',
+      'showNearbyRoads',
+      ...treeSliders.map(({ key }) => key),
+      'treeSmoothTransitions',
+      'treeNearTrackOnly',
+    ],
   );
   configurationState.subscribe(
     ({ showRoadEdgeDirt }) => course.setRoadEdgeDirt(showRoadEdgeDirt),
@@ -1867,8 +1882,9 @@ async function start() {
       cameraState.cameraStyle,
       reversing,
       cameraState.cabinHeadMotion,
+      cameraState.treeDrawDistance,
     );
-    lighting.update(controls.mapView ? camera.far : undefined);
+    lighting.update(controls.mapView ? camera.far : undefined, cameraState.treeDrawDistance);
     forward.set(0, 0, 1).applyQuaternion(car.chassis.quaternion);
     forward.y = 0;
     forward.normalize();

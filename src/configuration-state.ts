@@ -2,6 +2,7 @@ import type { DriveMode } from './drive-modes';
 import { createStore } from './store';
 import type { TurnSignMode } from './turn-sign';
 import { type StereoStationSelection } from './stereo';
+import { defaultTreeSettings, type TreeSettings } from './tree-settings';
 import {
   defaultTuning,
   defaultTuningPresets,
@@ -40,10 +41,6 @@ export function isPixelRatio(value: string): value is ConfigurationState['pixelR
 
 export function isTerrainShadows(value: string): value is ConfigurationState['terrainShadows'] {
   return value === 'auto' || value === 'on' || value === 'off';
-}
-
-export function isVegetationDetail(value: string): value is ConfigurationState['vegetationDetail'] {
-  return value === 'low' || value === 'medium' || value === 'high';
 }
 
 export function readMirrorResolution(
@@ -91,7 +88,7 @@ export function isRacingLineMode(value: string): value is ConfigurationState['ra
   return value === 'off' || value === 'full' || value === 'lane';
 }
 
-export interface ConfigurationState {
+export interface ConfigurationState extends TreeSettings {
   driveMode: DriveMode;
   profiles: Readonly<Record<DriveMode, DrivingTuning>>;
   selectedTuningPresets: Readonly<Record<DriveMode, string | null>>;
@@ -102,7 +99,6 @@ export interface ConfigurationState {
   passengerMirror: boolean;
   pixelRatio: 'auto' | '0.5' | '0.75' | '1' | '2';
   terrainShadows: 'auto' | 'on' | 'off';
-  vegetationDetail: import('./vegetation').VegetationDetail;
   showFps: boolean;
   minimapOrientation: 'north-up' | 'heading-up';
   speedUnit: 'mph' | 'kmh';
@@ -114,7 +110,6 @@ export interface ConfigurationState {
   showRoadEdgeDirt: boolean;
   showBuildings: boolean;
   showWater: boolean;
-  showVegetation: boolean;
   showNearbyRoads: boolean;
   lapGateMode: LapGateMode;
   racingLineMode: 'off' | 'full' | 'lane';
@@ -142,7 +137,7 @@ export function createConfigurationState(storage?: Storage) {
     passengerMirror: false,
     pixelRatio: 'auto',
     terrainShadows: 'auto',
-    vegetationDetail: 'medium',
+    ...defaultTreeSettings,
     showFps: false,
     courseReverse: false,
     coneMode: 'corners',
@@ -151,7 +146,6 @@ export function createConfigurationState(storage?: Storage) {
     showRoadEdgeDirt: true,
     showBuildings: true,
     showWater: true,
-    showVegetation: true,
     showNearbyRoads: true,
     lapGateMode: 'off',
     racingLineMode: 'off',
