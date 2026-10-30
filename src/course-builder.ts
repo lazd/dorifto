@@ -23,7 +23,6 @@ import {
   roadBuildSteps,
   roadDraftPoints,
   type MapDefinition,
-  type RoadBuildStep,
   type RoadMap,
 } from './course-builder-data';
 import type { GPSPoint } from './track-conversion.mjs';
@@ -31,10 +30,25 @@ import { courseShoulderWidth } from './courses';
 import { coursePreviewSvg } from './course-preview';
 import { defaultTerrainTransition } from './terrain';
 import { startTextSpinner } from './text-spinner';
+import { createBuildProgress } from './course-build-progress';
+import {
+  compressEditorDraft,
+  editorDraftURL,
+  readEditorDraft,
+  type EditorDraft,
+} from './course-builder-url';
 import { download } from './download';
 import type { BuildRequest, BuildResponse } from './course-builder-worker';
 import { matchRoadStructures } from './road-structures.mjs';
-import { completeMapSize, sceneryImportRevision } from './scenery-data';
+import { sceneryImportRevision } from './scenery-data';
+import {
+  completeMapBounds,
+  completeMapCorners,
+  defaultCompleteMapDimensions,
+  maximumCompleteMapArea,
+  validateCompleteMapDimensions,
+  type CompleteMapDimensions,
+} from './complete-map';
 import './course-builder.css';
 
 const embedded =
@@ -66,13 +80,16 @@ const importInput = element<HTMLInputElement>('import-file');
 const builder = document.querySelector<HTMLElement>('.builder')!;
 const buildDialog = element<HTMLDialogElement>('build-dialog');
 const buildSteps = element('build-steps');
-let stopBuildSpinner: (() => void) | undefined;
+const { update: buildProgress, stop: stopBuildSpinners } = createBuildProgress(buildSteps);
 const nameInput = element<HTMLInputElement>('name');
 const widthInput = element<HTMLInputElement>('width');
 const transitionInput = element<HTMLInputElement>('terrain-transition');
 const centerLineInput = element<HTMLInputElement>('center-line');
 const shoulderInput = element<HTMLInputElement>('shoulder-width');
 const mapDefinitionInput = element<HTMLSelectElement>('map-definition');
+const mapWidthInput = element<HTMLInputElement>('map-width');
+const mapHeightInput = element<HTMLInputElement>('map-height');
+let mapDimensions = { ...defaultCompleteMapDimensions };
 const clearButton = element<HTMLButtonElement>('clear');
 const locationForm = element<HTMLFormElement>('location-form');
 const locationInput = element<HTMLInputElement>('location');
@@ -119,6 +136,9 @@ let editingFilename: string | undefined;
 let editingSnapshot: string | undefined;
 let editingRouteSnapshot: string | undefined;
 let editingCourse: RoadMap | undefined;
+let restoringURL = true;
+let urlVersion = 0;
+let lastURLDraft: string | undefined;
 let previewWorker: Worker | undefined;
 let previewVersion = 0;
 let stopPreviewSpinner: (() => void) | undefined;
@@ -178,54 +198,17 @@ function maximumLength() {
   return mapDefinition() === 'complete-map' ? Infinity : maximumRoadLength;
 }
 
-function completeMapBounds(points: readonly GPSPoint[]) {
-  if (!points.length) return;
-  const origin = points[0];
-  const metersPerLongitude = (6371008.8 * Math.PI * Math.cos((origin.lat * Math.PI) / 180)) / 180;
-  const metersPerDegree = (6371008.8 * Math.PI) / 180;
-  let minX = Infinity,
-    maxX = -Infinity,
-    minZ = Infinity,
-    maxZ = -Infinity;
-  for (const point of points) {
-    const x = (point.lon - origin.lon) * metersPerLongitude;
-    const z = (point.lat - origin.lat) * metersPerDegree;
-    minX = Math.min(minX, x);
-    maxX = Math.max(maxX, x);
-    minZ = Math.min(minZ, z);
-    maxZ = Math.max(maxZ, z);
-  }
-  return {
-    origin,
-    metersPerLongitude,
-    metersPerDegree,
-    minX,
-    maxX,
-    minZ,
-    maxZ,
-    centerX: (minX + maxX) / 2,
-    centerZ: (minZ + maxZ) / 2,
-    fits: maxX - minX <= completeMapSize && maxZ - minZ <= completeMapSize,
-  };
-}
-
 function fitsCompleteMap(points: readonly GPSPoint[]) {
-  return completeMapBounds(points)?.fits ?? true;
+  return completeMapBounds(points, mapDimensions)?.fits ?? true;
 }
 
 function fitsCurrentCompleteMap(points: readonly GPSPoint[]) {
-  const current = completeMapBounds(routePoints());
+  const current = completeMapBounds(routePoints(), mapDimensions);
   if (!current) return true;
-  const half = completeMapSize / 2;
   return points.every((point) => {
     const x = (point.lon - current.origin.lon) * current.metersPerLongitude;
     const z = (point.lat - current.origin.lat) * current.metersPerDegree;
-    return (
-      x >= current.centerX - half &&
-      x <= current.centerX + half &&
-      z >= current.centerZ - half &&
-      z <= current.centerZ + half
-    );
+    return x >= current.west && x <= current.east && z >= current.south && z <= current.north;
   });
 }
 
@@ -289,6 +272,7 @@ function updateHover() {
   if (previewingClosure) return;
   if (
     !hoverPosition ||
+    resizingMap ||
     !mapReady ||
     worker ||
     mapContainer.hidden ||
@@ -317,7 +301,7 @@ function updateHover() {
     hoverNode.classList.toggle('route-hover-invalid', tooLong);
     hoverNode.title = tooLong
       ? mapDefinition() === 'complete-map'
-        ? 'Keep the course inside the 2.5 × 2.5 km map square.'
+        ? 'Keep the course inside the complete-map selection.'
         : 'That would exceed 8 km. Choose a closer endpoint.'
       : '';
   } catch (error) {
@@ -358,15 +342,75 @@ function editorSnapshot() {
     terrainTransition: Number(transitionInput.value),
     doubleYellow: centerLineInput.checked,
     definition: mapDefinition(),
+    completeMapDimensions: mapDefinition() === 'complete-map' ? mapDimensions : undefined,
   });
+}
+
+function currentEditorDraft(): EditorDraft {
+  return {
+    draft: {
+      sections,
+      closingSection,
+      resolution:
+        editingCourse?.courseBuilder?.resolution ?? editingCourse?.terrain?.resolution ?? 5,
+      definition: mapDefinition(),
+      completeMapDimensions: { ...mapDimensions },
+      structureLines: graph.structureLines(),
+    },
+    name: nameInput.value,
+    width: widthInput.value,
+    shoulderWidth: shoulderInput.value,
+    terrainTransition: transitionInput.value,
+    doubleYellow: centerLineInput.checked,
+  };
+}
+
+function persistEditorURL() {
+  if (restoringURL || view === 'library') return;
+  const json = JSON.stringify(currentEditorDraft());
+  if (lastURLDraft === json) return;
+  const version = ++urlVersion;
+  try {
+    // Preserve the draft synchronously, even if reload happens before compression finishes.
+    history.replaceState(null, '', editorDraftURL(new URL(location.href), json, editingId));
+    lastURLDraft = json;
+    void compressEditorDraft(json).then((compressed) => {
+      if (version !== urlVersion) return;
+      try {
+        history.replaceState(
+          null,
+          '',
+          editorDraftURL(new URL(location.href), compressed, editingId),
+        );
+      } catch (error) {
+        report(error);
+      }
+    }, report);
+  } catch (error) {
+    report(new Error('Could not preserve the draft in the URL.', { cause: error }));
+  }
+}
+
+function navigateBuilder(editor: boolean) {
+  if (restoringURL) return;
+  ++urlVersion;
+  lastURLDraft = undefined;
+  const url = new URL(location.href);
+  url.searchParams.delete('draft');
+  url.searchParams.delete('edit');
+  url.searchParams.set('view', editor ? 'create' : 'manager');
+  history.pushState(null, '', url);
 }
 
 function updateControls() {
   const points = routePoints();
   const length = routeLength(points);
   const complete = mapDefinition() === 'complete-map';
+  element('map-dimensions').hidden = !complete;
+  mapWidthInput.disabled = !!worker || !complete;
+  mapHeightInput.disabled = !!worker || !complete;
   element('distance').textContent = complete
-    ? `${(length / 1000).toFixed(1)}km · 5 × 5 km map area${closingSection ? ' · Closed loop' : ''}`
+    ? `${(length / 1000).toFixed(1)}km · ${((mapDimensions.width * mapDimensions.height) / 1e6).toFixed(2)} / 6.25 km²${closingSection ? ' · Closed loop' : ''}`
     : `${(length / 1000).toFixed(1)}km / ${maximumRoadLength / 1000}km (max)${closingSection ? ' · Closed loop' : ''}`;
   clearButton.disabled = !!worker || !sections.length;
   buildButton.disabled =
@@ -387,6 +431,7 @@ function updateControls() {
     mapDefinitionInput,
   ])
     input.disabled = !!worker;
+  persistEditorURL();
 }
 
 function hasStructureRepair() {
@@ -439,6 +484,15 @@ function setView(next: View) {
   element('empty-library').hidden = next !== 'library' || savedMaps.length > 0;
   if (next === 'library' && !savedMaps.length) inspection.hidden = true;
   status.hidden = next !== 'editor';
+  if (next === 'library' && !restoringURL) {
+    ++urlVersion;
+    lastURLDraft = undefined;
+    const url = new URL(location.href);
+    url.searchParams.set('view', 'manager');
+    url.searchParams.delete('draft');
+    url.searchParams.delete('edit');
+    history.replaceState(null, '', url);
+  }
 }
 
 function updatePreviewInfo() {
@@ -561,30 +615,52 @@ function updateRouteGeometry() {
   setRouteGeometry('selected-route', routePoints());
 }
 
+const resizeMarkers: maplibregl.Marker[] = [];
+let resizingMap = false;
+
+function resizeCompleteMap(dimensions: CompleteMapDimensions) {
+  validateCompleteMapDimensions(dimensions);
+  if (!completeMapBounds(routePoints(), dimensions)?.fits && sections.length)
+    throw new Error('The map selection must contain all selected roads. Remove waypoints first.');
+  mapDimensions = dimensions;
+  hideHover();
+  updateCompleteMapBounds();
+  updateControls();
+}
+
+for (const input of [mapWidthInput, mapHeightInput]) {
+  input.addEventListener('change', () => {
+    try {
+      const dimensions = { ...mapDimensions };
+      const axis = input === mapWidthInput ? 'width' : 'height';
+      const other = axis === 'width' ? 'height' : 'width';
+      dimensions[axis] = Number(input.value) * 1000;
+      dimensions[other] = Math.min(dimensions[other], maximumCompleteMapArea / dimensions[axis]);
+      resizeCompleteMap(dimensions);
+      guide();
+    } catch (error) {
+      report(error);
+      updateCompleteMapBounds();
+    }
+  });
+}
+
 function updateCompleteMapBounds() {
+  mapWidthInput.value = String(mapDimensions.width / 1000);
+  mapHeightInput.value = String(mapDimensions.height / 1000);
   const source = map.getSource('complete-map-square') as GeoJSONSource | undefined;
   if (!source) return;
-  const bounds = mapDefinition() === 'complete-map' ? completeMapBounds(routePoints()) : undefined;
+  const bounds =
+    mapDefinition() === 'complete-map'
+      ? completeMapBounds(routePoints(), mapDimensions)
+      : undefined;
   if (!bounds) {
     source.setData({ type: 'FeatureCollection', features: [] });
+    resizeMarkers.splice(0).forEach((marker) => marker.remove());
     return;
   }
-  const half = completeMapSize / 2;
-  const coordinate = (x: number, z: number) => [
-    bounds.origin.lon + x / bounds.metersPerLongitude,
-    bounds.origin.lat + z / bounds.metersPerDegree,
-  ];
-  const west = bounds.centerX - half,
-    east = bounds.centerX + half,
-    south = bounds.centerZ - half,
-    north = bounds.centerZ + half;
-  const ring = [
-    coordinate(west, south),
-    coordinate(east, south),
-    coordinate(east, north),
-    coordinate(west, north),
-    coordinate(west, south),
-  ];
+  const corners = completeMapCorners(routePoints(), mapDimensions);
+  const ring = [...corners, corners[0]].map(({ lon, lat }) => [lon, lat]);
   source.setData({
     type: 'FeatureCollection',
     features: [
@@ -594,6 +670,53 @@ function updateCompleteMapBounds() {
         geometry: { type: 'Polygon', coordinates: [ring] },
       },
     ],
+  });
+  corners.forEach((point, index) => {
+    let marker = resizeMarkers[index];
+    if (!marker) {
+      const node = document.createElement('div');
+      node.className = 'resize-handle';
+      node.dataset.corner = String(index);
+      node.title = 'Drag to resize the map (maximum 6.25 km²)';
+      node.addEventListener('click', (event) => event.stopPropagation());
+      marker = new maplibregl.Marker({ element: node, draggable: true });
+      marker.on('dragstart', () => {
+        resizingMap = true;
+        hideHover();
+      });
+      marker.on('drag', () => {
+        const current = completeMapBounds(routePoints(), mapDimensions)!;
+        const position = marker.getLngLat();
+        const width = Math.max(
+          1,
+          2 *
+            Math.abs(
+              (position.lng - current.origin.lon) * current.metersPerLongitude - current.centerX,
+            ),
+        );
+        const height = Math.max(
+          1,
+          2 *
+            Math.abs(
+              (position.lat - current.origin.lat) * current.metersPerDegree - current.centerZ,
+            ),
+        );
+        const scale = Math.min(1, Math.sqrt(maximumCompleteMapArea / (width * height)));
+        try {
+          resizeCompleteMap({ width: width * scale, height: height * scale });
+        } catch (error) {
+          report(error);
+          updateCompleteMapBounds();
+        }
+      });
+      marker.on('dragend', () => {
+        resizingMap = false;
+        updateCompleteMapBounds();
+      });
+      resizeMarkers.push(marker);
+      marker.setLngLat([point.lon, point.lat]).addTo(map);
+    } else marker.setLngLat([point.lon, point.lat]);
+    marker.setDraggable(!worker);
   });
 }
 
@@ -632,7 +755,7 @@ function updateRoute() {
     }
     node.onclick = (event) => {
       event.stopPropagation();
-      if (worker || view !== 'editor') return;
+      if (worker || resizingMap || view !== 'editor') return;
       try {
         if (i === 0 && sections.length >= 3) {
           if (closingSection) {
@@ -784,7 +907,7 @@ map.on('idle', () => {
   }
 });
 map.on('click', (event) => {
-  if (worker || view !== 'editor') return;
+  if (worker || resizingMap || view !== 'editor') return;
   try {
     if (closingSection)
       throw new Error(
@@ -804,9 +927,9 @@ map.on('click', (event) => {
     if (routeLength(next) > maximumLength())
       throw new Error('That would exceed 8 km. Choose a closer endpoint or delete a waypoint.');
     if (mapDefinition() === 'complete-map' && !fitsCompleteMap(next))
-      throw new Error('Keep all selected roads inside the moving 5 × 5 km map square.');
+      throw new Error('Keep all selected roads inside the complete-map selection.');
     if (mapDefinition() === 'complete-map' && !fitsCurrentCompleteMap(section))
-      throw new Error('Click inside the current 5 × 5 km map square.');
+      throw new Error('Click inside the current complete-map selection.');
     sections.push(section);
     hasLocated = true;
     updateRoute();
@@ -856,8 +979,7 @@ locationForm.onsubmit = async (event) => {
 };
 
 function finishBuild() {
-  stopBuildSpinner?.();
-  stopBuildSpinner = undefined;
+  stopBuildSpinners();
   worker?.terminate();
   worker = undefined;
   buildDialog.close();
@@ -870,6 +992,12 @@ function cancelBuild() {
   if (!worker) return;
   saveController?.abort();
   finishBuild();
+  if (courseSaved) {
+    setView('library');
+    updatePreviewInfo();
+    confirmAction('Preview cancelled. Your course is saved on this device.');
+    return;
+  }
   course = undefined;
   courseJSON = undefined;
   showMap();
@@ -881,28 +1009,6 @@ buildDialog.oncancel = (event) => {
   event.preventDefault();
   cancelBuild();
 };
-
-function buildProgress(active: RoadBuildStep | 'complete', detail?: string) {
-  stopBuildSpinner?.();
-  stopBuildSpinner = undefined;
-  let pending = false;
-  for (const item of buildSteps.querySelectorAll<HTMLLIElement>('li')) {
-    const current = item.dataset.step === active;
-    if (current) pending = true;
-    item.dataset.state = current ? 'active' : pending ? 'pending' : 'complete';
-    if (current) item.setAttribute('aria-current', 'step');
-    else item.removeAttribute('aria-current');
-    const label = item.lastChild!;
-    label.textContent = current && detail ? `${item.dataset.label} ${detail}` : item.dataset.label!;
-    item.setAttribute(
-      'aria-label',
-      `${label.textContent}: ${item.dataset.state === 'complete' ? 'completed' : item.dataset.state === 'active' ? 'in progress' : 'pending'}`,
-    );
-    const indicator = item.querySelector<HTMLElement>('.build-step-indicator')!;
-    indicator.textContent = item.dataset.state === 'complete' ? '\u2713' : '';
-    if (current) stopBuildSpinner = startTextSpinner(indicator);
-  }
-}
 
 element<HTMLFormElement>('build-form').onsubmit = (event) => {
   event.preventDefault();
@@ -923,11 +1029,19 @@ element<HTMLFormElement>('build-form').onsubmit = (event) => {
         includeNearbyRoads: !!existingCourse.scenery?.roads.length,
       },
     ) !== 'complete-map';
+  const completeMapResized =
+    !!existingCourse &&
+    mapDefinition() === 'complete-map' &&
+    (mapDimensions.width !==
+      (existingCourse.courseBuilder?.completeMapDimensions ?? defaultCompleteMapDimensions).width ||
+      mapDimensions.height !==
+        (existingCourse.courseBuilder?.completeMapDimensions ?? defaultCompleteMapDimensions)
+          .height);
   try {
     const selected = routePoints();
     validateImportRoute(selected, !!closingSection, maximumLength());
     if (mapDefinition() === 'complete-map' && !fitsCompleteMap(selected))
-      throw new Error('Keep all selected roads inside the moving 5 × 5 km map square.');
+      throw new Error('Keep all selected roads inside the complete-map selection.');
   } catch (error) {
     report(error);
     return;
@@ -941,66 +1055,74 @@ element<HTMLFormElement>('build-form').onsubmit = (event) => {
     return;
   }
   const activeWorker = worker;
+  let saveError: string | undefined;
+  const completeBuild = () => {
+    if (!course) throw new Error('The course builder did not return a course.');
+    if (courseSaved) buildProgress('complete');
+    finishBuild();
+    if (courseSaved && embedded) {
+      notifyParent({ type: 'course-builder:saved', id: course.id });
+      return;
+    }
+    if (courseSaved) {
+      setView('library');
+      updatePreviewInfo();
+      for (const item of element('saved').querySelectorAll<HTMLButtonElement>('.selection-item')) {
+        const active = item.dataset.id === selectedId;
+        item.setAttribute('aria-selected', String(active));
+        item.tabIndex = active ? 0 : -1;
+      }
+    } else showPreview();
+    showCourse2d();
+    guide();
+    if (saveError)
+      notify(
+        `Could not save your map on this device: ${saveError} Press Play to download and keep it.`,
+        true,
+      );
+  };
+  const failBuild = (error: Error) => {
+    if (courseSaved) {
+      completeBuild();
+      notify(`Your course is saved, but the build did not finish cleanly: ${error.message}`, true);
+    } else {
+      finishBuild();
+      showMap();
+      report(error);
+    }
+  };
   worker.onmessage = async (message: MessageEvent<BuildResponse>) => {
     if (worker !== activeWorker) return;
     const response = message.data;
-    if (response.type === 'progress') buildProgress(response.step, response.detail);
+    if (response.type === 'progress') buildProgress(response.step, response.detail, response.state);
     else {
       if (response.type === 'error') {
-        finishBuild();
-        showMap();
-        report(new Error(response.message));
+        failBuild(new Error(response.message));
       } else if (response.type === 'complete') {
         try {
           course = response.course;
           courseJSON = response.json;
           saveController = new AbortController();
           buildProgress('saving');
-          const saveError = await saveCourse(response.course, response.json, saveController.signal);
+          saveError = await saveCourse(response.course, response.json, saveController.signal);
           if (worker !== activeWorker) return;
           courseSaved = !saveError;
-          if (courseSaved) buildProgress('complete');
+          if (courseSaved) buildProgress('saving', undefined, 'complete');
           if (courseSaved) {
             editingId = response.course.id;
             selectedId = response.course.id;
             editingFilename = savedMaps.find((item) => item.course.id === editingId)?.handle.name;
           }
-          finishBuild();
-          if (courseSaved && embedded) {
-            notifyParent({ type: 'course-builder:saved', id: response.course.id });
-            return;
-          }
-          if (courseSaved) {
-            setView('library');
-            updatePreviewInfo();
-            for (const item of element('saved').querySelectorAll<HTMLButtonElement>(
-              '.selection-item',
-            )) {
-              const active = item.dataset.id === selectedId;
-              item.setAttribute('aria-selected', String(active));
-              item.tabIndex = active ? 0 : -1;
-            }
-          } else showPreview();
-          showCourse2d();
-          guide();
-          if (saveError)
-            notify(
-              `Could not save your map on this device: ${saveError} Press Play to download and keep it.`,
-              true,
-            );
+          completeBuild();
         } catch (error) {
-          finishBuild();
-          showMap();
-          report(error);
+          failBuild(error instanceof Error ? error : new Error(String(error)));
         }
       }
     }
   };
   worker.onerror = (error) => {
     error.preventDefault();
-    finishBuild();
-    showMap();
-    report(
+    failBuild(
       new Error(
         error.message?.trim() ||
           'The course builder worker could not load or stopped unexpectedly. The app may have been updated or its static host may be unavailable. Reload the page and select your route again, then retry.',
@@ -1008,9 +1130,7 @@ element<HTMLFormElement>('build-form').onsubmit = (event) => {
     );
   };
   worker.onmessageerror = () => {
-    finishBuild();
-    showMap();
-    report(
+    failBuild(
       new Error('The course builder returned unreadable data. Try building the course again.'),
     );
   };
@@ -1018,12 +1138,23 @@ element<HTMLFormElement>('build-form').onsubmit = (event) => {
   notifyParent({ type: 'course-builder:busy', busy: true });
   buildSteps.replaceChildren();
   for (const [key, label] of Object.entries(roadBuildSteps)) {
-    if (existingCourse && !completeMapExpansion && (key === 'terrain' || key === 'corridor'))
+    if (
+      existingCourse &&
+      !completeMapExpansion &&
+      !completeMapResized &&
+      (key === 'terrain' || key === 'corridor')
+    )
       continue;
     const item = document.createElement('li');
     item.dataset.step = key;
     item.dataset.label = existingCourse && key === 'course' ? 'Updating course settings' : label;
-    item.textContent = item.dataset.label;
+    const content = document.createElement('span');
+    content.className = 'build-step-content';
+    const labelElement = document.createElement('span');
+    labelElement.className = 'build-step-label';
+    labelElement.textContent = item.dataset.label;
+    content.append(labelElement);
+    item.append(content);
     const indicator = document.createElement('span');
     indicator.className = 'build-step-indicator';
     indicator.setAttribute('aria-hidden', 'true');
@@ -1046,6 +1177,7 @@ element<HTMLFormElement>('build-form').onsubmit = (event) => {
       closingSection,
       structureLines: graph.structureLines(),
       definition: mapDefinition(),
+      completeMapDimensions: mapDefinition() === 'complete-map' ? mapDimensions : undefined,
       includeNearbyRoads: mapDefinition() !== 'course',
       resolution:
         existingCourse?.courseBuilder?.resolution ?? existingCourse?.terrain?.resolution ?? 5,
@@ -1315,10 +1447,12 @@ function editSavedCourse() {
   try {
     const draft = restoreRoadDraft(course);
     const saved = course;
+    navigateBuilder(true);
     editingId = saved.id;
     editingFilename = savedMaps.find((item) => item.course.id === saved.id)?.handle.name;
     stopLibraryPreview();
     sections = draft.sections;
+    mapDimensions = { ...(draft.completeMapDimensions ?? defaultCompleteMapDimensions) };
     closingSection = draft.closingSection;
     nameInput.value = saved.name;
     widthInput.value = String(saved.width);
@@ -1340,6 +1474,7 @@ function editSavedCourse() {
 }
 
 element<HTMLButtonElement>('new-course').onclick = () => {
+  navigateBuilder(true);
   stopLibraryPreview();
   nameCopiedToSearch = false;
   editingId = undefined;
@@ -1350,6 +1485,7 @@ element<HTMLButtonElement>('new-course').onclick = () => {
   sections = [];
   closingSection = undefined;
   nameInput.value = 'New course';
+  mapDimensions = { ...defaultCompleteMapDimensions };
   widthInput.value = widthInput.defaultValue;
   shoulderInput.value = shoulderInput.defaultValue;
   centerLineInput.checked = true;
@@ -1363,7 +1499,10 @@ element<HTMLButtonElement>('new-course').onclick = () => {
 };
 element<HTMLButtonElement>('cancel-edit').onclick = () => {
   if (embedded) notifyParent({ type: 'course-builder:cancel' });
-  else void showLibrary();
+  else {
+    navigateBuilder(false);
+    void showLibrary();
+  }
 };
 
 async function saveCourse(builtCourse: RoadMap, json: Blob, signal: AbortSignal) {
@@ -1404,6 +1543,68 @@ async function openEmbeddedEditor() {
   }
 }
 
+async function restoreBuilderURL() {
+  restoringURL = true;
+  ++urlVersion;
+  lastURLDraft = undefined;
+  try {
+    const params = new URLSearchParams(location.search);
+    const encoded = params.get('draft');
+    const draft = encoded ? await readEditorDraft(encoded) : undefined;
+    if (
+      draft ||
+      params.get('view') === 'create' ||
+      params.get('view') === 'edit' ||
+      params.has('edit') ||
+      embedded
+    ) {
+      await openEmbeddedEditor();
+      if (draft) {
+        sections = draft.draft.sections;
+        closingSection = draft.draft.closingSection;
+        mapDimensions = { ...(draft.draft.completeMapDimensions ?? defaultCompleteMapDimensions) };
+        nameInput.value = draft.name;
+        widthInput.value = draft.width;
+        shoulderInput.value = draft.shoulderWidth;
+        transitionInput.value = draft.terrainTransition;
+        centerLineInput.checked = draft.doubleYellow;
+        mapDefinitionInput.value = roadMapDefinition(draft.draft);
+        seedDraftGraph();
+        if (draft.draft.structureLines)
+          graph.add(
+            draft.draft.structureLines.map(({ coordinates, type }) => ({
+              coordinates,
+              brunnel: type,
+            })),
+          );
+        hasLocated = !!sections.length;
+        updateRoute();
+        if (sections.length) {
+          const bounds = new maplibregl.LngLatBounds();
+          routePoints().forEach(({ lon, lat }) => bounds.extend([lon, lat]));
+          map.fitBounds(bounds, { padding: 70, maxZoom: 16, duration: 0 });
+        }
+      }
+    } else await showLibrary();
+  } catch (error) {
+    setView('editor');
+    report(error);
+    return;
+  } finally {
+    restoringURL = false;
+  }
+  persistEditorURL();
+}
+
+window.addEventListener('popstate', () => {
+  restoringURL = true;
+  if (worker) {
+    saveController?.abort();
+    finishBuild();
+  }
+  void restoreBuilderURL();
+});
+
 if (embedded) {
   window.addEventListener('message', (event: MessageEvent<unknown>) => {
     if (
@@ -1420,17 +1621,17 @@ if (embedded) {
   const mapLoaded = mapReady
     ? Promise.resolve()
     : new Promise<void>((resolve) => map.once('load', () => resolve()));
-  void Promise.all([openEmbeddedEditor(), mapLoaded]).then(() => {
+  void Promise.all([restoreBuilderURL(), mapLoaded]).then(() => {
     requestAnimationFrame(() => {
       notifyParent({ type: 'course-builder:ready' });
       updateControls();
     });
   });
-} else void showLibrary();
+} else void restoreBuilderURL();
 
 window.addEventListener('pagehide', () => {
   hideHover();
-  stopBuildSpinner?.();
+  stopBuildSpinners();
   stopPreviewSpinner?.();
   stopPreviewSpinner = undefined;
   embeddedResize?.disconnect();

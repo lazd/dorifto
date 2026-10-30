@@ -131,6 +131,9 @@ direct browser requests to OpenFreeMap and USGS, so an internet connection is ne
   or **+ New course** to start a new one. **Cancel** returns to the library without
   changing the saved course. **Save** stays disabled until the route, name, or settings
   differ from the opened course, and disables again if all changes are reverted.
+  The URL tracks manager/create/edit views and stores a compressed draft query parameter.
+  Reloading or reopening that URL restores routed selections, loop closure, and editor settings.
+  Browser Back/Forward navigates between the manager and editor without rerouting selected roads.
   When opened standalone (outside an iframe), **Download** next to **Edit** exports
   the selected course JSON. **Play** currently also downloads the selected course JSON.
   Use **Import** beside the Course builder title to restore a downloaded JSON into
@@ -154,9 +157,12 @@ direct browser requests to OpenFreeMap and USGS, so an internet connection is ne
   before adding a waypoint; hover **S** to preview loop closure.
   **Definition** controls the imported roadway area: **Just the course** imports no
   surrounding roads, **Nearby roads** imports the existing route corridor, and
-  **Complete map** imports roads across a moving 2 × 2 km square. Complete-map clicks
-  stay inside the visible square and are not limited by course length. Its terrain uses
-  a lower-resolution square-wide grid with high-resolution elevation detail reserved
+  **Complete map** starts with a moving 2.5 × 2.5 km square. Drag its corners or set
+  its width and height under **Advanced** to resize it into a rectangle, up to 6.25 km². Increasing one
+  dimension reduces the other when necessary to stay within the area limit. The selection
+  must contain all selected roads; its dimensions are saved with the map.
+  Complete-map clicks stay inside the visible selection and are not limited by course length. Its terrain uses
+  a lower-resolution area-wide grid with high-resolution elevation detail reserved
   for mapped road corridors.
   With at least three waypoints, click **S** to
   close a road-following loop (still capped at 8 km). Click **S** again or remove
@@ -221,8 +227,14 @@ direct browser requests to OpenFreeMap and USGS, so an internet connection is ne
   and service failures are reported rather than replaced with flat terrain.
   Transient network/CORS failures, timeouts, HTTP 429, and server errors are retried
   three times after the initial request, with increasing delays. The browser console
-  logs request URLs and failure details; failed elevation downloads show
-  "Sorry, we couldn't fetch elevation data. Try a different location."
+  logs request URLs and failure details; failed elevation downloads show the underlying error.
+  USGS and complete-map OSM downloads use aligned ~1 km tiles, cached on-device for
+  30 days (128 MB maximum). Completed tiles survive failed builds and are reused in overlapping maps.
+  Downloads run with up to 2 OSM tiles and 4 USGS tiles in flight at once, in both the
+  browser and command-line upgrader; progress counts completed tiles.
+  Complete-map builds start OSM, vector scenery, and coarse USGS downloads together.
+  High-resolution road elevation follows OSM decoding because it needs the imported road geometry.
+  The build dialog tracks each task independently, showing simultaneous spinners and tile counts.
   Persistent CORS restrictions require a USGS-side fix; the browser cannot bypass them.
 - A Web Worker handles terrain decoding, elevation processing, course conversion,
   JSON serialization, and on-demand 3D preview mesh generation. Cancel stops the worker.
@@ -465,13 +477,13 @@ cropped in-game screenshots.
 Real-world maps also save scenery from OpenFreeMap's OpenStreetMap-derived vector tiles:
 extruded buildings, water bodies and waterways, and vegetation scattered procedurally
 inside mapped landcover areas. **Nearby roads** adds surrounding roads in the route corridor;
-**Complete map** treats mapped roads across the 2 × 2 km selection square as drivable
+**Complete map** treats mapped roads across the resizable selection rectangle as drivable
 network and does not place junction-mouth cones across that network. Complete map downloads
 precise road geometry, lane counts, stop nodes, and surface-parking areas from OpenStreetMap
 via Overpass when saving. The query starts alongside the terrain download and requests only
 the tags the importer reads. Failed network requests are reported rather than replaced with
 inferred traffic controls. Overpass requests use Private.coffee first and retry an unavailable
-or timed-out service once with the main Overpass provider. Each attempt has a 45-second
+or timed-out service once with the main Overpass provider. Each attempt has a 120-second
 budget; the builder identifies this download stage, shows the attempt (for example "(2/2)")
 when retrying, and reports the failing service explicitly.
 Scenery tile downloads also retry transient failures once, retaining successful cached tiles.
@@ -1101,6 +1113,9 @@ npm run reimport-maps -- --full                        # also rebuild terrain an
 The script normalizes road fragments during scenery import, processes maps sequentially,
 and replaces each JSON file atomically after that map succeeds. It stops on errors; already
 completed maps remain updated. Scenery-only imports preserve routes, terrain, and settings.
+Downloads are cached on disk in `road-imports/cache/`: terrain reuses the importers'
+`terrain-<hash>.tif` files, while OSM and vector tiles use `geographic-<hash>.bin`.
+Delete these files to refresh downloads; browser caching is separate and unchanged.
 Full imports use the same build pipeline as the browser course builder, with its saved
 waypoints and routed sections, structure matching, 5 m USGS terrain and high-resolution
 road corridor, elevation repair, and scenery importer. New builder saves explicitly store

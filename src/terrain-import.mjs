@@ -1,4 +1,10 @@
 import { fromArrayBuffer } from 'geotiff';
+import {
+  geographicDownloadCache,
+  geographicDownloadConcurrency,
+  geographicTiles,
+  forEachConcurrent,
+} from './geographic-download.mjs';
 
 const endpoint =
   'https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/exportImage';
@@ -62,7 +68,7 @@ function roadBounds(data, margin) {
   };
 }
 
-async function downloadRaster(
+async function downloadRasterTile(
   { west, east, south, north, metersPerDegree, metersPerLongitude },
   resolution,
   { cache, fetch, label, resolutionOption },
@@ -133,11 +139,71 @@ async function downloadRaster(
   };
 }
 
+async function downloadRaster(bounds, resolution, options) {
+  const { west, east, south, north, metersPerDegree, metersPerLongitude } = bounds;
+  const columns = Math.ceil(((east - west) * metersPerLongitude) / resolution);
+  const rows = Math.ceil(((north - south) * metersPerDegree) / resolution);
+  if (columns > 8000 || rows > 8000 || columns * rows > 16_000_000)
+    throw new Error(
+      `${options.label} is too large; select a shorter segment or increase ${options.resolutionOption}`,
+    );
+  const heights = new Float32Array(columns * rows);
+  const tiles = geographicTiles(bounds);
+  let completed = 0;
+  options.onProgress?.(0, tiles.length);
+  await forEachConcurrent(tiles, geographicDownloadConcurrency.terrain, async (tile) => {
+    const apronLat = (resolution * 2) / tile.metersPerDegree;
+    const apronLon = (resolution * 2) / tile.metersPerLongitude;
+    const raster = await downloadRasterTile(
+      {
+        ...tile,
+        west: tile.west - apronLon,
+        east: tile.east + apronLon,
+        south: tile.south - apronLat,
+        north: tile.north + apronLat,
+      },
+      resolution,
+      options,
+    );
+    const x0 = Math.max(0, Math.ceil(((tile.west - west) / (east - west)) * columns - 0.5));
+    const x1 = Math.min(columns, Math.ceil(((tile.east - west) / (east - west)) * columns - 0.5));
+    const y0 = Math.max(0, Math.ceil(((north - tile.north) / (north - south)) * rows - 0.5));
+    const y1 = Math.min(rows, Math.ceil(((north - tile.south) / (north - south)) * rows - 0.5));
+    // Resample onto the original pixel-center grid; the apron avoids seams at tile edges.
+    for (let y = y0; y < y1; y++) {
+      const lat = north - ((y + 0.5) / rows) * (north - south);
+      const gy = ((raster.north - lat) / (raster.north - raster.south)) * raster.rows - 0.5;
+      const iy = Math.max(0, Math.min(raster.rows - 2, Math.floor(gy)));
+      const v = gy - iy;
+      for (let x = x0; x < x1; x++) {
+        const lon = west + ((x + 0.5) / columns) * (east - west);
+        const gx = ((lon - raster.west) / (raster.east - raster.west)) * raster.columns - 0.5;
+        const ix = Math.max(0, Math.min(raster.columns - 2, Math.floor(gx)));
+        const u = gx - ix;
+        const offset = iy * raster.columns + ix;
+        const top = raster.heights[offset] * (1 - u) + raster.heights[offset + 1] * u;
+        const bottom =
+          raster.heights[offset + raster.columns] * (1 - u) +
+          raster.heights[offset + raster.columns + 1] * u;
+        heights[y * columns + x] = top * (1 - v) + bottom * v;
+      }
+    }
+    options.onProgress?.(++completed, tiles.length);
+  });
+  return { resolution, west, east, south, north, columns, rows, heights };
+}
+
 const roundHeight = (height) => Math.round(height * 100) / 100;
 
 export async function fetchTerrainRaster(
   data,
-  { resolution = 5, margin = 250, cache, fetch = globalThis.fetch } = {},
+  {
+    resolution = 5,
+    margin = 250,
+    cache = geographicDownloadCache,
+    fetch = globalThis.fetch,
+    onProgress,
+  } = {},
 ) {
   if (!Number.isFinite(resolution) || resolution < 1 || !Number.isFinite(margin) || margin < 210) {
     throw new Error('Terrain resolution must be at least 1 m and margin at least 210 m');
@@ -154,6 +220,7 @@ export async function fetchTerrainRaster(
     fetch,
     label: 'USGS terrain raster',
     resolutionOption: 'the terrain resolution',
+    onProgress,
   });
   return { source: 'USGS 3DEP', ...raster, heights: Array.from(raster.heights, roundHeight) };
 }
@@ -164,7 +231,13 @@ export async function fetchTerrainRaster(
  */
 export async function fetchTerrainDetail(
   data,
-  { resolution = 1.5, width = 40, cache, fetch = globalThis.fetch } = {},
+  {
+    resolution = 1.5,
+    width = 40,
+    cache = geographicDownloadCache,
+    fetch = globalThis.fetch,
+    onProgress,
+  } = {},
 ) {
   if (!Number.isFinite(resolution) || resolution < 1 || !Number.isFinite(width) || width <= 0)
     throw new Error('Terrain detail resolution must be at least 1 m and width positive');
@@ -180,6 +253,7 @@ export async function fetchTerrainDetail(
     fetch,
     label: 'USGS terrain detail',
     resolutionOption: 'the terrain detail resolution (or disable road-corridor detail)',
+    onProgress,
   });
   const { columns, rows, west, east, south, north, heights } = raster;
   const pixelWidth = ((east - west) * bounds.metersPerLongitude) / columns;

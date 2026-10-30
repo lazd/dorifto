@@ -725,7 +725,7 @@ test('complete-map intersections join roads without inventing stop controls', ()
   assert.ok(signs.children.every((sign) => sign.name === 'stop-sign'));
   assert.ok(
     signs.children.every(
-      (sign) => sign.getObjectByName('stop-sign-text').geometry.getAttribute('position').count > 0,
+      (sign) => sign.getObjectByName('stop-sign-face').material.map.isDataTexture,
     ),
   );
   for (const sign of signs.children) {

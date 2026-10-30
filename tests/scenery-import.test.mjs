@@ -2,20 +2,29 @@ import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { createServer } from 'vite';
 import { PbfWriter } from 'pbf';
+import { mkdtemp, readdir, rm } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { createDownloadCache } from '../scripts/download-cache.mjs';
+import { geographicDownloadConcurrency, geographicTiles } from '../src/geographic-download.mjs';
 
 const extent = 4096;
 const metersPerDegree = (6371008.8 * Math.PI) / 180;
 let server;
 let fetchCourseScenery;
+let requestSceneryTiles;
 let sceneryImportRevision;
+let defaultCompleteMapDimensions;
 
 before(async () => {
   server = await createServer({
     server: { middlewareMode: true, hmr: false, ws: false, watch: null },
     appType: 'custom',
   });
-  ({ fetchCourseScenery } = await server.ssrLoadModule('/src/scenery-import.ts'));
+  ({ fetchCourseScenery, requestSceneryTiles } =
+    await server.ssrLoadModule('/src/scenery-import.ts'));
   ({ sceneryImportRevision } = await server.ssrLoadModule('/src/scenery-data.ts'));
+  ({ defaultCompleteMapDimensions } = await server.ssrLoadModule('/src/complete-map.ts'));
 });
 
 after(async () => {
@@ -263,7 +272,6 @@ function osmFixture() {
     geometry: points.map(local),
     tags,
   });
-  // Mirrors the Overpass response: tagless geometry, then `convert`ed tag elements with blanks.
   const elements = [
     way(
       100,
@@ -310,28 +318,26 @@ function osmFixture() {
       { amenity: 'parking', parking: 'surface' },
     ),
   ];
-  return {
-    elements: [
-      ...elements.map(({ tags: _, ...element }) => element),
-      ...elements.map(({ type, id, tags }) => ({
-        type: 'tags',
-        id,
-        tags: { 'osm:type': type, width: '', ...tags },
-      })),
-    ],
-  };
+  return { elements };
 }
 
 test('decodes supported scenery, holes, widths and clips to the terrain grid with cached bounded requests', async (t) => {
   const requests = [];
   let active = 0;
   let maximumActive = 0;
+  let activeNetwork = 0;
+  let maximumActiveNetwork = 0;
   t.mock.method(globalThis, 'fetch', async (input) => {
     const url = String(input);
     requests.push(url);
     if (url === 'https://tiles.openfreemap.org/planet')
       return Response.json({ tiles: ['https://tiles.example/{z}/{x}/{y}.pbf'] });
-    if (url.includes('/api/interpreter')) return Response.json(osmFixture());
+    if (url.includes('/api/interpreter')) {
+      maximumActiveNetwork = Math.max(maximumActiveNetwork, ++activeNetwork);
+      await new Promise((resolve) => setTimeout(resolve, 2));
+      activeNetwork--;
+      return Response.json(osmFixture());
+    }
     active++;
     maximumActive = Math.max(maximumActive, active);
     await new Promise((resolve) => setTimeout(resolve, 2));
@@ -393,9 +399,17 @@ test('decodes supported scenery, holes, widths and clips to the terrain grid wit
   const withoutRoads = await fetchCourseScenery(definition, false);
   assert.equal(withoutRoads.roads.length, 0);
   assert.equal(requests.filter((url) => url.endsWith('.pbf')).length, tileRequests.length);
-  const complete = await fetchCourseScenery(definition, 'complete-map');
-  assert.equal(complete.bounds.maxX - complete.bounds.minX, 2000);
-  assert.equal(complete.bounds.maxZ - complete.bounds.minZ, 2000);
+  const tileRequest = requestSceneryTiles(definition.terrain);
+  await tileRequest;
+  const prefetched = requests.filter((url) => url.endsWith('.pbf')).length;
+  const complete = await fetchCourseScenery(definition, 'complete-map', { tileRequest });
+  assert.equal(
+    requests.filter((url) => url.endsWith('.pbf')).length,
+    prefetched,
+    'scenery consumes its prefetched bytes without downloading them again',
+  );
+  assert.equal(complete.bounds.maxX - complete.bounds.minX, defaultCompleteMapDimensions.width);
+  assert.equal(complete.bounds.maxZ - complete.bounds.minZ, defaultCompleteMapDimensions.height);
   assert.equal(complete.roads.length, 3, 'precise OSM roads replace tile road fragments');
   assert.equal(complete.roads.find((r) => r.roadClass === 'primary').lanes, 4);
   assert.equal(complete.parking.length, 1);
@@ -405,6 +419,62 @@ test('decodes supported scenery, holes, widths and clips to the terrain grid wit
     'an explicitly mapped all-way stop controls all four approaches',
   );
   assert.ok(complete.stopSigns.every((s) => Math.hypot(...s.direction) > 0.999));
+  const dimensions = {
+    width: defaultCompleteMapDimensions.width * 2,
+    height: defaultCompleteMapDimensions.height / 2,
+  };
+  const rectangle = await fetchCourseScenery(
+    {
+      ...definition,
+      courseBuilder: { completeMapDimensions: dimensions },
+    },
+    'complete-map',
+  );
+  assert.equal(rectangle.bounds.maxX - rectangle.bounds.minX, dimensions.width);
+  assert.equal(rectangle.bounds.maxZ - rectangle.bounds.minZ, dimensions.height);
+  assert.equal(maximumActiveNetwork, geographicDownloadConcurrency.osm);
+});
+
+test('injected disk caches persist OSM and vector tiles across cache instances', async (t) => {
+  const cacheDir = await mkdtemp(path.join(os.tmpdir(), 'dorifto-scenery-'));
+  try {
+    t.mock.method(globalThis, 'fetch', async (input) => {
+      const url = String(input);
+      if (url === 'https://tiles.openfreemap.org/planet')
+        return Response.json({ tiles: ['https://tiles.example/{z}/{x}/{y}.pbf'] });
+      if (url.includes('/api/interpreter')) return Response.json(osmFixture());
+      return new Response(tileFixture(tileFromUrl(url)));
+    });
+    const first = await fetchCourseScenery(course(), 'complete-map', {
+      cache: createDownloadCache({ cacheDir }),
+    });
+    const files = await readdir(cacheDir);
+    assert.ok(files.length > 0);
+    assert.ok(
+      files.every((file) => file.endsWith('.bin')),
+      'atomic writes leave no temporary files',
+    );
+    const reopened = createDownloadCache({ cacheDir });
+    let reads = 0;
+    t.mock.method(globalThis, 'fetch', () => assert.fail('Cached tiles must not download'));
+    const second = await fetchCourseScenery(course(), 'complete-map', {
+      cache: {
+        async read(url) {
+          const bytes = await reopened.read(url);
+          assert.ok(bytes, 'every requested tile is present on disk');
+          reads++;
+          return bytes;
+        },
+        async write() {
+          assert.fail('Cache hits must not rewrite files');
+        },
+      },
+    });
+    assert.equal(reads, files.length);
+    assert.deepEqual(second, first);
+  } finally {
+    await rm(cacheDir, { recursive: true, force: true });
+  }
 });
 
 test('complete maps surface OSM service failures instead of inventing traffic controls', async (t) => {
@@ -432,9 +502,10 @@ test('complete maps retry timed-out OSM lookups on another provider and identify
   const requests = [],
     progress = [];
   t.mock.method(console, 'warn', () => {});
-  t.mock.method(globalThis, 'fetch', async (input) => {
+  t.mock.method(globalThis, 'fetch', async (input, options) => {
     const url = String(input);
     if (url.includes('/api/interpreter')) {
+      assert.match(options.body.get('data'), /\[timeout:25\]/);
       requests.push(url);
       if (requests.length === 1) throw new DOMException('signal timed out', 'TimeoutError');
       return Response.json(osmFixture());
@@ -445,7 +516,10 @@ test('complete maps retry timed-out OSM lookups on another provider and identify
     progress: (stage, detail) => progress.push([stage, detail]),
   });
   assert.equal(result.stopSigns.length, 4);
-  assert.deepEqual(progress.at(-1), ['network', '(2/2)'], 'retries show the attempt count');
+  assert.ok(
+    progress.some(([stage, detail]) => stage === 'network' && detail?.endsWith('(2/2)')),
+    'retries show the tile and attempt count',
+  );
   assert.equal(new Set(requests).size, 2);
 });
 
@@ -458,7 +532,7 @@ test('exhausted OSM timeouts identify the provider instead of returning a raw ab
   });
   await assert.rejects(
     fetchCourseScenery(course(), 'complete-map'),
-    /OpenStreetMap road network could not be downloaded after 2 attempts.*timed out after 45 seconds.*overpass-api.de/,
+    /OpenStreetMap road network could not be downloaded after 2 attempts.*timed out after 60 seconds.*overpass.private.coffee/,
   );
 });
 
@@ -473,4 +547,54 @@ test('rejects routes exceeding the vector tile budget before making network requ
     [80_000, 80_000],
   ];
   await assert.rejects(fetchCourseScenery(definition, false), /limit is 64/);
+});
+
+test('optional local OSM tiles are cached and fall back on missing, failed, or invalid responses', async (t) => {
+  const localServer = await createServer({
+    server: { middlewareMode: true, hmr: false, ws: false, watch: null },
+    appType: 'custom',
+    define: { 'import.meta.env.VITE_LOCAL_MAP_DATA': '"true"' },
+  });
+  t.after(() => localServer.close());
+  const { requestMappedNetwork } = await localServer.ssrLoadModule('/src/scenery-import.ts');
+  const [tile] = geographicTiles(course().terrain);
+  const box = {
+    west: tile.west + 0.0001,
+    east: tile.east - 0.0001,
+    south: tile.south + 0.0001,
+    north: tile.north - 0.0001,
+  };
+  const warnings = [];
+  t.mock.method(console, 'warn', (...args) => warnings.push(args));
+  for (const status of [200, 404, 500, 'offline', 'invalid']) {
+    const requests = [];
+    const entries = new Map();
+    const cache = {
+      read: async (key) => entries.get(key),
+      write: async (key, bytes) => entries.set(key, bytes),
+    };
+    t.mock.method(globalThis, 'fetch', async (input) => {
+      const url = new URL(input);
+      requests.push(url);
+      if (url.pathname === '/osm') {
+        if (status === 'offline') throw new TypeError('Service unavailable');
+        return Response.json(status === 'invalid' ? {} : osmFixture(), {
+          status: typeof status === 'number' ? status : 200,
+        });
+      }
+      assert.match(url.hostname, /^overpass/);
+      return Response.json(osmFixture());
+    });
+    assert.deepEqual(await requestMappedNetwork(box, cache).elements, osmFixture().elements);
+    assert.equal(requests.filter((url) => url.pathname === '/osm').length, 1);
+    assert.equal(
+      requests.filter((url) => url.hostname.startsWith('overpass')).length,
+      status === 200 ? 0 : 1,
+    );
+    if (status === 200) {
+      await requestMappedNetwork(box, cache).elements;
+      assert.equal(requests.length, 1);
+    }
+  }
+  assert.equal(warnings.length, 3);
 });

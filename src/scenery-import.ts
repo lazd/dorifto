@@ -1,10 +1,24 @@
 import { classifyRings, VectorTile } from '@mapbox/vector-tile';
 import { PbfReader } from 'pbf';
 import { roadClasses } from './road-selection';
+import { osmRoadClasses } from './osm-network.mjs';
 import { courseRoute, type CourseDefinition } from './courses';
-import type { MapDefinition } from './course-builder-data';
+import type {
+  MapDefinition,
+  RoadMap,
+  RoadBuildProgress,
+  RoadBuildState,
+} from './course-builder-data';
 import type { CourseScenery, SceneryPoint, SceneryPolygon } from './scenery-data';
-import { completeMapSize, normalizeCourseScenery, sceneryImportRevision } from './scenery-data';
+import { normalizeCourseScenery, sceneryImportRevision } from './scenery-data';
+import { defaultCompleteMapDimensions, validateCompleteMapDimensions } from './complete-map';
+import {
+  geographicDownloadCache,
+  geographicDownloadConcurrency,
+  geographicTiles,
+  forEachConcurrent,
+  type GeographicDownloadCache,
+} from './geographic-download.mjs';
 
 const tileJsonUrl = 'https://tiles.openfreemap.org/planet';
 const zoom = 14;
@@ -18,9 +32,13 @@ const completeRoadClasses = new Set([
 const maxTiles = 64;
 const concurrency = 4;
 const timeoutMs = 12_000;
+const overpassTimeoutSeconds = 25;
+const overpassRequestTimeoutMs = 60_000;
+const localOsmDataEnabled = import.meta.env.VITE_LOCAL_MAP_DATA === 'true';
+const localOsmDataUrl = import.meta.env.VITE_LOCAL_MAP_DATA_URL ?? 'http://127.0.0.1:8787';
 const overpassEndpoints = [
-  'https://overpass.private.coffee/api/interpreter',
   'https://overpass-api.de/api/interpreter',
+  'https://overpass.private.coffee/api/interpreter',
 ];
 const metersPerDegree = (6371008.8 * Math.PI) / 180;
 const maxTileCacheSize = 128;
@@ -187,20 +205,21 @@ function terrainGridBounds(course: CourseDefinition): Bounds {
   };
 }
 
-function completeMapBounds(course: CourseDefinition): Bounds {
+function completeMapBounds(course: RoadMap): Bounds {
   const points = course.points;
   const minX = Math.min(...points.map(([x]) => x));
   const maxX = Math.max(...points.map(([x]) => x));
   const minZ = Math.min(...points.map(([, z]) => z));
   const maxZ = Math.max(...points.map(([, z]) => z));
-  const half = completeMapSize / 2;
+  const dimensions = course.courseBuilder?.completeMapDimensions ?? defaultCompleteMapDimensions;
+  validateCompleteMapDimensions(dimensions);
   const centerX = (minX + maxX) / 2;
   const centerZ = (minZ + maxZ) / 2;
   return {
-    minX: centerX - half,
-    maxX: centerX + half,
-    minZ: centerZ - half,
-    maxZ: centerZ + half,
+    minX: centerX - dimensions.width / 2,
+    maxX: centerX + dimensions.width / 2,
+    minZ: centerZ - dimensions.height / 2,
+    maxZ: centerZ + dimensions.height / 2,
   };
 }
 
@@ -442,40 +461,34 @@ function tilesForRoute(course: CourseDefinition, route: SceneryPoint[]): Tile[] 
 }
 
 function tilesForMapBounds(course: CourseDefinition, bounds: Bounds): Tile[] {
-  const corners: SceneryPoint[] = [
-    [bounds.minX, bounds.minZ],
-    [bounds.minX, bounds.maxZ],
-    [bounds.maxX, bounds.minZ],
-    [bounds.maxX, bounds.maxZ],
-  ];
-  const tiles = new Map<string, Tile>();
-  const count = 2 ** zoom;
-  const tilePoints = corners.map((point) => {
-    const { lat, lon } = localToLatLon(course, point);
-    return tileCoordinate(lon, lat);
+  const a = localToLatLon(course, [bounds.minX, bounds.minZ]);
+  const b = localToLatLon(course, [bounds.maxX, bounds.maxZ]);
+  return tilesForGeoBounds({
+    west: Math.min(a.lon, b.lon),
+    east: Math.max(a.lon, b.lon),
+    south: Math.min(a.lat, b.lat),
+    north: Math.max(a.lat, b.lat),
   });
+}
+
+function tilesForGeoBounds({ west, east, south, north }: GeoBox): Tile[] {
+  if (![west, east, south, north].every(Number.isFinite) || west >= east || south >= north)
+    throw new Error('Scenery downloads require finite geographic bounds with positive area.');
+  const tiles: Tile[] = [];
+  const count = 2 ** zoom;
+  const tilePoints = [tileCoordinate(west, south), tileCoordinate(east, north)];
   const minX = Math.max(0, Math.floor(Math.min(...tilePoints.map(({ x }) => x))));
   const maxX = Math.min(count - 1, Math.floor(Math.max(...tilePoints.map(({ x }) => x))));
   const minY = Math.max(0, Math.floor(Math.min(...tilePoints.map(({ y }) => y))));
   const maxY = Math.min(count - 1, Math.floor(Math.max(...tilePoints.map(({ y }) => y))));
-  for (let x = minX; x <= maxX; x++)
-    for (let y = minY; y <= maxY; y++) {
-      const boundsForTile = tileLocalBounds(course, x, y);
-      if (
-        boundsForTile.maxX < bounds.minX ||
-        boundsForTile.minX > bounds.maxX ||
-        boundsForTile.maxZ < bounds.minZ ||
-        boundsForTile.minZ > bounds.maxZ
-      )
-        continue;
-      const key = `${zoom}/${x}/${y}`;
-      tiles.set(key, { x, y, z: zoom, key });
-    }
-  if (tiles.size > maxTiles)
+  const size = (maxX - minX + 1) * (maxY - minY + 1);
+  if (size > maxTiles)
     throw new Error(
-      `Complete map scenery needs ${tiles.size} vector tiles at zoom ${zoom}; the limit is ${maxTiles}.`,
+      `Complete map scenery needs ${size} vector tiles at zoom ${zoom}; the limit is ${maxTiles}.`,
     );
-  return [...tiles.values()];
+  for (let x = minX; x <= maxX; x++)
+    for (let y = minY; y <= maxY; y++) tiles.push({ x, y, z: zoom, key: `${zoom}/${x}/${y}` });
+  return tiles;
 }
 
 async function fetchTileTemplate(): Promise<string> {
@@ -523,26 +536,60 @@ function tileUrl(template: string, tile: Tile) {
     .replaceAll('{y}', String(tile.y));
 }
 
-async function loadTiles(tiles: Tile[], template: string) {
+async function loadTiles(
+  tiles: Tile[],
+  template: string,
+  cache?: GeographicDownloadCache,
+  onProgress?: (completed: number, total: number) => void,
+) {
   const responses = new Map<string, ArrayBuffer>();
-  let next = 0;
-  const workers = Array.from({ length: Math.min(concurrency, tiles.length) }, async () => {
-    while (next < tiles.length) {
-      const index = next++;
-      const tile = tiles[index];
-      const url = tileUrl(template, tile);
-      try {
+  const downloaded = new Set<string>();
+  let completed = 0;
+  onProgress?.(0, tiles.length);
+  await forEachConcurrent(tiles, concurrency, async (tile) => {
+    const url = tileUrl(template, tile);
+    try {
+      const cached = cache ? await cache.read(url) : undefined;
+      if (cached) responses.set(tile.key, new Uint8Array(cached).buffer);
+      else {
         responses.set(tile.key, await loadTile(url));
-      } catch (error) {
-        throw new Error(
-          `Could not acquire scenery tile ${tile.key}: ${error instanceof Error ? error.message : String(error)}`,
-          { cause: error },
-        );
+        if (cache) downloaded.add(tile.key);
       }
+      onProgress?.(++completed, tiles.length);
+    } catch (error) {
+      throw new Error(
+        `Could not acquire scenery tile ${tile.key}: ${error instanceof Error ? error.message : String(error)}`,
+        { cause: error },
+      );
     }
   });
-  await Promise.all(workers);
-  return responses;
+  return { responses, downloaded };
+}
+
+export interface SceneryTileDownload {
+  template: string;
+  responses: Map<string, ArrayBuffer>;
+  downloaded: Set<string>;
+}
+
+async function loadSceneryTiles(
+  tiles: Tile[],
+  cache?: GeographicDownloadCache,
+  onProgress?: (completed: number, total: number) => void,
+): Promise<SceneryTileDownload> {
+  const template = await fetchTileTemplate();
+  return { template, ...(await loadTiles(tiles, template, cache, onProgress)) };
+}
+
+export function requestSceneryTiles(
+  box: GeoBox,
+  cache?: GeographicDownloadCache,
+  onProgress?: (completed: number, total: number) => void,
+): Promise<SceneryTileDownload> {
+  const request = loadSceneryTiles(tilesForGeoBounds(box), cache, onProgress);
+  // Terrain may fail before the caller reaches scenery; still surface this error when awaited.
+  request.catch(() => {});
+  return request;
 }
 
 function asNumber(value: unknown) {
@@ -656,42 +703,51 @@ export interface GeoBox {
 
 export interface MappedNetworkRequest {
   elements: Promise<OsmElement[]>;
-  /** Attempt label such as "(2/2)" once the download has been retried. */
+  /** Completed tiles and, when retrying, the current tile and provider attempt. */
   retry?: string;
+  state?: RoadBuildState;
   onRetry?: () => void;
 }
 
-const osmTags = [
-  'highway',
-  'oneway',
-  'junction',
-  'lanes',
-  'layer',
-  'width',
-  'service',
-  'bridge',
-  'tunnel',
-  'amenity',
-  'parking',
-  'stop',
-  'direction',
-  'stop:direction',
-];
-
-async function fetchMappedNetwork(
+async function fetchMappedNetworkTile(
   { south, west, north, east }: GeoBox,
   onRetry: (attempt: number, total: number) => void,
+  cache: GeographicDownloadCache,
 ) {
-  // Geometry and node ids come from a tagless `skel` output; `convert` adds only the tags we read.
-  const tags = osmTags.map((key) => `"${key}"=t["${key}"]`).join(',');
-  const query = `[out:json][timeout:25][bbox:${south},${west},${north},${east}];way["highway"~"^(motorway|trunk|primary|secondary|tertiary|residential|unclassified|living_street|service|track)(_link)?$"]->.roads;(.roads;node(w.roads)["highway"="stop"];nwr["amenity"="parking"];)->.all;.all out skel geom qt;.all convert tags ::id=id(),"osm:type"=type(),${tags};out qt;`;
+  if (localOsmDataEnabled) {
+    const url = new URL('/osm', localOsmDataUrl);
+    url.searchParams.set('bbox', [west, south, east, north].join(','));
+    const cached = await cache.read(url.href);
+    if (cached) return JSON.parse(new TextDecoder().decode(cached)) as OsmElement[];
+    let elements: OsmElement[] | undefined;
+    try {
+      const response = await fetch(url, { signal: AbortSignal.timeout(2_000) });
+      if (response.status !== 404) {
+        if (!response.ok) throw new Error(`Local map data request failed (${response.status}).`);
+        const data = (await response.json()) as { elements?: OsmElement[] };
+        if (!Array.isArray(data.elements))
+          throw new Error('Local map data response is missing elements.');
+        elements = data.elements;
+      }
+    } catch (error) {
+      console.warn('Local map data unavailable; falling back to OpenStreetMap.', error);
+    }
+    if (elements) {
+      await cache.write(url.href, new TextEncoder().encode(JSON.stringify(elements)));
+      return elements;
+    }
+  }
+  const query = `[out:json][timeout:${overpassTimeoutSeconds}][bbox:${south},${west},${north},${east}];way["highway"~"^(${osmRoadClasses.join('|')})(_link)?$"]->.roads;(.roads;node(w.roads)["highway"="stop"];nwr["amenity"="parking"];);out body geom qt;`;
+  const cacheKey = `${overpassEndpoints[0]}?${new URLSearchParams({ data: query })}`;
+  const cached = await cache.read(cacheKey);
+  if (cached) return JSON.parse(new TextDecoder().decode(cached)) as OsmElement[];
   const elements = await downloadScenery(
     overpassEndpoints,
     'OpenStreetMap road network',
-    45_000,
+    overpassRequestTimeoutMs,
     async (response) => {
       const data = (await response.json()) as {
-        elements?: (OsmElement | { type: 'tags'; id: number; tags: Record<string, string> })[];
+        elements?: OsmElement[];
         remark?: string;
       };
       if (data.remark) {
@@ -706,28 +762,69 @@ async function fetchMappedNetwork(
     { method: 'POST', body: new URLSearchParams({ data: query }) },
     onRetry,
   );
-  const tagsById = new Map<string, Record<string, string>>();
-  for (const element of elements) {
-    if (element.type !== 'tags') continue;
-    const { 'osm:type': type, ...values } = element.tags;
-    tagsById.set(
-      `${type}/${element.id}`,
-      Object.fromEntries(Object.entries(values).filter(([, value]) => value !== '')),
-    );
-  }
-  return elements.flatMap((element) => {
-    if (element.type === 'tags') return [];
-    const tags = tagsById.get(`${element.type}/${element.id}`);
-    return [tags ? { ...element, tags: { ...element.tags, ...tags } } : element];
+  await cache.write(cacheKey, new TextEncoder().encode(JSON.stringify(elements)));
+  return elements;
+}
+
+const networkCaches = new WeakMap<GeographicDownloadCache, Map<string, Promise<OsmElement[]>>>();
+
+async function fetchMappedNetwork(
+  box: GeoBox,
+  onProgress: (label: string) => void,
+  cache: GeographicDownloadCache,
+): Promise<OsmElement[]> {
+  const networkTiles = networkCaches.get(cache) ?? new Map<string, Promise<OsmElement[]>>();
+  networkCaches.set(cache, networkTiles);
+  const tiles = geographicTiles(box);
+  const results: OsmElement[][] = new Array(tiles.length);
+  let completed = 0;
+  const label = () => `Tiles ${completed}/${tiles.length}`;
+  onProgress(label());
+  await forEachConcurrent(tiles, geographicDownloadConcurrency.osm, async (tile, index) => {
+    let pending = networkTiles.get(tile.key);
+    if (!pending) {
+      pending = fetchMappedNetworkTile(
+        tile,
+        (attempt, total) => onProgress(`${label()}; tile ${index + 1} (${attempt}/${total})`),
+        cache,
+      );
+      networkTiles.set(tile.key, pending);
+    }
+    try {
+      results[index] = await pending;
+      completed++;
+      onProgress(label());
+    } finally {
+      if (networkTiles.get(tile.key) === pending) networkTiles.delete(tile.key);
+    }
   });
+  const elements = new Map<string, OsmElement>();
+  for (const result of results)
+    for (const element of result) elements.set(`${element.type}/${element.id}`, element);
+  return [...elements.values()];
 }
 
 /** Start the Complete map OpenStreetMap download; it only needs the geographic map square. */
-export function requestMappedNetwork(box: GeoBox): MappedNetworkRequest {
+export function requestMappedNetwork(
+  box: GeoBox,
+  cache: GeographicDownloadCache = geographicDownloadCache,
+  onProgress?: (detail: string, state: RoadBuildState) => void,
+): MappedNetworkRequest {
   const request: MappedNetworkRequest = {} as MappedNetworkRequest;
-  request.elements = fetchMappedNetwork(box, (attempt, total) => {
-    request.retry = `(${attempt}/${total})`;
+  request.elements = fetchMappedNetwork(
+    box,
+    (label) => {
+      request.retry = label;
+      request.state = 'active';
+      request.onRetry?.();
+      onProgress?.(label, 'active');
+    },
+    cache,
+  ).then((elements) => {
+    request.state = 'complete';
     request.onRetry?.();
+    onProgress?.(request.retry!, 'complete');
+    return elements;
   });
   // Callers may fail earlier stages before awaiting; the rejection is still observed when awaited.
   request.elements.catch(() => {});
@@ -1120,15 +1217,19 @@ function decodedFeature(
  * Network failures and routes exceeding the tile budget are reported to the caller.
  */
 export async function fetchCourseScenery(
-  course: CourseDefinition,
+  course: RoadMap,
   mode: boolean | MapDefinition,
   {
     progress = () => {},
     network,
+    cache,
+    tileRequest,
   }: {
-    progress?: (step: 'network', detail?: string) => void;
-    /** Complete map download already started from the geographic map square. */
+    progress?: RoadBuildProgress;
+    /** Complete map download already started from the geographic selection. */
     network?: MappedNetworkRequest;
+    cache?: GeographicDownloadCache;
+    tileRequest?: Promise<SceneryTileDownload>;
   } = {},
 ): Promise<CourseScenery> {
   const definition: MapDefinition =
@@ -1162,21 +1263,33 @@ export async function fetchCourseScenery(
   if (completeMap && !network) {
     const a = localToLatLon(course, [bounds.minX, bounds.minZ]);
     const b = localToLatLon(course, [bounds.maxX, bounds.maxZ]);
-    network = requestMappedNetwork({
-      south: Math.min(a.lat, b.lat),
-      west: Math.min(a.lon, b.lon),
-      north: Math.max(a.lat, b.lat),
-      east: Math.max(a.lon, b.lon),
-    });
+    network = requestMappedNetwork(
+      {
+        south: Math.min(a.lat, b.lat),
+        west: Math.min(a.lon, b.lon),
+        north: Math.max(a.lat, b.lat),
+        east: Math.max(a.lon, b.lon),
+      },
+      cache,
+    );
   }
-  const tileData = await loadTiles(tiles, await fetchTileTemplate());
-  let mapped: ReturnType<typeof mappedNetworkScenery> | undefined;
+  if (!tileRequest) progress('scenery', 'Connecting to OpenFreeMap', 'active');
+  const tileProgress = (completed: number, total: number) =>
+    progress('scenery', `Tiles ${completed}/${total}`, 'active');
+  const loaded = await (tileRequest ?? loadSceneryTiles(tiles, cache, tileProgress));
+  const missing = tiles.filter((tile) => !loaded.responses.has(tile.key));
+  if (missing.length) {
+    const additional = await loadTiles(missing, loaded.template, cache);
+    for (const [key, bytes] of additional.responses) loaded.responses.set(key, bytes);
+    for (const key of additional.downloaded) loaded.downloaded.add(key);
+  }
+  const { template, responses: tileData, downloaded } = loaded;
   if (completeMap && network) {
     const request = network;
-    request.onRetry = () => progress('network', request.retry);
+    request.onRetry = () => progress('network', request.retry, request.state);
     request.onRetry();
-    mapped = mappedNetworkScenery(course, bounds, await request.elements);
   }
+  progress('scenery', '', 'active');
   const scenery: CourseScenery = {
     version: 1,
     importRevision: sceneryImportRevision,
@@ -1246,7 +1359,11 @@ export async function fetchCourseScenery(
         );
       }
     }
+    if (cache && downloaded.has(tile.key))
+      await cache.write(tileUrl(template, tile), new Uint8Array(tileData.get(tile.key)!));
   }
-  if (mapped) Object.assign(scenery, mapped);
+  progress('scenery', undefined, 'complete');
+  if (completeMap && network)
+    Object.assign(scenery, mappedNetworkScenery(course, bounds, await network.elements));
   return normalizeCourseScenery(scenery);
 }

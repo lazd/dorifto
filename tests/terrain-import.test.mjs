@@ -10,6 +10,11 @@ import { fetchTerrainDetail, fetchTerrainRaster } from '../scripts/import-terrai
 import { fetchTerrainRaster as downloadTerrainRaster } from '../src/terrain-import.mjs';
 import { geographicRasterSampler } from '../src/terrain-raster.mjs';
 import {
+  geographicTiles,
+  geographicDownloadConcurrency,
+  forEachConcurrent,
+} from '../src/geographic-download.mjs';
+import {
   convertTrack,
   fetchMissingElevation,
   selectTrackSegment,
@@ -48,26 +53,32 @@ function geotiffResponse(url) {
 
 test('terrain downloads retry network and server failures without reusing a failed cached response', async () => {
   const requests = [];
+  const attempts = new Map();
   const raster = await downloadTerrainRaster(source, {
     fetch: async (url, options) => {
       requests.push(options);
-      if (requests.length === 1) throw new TypeError('Failed to fetch');
-      if (requests.length === 2) return new Response('Unavailable', { status: 503 });
-      if (requests.length === 3) return new Response('Too many requests', { status: 429 });
+      const attempt = (attempts.get(url.href) ?? 0) + 1;
+      attempts.set(url.href, attempt);
+      if (attempt === 1) throw new TypeError('Failed to fetch');
+      if (attempt === 2) return new Response('Unavailable', { status: 503 });
+      if (attempt === 3) return new Response('Too many requests', { status: 429 });
       return geotiffResponse(url);
     },
   });
-  assert.equal(requests.length, 4);
-  assert.equal(requests[0].cache, undefined);
-  assert.ok(requests.slice(1).every(({ cache }) => cache === 'reload'));
+  const tileCount = geographicTiles(raster).length;
+  assert.equal(requests.length, tileCount * 4);
+  assert.equal(requests.filter(({ cache }) => cache === undefined).length, tileCount);
+  assert.equal(requests.filter(({ cache }) => cache === 'reload').length, tileCount * 3);
   assert.ok(raster.heights.every((height) => height === 120));
 });
 
 test('terrain downloads report persistent network failures after three retries', async () => {
   let requests = 0;
+  let tileCount;
   const cause = new TypeError('Failed to fetch');
   await assert.rejects(
     downloadTerrainRaster(source, {
+      onProgress: (_, total) => (tileCount = total),
       fetch: async () => {
         requests++;
         throw cause;
@@ -79,13 +90,15 @@ test('terrain downloads report persistent network failures after three retries',
       return true;
     },
   );
-  assert.equal(requests, 4);
+  assert.equal(requests, Math.min(tileCount, geographicDownloadConcurrency.terrain) * 4);
 });
 
 test('terrain downloads do not retry permanent HTTP errors', async () => {
   let requests = 0;
+  let tileCount;
   await assert.rejects(
     downloadTerrainRaster(source, {
+      onProgress: (_, total) => (tileCount = total),
       fetch: async () => {
         requests++;
         return new Response('Invalid request', { status: 400 });
@@ -93,25 +106,41 @@ test('terrain downloads do not retry permanent HTTP errors', async () => {
     }),
     /HTTP 400: Invalid request/,
   );
-  assert.equal(requests, 1);
+  assert.equal(requests, Math.min(tileCount, geographicDownloadConcurrency.terrain));
 });
 
 test('terrain GeoTIFF cache reuses the request and never caches invalid responses', async () => {
   const cacheDir = await mkdtemp(path.join(os.tmpdir(), 'dorifto-terrain-'));
   let requests = 0;
+  let active = 0;
+  let maximumActive = 0;
+  const progress = [];
   const fetch = async (url) => {
     requests++;
+    maximumActive = Math.max(maximumActive, ++active);
+    await new Promise((resolve) => setTimeout(resolve, 2));
+    active--;
     return geotiffResponse(url);
   };
   try {
     const options = { cacheDir, fetch };
-    const raster = await fetchTerrainRaster(source, options);
+    const raster = await fetchTerrainRaster(source, {
+      ...options,
+      onProgress: (completed) => progress.push(completed),
+    });
     assert.equal(raster.heights.length, raster.columns * raster.rows);
     assert.ok(raster.heights.every((height) => height === 120));
+    const tileCount = geographicTiles(raster).length;
+    assert.equal(maximumActive, Math.min(tileCount, geographicDownloadConcurrency.terrain));
+    assert.deepEqual(
+      progress,
+      Array.from({ length: tileCount + 1 }, (_, index) => index),
+    );
+    assert.equal(requests, tileCount);
     assert.deepEqual(await fetchTerrainRaster(source, options), raster);
-    assert.equal(requests, 1);
+    assert.equal(requests, tileCount);
     await fetchTerrainRaster(source, { ...options, resolution: 10 });
-    assert.equal(requests, 2);
+    assert.equal(requests, tileCount * 2);
     await assert.rejects(
       fetchTerrainRaster(source, {
         ...options,
@@ -120,10 +149,32 @@ test('terrain GeoTIFF cache reuses the request and never caches invalid response
       }),
       /Invalid USGS terrain GeoTIFF/,
     );
-    assert.equal((await readdir(cacheDir)).length, 2);
+    assert.equal((await readdir(cacheDir)).length, tileCount * 2);
   } finally {
     await rm(cacheDir, { recursive: true, force: true });
   }
+});
+
+test('parallel download failures stop queued tiles and finish active work before rejecting', async () => {
+  const concurrency = geographicDownloadConcurrency.terrain;
+  const started = [];
+  const finished = [];
+  const failure = new Error('Tile download failed');
+  await assert.rejects(
+    forEachConcurrent(
+      Array.from({ length: concurrency * 2 }, (_, index) => index),
+      concurrency,
+      async (index) => {
+        started.push(index);
+        if (index === 0) throw failure;
+        await new Promise((resolve) => setTimeout(resolve, 2));
+        finished.push(index);
+      },
+    ),
+    (error) => error === failure,
+  );
+  assert.equal(started.length, concurrency);
+  assert.equal(finished.length, concurrency - 1);
 });
 
 test('terrain sampling preserves geographic orientation, height datum, and reversed segment alignment', async () => {

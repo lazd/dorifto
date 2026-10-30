@@ -294,44 +294,47 @@ const stopGlyphs: Record<string, string[]> = {
 };
 
 function stopFaceTexture(halfHeight: number) {
-  const canvas = document.createElement('canvas');
-  canvas.width = canvas.height = 512;
-  const context = canvas.getContext('2d')!;
-  const scale = canvas.width / (halfHeight * 2);
-  context.setTransform(scale, 0, 0, -scale, canvas.width / 2, canvas.height / 2);
-  context.fillStyle = '#f2eee3';
-  context.fillRect(-halfHeight, -halfHeight, halfHeight * 2, halfHeight * 2);
-  context.fillStyle = '#c92227';
-  context.beginPath();
-  for (let i = 0; i < 8; i++) {
-    const angle = Math.PI / 8 + (i * Math.PI) / 4;
-    const x = Math.cos(angle) * 0.35;
-    const y = Math.sin(angle) * 0.35;
-    if (i === 0) context.moveTo(x, y);
-    else context.lineTo(x, y);
-  }
-  context.closePath();
-  context.fill();
-  context.fillStyle = '#ffffff';
+  const size = 512;
+  const pixels = new Uint8Array(size * size * 4);
+  const innerHalfHeight = 0.35 * Math.cos(Math.PI / 8);
+  const innerDiagonal = 0.35 * (Math.cos(Math.PI / 8) + Math.sin(Math.PI / 8));
   const letters = 'STOP';
   const cell = 0.025;
   const gap = cell * 0.65;
   const totalWidth = letters.length * 5 * cell + (letters.length - 1) * gap;
   const height = 7 * cell;
-  letters.split('').forEach((letter, index) => {
-    const rows = stopGlyphs[letter];
-    rows.forEach((row, y) => {
-      for (let x = 0; x < row.length; x++) {
-        if (row[x] !== '1') continue;
-        const left = -totalWidth / 2 + index * (5 * cell + gap) + x * cell;
-        const top = height / 2 - y * cell;
-        context.fillRect(left, top - cell, cell, cell);
-      }
-    });
-  });
-  const texture = new THREE.CanvasTexture(canvas);
+  // Raw pixels work in workers and survive Object3D serialization without DOM image loading.
+  for (let row = 0; row < size; row++) {
+    const y = ((row + 0.5) / size - 0.5) * halfHeight * 2;
+    for (let column = 0; column < size; column++) {
+      const x = ((column + 0.5) / size - 0.5) * halfHeight * 2;
+      const red =
+        Math.max(Math.abs(x), Math.abs(y)) <= innerHalfHeight &&
+        Math.abs(x) + Math.abs(y) <= innerDiagonal;
+      const textX = x + totalWidth / 2;
+      const letter = Math.floor(textX / (5 * cell + gap));
+      const glyphX = Math.floor((textX - letter * (5 * cell + gap)) / cell);
+      const glyphY = Math.floor((height / 2 - y) / cell);
+      const white =
+        letter >= 0 &&
+        letter < letters.length &&
+        glyphX >= 0 &&
+        glyphX < 5 &&
+        stopGlyphs[letters[letter]][glyphY]?.[glyphX] === '1';
+      const offset = (row * size + column) * 4;
+      pixels[offset] = white ? 255 : red ? 201 : 242;
+      pixels[offset + 1] = white ? 255 : red ? 34 : 238;
+      pixels[offset + 2] = white ? 255 : red ? 39 : 227;
+      pixels[offset + 3] = 255;
+    }
+  }
+  const texture = new THREE.DataTexture(pixels, size, size);
   texture.colorSpace = THREE.SRGBColorSpace;
+  texture.magFilter = THREE.LinearFilter;
+  texture.minFilter = THREE.LinearMipmapLinearFilter;
+  texture.generateMipmaps = true;
   texture.anisotropy = 8;
+  texture.needsUpdate = true;
   return texture;
 }
 
@@ -379,6 +382,7 @@ export function createStopSignFactory() {
     back.castShadow = true;
     sign.add(back);
     const face = new THREE.Mesh(boardGeometry, faceMaterial);
+    face.name = 'stop-sign-face';
     face.position.set(0, boardY, 0);
     face.castShadow = true;
     sign.add(face);

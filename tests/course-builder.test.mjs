@@ -8,6 +8,8 @@ let server;
 let selection;
 let createLocationSearch;
 let builderData;
+let completeMap;
+let builderURL;
 before(async () => {
   server = await createServer({
     server: { middlewareMode: true, hmr: false, ws: false, watch: null },
@@ -16,6 +18,85 @@ before(async () => {
   selection = await server.ssrLoadModule('/src/road-selection.ts');
   ({ createLocationSearch } = await server.ssrLoadModule('/src/course-builder-search.ts'));
   builderData = await server.ssrLoadModule('/src/course-builder-data.ts');
+  completeMap = await server.ssrLoadModule('/src/complete-map.ts');
+  builderURL = await server.ssrLoadModule('/src/course-builder-url.ts');
+});
+
+test('editor URLs preserve exact routed sections and settings through compression', async () => {
+  const course = builderData.readRoadMap(
+    await readFile(new URL('./fixtures/road-course.json', import.meta.url), 'utf8'),
+  );
+  const value = {
+    draft: {
+      ...builderData.restoreRoadDraft(course),
+      definition: 'complete-map',
+      completeMapDimensions: completeMap.defaultCompleteMapDimensions,
+    },
+    name: 'Road & hills / test',
+    width: '8',
+    shoulderWidth: '2',
+    terrainTransition: '2',
+    doubleYellow: true,
+  };
+  const raw = JSON.stringify(value);
+  const expected = JSON.parse(raw);
+  const compressed = await builderURL.compressEditorDraft(raw);
+  assert.ok(compressed.length < raw.length);
+  assert.deepEqual(await builderURL.readEditorDraft(compressed), expected);
+  assert.deepEqual(await builderURL.readEditorDraft(raw), expected);
+  const url = builderURL.editorDraftURL(
+    new URL('https://example.test/course-builder.html?embedded=1'),
+    compressed,
+    course.id,
+  );
+  assert.equal(url.searchParams.get('view'), 'edit');
+  assert.equal(url.searchParams.get('edit'), course.id);
+  assert.equal(url.searchParams.get('embedded'), '1');
+  assert.deepEqual(await builderURL.readEditorDraft(url.searchParams.get('draft')), expected);
+  const created = builderURL.editorDraftURL(url, compressed);
+  assert.equal(created.searchParams.get('view'), 'create');
+  assert.equal(created.searchParams.has('edit'), false);
+  await assert.rejects(builderURL.readEditorDraft('{"draft":{}}'), /invalid course draft/);
+  await assert.rejects(
+    builderURL.readEditorDraft(
+      JSON.stringify({
+        ...value,
+        draft: { ...value.draft, sections: [[{ lat: NaN, lon: -121 }]] },
+      }),
+    ),
+    /invalid course draft/,
+  );
+});
+
+test('complete-map selections default to a square and allow rectangles within the area limit', () => {
+  const { width, height } = completeMap.defaultCompleteMapDimensions;
+  assert.equal(width, height);
+  assert.equal(width * height, completeMap.maximumCompleteMapArea);
+  const dimensions = { width: width * 2, height: height / 2 };
+  completeMap.validateCompleteMapDimensions(dimensions);
+  const origin = { lat: 38, lon: -121 };
+  const corners = completeMap.completeMapCorners([origin], dimensions);
+  const bounds = completeMap.completeMapBounds([origin], dimensions);
+  assert.ok(bounds.fits);
+  assert.ok(
+    Math.abs((corners[1].lon - corners[0].lon) * bounds.metersPerLongitude - dimensions.width) <
+      1e-6,
+  );
+  assert.ok(
+    Math.abs((corners[2].lat - corners[1].lat) * bounds.metersPerDegree - dimensions.height) < 1e-6,
+  );
+  assert.ok(
+    completeMap.completeMapBounds([origin, { lat: origin.lat, lon: corners[1].lon }], dimensions)
+      .fits,
+  );
+  assert.equal(completeMap.completeMapBounds(corners).fits, false);
+  for (const invalid of [
+    { width: width * 2, height },
+    { width: 0, height },
+    { width: NaN, height },
+    { width, height: -1 },
+  ])
+    assert.throws(() => completeMap.validateCompleteMapDimensions(invalid), /6.25/);
 });
 
 test('saved courses restore geographic routes and retain exact editable waypoints', async () => {
@@ -44,13 +125,35 @@ test('saved courses restore geographic routes and retain exact editable waypoint
   assert.equal(builderData.roadMapDefinition(editable.courseBuilder), 'nearby-roads');
   const completeMap = {
     ...editable,
-    courseBuilder: { ...editable.courseBuilder, definition: 'complete-map' },
+    courseBuilder: {
+      ...editable.courseBuilder,
+      definition: 'complete-map',
+      completeMapDimensions: { width: 5000, height: 1250 },
+    },
   };
   assert.equal(
     builderData.roadMapDefinition(
       builderData.readRoadMap(JSON.stringify(completeMap)).courseBuilder,
     ),
     'complete-map',
+  );
+  assert.deepEqual(
+    builderData.restoreRoadDraft(builderData.readRoadMap(JSON.stringify(completeMap)))
+      .completeMapDimensions,
+    completeMap.courseBuilder.completeMapDimensions,
+  );
+  assert.throws(
+    () =>
+      builderData.readRoadMap(
+        JSON.stringify({
+          ...completeMap,
+          courseBuilder: {
+            ...completeMap.courseBuilder,
+            completeMapDimensions: { width: 5000, height: 2500 },
+          },
+        }),
+      ),
+    /6.25/,
   );
   const restored = builderData.restoreRoadDraft(builderData.readRoadMap(JSON.stringify(editable)));
   assert.deepEqual(restored.sections, draft.sections);
@@ -124,7 +227,7 @@ test('reading saved scenery preserves its data without a local migration', async
   assert.deepEqual(course.scenery, source.scenery);
 });
 
-test('builds finish without a 3D preview, which the worker generates on request', async () => {
+test('builds return savable course data before a separately requested preview', async () => {
   const course = builderData.readRoadMap(
     await readFile(new URL('./fixtures/road-course.json', import.meta.url), 'utf8'),
   );

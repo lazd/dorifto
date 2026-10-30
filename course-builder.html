@@ -51,6 +51,26 @@
             </div>
             <details class="advanced">
               <summary>Advanced</summary>
+              <div id="map-dimensions" hidden>
+                <div class="field">
+                  <label for="map-width">Map width (km)</label>
+                  <input id="map-width" type="number" min="0.001" step="any" value="2.5" required />
+                </div>
+                <div class="field">
+                  <label for="map-height">Map height (km)</label>
+                  <input
+                    id="map-height"
+                    type="number"
+                    min="0.001"
+                    step="any"
+                    value="2.5"
+                    required
+                  />
+                </div>
+                <p class="field-hint">
+                  Drag the map corners or enter dimensions. Maximum area: 6.25 km².
+                </p>
+              </div>
               <div class="field">
                 <label for="width">Road width (m)</label>
                 <input id="width" type="number" min="3" max="30" step="0.5" value="8" required />

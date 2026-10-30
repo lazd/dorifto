@@ -3,6 +3,7 @@ import { cleanRoadRoute, routeLength } from './road-selection';
 import type { GPSPoint } from './track-conversion.mjs';
 import type { RoadStructureLine } from './road-structures.mjs';
 import { validateCourseScenery } from './scenery-data';
+import { validateCompleteMapDimensions, type CompleteMapDimensions } from './complete-map';
 
 export const roadBuildSteps = {
   starting: 'Starting the course builder',
@@ -17,6 +18,12 @@ export const roadBuildSteps = {
 export type MapDefinition = 'course' | 'nearby-roads' | 'complete-map';
 
 export type RoadBuildStep = keyof typeof roadBuildSteps;
+export type RoadBuildState = 'active' | 'complete';
+export type RoadBuildProgress = (
+  step: RoadBuildStep,
+  detail?: string,
+  state?: RoadBuildState,
+) => void;
 
 export interface RoadDraft {
   sections: GPSPoint[][];
@@ -26,6 +33,7 @@ export interface RoadDraft {
   resolution: number;
   structureLines?: RoadStructureLine[];
   definition?: MapDefinition;
+  completeMapDimensions?: CompleteMapDimensions;
   /** Legacy saved setting, retained for older maps. */
   includeNearbyRoads?: boolean;
 }
@@ -73,6 +81,8 @@ export function readRoadMap(json: string): RoadMap {
     !['course', 'nearby-roads', 'complete-map'].includes(value.courseBuilder.definition)
   )
     throw new Error('Invalid saved map definition');
+  if (value.courseBuilder?.completeMapDimensions !== undefined)
+    validateCompleteMapDimensions(value.courseBuilder.completeMapDimensions);
   return value;
 }
 
