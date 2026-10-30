@@ -514,12 +514,19 @@ the vector tiles; otherwise footprint size and height guide the styling, includi
 saved maps. Small houses mostly get gable roofs, mixed with hipped roofs, single-slope shed
 roofs on elongated footprints, and occasional steep A-frame-inspired roofs on compact square
 houses. Available roof-shape tags take precedence; courtyards retain flat roofs.
+Gable, A-frame and shed roofs overhang their walls by 35 cm, with visible undersides.
+Joined hipped roofs use planar
+faces with angular ridges and valleys, rather than a sampled curved surface.
+Rectilinear joined gable and A-frame houses get a ridge per wing, with intersecting slopes
+trimmed at the joins. Shed roofs use a gentle pitch, including on joined footprints.
+Decorative rocks form small, size-graded groups beside mapped driveway and narrow service-road
+entrances, clear of pavement and buildings; they are not scattered across open terrain.
 Styles and colors are deterministic approximations, not surveyed
 architecture, and roofs share the rendered building collision mesh. Tree and shrub positions are deterministic estimates,
 not surveyed individual plants. Vegetation is decorative, while buildings, nearby-road bridges,
 and signs have collision. Existing OSM/OpenFreeMap attribution is retained in exported maps.
 
-Open [buildings.html](./buildings.html) for an orbitable, labeled gallery of the building styles,
+Open [buildings.html](./buildings.html) for an orbitable gallery of single and joined-section building styles,
 using the same geometry and textures as the game.
 
 Settings > Track has independent **Buildings**, **Water**, **Trees and shrubs**, and

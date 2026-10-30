@@ -21,6 +21,7 @@ import { addVegetation, setVegetationDetail, type VegetationDetail } from './veg
 import {
   buildingAppearance,
   buildingFlatRoofColumn,
+  buildingGableColumn,
   buildingRoof,
   buildingRoofColumn,
   buildingUV,
@@ -714,7 +715,7 @@ export function* createSceneryTask(
           wallColor,
           [a, b, c].map((p) =>
             buildingUV(
-              column,
+              buildingGableColumn(appearance.facade),
               (p.x - shape.minX) / Math.max(1, shape.maxX - shape.minX),
               (p.y - base) / floorHeight,
             ),
@@ -741,29 +742,8 @@ export function* createSceneryTask(
     if (buildingBatch.positions.length) {
       const surface = material(0xffffff, true);
       surface.map = createBuildingTexture();
+      surface.side = THREE.DoubleSide;
       const mesh = addBatch(layers.buildings, buildingBatch, surface, 'building-shells')!;
-      // Smooth the sampled roof slopes without softening facade corners or the eaves.
-      surface.flatShading = false;
-      const normals = mesh.geometry.getAttribute('normal');
-      const uv = mesh.geometry.getAttribute('uv');
-      const vertices = mesh.geometry.getAttribute('position');
-      const roofNormals = new Map<string, THREE.Vector3>();
-      const roofKeys = new Map<number, string>();
-      const sampleNormal = new THREE.Vector3();
-      const roofUVStart = buildingUV(buildingRoofColumn, 0, 0)[0];
-      for (let i = 0; i < vertices.count; i++) {
-        if (uv.getX(i) < roofUVStart) continue;
-        const key = `${Math.round(vertices.getX(i) * 1000)},${Math.round(vertices.getY(i) * 1000)},${Math.round(vertices.getZ(i) * 1000)}`;
-        const normal = roofNormals.get(key) ?? new THREE.Vector3();
-        normal.add(sampleNormal.fromBufferAttribute(normals, i));
-        roofNormals.set(key, normal);
-        roofKeys.set(i, key);
-      }
-      for (const normal of roofNormals.values()) normal.normalize();
-      for (const [i, key] of roofKeys) {
-        const normal = roofNormals.get(key)!;
-        normals.setXYZ(i, normal.x, normal.y, normal.z);
-      }
       const positions = mesh.geometry.getAttribute('position').array as Float32Array;
       result.collisionMesh = {
         positions,
@@ -2943,9 +2923,6 @@ export function* createSceneryTask(
   if (typeof document !== 'undefined' && !options.simpleVegetation) {
     const rockMatrices: THREE.Matrix4[] = [];
     const rockShades: number[] = [];
-    const landcover = vegetation
-      .map((feature) => polygon(feature.rings))
-      .filter((shape) => !!shape);
     const area = (bounds.maxX - bounds.minX) * (bounds.maxZ - bounds.minZ);
     const spacing = Math.max(6, Math.sqrt(area / 160_000));
     let candidates = 0;
@@ -2956,14 +2933,7 @@ export function* createSceneryTask(
           z = z0 + random() * spacing;
         if (random() > 0.65) continue;
         const choice = random();
-        const rock = choice < 0.012;
-        if (rock) {
-          const cover = canopy ? treeCanopyAt(canopy, x, z) : 255;
-          if (!(cover > 10 && cover <= 100) && !landcover.some((shape) => inside(x, z, shape)))
-            continue;
-        } else if (choice >= 0.45 || roadsideDistance(x, z) > 12) {
-          continue;
-        }
+        if (choice < 0.012 || choice >= 0.45 || roadsideDistance(x, z) > 12) continue;
         if (
           !terrain.contains(x - 1.5, z - 1.5) ||
           !terrain.contains(x + 1.5, z + 1.5) ||
@@ -2976,17 +2946,111 @@ export function* createSceneryTask(
         const dx = (ground(x + 1, z) - ground(x - 1, z)) / 2;
         const dz = (ground(x, z + 1) - ground(x, z - 1)) / 2;
         if (!Number.isFinite(y) || Math.hypot(dx, dz) > 0.65) continue;
-        transform.position.set(x, y - (rock ? 0.16 : 0.04), z);
+        transform.position.set(x, y - 0.04, z);
         transform.quaternion.setFromUnitVectors(
           new THREE.Vector3(0, 1, 0),
           new THREE.Vector3(-dx, 1, -dz).normalize(),
         );
         transform.rotateY(random() * Math.PI * 2);
-        const size = rock ? 0.8 + random() * 1.6 : 0.7 + random() * 0.7;
+        const size = 0.7 + random() * 0.7;
         transform.scale.setScalar(size);
         transform.updateMatrix();
-        (rock ? rockMatrices : shrubs).push(transform.matrix.clone());
-        (rock ? rockShades : shrubShades).push(random());
+        shrubs.push(transform.matrix.clone());
+        shrubShades.push(random());
+      }
+    }
+    // Landscape the sides of mapped entrances, never scatter boulders through open terrain.
+    const frontage = new SpatialIndex<RoadSegment>();
+    const frontageRoads = [
+      ...scenery.roads.filter(
+        (road) => !road.structure && road.roadClass !== 'service' && !road.service,
+      ),
+      {
+        points: courseSegments.flatMap(
+          ({ a, b }) =>
+            [
+              [a.x, a.z],
+              [b.x, b.z],
+            ] as SceneryPoint[],
+        ),
+        width: definition.width,
+      },
+    ];
+    for (const road of frontageRoads)
+      for (let i = 1; i < road.points.length; i++) {
+        const [ax, az] = road.points[i - 1],
+          [bx, bz] = road.points[i];
+        const reach = road.width / 2 + 8;
+        frontage.add({
+          a: { x: ax, z: az },
+          b: { x: bx, z: bz },
+          width: road.width,
+          minX: Math.min(ax, bx) - reach,
+          maxX: Math.max(ax, bx) + reach,
+          minZ: Math.min(az, bz) - reach,
+          maxZ: Math.max(az, bz) + reach,
+        });
+      }
+    for (const driveway of scenery.roads) {
+      if (
+        driveway.structure ||
+        !(
+          driveway.service === 'driveway' ||
+          (driveway.roadClass === 'service' && !driveway.service && driveway.width <= 5)
+        )
+      )
+        continue;
+      for (const reverse of [false, true]) {
+        const points = reverse ? driveway.points.slice().reverse() : driveway.points;
+        const [x0, z0] = points[0];
+        const next = points.find(([x, z]) => Math.hypot(x - x0, z - z0) >= 2);
+        if (!next) continue;
+        const length = Math.hypot(next[0] - x0, next[1] - z0);
+        const dx = (next[0] - x0) / length,
+          dz = (next[1] - z0) / length;
+        const atEntrance = frontage.some(x0, z0, (road) => {
+          const rx = road.b.x - road.a.x,
+            rz = road.b.z - road.a.z;
+          return (
+            segmentDistance(x0, z0, road.a, road.b) <= road.width / 2 + 2 &&
+            Math.abs(dx * rx + dz * rz) < Math.hypot(rx, rz) * 0.9
+          );
+        });
+        if (!atEntrance) continue;
+        for (const side of [-1, 1]) {
+          const clusterShade = random();
+          for (let i = 0; i < 3; i++) {
+            const along = 5 + i * 2.2;
+            const across = side * (driveway.width / 2 + 2.8 + random() * 0.4);
+            const x = x0 + dx * along - dz * across,
+              z = z0 + dz * along + dx * across;
+            if (
+              !terrain.contains(x - 1.5, z - 1.5) ||
+              !terrain.contains(x + 1.5, z + 1.5) ||
+              roadsideDistance(x, z) > 8 ||
+              clearance(x, z) < 2.5 ||
+              obstacles.some(x, z, (p) => nearPolygon(x, z, p, 1.5)) ||
+              roads.some(x, z, (s) => segmentDistance(x, z, s.a, s.b) < s.width / 2 + 2.5) ||
+              occupied.some(x, z, (p) => Math.hypot(x - p.x, z - p.z) < 2)
+            )
+              continue;
+            const y = ground(x, z);
+            const slopeX = (ground(x + 1, z) - ground(x - 1, z)) / 2;
+            const slopeZ = (ground(x, z + 1) - ground(x, z - 1)) / 2;
+            if (!Number.isFinite(y) || Math.hypot(slopeX, slopeZ) > 0.45) continue;
+            transform.position.set(x, y - 0.16, z);
+            transform.quaternion.setFromUnitVectors(
+              new THREE.Vector3(0, 1, 0),
+              new THREE.Vector3(-slopeX, 1, -slopeZ).normalize(),
+            );
+            transform.rotateY(random() * Math.PI * 2);
+            transform.scale.setScalar((i === 0 ? 1.1 : 0.65) + random() * 0.25);
+            transform.updateMatrix();
+            rockMatrices.push(transform.matrix.clone());
+            rockShades.push(clusterShade);
+            occupied.add({ x, z, minX: x - 2, maxX: x + 2, minZ: z - 2, maxZ: z + 2 });
+          }
+        }
       }
     }
     addVegetation(layers.vegetation, {

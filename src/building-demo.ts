@@ -18,6 +18,19 @@ function rectangle(x: number, z: number, width: number, depth: number): SceneryP
   ];
 }
 
+function joined(x: number, z: number): SceneryPolygon {
+  return [
+    [
+      [x, z],
+      [x + 17, z],
+      [x + 17, z + 7],
+      [x + 8, z + 7],
+      [x + 8, z + 17],
+      [x, z + 17],
+    ],
+  ];
+}
+
 function start() {
   const examples = [
     {
@@ -84,6 +97,36 @@ function start() {
       depth: 12,
       roofShape: 'flat',
       buildingType: 'office',
+    },
+    {
+      name: 'Joined gable',
+      detail: 'Gabled wings & overhanging eaves',
+      x: -30,
+      z: 40,
+      width: 17,
+      depth: 17,
+      roofShape: 'gabled',
+      rings: joined(-30, 40),
+    },
+    {
+      name: 'Joined A-frame',
+      detail: 'A separate steep ridge on each wing',
+      x: -5,
+      z: 40,
+      width: 17,
+      depth: 17,
+      roofShape: 'a-frame',
+      rings: joined(-5, 40),
+    },
+    {
+      name: 'Joined shed',
+      detail: 'Single slope over an L-shaped home',
+      x: 22,
+      z: 40,
+      width: 17,
+      depth: 17,
+      roofShape: 'skillion',
+      rings: joined(22, 40),
     },
   ];
   const definition: CourseDefinition = {
@@ -173,8 +216,8 @@ function start() {
     renderer.render(scene, camera);
   }
   function reset() {
-    camera.position.set(65, 75, 100);
-    controls.target.set(2, 2, 0);
+    camera.position.set(78, 95, 137);
+    controls.target.set(2, 2, 15);
     controls.update();
     render();
   }

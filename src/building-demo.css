@@ -67,7 +67,8 @@ button {
 
 #building-labels {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(9, minmax(110px, 1fr));
+  overflow-x: auto;
   gap: 8px;
   margin: 0 18px;
 }
