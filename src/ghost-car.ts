@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
+import { carHeadlightRanges } from './car';
 import type { loadCar } from './car';
 
 type Car = Awaited<ReturnType<typeof loadCar>>;
@@ -15,7 +15,6 @@ const frontParts =
 const wheelParts = /^(tyr_|llantaoem)/;
 const brakeParts = /^(184_001_001_BrakeRefraction_0$|thirdrefraction_|brakebulbrear_)/;
 const ghostOpacity = 0.38;
-const glowOpacity = 0.24;
 const lightIntensity = 0.45;
 const groundLightIntensity = 4;
 const brakeGlow = 4;
@@ -64,75 +63,37 @@ export function createGhostCar(scene: THREE.Scene, car: Car) {
     vertexColors: true,
   });
   material.onBeforeCompile = (shader) => {
+    const lightingChunk = THREE.ShaderChunk.lights_fragment_begin;
+    const spotStart = lightingChunk.indexOf('#if ( NUM_SPOT_LIGHTS > 0 ) && defined( RE_Direct )');
+    const spotLoopEnd = lightingChunk.indexOf('#pragma unroll_loop_end', spotStart);
+    const spotEnd =
+      spotLoopEnd < 0 ? -1 : lightingChunk.indexOf('#endif', spotLoopEnd) + '#endif'.length;
+    if (spotStart < 0 || spotEnd < 0) {
+      console.warn('Ghost headlight filter is unavailable in this Three.js shader chunk');
+      return;
+    }
+    const spotLights = lightingChunk.slice(spotStart, spotEnd);
+    const lightAssignment = '\t\tspotLight = spotLights[ i ];';
+    const directLighting =
+      '\t\tRE_Direct( directLight, geometryPosition, geometryNormal, geometryViewDir, geometryClearcoatNormal, material, reflectedLight );';
+    if (!spotLights.includes(lightAssignment) || !spotLights.includes(directLighting)) {
+      console.warn('Ghost headlight filter markers are unavailable in this shader chunk');
+      return;
+    }
+    const filteredSpotLights = spotLights
+      .replace(
+        lightAssignment,
+        `\t\tspotLight = spotLights[ i ];
+\t\tif (abs(spotLight.distance - ${carHeadlightRanges.headlights.toFixed(1)}) > 0.001 &&
+\t\t\tabs(spotLight.distance - ${carHeadlightRanges.highBeams.toFixed(1)}) > 0.001 &&
+\t\t\tabs(spotLight.distance - ${carHeadlightRanges.fogLights.toFixed(1)}) > 0.001) {`,
+      )
+      .replace(directLighting, `${directLighting}\n\t\t}`);
     shader.fragmentShader = shader.fragmentShader.replace(
-      '#include <emissivemap_fragment>',
-      '#include <emissivemap_fragment>\n totalEmissiveRadiance *= vColor.rgb;',
+      '#include <lights_fragment_begin>',
+      `${lightingChunk.slice(0, spotStart)}${filteredSpotLights}${lightingChunk.slice(spotEnd)}`,
     );
   };
-  const maskTarget = new THREE.WebGLRenderTarget(1, 1);
-  const blurTarget = new THREE.WebGLRenderTarget(1, 1, { depthBuffer: false });
-  const size = new THREE.Vector2();
-  const viewPosition = new THREE.Vector3();
-  const maskMaterial = new THREE.ShaderMaterial({
-    side: THREE.DoubleSide,
-    uniforms: {
-      sceneDepth: { value: null as THREE.DepthTexture | null },
-      resolution: { value: size },
-    },
-    vertexShader: `
-      void main() {
-        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-      }
-    `,
-    fragmentShader: `
-      uniform sampler2D sceneDepth;
-      uniform vec2 resolution;
-      void main() {
-        float depth = texture2D(sceneDepth, gl_FragCoord.xy / resolution).x;
-        if (gl_FragCoord.z > depth + 0.00001) discard;
-        gl_FragColor = vec4(1.0);
-      }
-    `,
-  });
-  const blurMaterial = new THREE.ShaderMaterial({
-    uniforms: {
-      source: { value: maskTarget.texture },
-      direction: { value: new THREE.Vector2() },
-      color: { value: new THREE.Color(1, 1, 1) },
-      opacity: { value: 1 },
-    },
-    vertexShader: `
-      varying vec2 vUv;
-      void main() {
-        vUv = uv;
-        gl_Position = vec4(position.xy, 0.0, 1.0);
-      }
-    `,
-    fragmentShader: `
-      uniform sampler2D source;
-      uniform vec2 direction;
-      uniform vec3 color;
-      uniform float opacity;
-      varying vec2 vUv;
-      void main() {
-        float glow = 0.0;
-        float totalWeight = 0.0;
-        for (int i = -16; i <= 16; i++) {
-          float offset = float(i) * 0.25;
-          float weight = exp(-0.5 * offset * offset);
-          glow += texture2D(source, vUv + direction * offset).r * weight;
-          totalWeight += weight;
-        }
-        gl_FragColor = vec4(color * glow / totalWeight, opacity);
-      }
-    `,
-    transparent: true,
-    blending: THREE.AdditiveBlending,
-    depthTest: false,
-    depthWrite: false,
-    toneMapped: false,
-  });
-  const quad = new FullScreenQuad(blurMaterial);
   const meshesFor = (geometry: THREE.BufferGeometry) => {
     const depth = new THREE.Mesh(geometry, prepass);
     const color = new THREE.Mesh(geometry, material);
@@ -215,15 +176,6 @@ export function createGhostCar(scene: THREE.Scene, car: Car) {
     for (const light of lights) light.intensity = lightIntensity * fade;
     for (const light of groundLights) light.intensity = groundLightIntensity * fade;
   }
-  const maskScene = new THREE.Scene();
-  maskScene.background = new THREE.Color(0);
-  const maskGroups = [chassis, ...wheels].map((group) => {
-    const mask = new THREE.Group();
-    const surface = group.children[0];
-    if (surface instanceof THREE.Mesh) mask.add(new THREE.Mesh(surface.geometry, maskMaterial));
-    maskScene.add(mask);
-    return mask;
-  });
   chassis.add(brakeLights);
 
   return {
@@ -246,56 +198,6 @@ export function createGhostCar(scene: THREE.Scene, car: Car) {
     },
     setBraking(braking: boolean) {
       brakeLights.visible = braking;
-    },
-    renderGlow(
-      renderer: THREE.WebGLRenderer,
-      camera: THREE.PerspectiveCamera,
-      depth: THREE.DepthTexture | null,
-    ) {
-      if (!root.visible || material.opacity === 0) return;
-      if (!depth) throw new Error('Ghost glow requires a scene depth texture');
-      renderer.getDrawingBufferSize(size);
-      size.multiplyScalar(0.5).floor();
-      if (maskTarget.width !== size.x || maskTarget.height !== size.y) {
-        maskTarget.setSize(size.x, size.y);
-        blurTarget.setSize(size.x, size.y);
-      }
-      maskMaterial.uniforms.sceneDepth.value = depth;
-      [chassis, ...wheels].forEach((group, i) => {
-        group.updateWorldMatrix(true, false);
-        maskGroups[i].matrixAutoUpdate = false;
-        maskGroups[i].matrix.copy(group.matrixWorld);
-      });
-      viewPosition
-        .setFromMatrixPosition(chassis.matrixWorld)
-        .applyMatrix4(camera.matrixWorldInverse);
-      const radius = (0.09 * camera.projectionMatrix.elements[5]) / Math.max(1, -viewPosition.z);
-      const target = renderer.getRenderTarget();
-      const autoClear = renderer.autoClear;
-      try {
-        renderer.autoClear = true;
-        renderer.setRenderTarget(maskTarget);
-        renderer.render(maskScene, camera);
-        // Blur the solid silhouette, not individual panels, so every edge has the same soft falloff.
-        blurMaterial.blending = THREE.NoBlending;
-        blurMaterial.uniforms.source.value = maskTarget.texture;
-        blurMaterial.uniforms.direction.value.set(radius / camera.aspect, 0);
-        blurMaterial.uniforms.color.value.setRGB(1, 1, 1);
-        blurMaterial.uniforms.opacity.value = 1;
-        renderer.setRenderTarget(blurTarget);
-        quad.render(renderer);
-        blurMaterial.blending = THREE.AdditiveBlending;
-        blurMaterial.uniforms.source.value = blurTarget.texture;
-        blurMaterial.uniforms.direction.value.set(0, radius);
-        blurMaterial.uniforms.color.value.set(0x9ee8ff);
-        blurMaterial.uniforms.opacity.value = (glowOpacity * material.opacity) / ghostOpacity;
-        renderer.setRenderTarget(target);
-        renderer.autoClear = false;
-        quad.render(renderer);
-      } finally {
-        renderer.setRenderTarget(target);
-        renderer.autoClear = autoClear;
-      }
     },
   };
 }

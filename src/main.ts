@@ -2094,10 +2094,9 @@ async function start() {
       else if (y < terrain.groundHeightAt(x, z) - 5)
         reset('Car fell more than 5 meters below terrain');
     }
-    const sceneDepth = tireEffects.captureDepth(renderer, scene, camera, ghost.visible);
-    physics.captureBotDepth(renderer, scene, camera, sceneDepth);
+    tireEffects.prepareRender(scene, camera);
+    physics.prepareBotEffects(scene, camera);
     renderer.render(scene, camera);
-    ghost.renderGlow(renderer, camera, sceneDepth);
   }
 
   reset('Initial spawn');
@@ -2175,9 +2174,7 @@ async function start() {
     car.setMirrors('fpv', configurationState.getState().mirrorResolution);
     ghost.visible = true;
     await renderer.compileAsync(scene, warmupCamera);
-    const depth = tireEffects.captureDepth(renderer, scene, warmupCamera, true);
     renderer.render(scene, warmupCamera);
-    ghost.renderGlow(renderer, warmupCamera, depth);
     ghost.visible = false;
     await renderer.compileAsync(scene, camera);
     renderer.render(scene, warmupCamera);

@@ -169,7 +169,7 @@ export function createTireEffects(
     reset,
     setCourse,
     update,
-    captureDepth: smoke.captureDepth.bind(smoke),
+    prepareRender: smoke.prepareRender.bind(smoke),
     dispose() {
       marks.removeFromParent();
       markGeometry.dispose();

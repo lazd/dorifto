@@ -491,15 +491,8 @@ export function createPhysicsClient({
         });
       });
     },
-    captureBotDepth(
-      renderer: THREE.WebGLRenderer,
-      scene: THREE.Scene,
-      camera: THREE.PerspectiveCamera,
-      depth: THREE.DepthTexture | null,
-    ) {
-      botEffects.forEach((effect) =>
-        effect.captureDepth(renderer, scene, camera, false, depth ?? undefined),
-      );
+    prepareBotEffects(scene: THREE.Scene, camera: THREE.PerspectiveCamera) {
+      botEffects.forEach((effect) => effect.prepareRender(scene, camera));
     },
     ready,
     laps,

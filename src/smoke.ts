@@ -28,11 +28,6 @@ export class TireSmoke {
   private readonly lightOffset = new THREE.Vector3();
   private readonly particlePosition = new THREE.Vector3();
   private readonly geometry = new THREE.InstancedBufferGeometry();
-  private readonly depthTarget = new THREE.WebGLRenderTarget(1, 1, {
-    depthTexture: new THREE.DepthTexture(1, 1),
-  });
-  private readonly depthMaterial = new THREE.MeshDepthMaterial();
-  private readonly size = new THREE.Vector2();
   private readonly viewPosition = new THREE.Vector3();
   private readonly frustum = new THREE.Frustum();
   private readonly projectionView = new THREE.Matrix4();
@@ -43,11 +38,6 @@ export class TireSmoke {
     transparent: true,
     depthWrite: false,
     uniforms: {
-      sceneDepth: { value: this.depthTarget.depthTexture },
-      softDepth: { value: false },
-      resolution: { value: this.size },
-      nearPlane: { value: 0.1 },
-      farPlane: { value: 1500 },
       viewToCar: { value: new THREE.Matrix4() },
       bodyCenter: { value: new THREE.Vector3(0, 0, 0) },
       bodyHalfSize: { value: new THREE.Vector3(0.78, 0.28, 2) },
@@ -86,12 +76,6 @@ export class TireSmoke {
       }
     `,
     fragmentShader: `
-      #include <packing>
-      uniform sampler2D sceneDepth;
-      uniform bool softDepth;
-      uniform vec2 resolution;
-      uniform float nearPlane;
-      uniform float farPlane;
       uniform vec3 bodyCenter;
       uniform vec3 bodyHalfSize;
       uniform vec3 cabinCenter;
@@ -113,17 +97,11 @@ export class TireSmoke {
         float billow = 0.9 + 0.1 * sin(p.x * 11.0 + variation * 20.0)
           * sin(p.y * 9.0 - variation * 15.0);
         float density = pow(max(0.0, 1.0 - edge * edge), 2.0) * billow;
-        float intersectionFade = 1.0;
-        if (softDepth) {
-          float depth = texture2D(sceneDepth, gl_FragCoord.xy / resolution).x;
-          float solidDepth = -perspectiveDepthToViewZ(depth, nearPlane, farPlane);
-          intersectionFade = smoothstep(0.0, 0.55, solidDepth - viewDepth);
-        }
         float cameraFade = smoothstep(0.3, 1.2, viewDepth);
         float carDistance = min(boxDistance(carPosition, bodyCenter, bodyHalfSize),
           boxDistance(carPosition, cabinCenter, cabinHalfSize));
         float carFade = smoothstep(0.0, 0.18, carDistance);
-        float alpha = density * opacity * intersectionFade * cameraFade * carFade;
+        float alpha = density * opacity * cameraFade * carFade;
         if (alpha < 0.001) discard;
         vec3 smokeColor = mix(vec3(0.58, 0.62, 0.65), vec3(0.82), puffUv.y);
         vec3 dustColor = mix(vec3(0.48, 0.32, 0.17), vec3(0.72, 0.57, 0.36), puffUv.y);
@@ -321,14 +299,8 @@ export class TireSmoke {
     this.geometry.getAttribute('lighting').needsUpdate = true;
   }
 
-  captureDepth(
-    renderer: THREE.WebGLRenderer,
-    scene: THREE.Scene,
-    camera: THREE.PerspectiveCamera,
-    force = false,
-    sharedDepth?: THREE.DepthTexture,
-  ) {
-    if ((!this.geometry.instanceCount || !this.mesh.visible) && !force) return sharedDepth ?? null;
+  prepareRender(scene: THREE.Scene, camera: THREE.PerspectiveCamera) {
+    if (!this.geometry.instanceCount || !this.mesh.visible) return;
     this.chassis.updateWorldMatrix(true, false);
     camera.updateWorldMatrix(true, false);
     this.material.uniforms.viewToCar.value
@@ -336,56 +308,11 @@ export class TireSmoke {
       .invert()
       .multiply(camera.matrixWorld);
     this.updateLighting(scene);
-    renderer.getDrawingBufferSize(this.size);
-    this.material.uniforms.nearPlane.value = camera.near;
-    this.material.uniforms.farPlane.value = camera.far;
-    this.material.uniforms.sceneDepth.value = sharedDepth ?? this.depthTarget.depthTexture;
-    this.material.uniforms.softDepth.value = force || Boolean(sharedDepth);
-    if (sharedDepth) return sharedDepth;
-    // Smoke uses the main framebuffer's depth test. Only ghost glow requires a depth copy.
-    if (!force) return null;
-    if (this.depthTarget.width !== this.size.x || this.depthTarget.height !== this.size.y) {
-      this.depthTarget.setSize(this.size.x, this.size.y);
-    }
-    this.material.uniforms.nearPlane.value = camera.near;
-    this.material.uniforms.farPlane.value = camera.far;
-    const hidden: THREE.Object3D[] = [];
-    scene.traverse((object) => {
-      if (!object.visible || !(object instanceof THREE.Mesh)) return;
-      const materials = Array.isArray(object.material) ? object.material : [object.material];
-      if (object.type === 'Reflector' || materials.some((material) => material.transparent)) {
-        hidden.push(object);
-        object.visible = false;
-      }
-    });
-    const target = renderer.getRenderTarget();
-    const override = scene.overrideMaterial;
-    const background = scene.background;
-    const shadows = renderer.shadowMap.enabled;
-    try {
-      scene.overrideMaterial = this.depthMaterial;
-      scene.background = null;
-      renderer.shadowMap.enabled = false;
-      renderer.setRenderTarget(this.depthTarget);
-      renderer.clear();
-      renderer.render(scene, camera);
-    } finally {
-      renderer.setRenderTarget(target);
-      renderer.shadowMap.enabled = shadows;
-      scene.overrideMaterial = override;
-      scene.background = background;
-      hidden.forEach((object) => {
-        object.visible = true;
-      });
-    }
-    return this.depthTarget.depthTexture;
   }
 
   dispose() {
     this.mesh.removeFromParent();
     this.geometry.dispose();
     this.material.dispose();
-    this.depthTarget.dispose();
-    this.depthMaterial.dispose();
   }
 }

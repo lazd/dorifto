@@ -12,6 +12,7 @@ import { clockText, createSegmentedDisplay, mapDisplaySurface } from './segmente
 type StandardMesh = THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>;
 
 export const carLightLayers = { headlights: 2, interior: 3 } as const;
+export const carHeadlightRanges = { headlights: 65, highBeams: 100, fogLights: 35 } as const;
 const headlightIntensity = 550;
 export const carUnderglowColor = 0xff1824;
 
@@ -564,7 +565,7 @@ export async function loadCar(onProgress?: (fraction: number) => void) {
   const headlights = headlightPair(/^Projectorglass_/, {
     name: 'headlight-beam',
     intensity: headlightIntensity,
-    range: 65,
+    range: carHeadlightRanges.headlights,
     angle: Math.PI / 7,
     drop: 1.1,
     spread: 1.5,
@@ -574,7 +575,7 @@ export async function loadCar(onProgress?: (fraction: number) => void) {
   const highBeams = headlightPair(/^LightsInside_004_001_LightChrome_0$/, {
     name: 'high-beam',
     intensity: 900,
-    range: 100,
+    range: carHeadlightRanges.highBeams,
     angle: Math.PI / 9,
     drop: 0.25,
     spread: 1.15,
@@ -583,7 +584,7 @@ export async function loadCar(onProgress?: (fraction: number) => void) {
   const fogLights = headlightPair(/^FogGlass_/, {
     name: 'fog-light',
     intensity: 350,
-    range: 35,
+    range: carHeadlightRanges.fogLights,
     angle: Math.PI / 5,
     drop: 3,
     spread: 5,
