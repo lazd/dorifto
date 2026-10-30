@@ -18,6 +18,14 @@ import { createStopSignFactory } from './turn-sign';
 import * as polygonClipping from './polygon-boolean';
 import { runSync, type LoadStep, type LoadTask } from './load-task';
 import { addVegetation, setVegetationDetail, type VegetationDetail } from './vegetation';
+import {
+  buildingAppearance,
+  buildingFlatRoofColumn,
+  buildingRoof,
+  buildingRoofColumn,
+  buildingUV,
+  createBuildingTexture,
+} from './building-appearance';
 
 type Point = { x: number; z: number };
 type Bounds = { minX: number; minZ: number; maxX: number; maxZ: number };
@@ -275,18 +283,20 @@ function clipToBounds(points: Point[], bounds: Bounds) {
 class Batch {
   positions: number[] = [];
   colors: number[] = [];
+  uvs: number[] = [];
   outlines?: SceneryPolygon[];
 
-  triangle(a: Vertex, b: Vertex, c: Vertex, color?: THREE.Color) {
+  triangle(a: Vertex, b: Vertex, c: Vertex, color?: THREE.Color, uvs?: [number, number][]) {
     this.positions.push(a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z);
     if (color) for (let i = 0; i < 3; i++) this.colors.push(color.r, color.g, color.b);
+    if (uvs) for (const uv of uvs) this.uvs.push(...uv);
   }
 
-  roof(a: Vertex, b: Vertex, c: Vertex, color?: THREE.Color) {
+  roof(a: Vertex, b: Vertex, c: Vertex, color?: THREE.Color, uvs?: [number, number][]) {
     const area = (b.z - a.z) * (c.x - a.x) - (b.x - a.x) * (c.z - a.z);
     if (Math.abs(area) < 1e-8) return;
-    if (area < 0) this.triangle(a, c, b, color);
-    else this.triangle(a, b, c, color);
+    if (area < 0) this.triangle(a, c, b, color, uvs && [uvs[0], uvs[2], uvs[1]]);
+    else this.triangle(a, b, c, color, uvs);
   }
 
   chunks() {
@@ -308,6 +318,7 @@ class Batch {
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(this.positions, 3));
     if (this.colors.length)
       geometry.setAttribute('color', new THREE.Float32BufferAttribute(this.colors, 3));
+    if (this.uvs.length) geometry.setAttribute('uv', new THREE.Float32BufferAttribute(this.uvs, 2));
     geometry.computeVertexNormals();
     geometry.computeBoundingSphere();
     return geometry;
@@ -603,7 +614,10 @@ export function* createSceneryTask(
   const buildings = scenery.buildings;
 
   function buildBuildings() {
-    const footprintsByHeight = new Map<number, MultiPolygon>();
+    const footprintGroups = new Map<
+      string,
+      { height: number; buildingType?: string; roofShape?: string; footprints: MultiPolygon }
+    >();
     for (const building of buildings) {
       const shape = polygon(building.rings);
       // A cut-off building would expose its interior; omit footprints beyond supported terrain.
@@ -614,13 +628,18 @@ export function* createSceneryTask(
       )
         continue;
       const height = THREE.MathUtils.clamp(building.height, 2, 150);
-      const footprints = footprintsByHeight.get(height) ?? [];
-      footprints.push(shape.rings);
-      footprintsByHeight.set(height, footprints);
+      const { buildingType, roofShape } = building;
+      const key = JSON.stringify([height, buildingType, roofShape]);
+      const entry = footprintGroups.get(key) ?? { height, buildingType, roofShape, footprints: [] };
+      entry.footprints.push(shape.rings);
+      footprintGroups.set(key, entry);
     }
     // Tile-clipped copies can overlap without having identical footprint signatures.
-    const mergedBuildings = [...footprintsByHeight].flatMap(([height, footprints]) =>
-      polygonClipping.union(footprints).map((rings) => ({ rings, height })),
+    const mergedBuildings = [...footprintGroups.values()].flatMap(
+      ({ height, buildingType, roofShape, footprints }) =>
+        polygonClipping
+          .union(footprints)
+          .map((rings) => ({ rings, height, buildingType, roofShape })),
     );
     for (const building of mergedBuildings) {
       const shape = polygon(building.rings);
@@ -657,10 +676,14 @@ export function* createSceneryTask(
       });
       let base = -Infinity;
       for (const ring of rings) for (const p of ring) base = Math.max(base, ground(p.x, p.z));
-      const roof = base + THREE.MathUtils.clamp(building.height, 2, 150);
-      const tone = Math.abs(Math.sin(shape.minX * 0.13 + shape.minZ * 0.37));
-      const wall = new THREE.Color().setHSL(0.08 + tone * 0.035, 0.12, 0.55 + tone * 0.18);
-      const roofColor = new THREE.Color().setHSL(0.035, 0.16, 0.27 + tone * 0.12);
+      const appearance = buildingAppearance({ ...building, rings: shape.rings });
+      const wallHeight =
+        THREE.MathUtils.clamp(building.height, 2, 150) *
+        (appearance.pitched && appearance.roofStyle === 'a-frame' ? 0.25 : 1);
+      const roof = base + wallHeight;
+      const { wallColor, roofColor, column } = appearance;
+      const floors = Math.max(1, Math.round(wallHeight / 3.2));
+      const floorHeight = wallHeight / floors;
       for (const ring of rings)
         ring.forEach((a, i) => {
           const b = ring[(i + 1) % ring.length];
@@ -668,25 +691,79 @@ export function* createSceneryTask(
           const bottomB = { ...b, y: ground(b.x, b.z) - 0.15 };
           const topA = { ...a, y: roof },
             topB = { ...b, y: roof };
-          buildingBatch.triangle(bottomA, topA, topB, wall);
-          buildingBatch.triangle(bottomA, topB, bottomB, wall);
+          const uv = (u: number, y: number) => buildingUV(column, u, (y - base) / floorHeight);
+          buildingBatch.triangle(bottomA, topA, topB, wallColor, [
+            uv(0, bottomA.y),
+            uv(0, roof),
+            uv(1, roof),
+          ]);
+          buildingBatch.triangle(bottomA, topB, bottomB, wallColor, [
+            uv(0, bottomA.y),
+            uv(1, roof),
+            uv(1, bottomB.y),
+          ]);
         });
-      const { points, triangles } = triangulate(shape);
+      const pitchedRoof = appearance.pitched
+        ? buildingRoof(shape.rings[0], roof, appearance.roofStyle)
+        : undefined;
+      for (const [a, b, c] of pitchedRoof?.wallTriangles ?? []) {
+        buildingBatch.triangle(
+          a,
+          b,
+          c,
+          wallColor,
+          [a, b, c].map((p) =>
+            buildingUV(
+              column,
+              (p.x - shape.minX) / Math.max(1, shape.maxX - shape.minX),
+              (p.y - base) / floorHeight,
+            ),
+          ),
+        );
+      }
+      const roofTint = pitchedRoof ? roofColor : new THREE.Color(0x85867f);
+      const { points, triangles } = pitchedRoof ?? triangulate(shape);
       for (const [a, b, c] of triangles)
         buildingBatch.roof(
-          { ...points[a], y: roof },
-          { ...points[b], y: roof },
-          { ...points[c], y: roof },
-          roofColor,
+          { y: roof, ...points[a] },
+          { y: roof, ...points[b] },
+          { y: roof, ...points[c] },
+          roofTint,
+          [a, b, c].map((i) =>
+            buildingUV(
+              pitchedRoof ? buildingRoofColumn : buildingFlatRoofColumn,
+              (points[i].x - shape.minX + 0.5) / (shape.maxX - shape.minX + 1),
+              points[i].z / 4,
+            ),
+          ),
         );
     }
     if (buildingBatch.positions.length) {
-      const mesh = addBatch(
-        layers.buildings,
-        buildingBatch,
-        material(0xffffff, true),
-        'building-shells',
-      )!;
+      const surface = material(0xffffff, true);
+      surface.map = createBuildingTexture();
+      const mesh = addBatch(layers.buildings, buildingBatch, surface, 'building-shells')!;
+      // Smooth the sampled roof slopes without softening facade corners or the eaves.
+      surface.flatShading = false;
+      const normals = mesh.geometry.getAttribute('normal');
+      const uv = mesh.geometry.getAttribute('uv');
+      const vertices = mesh.geometry.getAttribute('position');
+      const roofNormals = new Map<string, THREE.Vector3>();
+      const roofKeys = new Map<number, string>();
+      const sampleNormal = new THREE.Vector3();
+      const roofUVStart = buildingUV(buildingRoofColumn, 0, 0)[0];
+      for (let i = 0; i < vertices.count; i++) {
+        if (uv.getX(i) < roofUVStart) continue;
+        const key = `${Math.round(vertices.getX(i) * 1000)},${Math.round(vertices.getY(i) * 1000)},${Math.round(vertices.getZ(i) * 1000)}`;
+        const normal = roofNormals.get(key) ?? new THREE.Vector3();
+        normal.add(sampleNormal.fromBufferAttribute(normals, i));
+        roofNormals.set(key, normal);
+        roofKeys.set(i, key);
+      }
+      for (const normal of roofNormals.values()) normal.normalize();
+      for (const [i, key] of roofKeys) {
+        const normal = roofNormals.get(key)!;
+        normals.setXYZ(i, normal.x, normal.y, normal.z);
+      }
       const positions = mesh.geometry.getAttribute('position').array as Float32Array;
       result.collisionMesh = {
         positions,

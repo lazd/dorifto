@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Dorifto — Building styles</title>
+  </head>
+  <body>
+    <main>
+      <header class="demo-toolbar">
+        <div>
+          <h1>Little houses, big variety</h1>
+          <p>Drag to orbit · Scroll to zoom · Right-drag to pan</p>
+        </div>
+        <button id="reset-view" type="button">Reset view</button>
+      </header>
+      <div id="building-view" aria-label="Interactive 3D building style gallery"></div>
+      <nav id="building-labels" aria-label="Focus a building style"></nav>
+      <p class="demo-caption">Click a style to inspect it. Shared game geometry and textures.</p>
+      <p id="demo-error" role="alert" hidden></p>
+    </main>
+    <script type="module" src="/src/building-demo.ts"></script>
+  </body>
+</html>

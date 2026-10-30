@@ -130,7 +130,7 @@ function tileFixture(tile) {
         1,
         3,
         [polygon(40, 40, 20, 20), polygon(46, 46, 6, 6, false)],
-        { render_height: '12' },
+        { render_height: '12', building: 'office', 'roof:shape': 'flat' },
         tile,
       ),
       feature('building', 2, 3, [polygon(0, 490, 16, 16)], { height: '8' }, tile),
@@ -352,6 +352,8 @@ test('decodes supported scenery, holes, widths and clips to the terrain grid wit
   assert.equal(scenery.buildings.length, 2);
   const building = scenery.buildings.find(({ rings }) => rings.length === 2);
   assert.equal(building.height, 12);
+  assert.equal(building.buildingType, 'office');
+  assert.equal(building.roofShape, 'flat');
   assert.equal(
     scenery.buildings.some(({ rings }) => rings[0].some(([, z]) => z > 600)),
     false,

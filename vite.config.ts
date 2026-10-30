@@ -76,6 +76,7 @@ export default defineConfig({
       input: {
         game: fileURLToPath(new URL('./index.html', import.meta.url)),
         courseBuilder: fileURLToPath(new URL('./course-builder.html', import.meta.url)),
+        buildings: fileURLToPath(new URL('./buildings.html', import.meta.url)),
       },
     },
   },

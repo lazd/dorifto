@@ -41,8 +41,10 @@ afterEach(() => {
     group.traverse((object) => {
       if (!object.isMesh) return;
       resources.add(object.geometry);
-      for (const material of Array.isArray(object.material) ? object.material : [object.material])
+      for (const material of Array.isArray(object.material) ? object.material : [object.material]) {
         resources.add(material);
+        if (material.map) resources.add(material.map);
+      }
     });
   for (const resource of resources) resource.dispose();
 });

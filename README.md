@@ -507,9 +507,20 @@ Traffic signals are not currently generated.
 Scenery data is downloaded in a bounded corridor or square when saving a map;
 driving and reopening the saved map do not request scenery. Editing and saving an older map
 adds its missing scenery without downloading elevation again. Buildings use mapped heights
-where available and estimates otherwise; tree and shrub positions are deterministic estimates,
+where available and estimates otherwise, with shared procedural lap siding, grooved T1-11 wood
+paneling, brick, office-window and industrial facades. Houses mix deterministic painted and
+natural-wood colors; only hipped-roof houses can use brick. New imports retain building types and flat-roof tags when supplied by
+the vector tiles; otherwise footprint size and height guide the styling, including on existing
+saved maps. Small houses mostly get gable roofs, mixed with hipped roofs, single-slope shed
+roofs on elongated footprints, and occasional steep A-frame-inspired roofs on compact square
+houses. Available roof-shape tags take precedence; courtyards retain flat roofs.
+Styles and colors are deterministic approximations, not surveyed
+architecture, and roofs share the rendered building collision mesh. Tree and shrub positions are deterministic estimates,
 not surveyed individual plants. Vegetation is decorative, while buildings, nearby-road bridges,
 and signs have collision. Existing OSM/OpenFreeMap attribution is retained in exported maps.
+
+Open [buildings.html](./buildings.html) for an orbitable, labeled gallery of the building styles,
+using the same geometry and textures as the game.
 
 Settings > Track has independent **Buildings**, **Water**, **Trees and shrubs**, and
 **Nearby roads** switches (`?buildings=off`, `?water=off`, `?vegetation=off`,

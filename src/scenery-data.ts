@@ -315,7 +315,12 @@ export interface CourseScenery {
   version: 1;
   importRevision?: number;
   bounds?: { minX: number; minZ: number; maxX: number; maxZ: number };
-  buildings: { rings: SceneryPolygon; height: number }[];
+  buildings: {
+    rings: SceneryPolygon;
+    height: number;
+    buildingType?: string;
+    roofShape?: string;
+  }[];
   water: { rings: SceneryPolygon }[];
   waterways: { points: SceneryPoint[]; width: number }[];
   vegetation: { rings: SceneryPolygon; kind: 'trees' | 'scrub' | 'grass' }[];
@@ -391,7 +396,14 @@ export function validateCourseScenery(value: CourseScenery) {
           (cover) => Number.isInteger(cover) && ((cover >= 0 && cover <= 100) || cover === 255),
         ))) ||
     !value.buildings.every(
-      (b) => b && polygon(b.rings) && Number.isFinite(b.height) && b.height > 0 && b.height <= 1000,
+      (b) =>
+        b &&
+        polygon(b.rings) &&
+        Number.isFinite(b.height) &&
+        b.height > 0 &&
+        b.height <= 1000 &&
+        (b.buildingType === undefined || typeof b.buildingType === 'string') &&
+        (b.roofShape === undefined || typeof b.roofShape === 'string'),
     ) ||
     !value.water.every((w) => w && polygon(w.rings)) ||
     !value.waterways.every((w) => w && line(w.points) && width(w.width)) ||

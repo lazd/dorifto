@@ -1100,7 +1100,16 @@ function decodedFeature(
         const key = polygonSignature(rings);
         if (!seenPolygons.has(key)) {
           seenPolygons.add(key);
-          scenery.buildings.push({ rings, height });
+          const buildingType = [properties.building, properties.subclass, properties.class].find(
+            (value) => typeof value === 'string' && !['yes', 'building'].includes(value),
+          );
+          const roofShape = properties['roof:shape'];
+          scenery.buildings.push({
+            rings,
+            height,
+            ...(typeof buildingType === 'string' && { buildingType }),
+            ...(typeof roofShape === 'string' && { roofShape }),
+          });
         }
       }
     }
