@@ -749,9 +749,13 @@ export async function loadCar(onProgress?: (fraction: number) => void) {
           other.visible = false;
         });
         const restoreScenery = hideMirrorScenery(scene);
+        const updateWorld = scene.matrixWorldAutoUpdate;
+        // The main render already updated object transforms before invoking this mirror.
+        scene.matrixWorldAutoUpdate = false;
         try {
           reflect.apply(this, args);
         } finally {
+          scene.matrixWorldAutoUpdate = updateWorld;
           restoreScenery();
           others.forEach((other) => {
             other.visible = true;

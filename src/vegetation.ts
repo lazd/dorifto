@@ -18,7 +18,7 @@ import {
 } from './vegetation-models';
 
 export type VegetationDetail = 'low' | 'medium' | 'high';
-export type VegetationMode = 'performance' | 'quality';
+export type VegetationMode = 'performance' | 'quality' | 'ultra';
 type Kind = 'trees' | 'bush' | 'rocks';
 type Part = { geometry: THREE.BufferGeometry; material: THREE.Material; name: string };
 export interface VegetationPlacements {
@@ -32,6 +32,78 @@ export const vegetationDetails = {
   high: { near: 95, trees: 800, bush: 125, rocks: 160, density: 1 },
 } as const;
 
+const transitionWidth = 20;
+const chunkRadius = Math.SQRT2 * 32;
+const lodPosition = new THREE.Vector3();
+const cameraPosition = new THREE.Vector3();
+
+class PlantLOD extends THREE.LOD {
+  override update(camera: THREE.Camera) {
+    super.update(camera);
+    lodPosition.setFromMatrixPosition(this.matrixWorld);
+    cameraPosition.setFromMatrixPosition(camera.matrixWorld);
+    const zoom =
+      camera instanceof THREE.PerspectiveCamera || camera instanceof THREE.OrthographicCamera
+        ? camera.zoom
+        : 1;
+    const distance = lodPosition.distanceTo(cameraPosition) / zoom;
+    if (this.userData.vegetationMode === 'ultra') {
+      this.levels[0].object.visible = distance < this.levels[2].distance;
+      this.levels[1].object.visible = false;
+      this.levels[2].object.visible = !this.levels[0].object.visible;
+      return;
+    }
+    if (!this.userData.vegetationTransition) return;
+    if (
+      this.levels[1].distance > 0 &&
+      Math.abs(distance - this.levels[1].distance) < chunkRadius + transitionWidth / 2 &&
+      distance < this.levels[2].distance
+    ) {
+      this.levels[0].object.visible = true;
+      this.levels[1].object.visible = true;
+    }
+  }
+}
+
+function transitionMaterial(source: THREE.Material, distant: boolean) {
+  const material = source.clone();
+  const range = { value: 0 };
+  material.userData.vegetationRange = range;
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.vegetationRange = range;
+    shader.vertexShader = `varying float vPlantDistance;\n${shader.vertexShader}`.replace(
+      '#include <project_vertex>',
+      `#include <project_vertex>
+      vec4 plantCenter = vec4(0.0, 0.0, 0.0, 1.0);
+      #ifdef USE_INSTANCING
+        plantCenter = instanceMatrix * plantCenter;
+      #endif
+      vPlantDistance = distance(cameraPosition, (modelMatrix * plantCenter).xyz);`,
+    );
+    shader.fragmentShader =
+      `uniform float vegetationRange;\nvarying float vPlantDistance;\n${shader.fragmentShader}`.replace(
+        '#include <alphatest_fragment>',
+        `#include <alphatest_fragment>
+        if (vegetationRange > 0.0) {
+          float blend = smoothstep(vegetationRange - ${transitionWidth / 2}.0,
+            vegetationRange + ${transitionWidth / 2}.0, vPlantDistance);
+          float noise = fract(52.9829189 * fract(dot(floor(gl_FragCoord.xy), vec2(0.06711056, 0.00583715))));
+          if (${distant ? 'noise >= blend' : 'noise < blend'}) discard;
+        }`,
+      );
+  };
+  material.customProgramCacheKey = () => `vegetation-transition-${distant}`;
+  return material;
+}
+
+export function setVegetationTransition(parent: THREE.Object3D, enabled: boolean) {
+  parent.traverse((object) => {
+    if (!(object instanceof PlantLOD)) return;
+    object.userData.vegetationTransition = enabled;
+    applyDetail(object, object.userData.vegetationDetail ?? 'medium');
+  });
+}
+
 export function setVegetationMode(parent: THREE.Object3D, mode: VegetationMode) {
   parent.traverse((object) => {
     if (!(object instanceof THREE.LOD) || !object.userData.vegetationKind) return;
@@ -43,7 +115,8 @@ export function setVegetationMode(parent: THREE.Object3D, mode: VegetationMode) 
 function applyDetail(lod: THREE.LOD, detail: VegetationDetail) {
   const settings = vegetationDetails[detail];
   const kind = lod.userData.vegetationKind as Kind;
-  const performance = lod.userData.vegetationMode !== 'quality';
+  const performance = (lod.userData.vegetationMode ?? 'performance') === 'performance';
+  const ultra = lod.userData.vegetationMode === 'ultra';
   if (kind === 'trees' || kind === 'bush') {
     lod.levels[1].distance =
       kind === 'trees'
@@ -51,8 +124,14 @@ function applyDetail(lod: THREE.LOD, detail: VegetationDetail) {
         : Math.min(settings.near, performance ? 30 : 55);
     lod.levels[2].distance =
       kind === 'trees' ? Math.min(settings.trees, performance ? 300 : 600) : settings.bush;
+    if (ultra) lod.levels[1].distance = lod.levels[2].distance;
   } else lod.levels[1].distance = settings.rocks;
   lod.traverse((object) => {
+    if (object instanceof THREE.Mesh) {
+      const range = object.material.userData.vegetationRange;
+      if (range)
+        range.value = lod.userData.vegetationTransition && !ultra ? lod.levels[1].distance : 0;
+    }
     if (!(object instanceof THREE.InstancedMesh) || !object.userData.groundCoverCount) return;
     const density = settings.density * (kind === 'bush' && performance ? 0.6 : 1);
     object.count = Math.ceil(object.userData.groundCoverCount * density);
@@ -108,6 +187,9 @@ function cutout(species: PlantSpecies, parts: Part[], url: string): Part {
 
 export function addVegetation(plants: THREE.Group, placements: Record<Kind, VegetationPlacements>) {
   const detailed = detailedPlants();
+  const sourceMaterials = new Set<THREE.Material>(
+    Object.values(detailed).flatMap((parts) => parts.map((part) => part.material)),
+  );
   const atlases = {
     pine: pineAtlas,
     oak: oakAtlas,
@@ -128,6 +210,17 @@ export function addVegetation(plants: THREE.Group, placements: Record<Kind, Vege
     distant?: Part[],
     species?: PlantSpecies,
   ) {
+    if (distant) {
+      distant.forEach((part) => sourceMaterials.add(part.material));
+      parts = parts.map((part) => ({
+        ...part,
+        material: transitionMaterial(part.material, false),
+      }));
+      distant = distant.map((part) => ({
+        ...part,
+        material: transitionMaterial(part.material, true),
+      }));
+    }
     // Keep ownership even when a course has no placements for a particular model.
     for (const part of [...parts, ...(distant ?? [])]) {
       resources.add(new THREE.Mesh(part.geometry, part.material));
@@ -144,7 +237,7 @@ export function addVegetation(plants: THREE.Group, placements: Record<Kind, Vege
     const tint = new THREE.Color();
     for (const [key, indices] of chunks) {
       const [x, z] = key.split('/').map(Number);
-      const lod = new THREE.LOD();
+      const lod = distant ? new PlantLOD() : new THREE.LOD();
       lod.name = `${kind}-lod`;
       lod.userData.vegetationKind = kind;
       if (species) lod.userData.treeSpecies = species;
@@ -234,4 +327,11 @@ export function addVegetation(plants: THREE.Group, placements: Record<Kind, Vege
     ]);
   }
   setVegetationDetail(plants, 'medium');
+  sourceMaterials.forEach((material) => material.dispose());
+  // Plants never move; hidden LODs otherwise recompute thousands of matrices each render.
+  plants.updateWorldMatrix(true, true);
+  plants.traverse((object) => {
+    object.matrixAutoUpdate = false;
+    object.matrixWorldAutoUpdate = false;
+  });
 }
