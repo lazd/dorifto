@@ -34,6 +34,9 @@ export class TireSmoke {
   private readonly depthMaterial = new THREE.MeshDepthMaterial();
   private readonly size = new THREE.Vector2();
   private readonly viewPosition = new THREE.Vector3();
+  private readonly frustum = new THREE.Frustum();
+  private readonly projectionView = new THREE.Matrix4();
+  private readonly particleBounds = new THREE.Sphere(new THREE.Vector3(), 3.3);
   private next = 0;
   private readonly emission = [0, 0];
   private readonly material = new THREE.ShaderMaterial({
@@ -41,6 +44,7 @@ export class TireSmoke {
     depthWrite: false,
     uniforms: {
       sceneDepth: { value: this.depthTarget.depthTexture },
+      softDepth: { value: false },
       resolution: { value: this.size },
       nearPlane: { value: 0.1 },
       farPlane: { value: 1500 },
@@ -84,6 +88,7 @@ export class TireSmoke {
     fragmentShader: `
       #include <packing>
       uniform sampler2D sceneDepth;
+      uniform bool softDepth;
       uniform vec2 resolution;
       uniform float nearPlane;
       uniform float farPlane;
@@ -108,9 +113,12 @@ export class TireSmoke {
         float billow = 0.9 + 0.1 * sin(p.x * 11.0 + variation * 20.0)
           * sin(p.y * 9.0 - variation * 15.0);
         float density = pow(max(0.0, 1.0 - edge * edge), 2.0) * billow;
-        float depth = texture2D(sceneDepth, gl_FragCoord.xy / resolution).x;
-        float solidDepth = -perspectiveDepthToViewZ(depth, nearPlane, farPlane);
-        float intersectionFade = smoothstep(0.0, 0.55, solidDepth - viewDepth);
+        float intersectionFade = 1.0;
+        if (softDepth) {
+          float depth = texture2D(sceneDepth, gl_FragCoord.xy / resolution).x;
+          float solidDepth = -perspectiveDepthToViewZ(depth, nearPlane, farPlane);
+          intersectionFade = smoothstep(0.0, 0.55, solidDepth - viewDepth);
+        }
         float cameraFade = smoothstep(0.3, 1.2, viewDepth);
         float carDistance = min(boxDistance(carPosition, bodyCenter, bodyHalfSize),
           boxDistance(carPosition, cabinCenter, cabinHalfSize));
@@ -244,13 +252,20 @@ export class TireSmoke {
       this.dust[i] = Number(particle.dust);
     });
     this.geometry.instanceCount = active.length;
+    this.frustum.setFromProjectionMatrix(
+      this.projectionView.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse),
+    );
+    // Include the largest rotated puff, not just its center, at the edge of the view.
+    this.mesh.visible = active.some((particle) => {
+      this.particleBounds.center.copy(particle.position);
+      return this.frustum.intersectsSphere(this.particleBounds);
+    });
     for (const name of ['center', 'age', 'seed', 'dust'])
       this.geometry.getAttribute(name).needsUpdate = true;
   }
 
   updateLighting(scene: THREE.Scene) {
     if (!this.geometry.instanceCount) return;
-    scene.updateMatrixWorld(true);
     this.ambient.setRGB(0, 0, 0);
     for (const light of this.daylight) {
       if (!light.visible) continue;
@@ -264,6 +279,7 @@ export class TireSmoke {
       this.ambient.b += light.color.b * strength;
     }
     for (const { light, position, direction } of this.localLights) {
+      light.updateWorldMatrix(true, false);
       position.setFromMatrixPosition(light.matrixWorld);
       light.target.updateWorldMatrix(true, false);
       direction.setFromMatrixPosition(light.target.matrixWorld).sub(position).normalize();
@@ -312,7 +328,7 @@ export class TireSmoke {
     force = false,
     sharedDepth?: THREE.DepthTexture,
   ) {
-    if (!this.geometry.instanceCount && !force) return this.depthTarget.depthTexture;
+    if ((!this.geometry.instanceCount || !this.mesh.visible) && !force) return sharedDepth ?? null;
     this.chassis.updateWorldMatrix(true, false);
     camera.updateWorldMatrix(true, false);
     this.material.uniforms.viewToCar.value
@@ -324,7 +340,10 @@ export class TireSmoke {
     this.material.uniforms.nearPlane.value = camera.near;
     this.material.uniforms.farPlane.value = camera.far;
     this.material.uniforms.sceneDepth.value = sharedDepth ?? this.depthTarget.depthTexture;
+    this.material.uniforms.softDepth.value = force || Boolean(sharedDepth);
     if (sharedDepth) return sharedDepth;
+    // Smoke uses the main framebuffer's depth test. Only ghost glow requires a depth copy.
+    if (!force) return null;
     if (this.depthTarget.width !== this.size.x || this.depthTarget.height !== this.size.y) {
       this.depthTarget.setSize(this.size.x, this.size.y);
     }

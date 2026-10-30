@@ -1988,12 +1988,7 @@ async function start() {
       else if (y < terrain.groundHeightAt(x, z) - 5)
         reset('Car fell more than 5 meters below terrain');
     }
-    const sceneDepth = tireEffects.captureDepth(
-      renderer,
-      scene,
-      camera,
-      ghost.visible || physics.botSmokeActive,
-    );
+    const sceneDepth = tireEffects.captureDepth(renderer, scene, camera, ghost.visible);
     physics.captureBotDepth(renderer, scene, camera, sceneDepth);
     renderer.render(scene, camera);
     ghost.renderGlow(renderer, camera, sceneDepth);

@@ -497,8 +497,9 @@ export function createPhysicsClient({
       camera: THREE.PerspectiveCamera,
       depth: THREE.DepthTexture | null,
     ) {
-      if (!depth) throw new Error('Bot smoke requires the shared scene depth texture');
-      botEffects.forEach((effect) => effect.captureDepth(renderer, scene, camera, false, depth));
+      botEffects.forEach((effect) =>
+        effect.captureDepth(renderer, scene, camera, false, depth ?? undefined),
+      );
     },
     ready,
     laps,
