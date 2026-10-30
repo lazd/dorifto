@@ -6,7 +6,7 @@ import { mkdtemp, readdir, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { createDownloadCache } from '../scripts/download-cache.mjs';
-import { geographicDownloadConcurrency } from '../src/geographic-download.mjs';
+import { geographicDownloadConcurrency, geographicTiles } from '../src/geographic-download.mjs';
 
 const extent = 4096;
 const metersPerDegree = (6371008.8 * Math.PI) / 180;
@@ -547,4 +547,54 @@ test('rejects routes exceeding the vector tile budget before making network requ
     [80_000, 80_000],
   ];
   await assert.rejects(fetchCourseScenery(definition, false), /limit is 64/);
+});
+
+test('optional local OSM tiles are cached and fall back on missing, failed, or invalid responses', async (t) => {
+  const localServer = await createServer({
+    server: { middlewareMode: true, hmr: false, ws: false, watch: null },
+    appType: 'custom',
+    define: { 'import.meta.env.VITE_LOCAL_MAP_DATA': '"true"' },
+  });
+  t.after(() => localServer.close());
+  const { requestMappedNetwork } = await localServer.ssrLoadModule('/src/scenery-import.ts');
+  const [tile] = geographicTiles(course().terrain);
+  const box = {
+    west: tile.west + 0.0001,
+    east: tile.east - 0.0001,
+    south: tile.south + 0.0001,
+    north: tile.north - 0.0001,
+  };
+  const warnings = [];
+  t.mock.method(console, 'warn', (...args) => warnings.push(args));
+  for (const status of [200, 404, 500, 'offline', 'invalid']) {
+    const requests = [];
+    const entries = new Map();
+    const cache = {
+      read: async (key) => entries.get(key),
+      write: async (key, bytes) => entries.set(key, bytes),
+    };
+    t.mock.method(globalThis, 'fetch', async (input) => {
+      const url = new URL(input);
+      requests.push(url);
+      if (url.pathname === '/osm') {
+        if (status === 'offline') throw new TypeError('Service unavailable');
+        return Response.json(status === 'invalid' ? {} : osmFixture(), {
+          status: typeof status === 'number' ? status : 200,
+        });
+      }
+      assert.match(url.hostname, /^overpass/);
+      return Response.json(osmFixture());
+    });
+    assert.deepEqual(await requestMappedNetwork(box, cache).elements, osmFixture().elements);
+    assert.equal(requests.filter((url) => url.pathname === '/osm').length, 1);
+    assert.equal(
+      requests.filter((url) => url.hostname.startsWith('overpass')).length,
+      status === 200 ? 0 : 1,
+    );
+    if (status === 200) {
+      await requestMappedNetwork(box, cache).elements;
+      assert.equal(requests.length, 1);
+    }
+  }
+  assert.equal(warnings.length, 3);
 });

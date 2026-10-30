@@ -1,6 +1,7 @@
 import { classifyRings, VectorTile } from '@mapbox/vector-tile';
 import { PbfReader } from 'pbf';
 import { roadClasses } from './road-selection';
+import { osmRoadClasses } from './osm-network.mjs';
 import { courseRoute, type CourseDefinition } from './courses';
 import type {
   MapDefinition,
@@ -33,6 +34,8 @@ const concurrency = 4;
 const timeoutMs = 12_000;
 const overpassTimeoutSeconds = 25;
 const overpassRequestTimeoutMs = 60_000;
+const localOsmDataEnabled = import.meta.env.VITE_LOCAL_MAP_DATA === 'true';
+const localOsmDataUrl = import.meta.env.VITE_LOCAL_MAP_DATA_URL ?? 'http://127.0.0.1:8787';
 const overpassEndpoints = [
   'https://overpass-api.de/api/interpreter',
   'https://overpass.private.coffee/api/interpreter',
@@ -711,7 +714,30 @@ async function fetchMappedNetworkTile(
   onRetry: (attempt: number, total: number) => void,
   cache: GeographicDownloadCache,
 ) {
-  const query = `[out:json][timeout:${overpassTimeoutSeconds}][bbox:${south},${west},${north},${east}];way["highway"~"^(motorway|trunk|primary|secondary|tertiary|residential|unclassified|living_street|service|track)(_link)?$"]->.roads;(.roads;node(w.roads)["highway"="stop"];nwr["amenity"="parking"];);out body geom qt;`;
+  if (localOsmDataEnabled) {
+    const url = new URL('/osm', localOsmDataUrl);
+    url.searchParams.set('bbox', [west, south, east, north].join(','));
+    const cached = await cache.read(url.href);
+    if (cached) return JSON.parse(new TextDecoder().decode(cached)) as OsmElement[];
+    let elements: OsmElement[] | undefined;
+    try {
+      const response = await fetch(url, { signal: AbortSignal.timeout(2_000) });
+      if (response.status !== 404) {
+        if (!response.ok) throw new Error(`Local map data request failed (${response.status}).`);
+        const data = (await response.json()) as { elements?: OsmElement[] };
+        if (!Array.isArray(data.elements))
+          throw new Error('Local map data response is missing elements.');
+        elements = data.elements;
+      }
+    } catch (error) {
+      console.warn('Local map data unavailable; falling back to OpenStreetMap.', error);
+    }
+    if (elements) {
+      await cache.write(url.href, new TextEncoder().encode(JSON.stringify(elements)));
+      return elements;
+    }
+  }
+  const query = `[out:json][timeout:${overpassTimeoutSeconds}][bbox:${south},${west},${north},${east}];way["highway"~"^(${osmRoadClasses.join('|')})(_link)?$"]->.roads;(.roads;node(w.roads)["highway"="stop"];nwr["amenity"="parking"];);out body geom qt;`;
   const cacheKey = `${overpassEndpoints[0]}?${new URLSearchParams({ data: query })}`;
   const cached = await cache.read(cacheKey);
   if (cached) return JSON.parse(new TextDecoder().decode(cached)) as OsmElement[];
