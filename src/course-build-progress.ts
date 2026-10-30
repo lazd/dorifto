@@ -43,7 +43,8 @@ export function createBuildProgress(root: HTMLElement) {
       const tiles = detail?.match(/^Tiles (\d+)\/(\d+)(?:; tile \d+ \((\d+)\/(\d+)\))?$/);
       if (
         !bar &&
-        (tiles || ['terrain', 'scenery', 'network', 'corridor'].includes(item.dataset.step!))
+        (tiles ||
+          ['terrain', 'scenery', 'network', 'canopy', 'corridor'].includes(item.dataset.step!))
       ) {
         bar = document.createElement('progress');
         bar.className = 'build-step-progress';

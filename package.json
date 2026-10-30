@@ -14,6 +14,7 @@
     "import-road": "node scripts/import-road.mjs",
     "import-osm-region": "node scripts/import-osm-region.mjs",
     "serve-map-data": "node scripts/serve-map-data.mjs",
+    "generate-vegetation": "node scripts/generate-vegetation.mjs",
     "reimport-maps": "node scripts/reimport-maps.mjs",
     "train:bot": "node scripts/optimize-race-bot.mjs --preset grip-default --generations 30",
     "train:bot:resume": "npm run train:bot -- --resume",
@@ -36,8 +37,10 @@
     "three": "^0.186.1"
   },
   "devDependencies": {
+    "@dgreenheck/ez-tree": "1.1.0",
     "@types/node": "^22.20.5",
     "@types/three": "^0.186.0",
+    "draco3dgltf": "^1.5.7",
     "geotiff": "^2.1.3",
     "gh-pages": "~6.1.1",
     "lint-staged": "^16.4.0",

@@ -19,6 +19,7 @@ import {
 import { matchRoadStructures } from './road-structures.mjs';
 import { fetchCourseScenery, requestMappedNetwork, requestSceneryTiles } from './scenery-import';
 import { sceneryImportRevision } from './scenery-data';
+import { fetchTreeCanopy } from './canopy-import';
 import type { GeographicDownloadCache } from './geographic-download.mjs';
 import {
   completeMapBounds,
@@ -48,6 +49,7 @@ interface BuildOptions {
   raster?: typeof fetchTerrainRaster;
   detail?: typeof fetchTerrainDetail;
   fetchScenery?: typeof fetchCourseScenery;
+  canopy?: typeof fetchTreeCanopy;
 }
 
 export async function buildRoadCourse(
@@ -59,6 +61,7 @@ export async function buildRoadCourse(
     raster = fetchTerrainRaster,
     detail = fetchTerrainDetail,
     fetchScenery = fetchCourseScenery,
+    canopy = fetchTreeCanopy,
     cache,
   }: BuildOptions = {},
 ): Promise<RoadMap> {
@@ -258,6 +261,8 @@ export async function buildRoadCourse(
     definition,
     includeNearbyRoads,
   };
+  const fetchesCanopy = fetchesScenery || terrainRebuilt || !course.scenery?.canopy;
+  const savedCanopy = course.scenery?.canopy;
   if (fetchesScenery) {
     progress('scenery', 'Processing downloaded scenery', 'active');
     course.scenery = await fetchScenery(course, definition, {
@@ -270,6 +275,18 @@ export async function buildRoadCourse(
   } else if (!includeNearbyRoads && course.scenery?.roads.length) {
     course.scenery = { ...course.scenery, roads: [] };
   }
+  const canopyRequest = fetchesCanopy
+    ? canopy(course, {
+        cache,
+        onProgress: (completed, total) =>
+          progress('canopy', `Tiles ${completed}/${total}`, 'active'),
+      })
+    : Promise.resolve(savedCanopy);
+  const completedCanopy = canopyRequest.then((result) => {
+    progress('canopy', fetchesCanopy ? undefined : 'Using saved canopy', 'complete');
+    return result;
+  });
+  completedCanopy.catch(() => {});
   if (definition === 'complete-map' && terrainRebuilt) {
     progress('corridor', undefined, 'active');
     const terrain = course.terrain;
@@ -304,6 +321,8 @@ export async function buildRoadCourse(
     course.terrain = { ...terrain, detail: terrain.detail };
   }
   progress('corridor', terrainRebuilt ? undefined : 'Using saved road elevation', 'complete');
+  if (!course.scenery) throw new Error('Tree canopy requires course scenery.');
+  course.scenery = { ...course.scenery, canopy: await completedCanopy };
   if (!course.attribution?.includes('OpenStreetMap'))
     course.attribution = [
       course.attribution,
@@ -311,6 +330,8 @@ export async function buildRoadCourse(
     ]
       .filter(Boolean)
       .join('; ');
+  if (!course.attribution?.includes('USDA Forest Service'))
+    course.attribution += '; tree canopy: USDA Forest Service NLCD';
   return course;
 }
 
@@ -328,12 +349,25 @@ export async function reimportRoadCourse(
       : 'nearby-roads';
   if (!full) {
     const fetchScenery = options.fetchScenery ?? fetchCourseScenery;
-    return {
-      ...course,
-      scenery: await fetchScenery(course, definition, {
+    const canopy = options.canopy ?? fetchTreeCanopy;
+    const [scenery, treeCanopy] = await Promise.all([
+      fetchScenery(course, definition, {
         progress: options.progress,
         cache: options.cache,
       }),
+      canopy(course, {
+        cache: options.cache,
+        onProgress: (completed, total) =>
+          options.progress?.('canopy', `Tiles ${completed}/${total}`, 'active'),
+      }),
+    ]);
+    options.progress?.('canopy', undefined, 'complete');
+    return {
+      ...course,
+      attribution: course.attribution?.includes('USDA Forest Service')
+        ? course.attribution
+        : [course.attribution, 'tree canopy: USDA Forest Service NLCD'].filter(Boolean).join('; '),
+      scenery: { ...scenery, canopy: treeCanopy },
     };
   }
   if (!course.courseBuilder)

@@ -11,6 +11,7 @@ export const roadBuildSteps = {
   course: 'Sampling road elevation and building the course',
   scenery: 'Downloading nearby roads, buildings, water and vegetation',
   network: 'Downloading OpenStreetMap road layout, stop signs and parking',
+  canopy: 'Downloading USFS tree canopy coverage',
   corridor: 'Downloading high-resolution USGS road elevation data',
   saving: 'Saving the course on this device',
 } as const;

@@ -251,6 +251,7 @@ export function createCoursePreviewModel(
     if (definition.scenery)
       group.add(
         createScenery(definition, terrain, {
+          simpleVegetation: true,
           projectGroundGeometry: (source, lift, horizontal) =>
             projectTerrainGeometry(
               { ...previewTerrain, heights: groundHeights },

@@ -1339,9 +1339,10 @@
               </section>
               <section class="illustrated-setting">
                 <div class="field">
-                  <label for="show-vegetation">Trees and shrubs</label>
+                  <label for="show-vegetation">Trees, shrubs and rocks</label>
                   <p id="vegetation-description">
-                    Procedural vegetation scattered within mapped landcover areas.
+                    Mixed tree species and ground cover placed using satellite canopy and mapped
+                    landcover.
                   </p>
                   <input
                     class="switch"
@@ -1350,6 +1351,19 @@
                     type="checkbox"
                     aria-describedby="vegetation-description"
                   />
+                </div>
+              </section>
+              <section class="illustrated-setting">
+                <div class="field">
+                  <label for="vegetation-detail">Vegetation detail</label>
+                  <p id="vegetation-detail-description">
+                    Detail, draw distance and density of trees, shrubs and rocks.
+                  </p>
+                  <select id="vegetation-detail" aria-describedby="vegetation-detail-description">
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                  </select>
                 </div>
               </section>
               <section class="illustrated-setting">

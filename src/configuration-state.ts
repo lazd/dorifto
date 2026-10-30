@@ -42,6 +42,10 @@ export function isTerrainShadows(value: string): value is ConfigurationState['te
   return value === 'auto' || value === 'on' || value === 'off';
 }
 
+export function isVegetationDetail(value: string): value is ConfigurationState['vegetationDetail'] {
+  return value === 'low' || value === 'medium' || value === 'high';
+}
+
 export function readMirrorResolution(
   params: URLSearchParams,
 ): ConfigurationState['mirrorResolution'] {
@@ -98,6 +102,7 @@ export interface ConfigurationState {
   passengerMirror: boolean;
   pixelRatio: 'auto' | '0.5' | '0.75' | '1' | '2';
   terrainShadows: 'auto' | 'on' | 'off';
+  vegetationDetail: import('./vegetation').VegetationDetail;
   showFps: boolean;
   minimapOrientation: 'north-up' | 'heading-up';
   speedUnit: 'mph' | 'kmh';
@@ -137,6 +142,7 @@ export function createConfigurationState(storage?: Storage) {
     passengerMirror: false,
     pixelRatio: 'auto',
     terrainShadows: 'auto',
+    vegetationDetail: 'medium',
     showFps: false,
     courseReverse: false,
     coneMode: 'corners',

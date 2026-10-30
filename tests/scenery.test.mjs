@@ -977,6 +977,62 @@ test('vegetation is deterministic, bounded and clear of shoulders, buildings, wa
   );
 });
 
+test('canopy plants outside mapped woods, respects zero cover, and culls spatial batches by distance', () => {
+  const data = emptyScenery();
+  data.canopy = {
+    source: 'Test canopy',
+    year: 2025,
+    minX: -90,
+    maxX: 90,
+    minZ: -90,
+    maxZ: 90,
+    columns: 2,
+    rows: 1,
+    cover: [100, 0],
+  };
+  const first = build(definition(data), terrain());
+  data.vegetation.push({ rings: [square(-90, -90, 90, 90)], kind: 'trees' });
+  const second = build(definition(data), terrain());
+  let count = 0;
+  const batches = [];
+  first.group.traverse((object) => {
+    if (object.name !== 'tree-crowns') return;
+    batches.push(object);
+    const matrix = new THREE.Matrix4();
+    for (let i = 0; i < object.count; i++) {
+      object.getMatrixAt(i, matrix);
+      assert.ok(matrix.elements[12] < 0, 'zero canopy overrides mapped woods');
+      assert.ok(Math.abs(matrix.elements[12]) > 8, 'trees avoid the road and shoulders');
+    }
+    assert.equal(object.frustumCulled, true);
+    assert.ok(object.boundingSphere.radius < 120, 'bounds stay local to each spatial batch');
+    count += object.count;
+  });
+  assert.ok(count > 100, 'trees do not depend on woodland polygons');
+  assert.ok(batches.length > 1);
+  const repeat = [];
+  second.group.traverse((object) => {
+    if (object.name === 'tree-crowns') repeat.push(object.instanceMatrix.array);
+  });
+  assert.deepEqual(
+    batches.map((mesh) => mesh.instanceMatrix.array),
+    repeat,
+  );
+  const camera = new THREE.PerspectiveCamera();
+  const vegetation = first.group.getObjectByName('vegetation');
+  first.group.updateMatrixWorld(true);
+  const lod = vegetation.children[0];
+  assert.ok(lod.isLOD);
+  camera.position.copy(lod.position);
+  camera.updateMatrixWorld(true);
+  lod.update(camera);
+  assert.equal(lod.levels[0].object.visible, true);
+  camera.position.x += lod.levels[1].distance * 2;
+  camera.updateMatrixWorld(true);
+  lod.update(camera);
+  assert.equal(lod.levels[0].object.visible, false);
+});
+
 test('branch mouth cones are deduplicated and never obstruct the selected paved shoulder', () => {
   const data = emptyScenery();
   data.roads.push(

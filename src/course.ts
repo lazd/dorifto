@@ -595,13 +595,14 @@ if (diffuseColor.a < ${material.transparent ? '0.01' : '0.5'}) discard;`,
     setScenery(
       settings: Pick<
         ConfigurationState,
-        'showBuildings' | 'showWater' | 'showVegetation' | 'showNearbyRoads'
+        'showBuildings' | 'showWater' | 'showVegetation' | 'showNearbyRoads' | 'vegetationDetail'
       >,
     ) {
       scenery.setVisible('buildings', settings.showBuildings);
       scenery.setVisible('water', settings.showWater);
       scenery.setVisible('vegetation', settings.showVegetation);
       scenery.setVisible('nearbyRoads', settings.showNearbyRoads);
+      scenery.setVegetationDetail(settings.vegetationDetail);
       junctionsVisible.value = terrain.sceneryRoadsVisible.value = settings.showNearbyRoads ? 1 : 0;
     },
     turnSignGroups: [...turnSignGroups, scenery.stopSignGroup],

@@ -291,6 +291,26 @@ export function smoothSceneryRoads(roads: CourseScenery['roads']) {
   return result;
 }
 
+export interface TreeCanopy {
+  source: string;
+  year: number;
+  minX: number;
+  minZ: number;
+  maxX: number;
+  maxZ: number;
+  columns: number;
+  rows: number;
+  /** Row-major from minZ/minX; 0-100 percent cover, 255 where unavailable. */
+  cover: number[];
+}
+
+export function treeCanopyAt(canopy: TreeCanopy, x: number, z: number) {
+  if (x < canopy.minX || x >= canopy.maxX || z < canopy.minZ || z >= canopy.maxZ) return 255;
+  const column = Math.floor(((x - canopy.minX) / (canopy.maxX - canopy.minX)) * canopy.columns);
+  const row = Math.floor(((z - canopy.minZ) / (canopy.maxZ - canopy.minZ)) * canopy.rows);
+  return canopy.cover[row * canopy.columns + column];
+}
+
 export interface CourseScenery {
   version: 1;
   importRevision?: number;
@@ -299,6 +319,7 @@ export interface CourseScenery {
   water: { rings: SceneryPolygon }[];
   waterways: { points: SceneryPoint[]; width: number }[];
   vegetation: { rings: SceneryPolygon; kind: 'trees' | 'scrub' | 'grass' }[];
+  canopy?: TreeCanopy;
   roads: {
     points: SceneryPoint[];
     width: number;
@@ -350,6 +371,25 @@ export function validateCourseScenery(value: CourseScenery) {
         !Number.isFinite(value.bounds.maxZ) ||
         value.bounds.minX >= value.bounds.maxX ||
         value.bounds.minZ >= value.bounds.maxZ)) ||
+    (value.canopy !== undefined &&
+      (!value.canopy ||
+        typeof value.canopy.source !== 'string' ||
+        !Number.isInteger(value.canopy.year) ||
+        ![value.canopy.minX, value.canopy.minZ, value.canopy.maxX, value.canopy.maxZ].every(
+          Number.isFinite,
+        ) ||
+        value.canopy.maxX <= value.canopy.minX ||
+        value.canopy.maxZ <= value.canopy.minZ ||
+        !Number.isInteger(value.canopy.columns) ||
+        !Number.isInteger(value.canopy.rows) ||
+        value.canopy.columns < 1 ||
+        value.canopy.rows < 1 ||
+        value.canopy.columns * value.canopy.rows > 1_000_000 ||
+        !Array.isArray(value.canopy.cover) ||
+        value.canopy.cover.length !== value.canopy.columns * value.canopy.rows ||
+        !value.canopy.cover.every(
+          (cover) => Number.isInteger(cover) && ((cover >= 0 && cover <= 100) || cover === 255),
+        ))) ||
     !value.buildings.every(
       (b) => b && polygon(b.rings) && Number.isFinite(b.height) && b.height > 0 && b.height <= 1000,
     ) ||

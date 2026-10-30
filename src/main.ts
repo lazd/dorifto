@@ -54,6 +54,7 @@ import {
   isPixelRatio,
   isSpeedUnit,
   isTerrainShadows,
+  isVegetationDetail,
   isTimeOfDay,
   readMirrorResolution,
   type ConfigurationState,
@@ -256,6 +257,7 @@ async function start() {
       ) === 'on',
     pixelRatio: readOption('pixel-ratio', 'auto', isPixelRatio),
     terrainShadows: readOption('terrain-shadows', 'auto', isTerrainShadows),
+    vegetationDetail: readOption('vegetation-detail', 'medium', isVegetationDetail),
     showFps:
       readOption(
         'fps',
@@ -662,6 +664,10 @@ async function start() {
       );
       drivingCamera.reset(spawn.heading);
       lighting.setupMaterials();
+      if (import.meta.env.DEV && new URL(location.href).searchParams.get('tree-preview') === '1') {
+        const { installTreeStylePreview } = await import('./tree-style-preview');
+        installTreeStylePreview(scene, (error) => showError(error, false));
+      }
       return { course, terrain: course.terrain, spawn, laps, physics, drivingCamera };
     } catch (error) {
       physics?.dispose(!botsOnly);
@@ -707,7 +713,7 @@ async function start() {
       course.setScenery(settings);
       physics.setCones(settings.coneMode !== 'off', settings.coneMode === 'corners');
     },
-    ['showBuildings', 'showWater', 'showVegetation', 'showNearbyRoads'],
+    ['showBuildings', 'showWater', 'showVegetation', 'showNearbyRoads', 'vegetationDetail'],
   );
   configurationState.subscribe(
     ({ showRoadEdgeDirt }) => course.setRoadEdgeDirt(showRoadEdgeDirt),

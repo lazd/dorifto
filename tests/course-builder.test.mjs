@@ -239,6 +239,17 @@ test('builds return savable course data before a separately requested preview', 
     waterways: [],
     vegetation: [],
     roads: [],
+    canopy: {
+      source: 'Test canopy',
+      year: 2025,
+      minX: -100,
+      maxX: 100,
+      minZ: -100,
+      maxZ: 100,
+      columns: 1,
+      rows: 1,
+      cover: [0],
+    },
   };
   const messages = [];
   const previousSelf = globalThis.self;

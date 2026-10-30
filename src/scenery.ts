@@ -5,7 +5,7 @@ import type { CourseTerrain } from './terrain';
 import { projectTerrainGeometry } from './terrain';
 import { PavementSurface, TerrainSurface, cellKey, type TriangleMeshData } from './terrain-query';
 import type { SceneryCategory, SceneryPoint, SceneryPolygon } from './scenery-data';
-import { junctionRoadFlare, sceneryJunctions, sceneryPointKey } from './scenery-data';
+import { junctionRoadFlare, sceneryJunctions, sceneryPointKey, treeCanopyAt } from './scenery-data';
 import {
   nearbyRoadLift,
   nearbyRoadTaperLength,
@@ -17,6 +17,7 @@ import { buildBridgeGeometry, createBridgeMeshes } from './bridges';
 import { createStopSignFactory } from './turn-sign';
 import * as polygonClipping from './polygon-boolean';
 import { runSync, type LoadStep, type LoadTask } from './load-task';
+import { addVegetation, setVegetationDetail, type VegetationDetail } from './vegetation';
 
 type Point = { x: number; z: number };
 type Bounds = { minX: number; minZ: number; maxX: number; maxZ: number };
@@ -33,6 +34,8 @@ type MultiPolygon = SceneryPolygon[];
 type RoadCrossSection = { position: Point; tangent: Point; width: number };
 
 export interface SceneryOptions {
+  /** Compact, untextured models for serialized course previews. */
+  simpleVegetation?: boolean;
   createRoadMaterial?: () => THREE.MeshStandardMaterial;
   /** Adds roadside dirt to a ground-level road or paint material; false when unavailable. */
   addRoadDirt?: (material: THREE.MeshStandardMaterial) => boolean;
@@ -54,6 +57,9 @@ export interface SceneryOptions {
 const categories: SceneryCategory[] = ['buildings', 'water', 'vegetation', 'nearbyRoads'];
 const maxPlants = 4000;
 const maxPlantAttempts = 24000;
+const maxCanopyPlants = 100_000;
+const vegetationChunkSize = 128;
+const vegetationDrawDistance = 650;
 // Terrain projection runs in slices of this many triangles so a caller can paint between them.
 const projectionSlice = 20_000;
 // Pavement edges are indexed far enough out to cover the terrain's roadside dirt verge.
@@ -488,6 +494,9 @@ export function* createSceneryTask(
   };
   const result = {
     group,
+    setVegetationDetail(detail: VegetationDetail) {
+      setVegetationDetail(layers.vegetation, detail);
+    },
     collisionMesh: undefined as TriangleMeshData | undefined,
     roadMesh: undefined as TriangleMeshData | undefined,
     structureMesh: undefined as TriangleMeshData | undefined,
@@ -2775,55 +2784,142 @@ export function* createSceneryTask(
     shrubShades: number[] = [];
   const transform = new THREE.Object3D();
   const occupied = new SpatialIndex<Bounds & Point>();
+  const roadsideDistance = (x: number, z: number) => {
+    let distance = clearance(x, z);
+    for (const road of roads.query({ minX: x - 20, maxX: x + 20, minZ: z - 20, maxZ: z + 20 })) {
+      distance = Math.min(distance, segmentDistance(x, z, road.a, road.b) - road.width / 2);
+    }
+    return distance;
+  };
   yield { message: 'Planting vegetation…', fraction: 0.98 };
-  let attempts = 0;
-  for (const feature of scenery.vegetation) {
-    if (feature.kind === 'grass') continue;
-    const shape = polygon(feature.rings);
-    if (!shape) continue;
-    const area = (shape.maxX - shape.minX) * (shape.maxZ - shape.minZ);
-    const trials = Math.min(6000, Math.ceil(area / (feature.kind === 'trees' ? 32 : 16)));
-    for (
-      let i = 0;
-      i < trials && attempts < maxPlantAttempts && trees.length + shrubs.length < maxPlants;
-      i++
-    ) {
-      attempts++;
-      const x = THREE.MathUtils.lerp(shape.minX, shape.maxX, random());
-      const z = THREE.MathUtils.lerp(shape.minZ, shape.maxZ, random());
+  const canopy = scenery.canopy;
+  const vegetation = scenery.vegetation;
+  function* plantCandidates() {
+    if (canopy) {
+      const area = (canopy.maxX - canopy.minX) * (canopy.maxZ - canopy.minZ);
+      const spacing = Math.max(8, Math.sqrt(area / maxCanopyPlants));
+      const columns = Math.ceil((canopy.maxX - canopy.minX) / spacing);
+      const rows = Math.ceil((canopy.maxZ - canopy.minZ) / spacing);
+      for (let row = 0; row < rows; row++) {
+        for (let column = 0; column < columns; column++) {
+          const x = canopy.minX + ((column + random()) / columns) * (canopy.maxX - canopy.minX);
+          const z = canopy.minZ + ((row + random()) / rows) * (canopy.maxZ - canopy.minZ);
+          const cover = treeCanopyAt(canopy, x, z);
+          if (cover <= 100 && random() < cover / 100) yield { x, z, tree: true };
+        }
+      }
+    }
+    let attempts = 0;
+    for (const feature of vegetation) {
+      if (feature.kind === 'grass') continue;
+      const shape = polygon(feature.rings);
+      if (!shape) continue;
       const tree = feature.kind === 'trees';
-      const radius = tree ? 2.8 : 1.5;
-      if (
-        !inside(x, z, shape) ||
-        !terrain.contains(x - radius, z - radius) ||
-        !terrain.contains(x + radius, z + radius) ||
-        clearance(x, z) < radius + 1 ||
-        obstacles.some(x, z, (p) => nearPolygon(x, z, p, radius)) ||
-        roads.some(x, z, (s) => segmentDistance(x, z, s.a, s.b) < s.width / 2 + radius + 0.8) ||
-        occupied.some(x, z, (p) => Math.hypot(x - p.x, z - p.z) < radius + 1)
-      )
-        continue;
-      const y = ground(x, z);
-      const slope =
-        Math.hypot(ground(x + 1, z) - ground(x - 1, z), ground(x, z + 1) - ground(x, z - 1)) / 2;
-      if (!Number.isFinite(y) || slope > (tree ? 0.65 : 0.9)) continue;
-      transform.position.set(x, y - 0.08, z);
-      transform.rotation.set(0, random() * Math.PI * 2, 0);
-      const size = 0.8 + random() * 0.5;
-      transform.scale.set(size, size * (0.85 + random() * 0.3), size);
-      transform.updateMatrix();
-      (tree ? trees : shrubs).push(transform.matrix.clone());
-      (tree ? shades : shrubShades).push(random());
-      occupied.add({
-        x,
-        z,
-        minX: x - 5,
-        maxX: x + 5,
-        minZ: z - 5,
-        maxZ: z + 5,
-      });
+      const area = (shape.maxX - shape.minX) * (shape.maxZ - shape.minZ);
+      const trials = Math.min(6000, Math.ceil(area / (tree ? 32 : 16)));
+      for (let i = 0; i < trials && attempts < maxPlantAttempts; i++) {
+        attempts++;
+        const x = THREE.MathUtils.lerp(shape.minX, shape.maxX, random());
+        const z = THREE.MathUtils.lerp(shape.minZ, shape.maxZ, random());
+        if (!inside(x, z, shape)) continue;
+        if (canopy && tree && treeCanopyAt(canopy, x, z) !== 255) continue;
+        yield { x, z, tree };
+      }
     }
   }
+  let attempts = 0;
+  for (const { x, z, tree } of plantCandidates()) {
+    if (++attempts % 1024 === 0) yield { message: 'Planting vegetation…', fraction: 0.98 };
+    if (trees.length + shrubs.length >= (canopy ? maxCanopyPlants : maxPlants)) break;
+    if (!tree && roadsideDistance(x, z) > 12) continue;
+    const radius = tree ? 4.5 : 1.5;
+    if (
+      !terrain.contains(x - radius, z - radius) ||
+      !terrain.contains(x + radius, z + radius) ||
+      clearance(x, z) < radius + 1 ||
+      obstacles.some(x, z, (p) => nearPolygon(x, z, p, radius)) ||
+      roads.some(x, z, (s) => segmentDistance(x, z, s.a, s.b) < s.width / 2 + radius + 0.8) ||
+      occupied.some(x, z, (p) => Math.hypot(x - p.x, z - p.z) < radius + 1)
+    )
+      continue;
+    const y = ground(x, z);
+    const slope =
+      Math.hypot(ground(x + 1, z) - ground(x - 1, z), ground(x, z + 1) - ground(x, z - 1)) / 2;
+    if (!Number.isFinite(y) || slope > (tree ? 0.65 : 0.9)) continue;
+    transform.position.set(x, y - 0.08, z);
+    transform.rotation.set(0, random() * Math.PI * 2, 0);
+    const size = 0.8 + random() * 0.5;
+    transform.scale.set(size, size * (0.85 + random() * 0.3), size);
+    transform.updateMatrix();
+    (tree ? trees : shrubs).push(transform.matrix.clone());
+    (tree ? shades : shrubShades).push(random());
+    occupied.add({
+      x,
+      z,
+      minX: x - 5,
+      maxX: x + 5,
+      minZ: z - 5,
+      maxZ: z + 5,
+    });
+  }
+  // Saved/headless previews deliberately retain their compact, untextured vegetation.
+  if (typeof document !== 'undefined' && !options.simpleVegetation) {
+    const rockMatrices: THREE.Matrix4[] = [];
+    const rockShades: number[] = [];
+    const landcover = vegetation
+      .map((feature) => polygon(feature.rings))
+      .filter((shape) => !!shape);
+    const area = (bounds.maxX - bounds.minX) * (bounds.maxZ - bounds.minZ);
+    const spacing = Math.max(6, Math.sqrt(area / 160_000));
+    let candidates = 0;
+    for (let z0 = bounds.minZ; z0 < bounds.maxZ; z0 += spacing) {
+      for (let x0 = bounds.minX; x0 < bounds.maxX; x0 += spacing) {
+        if (++candidates % 2048 === 0) yield { message: 'Planting ground cover…', fraction: 0.99 };
+        const x = x0 + random() * spacing,
+          z = z0 + random() * spacing;
+        if (random() > 0.65) continue;
+        const choice = random();
+        const rock = choice < 0.012;
+        if (rock) {
+          const cover = canopy ? treeCanopyAt(canopy, x, z) : 255;
+          if (!(cover > 10 && cover <= 100) && !landcover.some((shape) => inside(x, z, shape)))
+            continue;
+        } else if (choice >= 0.45 || roadsideDistance(x, z) > 12) {
+          continue;
+        }
+        if (
+          !terrain.contains(x - 1.5, z - 1.5) ||
+          !terrain.contains(x + 1.5, z + 1.5) ||
+          clearance(x, z) < 2 ||
+          obstacles.some(x, z, (p) => nearPolygon(x, z, p, 1.5)) ||
+          roads.some(x, z, (s) => segmentDistance(x, z, s.a, s.b) < s.width / 2 + 2.5)
+        )
+          continue;
+        const y = ground(x, z);
+        const dx = (ground(x + 1, z) - ground(x - 1, z)) / 2;
+        const dz = (ground(x, z + 1) - ground(x, z - 1)) / 2;
+        if (!Number.isFinite(y) || Math.hypot(dx, dz) > 0.65) continue;
+        transform.position.set(x, y - (rock ? 0.16 : 0.04), z);
+        transform.quaternion.setFromUnitVectors(
+          new THREE.Vector3(0, 1, 0),
+          new THREE.Vector3(-dx, 1, -dz).normalize(),
+        );
+        transform.rotateY(random() * Math.PI * 2);
+        const size = rock ? 0.8 + random() * 1.6 : 0.7 + random() * 0.7;
+        transform.scale.setScalar(size);
+        transform.updateMatrix();
+        (rock ? rockMatrices : shrubs).push(transform.matrix.clone());
+        (rock ? rockShades : shrubShades).push(random());
+      }
+    }
+    addVegetation(layers.vegetation, {
+      trees: { matrices: trees, shades },
+      bush: { matrices: shrubs, shades: shrubShades },
+      rocks: { matrices: rockMatrices, shades: rockShades },
+    });
+    return result;
+  }
+  const chunks = new Map<string, { lod: THREE.LOD; plants: THREE.Group }>();
   function instances(
     name: string,
     geometry: THREE.BufferGeometry,
@@ -2838,19 +2934,49 @@ export function* createSceneryTask(
     }
     const surface = material(color, foliage);
     surface.flatShading = false;
-    const mesh = new THREE.InstancedMesh(geometry, surface, matrices.length);
-    mesh.name = name;
-    const tint = new THREE.Color();
-    matrices.forEach((matrix, i) => {
-      mesh.setMatrixAt(i, matrix);
-      mesh.setColorAt(i, tint.setHSL(0.25 + colors[i] * 0.06, 0.24, 0.7 + colors[i] * 0.24));
+    const batches = new Map<string, number[]>();
+    matrices.forEach((matrix, index) => {
+      const x = Math.floor(matrix.elements[12] / vegetationChunkSize);
+      const z = Math.floor(matrix.elements[14] / vegetationChunkSize);
+      const key = `${x}/${z}`;
+      const batch = batches.get(key) ?? [];
+      batch.push(index);
+      batches.set(key, batch);
+      if (!chunks.has(key)) {
+        const lod = new THREE.LOD();
+        lod.position.set(
+          (x + 0.5) * vegetationChunkSize,
+          matrix.elements[13],
+          (z + 0.5) * vegetationChunkSize,
+        );
+        const plants = new THREE.Group();
+        lod.addLevel(plants, 0);
+        lod.addLevel(new THREE.Group(), vegetationDrawDistance, 0.1);
+        layers.vegetation.add(lod);
+        chunks.set(key, { lod, plants });
+      }
     });
-    mesh.instanceMatrix.needsUpdate = true;
-    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
-    mesh.computeBoundingSphere();
-    layers.vegetation.add(mesh);
+    const tint = new THREE.Color();
+    for (const [key, indices] of batches) {
+      const { lod, plants } = chunks.get(key)!;
+      const mesh = new THREE.InstancedMesh(geometry, surface, indices.length);
+      mesh.name = name;
+      // Keep instance transforms in course coordinates for saved previews and existing tooling.
+      mesh.position.copy(lod.position).multiplyScalar(-1);
+      for (const [i, index] of indices.entries()) {
+        mesh.setMatrixAt(i, matrices[index]);
+        mesh.setColorAt(
+          i,
+          tint.setHSL(0.25 + colors[index] * 0.06, 0.24, 0.7 + colors[index] * 0.24),
+        );
+      }
+      mesh.instanceMatrix.needsUpdate = true;
+      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      mesh.computeBoundingSphere();
+      plants.add(mesh);
+    }
   }
   instances(
     'tree-trunks',

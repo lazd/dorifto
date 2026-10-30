@@ -32,12 +32,24 @@ const scenery = {
   vegetation: [],
   roads: [],
 };
+const canopy = {
+  source: 'Test canopy',
+  year: 2025,
+  minX: -100,
+  maxX: 100,
+  minZ: -100,
+  maxZ: 100,
+  columns: 1,
+  rows: 1,
+  cover: [0],
+};
 
 test('scenery refresh preserves all map data and respects the nearby-road selection', async () => {
   const course = await fixture();
   course.courseBuilder = { includeNearbyRoads: false };
   const original = structuredClone(course);
   const result = await reimportMap(course, {
+    canopy: async () => canopy,
     fetchScenery: async (map, definition) => {
       assert.strictEqual(map, course);
       assert.equal(definition, 'course');
@@ -47,10 +59,17 @@ test('scenery refresh preserves all map data and respects the nearby-road select
       assert.fail('scenery-only refresh must not fetch terrain');
     },
   });
-  assert.deepEqual(result, { ...course, scenery });
+  assert.deepEqual(result, {
+    ...course,
+    attribution: [course.attribution, 'tree canopy: USDA Forest Service NLCD']
+      .filter(Boolean)
+      .join('; '),
+    scenery: { ...scenery, canopy },
+  });
   assert.deepEqual(course, original);
   const withoutDraft = { ...course, courseBuilder: undefined };
   await reimportMap(withoutDraft, {
+    canopy: async () => canopy,
     fetchScenery: async (_, definition) => {
       assert.equal(definition, 'nearby-roads');
       return scenery;
@@ -71,6 +90,7 @@ test('full refresh rebuilds terrain and elevation without overwriting map identi
   const cache = { read: async () => undefined, write: async () => {} };
   let detailFetched = false;
   const result = await reimportMap(course, {
+    canopy: async () => canopy,
     full: true,
     cache,
     raster: async (source, options) => {
@@ -105,13 +125,14 @@ test('full refresh rebuilds terrain and elevation without overwriting map identi
     course.courseBuilder.sections.map((section) => section.at(-1)),
   );
   assert.deepEqual(course, original);
-  assert.strictEqual(result.scenery, scenery);
+  assert.deepEqual(result.scenery, { ...scenery, canopy });
 });
 
 test('failed imports reject instead of producing a replacement map', async () => {
   const course = await fixture();
   await assert.rejects(
     reimportMap(course, {
+      canopy: async () => canopy,
       fetchScenery: async () => {
         throw new Error('Tile download failed');
       },
@@ -159,6 +180,7 @@ test('full reimport and browser builds use identical saved draft input and outpu
   const draft = { ...restoreRoadDraft(course), includeNearbyRoads: true, structureLines: [] };
   course.courseBuilder = draft;
   const options = {
+    canopy: async () => canopy,
     raster: async () => ({ ...course.terrain, detail: undefined }),
     detail: async () => undefined,
     fetchScenery: async () => scenery,
@@ -215,6 +237,12 @@ test('complete-map builds overlap OSM and vector downloads with terrain download
     },
     {
       progress: (step, detail, state) => progress.push({ step, detail, state }),
+      canopy: async (_, options) => {
+        assert.ok(progress.some((event) => event.step === 'scenery' && event.state === 'complete'));
+        options.onProgress(0, 1);
+        options.onProgress(1, 1);
+        return canopy;
+      },
       raster: async (source) => {
         const { completeMapBounds } = await server.ssrLoadModule('/src/complete-map.ts');
         await new Promise(setImmediate);

@@ -1,0 +1,12 @@
+Tree geometry generated with @dgreenheck/ez-tree 1.1.0.
+Leaf textures and rock models/textures: EZ-Tree, MIT License
+Copyright (c) 2024 Daniel Greenheck. See EZ-TREE-LICENSE.txt.
+Demo asset source revision: dcf309bd86bd521083d9c70f01f2de45fdc7c457
+https://github.com/dgreenheck/ez-tree
+
+Bark textures: ambientCG, CC0.
+https://ambientcg.com/
+
+Regenerate geometry and source textures: npm run generate-vegetation
+Bake distant-tree atlases: node scripts/bake-vegetation.mjs
+Then open http://localhost:8790/bake in a WebGL-capable browser.

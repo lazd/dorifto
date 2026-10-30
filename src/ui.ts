@@ -40,6 +40,7 @@ import {
   isPixelRatio,
   isSpeedUnit,
   isTerrainShadows,
+  isVegetationDetail,
   isTimeOfDay,
   type ConfigurationState,
   type LapGateMode,
@@ -2198,6 +2199,14 @@ export function bindGameUI(
     (state) => state.terrainShadows,
     (terrainShadows) => ({ terrainShadows }),
     isTerrainShadows,
+  );
+  select<ConfigurationState['vegetationDetail']>(
+    '#vegetation-detail',
+    'vegetation-detail',
+    'vegetationDetail',
+    (state) => state.vegetationDetail,
+    (vegetationDetail) => ({ vegetationDetail }),
+    isVegetationDetail,
   );
   select<'on' | 'off'>(
     '#cabin-head-motion',
