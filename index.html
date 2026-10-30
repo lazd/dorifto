@@ -6,13 +6,12 @@
     <meta name="theme-color" content="#10191f" />
     <meta name="referrer" content="no-referrer" />
     <title>Dorifto — Z32 Playground</title>
-    <script type="module" crossorigin src="./assets/game-CU3jLoiu.js"></script>
-    <link rel="modulepreload" crossorigin href="./assets/three.core-BREHV5Uh.js">
-    <link rel="modulepreload" crossorigin href="./assets/OrbitControls-DyBvOM_8.js">
-    <link rel="modulepreload" crossorigin href="./assets/scenery-C9ZJK4AA.js">
-    <link rel="modulepreload" crossorigin href="./assets/course-builder-storage-Q6VzxyvO.js">
+    <script type="module" crossorigin src="./assets/game-XU_nXdQk.js"></script>
+    <link rel="modulepreload" crossorigin href="./assets/OrbitControls-JZ6w1LcD.js">
+    <link rel="modulepreload" crossorigin href="./assets/scenery-BeUk7HXP.js">
+    <link rel="modulepreload" crossorigin href="./assets/course-builder-storage-BYlyE3_h.js">
     <link rel="stylesheet" crossorigin href="./assets/course-builder-storage-DO3y67q4.css">
-    <link rel="stylesheet" crossorigin href="./assets/game-BYZdfnl-.css">
+    <link rel="stylesheet" crossorigin href="./assets/game-B60y0_3x.css">
   </head>
   <body hidden>
     <div id="app"></div>
@@ -54,7 +53,7 @@
             <span>LAP</span>
           </span>
           <span class="minimap-timing" role="group" aria-label="Lap timing">
-            <strong id="lap-current" aria-label="Current lap time">--:--.---</strong>
+            <strong id="lap-current"></strong>
             <span class="minimap-best">
               <span>BEST</span>
               <span id="lap-best" aria-label="Current run record lap time">--:--.---</span>
@@ -125,8 +124,6 @@
         </div>
         <span id="speed-unit-label" class="speed-unit">MPH</span>
         <div class="gear-display">
-          <span class="visually-hidden">Gear</span>
-          <span id="gear" class="visually-hidden">1</span>
           <svg id="gear-led" class="segmented-readout" viewBox="0 0 36 64" aria-hidden="true"></svg>
         </div>
         <div class="tach-profile" aria-label="Player drive mode and tuning profile">
@@ -635,6 +632,9 @@
           >
             Track
           </button>
+          <button id="settings-map-tab" type="button" role="tab" aria-controls="settings-map-panel">
+            Map
+          </button>
         </div>
         <div class="category-panels">
           <section
@@ -911,7 +911,8 @@
                   <div class="controls-settings__binding-heading">
                     <span>
                       Assign map controls independently. Driving controls remain active; turn-signal
-                      holds and look-behind are inactive in map view.
+                      holds and look-behind are inactive in map view. Drag the map with the mouse to
+                      pan; scroll to zoom.
                     </span>
                   </div>
                   <div class="controls-settings__axes" data-map-axes></div>
@@ -1231,6 +1232,62 @@
             </div>
           </section>
           <section
+            id="settings-map-panel"
+            role="tabpanel"
+            aria-labelledby="settings-map-tab"
+            hidden
+          >
+            <h3>Map</h3>
+            <p>Landscape, buildings and vegetation.</p>
+            <div class="illustrated-settings">
+              <section class="illustrated-setting">
+                <div class="field">
+                  <label for="show-buildings">Buildings</label>
+                  <p id="buildings-description">
+                    Mapped building footprints with estimated heights. Turning this off also
+                    disables building collision.
+                  </p>
+                  <input
+                    class="switch"
+                    role="switch"
+                    id="show-buildings"
+                    type="checkbox"
+                    aria-describedby="buildings-description"
+                  />
+                </div>
+              </section>
+              <section class="illustrated-setting">
+                <div class="field">
+                  <label for="show-water">Water</label>
+                  <p id="water-description">Mapped lakes, rivers and streams.</p>
+                  <input
+                    class="switch"
+                    role="switch"
+                    id="show-water"
+                    type="checkbox"
+                    aria-describedby="water-description"
+                  />
+                </div>
+              </section>
+              <section class="illustrated-setting">
+                <div class="field">
+                  <label for="show-grass">Grass &amp; rocks</label>
+                  <p id="grass-description">Decorative grass clumps and landscaped rocks.</p>
+                  <input
+                    class="switch"
+                    role="switch"
+                    id="show-grass"
+                    type="checkbox"
+                    aria-describedby="grass-description"
+                  />
+                </div>
+              </section>
+            </div>
+            <h4>Trees</h4>
+            <p>Tree settings also apply to shrubs.</p>
+            <div id="tree-settings" class="illustrated-settings"></div>
+          </section>
+          <section
             id="settings-track-panel"
             role="tabpanel"
             aria-labelledby="settings-track-tab"
@@ -1321,64 +1378,6 @@
               </section>
               <section class="illustrated-setting">
                 <div class="field">
-                  <label for="show-buildings">Buildings</label>
-                  <p id="buildings-description">
-                    Mapped building footprints with estimated heights. Turning this off also
-                    disables building collision.
-                  </p>
-                  <input
-                    class="switch"
-                    role="switch"
-                    id="show-buildings"
-                    type="checkbox"
-                    aria-describedby="buildings-description"
-                  />
-                </div>
-              </section>
-              <section class="illustrated-setting">
-                <div class="field">
-                  <label for="show-water">Water</label>
-                  <p id="water-description">Mapped lakes, rivers and streams.</p>
-                  <input
-                    class="switch"
-                    role="switch"
-                    id="show-water"
-                    type="checkbox"
-                    aria-describedby="water-description"
-                  />
-                </div>
-              </section>
-              <section class="illustrated-setting">
-                <div class="field">
-                  <label for="show-vegetation">Trees, shrubs and rocks</label>
-                  <p id="vegetation-description">
-                    Mixed tree species and ground cover placed using satellite canopy and mapped
-                    landcover.
-                  </p>
-                  <input
-                    class="switch"
-                    role="switch"
-                    id="show-vegetation"
-                    type="checkbox"
-                    aria-describedby="vegetation-description"
-                  />
-                </div>
-              </section>
-              <section class="illustrated-setting">
-                <div class="field">
-                  <label for="vegetation-detail">Vegetation detail</label>
-                  <p id="vegetation-detail-description">
-                    Detail, draw distance and density of trees, shrubs and rocks.
-                  </p>
-                  <select id="vegetation-detail" aria-describedby="vegetation-detail-description">
-                    <option value="low">Low</option>
-                    <option value="medium">Medium</option>
-                    <option value="high">High</option>
-                  </select>
-                </div>
-              </section>
-              <section class="illustrated-setting">
-                <div class="field">
                   <label for="show-nearby-roads">Nearby roads</label>
                   <p id="nearby-roads-description">
                     Show saved nearby roads and their collision-enabled junction cones,
@@ -1459,40 +1458,12 @@
                   </svg>
                 </div>
               </section>
-              <section class="illustrated-setting">
-                <div class="field">
-                  <label for="show-grass">Grass tufts</label>
-                  <p id="grass-description">Add small clumps of grass beside the track.</p>
-                  <input
-                    class="switch"
-                    role="switch"
-                    id="show-grass"
-                    type="checkbox"
-                    aria-describedby="grass-description"
-                  />
-                </div>
-                <div
-                  class="setting-illustration"
-                  role="img"
-                  aria-label="Illustration of small grass clumps beside the road"
-                >
-                  <svg viewBox="0 0 224 126" aria-hidden="true">
-                    <path class="illustration-road" d="M40 126 Q68 85 112 78 T190 26" />
-                    <path class="illustration-line" d="M40 126 Q68 85 112 78 T190 26" />
-                    <g class="illustration-grass">
-                      <path
-                        d="M34 80 L30 64 M34 80 L40 62 M34 80 L45 72 M70 56 L65 40 M70 56 L73 36 M70 56 L81 45 M147 116 L141 100 M147 116 L150 94 M147 116 L160 101 M178 91 L173 74 M178 91 L182 69 M178 91 L191 79"
-                      />
-                    </g>
-                  </svg>
-                </div>
-              </section>
             </div>
           </section>
         </div>
       </div>
       <div class="dialog-footer">
-        <p class="dialog-help">Changes apply immediately.</p>
+        <button id="settings-reset" class="button-link" type="button">Reset to defaults</button>
         <form method="dialog" class="dialog-actions">
           <button class="button button-primary" type="submit">Done</button>
         </form>
