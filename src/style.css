@@ -309,6 +309,14 @@ h1 span {
   overflow-wrap: anywhere;
 }
 .minimap {
+  --map-road-color: #9ee8d580;
+  --map-pad-color: #9ee8d51a;
+  --map-marker-color: #ffc56e;
+  --map-marker-outline: #10191f;
+  --map-ghost-color: #9ee8ff;
+  --lap-time-color: #eef6f5;
+  --lap-invalid-color: #ff625c;
+  position: relative;
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
@@ -320,7 +328,7 @@ h1 span {
   border-radius: 8px;
   background: #10191fc9;
 }
-.minimap > svg {
+.minimap-map {
   display: block;
   order: 1;
   flex: 1;
@@ -328,31 +336,17 @@ h1 span {
   width: 100%;
   height: auto;
 }
+.minimap > canvas {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
 .minimap-stats {
   display: flex;
   justify-content: space-between;
   flex-shrink: 0;
   gap: 8px;
   padding: 8px 12px 0;
-}
-.minimap-pad {
-  fill: #9ee8d51a;
-}
-.minimap-road {
-  fill: none;
-  stroke: #9ee8d580;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-.minimap-marker {
-  fill: #ffc56e;
-  stroke: #10191f;
-  stroke-width: 1.5;
-  stroke-linejoin: round;
-}
-.minimap-ghost {
-  fill: #9ee8ff;
-  fill-opacity: 0.65;
 }
 .minimap-lap,
 .minimap-timing {
@@ -372,8 +366,9 @@ h1 span {
   height: 40px;
   text-align: right;
 }
-.minimap-timing > .is-invalid {
-  color: #ff625c;
+#lap-current {
+  height: 24px;
+  flex-shrink: 0;
 }
 .minimap-lap > strong,
 .minimap-timing > strong {
@@ -518,7 +513,6 @@ h1 span {
   .course-hud {
     top: 12px;
     right: 12px;
-    width: 160px;
     max-height: calc(100dvh - 24px);
   }
   .minimap {
@@ -558,7 +552,7 @@ body.chase-view {
   bottom: 28px;
   flex-direction: column-reverse;
 }
-.chase-view .minimap > svg {
+.chase-view .minimap-map {
   order: 0;
 }
 .chase-view #course-name {

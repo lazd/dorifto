@@ -2034,6 +2034,7 @@ async function start() {
         replay.time >= (replay.recording.lapStarts[replay.recording.lapTimes.length] ?? Infinity)
       : laps.finished;
     const invalid = !replaying && laps.invalid;
+    minimap.updateLapTime(timing.lap ? timing.current : null, invalid);
     const cones = replaying ? 0 : laps.conesHit;
     const previousLapTelemetry = gameState.getState().lapTelemetry;
     const lapTelemetry =

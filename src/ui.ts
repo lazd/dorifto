@@ -84,13 +84,6 @@ function bindText(selector: string) {
   };
 }
 
-function bindTextBlind(selector: string) {
-  const node = element(selector);
-  return (text: string) => {
-    node.textContent = text;
-  };
-}
-
 function notifyUIVisibility() {
   document.dispatchEvent(new Event('driving-ui-change'));
 }
@@ -2032,8 +2025,6 @@ export function bindGameUI(
     ['speedUnit'],
   );
   const lap = bindText('#lap-number');
-  const current = bindTextBlind('#lap-current');
-  const currentLap = element('#lap-current');
   const best = bindText('#lap-best');
   const controller = bindText('#controller-status');
   createDrivingTuning(element('#drift-tuning-sliders'), configuration, reportError);
@@ -2347,7 +2338,6 @@ export function bindGameUI(
         displayGear(t.gear < 0 ? 'R' : t.gear === 0 ? 'N' : String(t.gear));
         previousGear = t.gear;
       }
-      current(formatLapTime(state.lapTelemetry.lap ? t.current : null));
     },
     ['telemetry'],
   );
@@ -2356,11 +2346,6 @@ export function bindGameUI(
     ({ lapTelemetry: t }) => {
       if (t.lap !== previousLapTelemetry?.lap || t.finished !== previousLapTelemetry?.finished) {
         lap(t.finished ? '🏁' : t.lap ? String(t.lap) : '--');
-      }
-      if (t.invalid !== previousLapTelemetry?.invalid) {
-        currentLap.classList.toggle('is-invalid', t.invalid);
-        currentLap.setAttribute('aria-label', t.invalid ? 'Invalid lap time' : 'Current lap time');
-        currentLap.title = t.invalid ? 'All four tires left the track: lap is invalid' : '';
       }
       if (t.best !== previousLapTelemetry?.best) best(formatLapTime(t.best));
       previousLapTelemetry = t;
