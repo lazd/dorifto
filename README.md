@@ -322,7 +322,9 @@ or **Spectate bots**. **Race setup** beside it opens the same dialog as the map;
 choose a course and race rules, then select **Start race →**.
 Solo hides bot configuration; the other modes share an editable starting
 grid and require at least one bot. Switching to Solo keeps your configured lineup for the
-current page session. **Cancel** discards edits; the primary action starts the selected mode.
+current page session. **Cancel** discards edits; **Apply** restarts the current map in the
+selected mode. If a map is loading, **Apply** closes the dialog immediately and queues
+the settings for that map. If loading fails, they apply to the current map instead.
 The roster and editor scroll independently while the mode cards and actions remain visible.
 Bots can also be configured through URL parameters:
 

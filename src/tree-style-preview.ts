@@ -13,7 +13,7 @@ export function installTreeStylePreview(scene: THREE.Scene, reportError: (error:
   field.className = 'field';
   field.id = 'tree-style-preview';
   field.innerHTML = `
-    <label for="tree-style">Developer vegetation</label>
+    <label for="tree-style">Vegetation rendering</label>
     <p id="tree-style-description">Baked pine, oak, aspen and three bush styles.
       Performance uses shorter mesh ranges and fewer bushes; Quality draws more detail.
       Ultra uses 3D meshes throughout, with no baked distant plants.</p>

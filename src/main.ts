@@ -579,6 +579,8 @@ async function start() {
   let fpsFrameCount = 0;
   let fpsUpdateTime = 0;
   let changingCourse = false;
+  let courseLoading = false;
+  let pendingBotSettings: { bots: RaceBotOptions[]; botsOnly: boolean } | null = null;
   let previousLapInvalid = false;
 
   async function createCourseSession(
@@ -664,10 +666,8 @@ async function start() {
       );
       drivingCamera.reset(spawn.heading);
       lighting.setupMaterials();
-      if (import.meta.env.DEV && new URL(location.href).searchParams.get('tree-preview') === '1') {
-        const { installTreeStylePreview } = await import('./tree-style-preview');
-        installTreeStylePreview(scene, (error) => showError(error, false));
-      }
+      const { installTreeStylePreview } = await import('./tree-style-preview');
+      installTreeStylePreview(scene, (error) => showError(error, false));
       return { course, terrain: course.terrain, spawn, laps, physics, drivingCamera };
     } catch (error) {
       physics?.dispose(!botsOnly);
@@ -1034,6 +1034,10 @@ async function start() {
   }
 
   async function applyBotSettings(nextBots: RaceBotOptions[], nextBotsOnly: boolean) {
+    if (courseLoading) {
+      pendingBotSettings = { bots: nextBots, botsOnly: nextBotsOnly };
+      return;
+    }
     if (changingCourse) throw new Error('Wait for the current course change to finish');
     changingCourse = true;
     controls.clear();
@@ -1353,6 +1357,7 @@ async function start() {
     reverse: boolean,
     nextRace: RaceOptions = raceOptions,
   ) {
+    courseLoading = true;
     changingCourse = true;
     controls.clear();
     audio.reset();
@@ -1416,6 +1421,12 @@ async function start() {
     } finally {
       lastTime = 0;
       changingCourse = false;
+      courseLoading = false;
+      if (pendingBotSettings) {
+        const { bots, botsOnly } = pendingBotSettings;
+        pendingBotSettings = null;
+        void applyBotSettings(bots, botsOnly).catch((error) => showError(error, false));
+      }
     }
   }
 

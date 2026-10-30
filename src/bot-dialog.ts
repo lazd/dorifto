@@ -96,8 +96,6 @@ export function bindBotDialog(
     const mode = selectedMode();
     masterDetail.hidden = mode === 'solo';
     solo.hidden = mode !== 'solo';
-    apply.textContent =
-      mode === 'solo' ? 'Start solo race' : mode === 'spectate' ? 'Start spectating' : 'Start race';
     apply.disabled = applying || (mode !== 'solo' && !bots.length);
   };
   raceMode.addEventListener('change', () => {
