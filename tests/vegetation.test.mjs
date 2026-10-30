@@ -16,25 +16,26 @@ test('shared vegetation stays within mesh budgets and applies detail, density an
   parent.add(plants);
   THREE.TextureLoader.prototype.load = () => new THREE.Texture();
   try {
-    const {
-      addVegetation,
-      setVegetationDetail,
-      setVegetationMode,
-      setVegetationTransition,
-      setVegetationTime,
-      vegetationDetails,
-    } = await server.ssrLoadModule('/src/vegetation.ts');
-    const { isVegetationDetail, createConfigurationState } = await server.ssrLoadModule(
-      '/src/configuration-state.ts',
-    );
+    const { addVegetation, setVegetationSettings, setVegetationTime } =
+      await server.ssrLoadModule('/src/vegetation.ts');
+    const { defaultTreeSettings } = await server.ssrLoadModule('/src/tree-settings.ts');
     const entries = {
       matrices: Array.from({ length: 12 }, (_, i) =>
         new THREE.Matrix4().makeTranslation(i * 2, 0, 0),
       ),
       shades: Array.from({ length: 12 }, (_, i) => i / 12),
     };
-    addVegetation(plants, { trees: entries, bush: entries, rocks: entries });
-    setVegetationMode(plants, 'quality');
+    addVegetation(plants, { trees: entries, bush: entries, rocks: entries }, () => 100);
+    const settings = {
+      ...defaultTreeSettings,
+      treeDrawDistance: 300,
+      treeDensity: 3,
+      treeQuality: 2,
+      treeBakeDistance: 65,
+      treeNearTrackOnly: false,
+      showGrass: true,
+    };
+    setVegetationSettings(plants, settings);
     const lods = [],
       cover = [];
     for (const root of [plants])
@@ -51,31 +52,14 @@ test('shared vegetation stays within mesh budgets and applies detail, density an
         if (object.userData.groundCoverCount) cover.push(object);
       });
     assert.equal(lods.filter((lod) => lod.userData.vegetationKind === 'trees').length, 3);
-    for (const detail of Object.keys(vegetationDetails)) {
-      setVegetationDetail(plants, detail);
-      for (const mesh of cover) {
-        assert.equal(
-          mesh.count,
-          Math.ceil(mesh.userData.groundCoverCount * vegetationDetails[detail].density),
-        );
-      }
-      for (const lod of lods.filter((lod) => lod.userData.vegetationKind === 'trees')) {
-        assert.equal(lod.levels[1].distance, vegetationDetails[detail].near);
-        assert.equal(lod.levels.at(-1).distance, Math.min(vegetationDetails[detail].trees, 600));
-        assert.equal(lod.levels[1].object.children[0].geometry.index.count / 3, 4);
-        assert.equal(lod.levels[1].object.children[0].castShadow, false);
-      }
-    }
-    setVegetationMode(plants, 'performance');
     for (const lod of lods.filter((lod) => lod.userData.vegetationKind === 'trees')) {
-      assert.equal(lod.levels[1].distance, 65);
-      assert.equal(lod.levels.at(-1).distance, 300);
+      assert.equal(lod.levels[1].distance, settings.treeBakeDistance);
+      assert.equal(lod.levels.at(-1).distance, settings.treeDrawDistance);
+      assert.equal(lod.levels[1].object.children[0].geometry.index.count / 3, 4);
+      assert.equal(lod.levels[1].object.children[0].castShadow, false);
     }
     for (const mesh of cover) {
-      let lod = mesh.parent;
-      while (lod && !(lod instanceof THREE.LOD)) lod = lod.parent;
-      const density = lod.userData.vegetationKind === 'bush' ? 0.6 : 1;
-      assert.equal(mesh.count, Math.ceil(mesh.userData.groundCoverCount * density));
+      assert.equal(mesh.count, Math.ceil(mesh.userData.groundCoverCount * 0.65));
     }
     plants.updateMatrixWorld(true);
     const camera = new THREE.PerspectiveCamera();
@@ -96,37 +80,23 @@ test('shared vegetation stays within mesh budgets and applies detail, density an
     const center = new THREE.Vector3().setFromMatrixPosition(tree.matrixWorld);
     camera.position.copy(center).add(new THREE.Vector3(65, 0, 0));
     camera.updateMatrixWorld(true);
-    setVegetationTransition(plants, true);
+    setVegetationSettings(plants, { ...settings, treeSmoothTransitions: true });
     tree.update(camera);
     assert.equal(tree.levels[0].object.visible, true);
     assert.equal(tree.levels[1].object.visible, true);
     assert.equal(tree.levels[0].object.children[0].material.userData.vegetationRange.value, 65);
-    setVegetationTransition(plants, false);
+    setVegetationSettings(plants, { ...settings, treeSmoothTransitions: false });
     tree.update(camera);
     assert.equal(tree.levels[0].object.visible, false);
     assert.equal(tree.levels[1].object.visible, true);
-    setVegetationMode(plants, 'ultra');
-    for (const detail of Object.keys(vegetationDetails)) {
-      setVegetationDetail(plants, detail);
-      const range = vegetationDetails[detail].ultraTrees;
-      for (const distance of [65, range - 1, range + 1]) {
-        camera.position.copy(center).add(new THREE.Vector3(distance, 0, 0));
-        camera.updateMatrixWorld(true);
-        tree.update(camera);
-        assert.equal(tree.levels[0].object.visible, distance < range);
-        assert.equal(tree.levels[1].object.visible, false);
-      }
-      assert.equal(
-        tree.levels[0].object.children[0].count,
-        Math.ceil(
-          tree.levels[0].object.children[0].userData.groundCoverCount *
-            vegetationDetails[detail].density,
-        ),
-      );
-    }
-    assert.equal(createConfigurationState().getState().vegetationDetail, 'medium');
-    assert.ok(isVegetationDetail('high'));
-    assert.equal(isVegetationDetail('unlimited'), false);
+    camera.position.copy(center).add(new THREE.Vector3(299, 0, 0));
+    camera.updateMatrixWorld(true);
+    tree.update(camera);
+    assert.equal(tree.levels[1].object.visible, true);
+    camera.position.copy(center).add(new THREE.Vector3(301, 0, 0));
+    camera.updateMatrixWorld(true);
+    tree.update(camera);
+    assert.equal(tree.levels[2].object.visible, true);
   } finally {
     THREE.TextureLoader.prototype.load = load;
     const resources = new Set();

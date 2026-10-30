@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { createServer } from 'vite';
-import { Vector3 } from 'three';
+import { Texture as ThreeTexture, TextureLoader as ThreeTextureLoader, Vector3 } from 'three';
 import { convertTrack, selectTrackSegment } from '../scripts/import-track.mjs';
 
 let server;
@@ -183,6 +183,9 @@ test('segment imports trim and reverse source geometry and elevation without clo
 });
 
 test('imported road width and optional double-yellow lines reach the terrain-draped game mesh', async (t) => {
+  const loadTexture = ThreeTextureLoader.prototype.load;
+  ThreeTextureLoader.prototype.load = () => new ThreeTexture();
+  t.after(() => (ThreeTextureLoader.prototype.load = loadTexture));
   const source = {
     slug: 'narrow-road',
     closed: false,

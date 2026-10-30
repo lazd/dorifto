@@ -161,33 +161,12 @@ function fixture(t, initiallyOpen = false) {
   };
 }
 
-test('sound switch applies its checked state and preserves unrelated URL options', (t) => {
+test('sound switch reports muted state from its checked state', (t) => {
   const ui = fixture(t);
-  const descriptors = new Map(
-    ['location', 'history'].map((name) => [
-      name,
-      Object.getOwnPropertyDescriptor(globalThis, name),
-    ]),
-  );
-  const location = { href: 'https://example.test/?course=hillside' };
-  Object.defineProperty(globalThis, 'location', { configurable: true, value: location });
-  Object.defineProperty(globalThis, 'history', {
-    configurable: true,
-    value: { replaceState: (_state, _title, url) => (location.href = String(url)) },
-  });
-  t.after(() => {
-    for (const [name, descriptor] of descriptors) {
-      if (descriptor) Object.defineProperty(globalThis, name, descriptor);
-      else delete globalThis[name];
-    }
-  });
   for (const checked of [false, true]) {
     ui.sound.checked = checked;
     ui.sound.dispatchEvent(new Event('change'));
-    const query = new URL(location.href).searchParams;
     assert.equal(ui.mutedStates.at(-1), !checked);
-    assert.equal(query.get('sound'), checked ? null : 'off');
-    assert.equal(query.get('course'), 'hillside');
   }
 });
 

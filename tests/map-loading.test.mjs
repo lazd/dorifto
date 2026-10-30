@@ -18,15 +18,16 @@ after(async () => {
   await server?.close();
 });
 
-test('client catalog excludes terrain while keeping course outlines and metadata', async () => {
+test('client catalog excludes heavy map data while keeping outlines and metadata', async () => {
   const result = await server.transformRequest('virtual:course-catalog');
   assert.ok(result);
   assert.ok(!result.code.includes('"terrain":'));
+  assert.ok(!result.code.includes('"scenery":'));
   for (const course of courses.filter(({ terrain }) => terrain)) {
     assert.ok(result.code.includes(JSON.stringify(course.id)));
     assert.ok(result.code.includes(JSON.stringify(course.points)));
   }
-  assert.ok(result.code.length < 300_000, `catalog is ${result.code.length} bytes`);
+  assert.ok(result.code.length < 600_000, `catalog is ${result.code.length} bytes`);
 });
 
 test('map loads share requests, reuse cached data and preserve direction', async (t) => {

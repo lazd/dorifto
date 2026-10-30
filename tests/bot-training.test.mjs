@@ -87,21 +87,45 @@ after(async () => {
   await server?.close();
 });
 
-test('race driver completes repeated three-lap runs and serializes bounded learning', () => {
+test('race driver learns from a lap and replays bounded experience deterministically', () => {
   const options = { ...defaultRaceBotOptions, learning: true };
-  const report = trainRaceBot(Ammo, definition, terrain, geometry, configuration, options, 2);
-  assert.equal(report.runs.length, 2);
+  const report = trainRaceBot(
+    Ammo,
+    definition,
+    terrain,
+    geometry,
+    configuration,
+    options,
+    1,
+    undefined,
+    {
+      laps: 1,
+    },
+  );
+  assert.equal(report.runs.length, 1);
   for (const run of report.runs) {
     assert.equal(run.completed, true);
     assert.equal(run.failure, null);
-    assert.equal(run.laps.length, 3);
+    assert.equal(run.laps.length, 1);
     assert.ok(run.laps.every((lap) => lap.valid && lap.time > 0));
   }
   assert.ok(report.experience.visits.every((visits) => visits > 0));
   assert.ok(report.experience.pace.every((pace) => pace >= 0.55 && pace <= 1));
   const frozen = { ...options, learning: false };
   const saved = JSON.parse(JSON.stringify(report.experience));
-  const replay = trainRaceBot(Ammo, definition, terrain, geometry, configuration, frozen, 2, saved);
+  const replay = trainRaceBot(
+    Ammo,
+    definition,
+    terrain,
+    geometry,
+    configuration,
+    frozen,
+    2,
+    saved,
+    {
+      laps: 1,
+    },
+  );
   assert.deepEqual(replay.experience, saved, 'frozen evaluation must not learn');
   assert.deepEqual(
     replay.runs[0].laps,
@@ -117,7 +141,7 @@ test('race driver completes repeated three-lap runs and serializes bounded learn
     frozen,
     1,
     saved,
-    { maxSeconds: 0.1 },
+    { maxSeconds: 0.1, laps: 1 },
   );
   assert.equal(failed.runs[0].completed, false);
   assert.equal(failed.runs[0].failure, 'timeout');

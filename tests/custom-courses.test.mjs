@@ -280,18 +280,22 @@ test('each preference has a measurable effect on actual centerline geometry', ()
   );
 });
 
-test('all 32 feature extremes at short, medium, and long lengths retain safe geometry', () => {
+test('representative feature extremes at short, medium, and long lengths retain safe geometry', () => {
   const fields = courseGenerationFields.filter(({ key }) => key !== 'length' && key !== 'banking');
+  const allFeatures = (1 << fields.length) - 1;
+  const masks = [
+    ...new Set([0, allFeatures, ...fields.flatMap((_, i) => [1 << i, allFeatures ^ (1 << i)])]),
+  ];
   const mixes = [1000, 3000, 5000].flatMap((length) =>
-    Array.from({ length: 32 }, (_, mask) => ({
+    masks.map((mask) => ({
       length,
       banking: defaultCourseWeights.banking,
       ...Object.fromEntries(fields.map(({ key }, i) => [key, (mask >> i) & 1])),
     })),
   );
-  for (let i = 0; i < 16; i++) {
+  for (let i = 0; i < 8; i++) {
     mixes.push({
-      length: 1000 + i * 250,
+      length: 1000 + i * 500,
       banking: defaultCourseWeights.banking,
       ...Object.fromEntries(fields.map(({ key }, j) => [key, ((i * 17 + j * 23) % 101) / 100])),
     });

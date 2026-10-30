@@ -10,7 +10,11 @@ const endpoint =
   'https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/exportImage';
 const radius = 6371008.8;
 
-async function downloadBytes(url, fetch) {
+async function downloadBytes(
+  url,
+  fetch,
+  sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+) {
   const attempts = 4;
   for (let attempt = 1; attempt <= attempts; attempt++) {
     let failure;
@@ -42,7 +46,7 @@ async function downloadBytes(url, fetch) {
       `USGS elevation download attempt ${attempt}/${attempts} failed: ${url.href}. Retrying in ${attempt}s…`,
       failure,
     );
-    await new Promise((resolve) => setTimeout(resolve, 1000 * attempt));
+    await sleep(1000 * attempt);
   }
 }
 
@@ -71,7 +75,7 @@ function roadBounds(data, margin) {
 async function downloadRasterTile(
   { west, east, south, north, metersPerDegree, metersPerLongitude },
   resolution,
-  { cache, fetch, label, resolutionOption },
+  { cache, fetch, sleep, label, resolutionOption },
 ) {
   const columns = Math.ceil(((east - west) * metersPerLongitude) / resolution);
   const rows = Math.ceil(((north - south) * metersPerDegree) / resolution);
@@ -98,7 +102,7 @@ async function downloadRasterTile(
     console.log(
       `  🏔️  Downloading ${label}: ${columns} × ${rows} pixels, requested ${resolution} m spacing…`,
     );
-    bytes = await downloadBytes(url, fetch);
+    bytes = await downloadBytes(url, fetch, sleep);
   }
   let image;
   try {
@@ -202,6 +206,7 @@ export async function fetchTerrainRaster(
     margin = 250,
     cache = geographicDownloadCache,
     fetch = globalThis.fetch,
+    sleep,
     onProgress,
   } = {},
 ) {
@@ -218,6 +223,7 @@ export async function fetchTerrainRaster(
   const raster = await downloadRaster(bounds, resolution, {
     cache,
     fetch,
+    sleep,
     label: 'USGS terrain raster',
     resolutionOption: 'the terrain resolution',
     onProgress,

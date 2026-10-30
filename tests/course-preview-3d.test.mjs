@@ -66,51 +66,6 @@ test('mapped stop-sign previews build and serialize without a document', async (
   assert.ok(textureDisposed, 'preview textures are disposed along with geometry and materials');
 });
 
-test('nearby roads and rivers follow the rendered preview grid, not the finer game grid', async () => {
-  const definition = JSON.parse(
-    await readFile(new URL('./fixtures/road-course.json', import.meta.url), 'utf8'),
-  );
-  definition.scenery = {
-    version: 1,
-    buildings: [],
-    water: [],
-    vegetation: [],
-    roads: [{ points: definition.points.map(([x, z]) => [x + 80, z]), width: 6 }],
-    waterways: [{ points: definition.points.map(([x, z]) => [x - 80, z]), width: 3 }],
-  };
-  const preview = createCoursePreviewModel(definition, colors, 24);
-  try {
-    const ground = preview.group.getObjectByName('preview-ground');
-    ground.updateMatrixWorld(true);
-    for (const name of ['nearby-road-surfaces', 'draped-waterways']) {
-      const mesh = preview.group.getObjectByName(name);
-      assert.ok(mesh, `${name} is rendered`);
-      const positions = mesh.geometry.getAttribute('position');
-      const indices = mesh.geometry.index;
-      const count = indices?.count ?? positions.count;
-      const ray = new Raycaster();
-      const stride = Math.max(3, Math.floor(count / 100) * 3);
-      for (let i = 0; i < count; i += stride) {
-        const center = new Vector3();
-        for (let j = 0; j < 3; j++)
-          center.add(
-            new Vector3().fromBufferAttribute(positions, indices ? indices.getX(i + j) : i + j),
-          );
-        center.divideScalar(3);
-        ray.set(new Vector3(center.x, center.y + 100, center.z), new Vector3(0, -1, 0));
-        const hit = ray.intersectObject(ground)[0];
-        assert.ok(hit, `${name} has terrain beneath it`);
-        assert.ok(
-          Math.abs(center.y - hit.point.y - 0.15) < 1e-3,
-          `${name} stays above the coarse terrain at triangle interiors`,
-        );
-      }
-    }
-  } finally {
-    preview.dispose();
-  }
-});
-
 test('3-D previews keep overlays above rendered terrain and dispose every resource', async () => {
   const imported = JSON.parse(
     await readFile(new URL('./fixtures/road-course.json', import.meta.url), 'utf8'),

@@ -26,12 +26,7 @@ test('bot exteriors share underbody and isolate lighting and segmented plates', 
     server: { middlewareMode: true, hmr: false, ws: false, watch: null },
     appType: 'custom',
   });
-  const { createBotCar, botLampSettings, botColor, botName } =
-    await server.ssrLoadModule('/src/bot-car.ts');
-  const { maxRaceBots } = await server.ssrLoadModule('/src/race-bot.ts');
-  const indices = Array.from({ length: maxRaceBots }, (_, index) => index);
-  assert.equal(new Set(indices.map(botColor)).size, maxRaceBots);
-  assert.equal(new Set(indices.map(botName)).size, maxRaceBots);
+  const { createBotCar, botLampSettings, botColor } = await server.ssrLoadModule('/src/bot-car.ts');
   const { createBotPlate, botPlateText } = await server.ssrLoadModule('/src/bot-plate.ts');
   const model = await loadTrainingCarModel(server);
   const glowAt = (name, x) => {

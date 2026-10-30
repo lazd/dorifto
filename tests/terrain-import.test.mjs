@@ -55,6 +55,7 @@ test('terrain downloads retry network and server failures without reusing a fail
   const requests = [];
   const attempts = new Map();
   const raster = await downloadTerrainRaster(source, {
+    sleep: async () => {},
     fetch: async (url, options) => {
       requests.push(options);
       const attempt = (attempts.get(url.href) ?? 0) + 1;
@@ -78,6 +79,7 @@ test('terrain downloads report persistent network failures after three retries',
   const cause = new TypeError('Failed to fetch');
   await assert.rejects(
     downloadTerrainRaster(source, {
+      sleep: async () => {},
       onProgress: (_, total) => (tileCount = total),
       fetch: async () => {
         requests++;

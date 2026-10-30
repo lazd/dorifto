@@ -627,6 +627,7 @@ test('holding the handbrake for 5 seconds latches it until the next press', (t) 
   ]) {
     const r = rig(t);
     press(r, true);
+    r.poll();
     r.poll(4999);
     assert.equal(r.controls.handbrake, true, `${name}: handbrake works while held`);
     press(r, false);
@@ -634,6 +635,7 @@ test('holding the handbrake for 5 seconds latches it until the next press', (t) 
     assert.equal(r.controls.handbrake, false, `${name}: release before 5 seconds is momentary`);
 
     press(r, true);
+    r.poll();
     r.poll(5000);
     press(r, false);
     r.poll();

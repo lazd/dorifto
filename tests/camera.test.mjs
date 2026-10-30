@@ -74,7 +74,16 @@ test('mirror passes omit scenery and grass without changing the main view or set
 
 test('only cabin view enables interior illumination, while all driving views enable headlights', () => {
   const camera = new THREE.PerspectiveCamera();
-  const controls = { mapView: false, mapZoom: 0, cameraX: 0, cameraY: 0, lookBehind: false };
+  const controls = {
+    mapView: false,
+    mapZoom: 0,
+    mapWheelZoom: 0,
+    mapDragX: 0,
+    mapDragY: 0,
+    cameraX: 0,
+    cameraY: 0,
+    lookBehind: false,
+  };
   const car = { chassis: new THREE.Group(), aimMirrors() {} };
   const driving = createDrivingCamera(camera, car, controls, courses[0], { heightAt: () => 0 });
   driving.reset(0);
@@ -91,7 +100,16 @@ for (const style of ['classic', 'fpv', 'cabin']) {
     const terrain = { heightAt: () => 0 };
     const car = { chassis: new THREE.Group(), aimMirrors() {} };
     car.chassis.position.set(20, 2, 10);
-    const controls = { mapView: false, mapZoom: 0, cameraX: 0, cameraY: 0, lookBehind: false };
+    const controls = {
+      mapView: false,
+      mapZoom: 0,
+      mapWheelZoom: 0,
+      mapDragX: 0,
+      mapDragY: 0,
+      cameraX: 0,
+      cameraY: 0,
+      lookBehind: false,
+    };
     const referenceControls = { ...controls };
     const camera = new THREE.PerspectiveCamera(55, 16 / 9, 0.1, 1500);
     const reference = camera.clone();
@@ -161,7 +179,16 @@ for (const style of ['classic', 'fpv', 'cabin']) {
 
 test('chase cameras follow irregular physics translations without car-relative jitter', () => {
   for (const style of ['classic', 'fpv']) {
-    const controls = { mapView: false, mapZoom: 0, cameraX: 0, cameraY: 0, lookBehind: true };
+    const controls = {
+      mapView: false,
+      mapZoom: 0,
+      mapWheelZoom: 0,
+      mapDragX: 0,
+      mapDragY: 0,
+      cameraX: 0,
+      cameraY: 0,
+      lookBehind: true,
+    };
     const car = { chassis: new THREE.Group(), aimMirrors() {} };
     const camera = new THREE.PerspectiveCamera();
     const driving = createDrivingCamera(camera, car, controls, courses[0], {
@@ -185,7 +212,16 @@ test('map view fits a 5 km course within the clipping planes on a portrait displ
   const definition = generateCustomCourse(123, { ...defaultCourseWeights, length: 5000 });
   const terrain = { heightAt: () => 0 };
   const car = { chassis: new THREE.Group(), aimMirrors() {} };
-  const controls = { mapView: true, mapZoom: 0, cameraX: 0, cameraY: 0, lookBehind: false };
+  const controls = {
+    mapView: true,
+    mapZoom: 0,
+    mapWheelZoom: 0,
+    mapDragX: 0,
+    mapDragY: 0,
+    cameraX: 0,
+    cameraY: 0,
+    lookBehind: false,
+  };
   const camera = new THREE.PerspectiveCamera(55, 9 / 16, 0.1, 1500);
   const driving = createDrivingCamera(camera, car, controls, definition, terrain);
   driving.reset(0);
@@ -212,7 +248,16 @@ function cabinRig(rotation = new THREE.Quaternion()) {
   };
   car.chassis.position.set(20, 2, 10);
   car.chassis.quaternion.copy(rotation);
-  const controls = { mapView: false, mapZoom: 0, cameraX: 0, cameraY: 0, lookBehind: false };
+  const controls = {
+    mapView: false,
+    mapZoom: 0,
+    mapWheelZoom: 0,
+    mapDragX: 0,
+    mapDragY: 0,
+    cameraX: 0,
+    cameraY: 0,
+    lookBehind: false,
+  };
   const camera = new THREE.PerspectiveCamera(55, 16 / 9, 0.1, 1500);
   const driving = createDrivingCamera(camera, car, controls, courses[0], { heightAt: () => 0 });
   const eye = new THREE.Vector3(-0.38, 0.43, -0.25);
@@ -627,7 +672,16 @@ test('fpv drone chases along the course through drifts and banks into turns', ()
   const definition = courses.find((course) => course.id === 'hillside');
   const route = courseRoute(definition);
   const car = { chassis: new THREE.Group(), aimMirrors() {} };
-  const controls = { mapView: false, mapZoom: 0, cameraX: 0, cameraY: 0, lookBehind: false };
+  const controls = {
+    mapView: false,
+    mapZoom: 0,
+    mapWheelZoom: 0,
+    mapDragX: 0,
+    mapDragY: 0,
+    cameraX: 0,
+    cameraY: 0,
+    lookBehind: false,
+  };
   const camera = new THREE.PerspectiveCamera();
   const driving = createDrivingCamera(camera, car, controls, definition, { heightAt: () => -100 });
   const speed = 20;

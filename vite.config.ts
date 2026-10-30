@@ -29,7 +29,10 @@ function courseCatalog(): Plugin {
           const course: CourseDefinition = JSON.parse(content);
           const version = createHash('sha256').update(content).digest('hex').slice(0, 16);
           // Headless training and tests already have the full map on disk.
-          if (!options?.ssr) delete course.terrain;
+          if (!options?.ssr) {
+            delete course.terrain;
+            delete course.scenery;
+          }
           // Real driver recordings share their track's file name; see scripts/import-real-data.mjs.
           const realDataPath = new URL(file, realDataDirectory);
           const realData = await readFile(realDataPath, 'utf8').catch((error) => {
@@ -39,6 +42,7 @@ function courseCatalog(): Plugin {
           if (realData !== null) this.addWatchFile(fileURLToPath(realDataPath));
           return {
             course,
+            path: fileURLToPath(path),
             size: `${JSON.stringify(course.id)}: ${Buffer.byteLength(content)}`,
             asset: `import url${index} from ${JSON.stringify(`/src/tracks/${file}?url&no-inline`)};`,
             url: `${JSON.stringify(course.id)}: url${index}${building ? '' : ` + "?v=${version}"`}`,
@@ -55,7 +59,11 @@ realDrivers[${JSON.stringify(course.id)}] = { url: realDriverUrl${index}, revers
         `export const mapSizes = {${entries.map(({ size }) => size).join(',')}};`,
         `export const realDrivers = {};`,
         ...entries.flatMap(({ realDriver }) => (realDriver ? [realDriver] : [])),
-        `export default ${JSON.stringify(entries.map(({ course }) => course))};`,
+        options?.ssr
+          ? `import { readFileSync } from 'node:fs';\nexport default [${entries
+              .map(({ path }) => `JSON.parse(readFileSync(${JSON.stringify(path)}, 'utf8'))`)
+              .join(',')}];`
+          : `export default ${JSON.stringify(entries.map(({ course }) => course))};`,
       ].join('\n');
     },
     handleHotUpdate({ file, server }) {
