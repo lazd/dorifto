@@ -16,7 +16,8 @@ export function installTreeStylePreview(scene: THREE.Scene, reportError: (error:
     <label for="tree-style">Vegetation rendering</label>
     <p id="tree-style-description">Baked pine, oak, aspen and three bush styles.
       Performance uses shorter mesh ranges and fewer bushes; Quality draws more detail.
-      Ultra uses 3D meshes throughout, with no baked distant plants.</p>
+      Ultra uses 3D meshes throughout, with no baked distant plants.
+      Vegetation detail controls density; Ultra tree ranges are 180 / 300 / 450 meters.</p>
     <select id="tree-style" aria-describedby="tree-style-description">
       <option value="performance">Performance</option>
       <option value="quality">Quality</option>

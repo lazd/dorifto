@@ -3,6 +3,7 @@ import { CSM } from 'three/addons/csm/CSM.js';
 import { Sky } from 'three/addons/objects/Sky.js';
 import type { ConfigurationState } from './configuration-state';
 import { createCloudLayer } from './clouds';
+import { setVegetationTime } from './vegetation';
 
 export const daylight = {
   noon: {
@@ -110,6 +111,7 @@ export function createLighting(
   const materials = new WeakSet<THREE.Material>();
 
   function setupMaterials() {
+    setVegetationTime(scene, currentTime);
     scene.traverse((object) => {
       if (!(object instanceof THREE.Mesh)) return;
       for (const material of Array.isArray(object.material) ? object.material : [object.material]) {
@@ -295,7 +297,10 @@ export function createLighting(
     night: createSky('night'),
   };
   pmrem.dispose();
+  let currentTime: ConfigurationState['timeOfDay'] = 'noon';
   const applyTimeOfDay = (time: ConfigurationState['timeOfDay']) => {
+    currentTime = time;
+    setVegetationTime(scene, time);
     const preset = daylight[time];
     scene.background = skies[time].sky;
     scene.environment = skies[time].environment;

@@ -21,6 +21,7 @@ test('shared vegetation stays within mesh budgets and applies detail, density an
       setVegetationDetail,
       setVegetationMode,
       setVegetationTransition,
+      setVegetationTime,
       vegetationDetails,
     } = await server.ssrLoadModule('/src/vegetation.ts');
     const { isVegetationDetail, createConfigurationState } = await server.ssrLoadModule(
@@ -86,6 +87,12 @@ test('shared vegetation stays within mesh budgets and applies detail, density an
       assert.equal(lod.levels[0].object.visible, false);
     }
     const tree = lods.find((lod) => lod.userData.vegetationKind === 'trees');
+    const bakedMaterial = tree.levels[1].object.children[0].material;
+    for (const time of ['sunset', 'night', 'noon']) {
+      setVegetationTime(plants, time);
+      assert.equal(bakedMaterial.map, bakedMaterial.userData.vegetationAtlases[time]);
+      assert.ok(bakedMaterial.map instanceof THREE.Texture);
+    }
     const center = new THREE.Vector3().setFromMatrixPosition(tree.matrixWorld);
     camera.position.copy(center).add(new THREE.Vector3(65, 0, 0));
     camera.updateMatrixWorld(true);
@@ -99,12 +106,23 @@ test('shared vegetation stays within mesh budgets and applies detail, density an
     assert.equal(tree.levels[0].object.visible, false);
     assert.equal(tree.levels[1].object.visible, true);
     setVegetationMode(plants, 'ultra');
-    for (const distance of [65, 300, 599, 601]) {
-      camera.position.copy(center).add(new THREE.Vector3(distance, 0, 0));
-      camera.updateMatrixWorld(true);
-      tree.update(camera);
-      assert.equal(tree.levels[0].object.visible, distance < 600);
-      assert.equal(tree.levels[1].object.visible, false);
+    for (const detail of Object.keys(vegetationDetails)) {
+      setVegetationDetail(plants, detail);
+      const range = vegetationDetails[detail].ultraTrees;
+      for (const distance of [65, range - 1, range + 1]) {
+        camera.position.copy(center).add(new THREE.Vector3(distance, 0, 0));
+        camera.updateMatrixWorld(true);
+        tree.update(camera);
+        assert.equal(tree.levels[0].object.visible, distance < range);
+        assert.equal(tree.levels[1].object.visible, false);
+      }
+      assert.equal(
+        tree.levels[0].object.children[0].count,
+        Math.ceil(
+          tree.levels[0].object.children[0].userData.groundCoverCount *
+            vegetationDetails[detail].density,
+        ),
+      );
     }
     assert.equal(createConfigurationState().getState().vegetationDetail, 'medium');
     assert.ok(isVegetationDetail('high'));

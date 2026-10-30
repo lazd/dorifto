@@ -21,15 +21,35 @@ export type VegetationDetail = 'low' | 'medium' | 'high';
 export type VegetationMode = 'performance' | 'quality' | 'ultra';
 type Kind = 'trees' | 'bush' | 'rocks';
 type Part = { geometry: THREE.BufferGeometry; material: THREE.Material; name: string };
+type VegetationTime = 'noon' | 'sunset' | 'night';
+const lightingAtlases = import.meta.glob<string>('./vegetation-assets/*-atlas-*.webp', {
+  eager: true,
+  query: '?url',
+  import: 'default',
+});
+
+export function setVegetationTime(parent: THREE.Object3D, time: VegetationTime) {
+  parent.traverse((object) => {
+    if (!(object instanceof THREE.Mesh)) return;
+    const materials = Array.isArray(object.material) ? object.material : [object.material];
+    for (const material of materials) {
+      if (!(material instanceof THREE.MeshBasicMaterial)) continue;
+      const maps = material.userData.vegetationAtlases as
+        | Record<VegetationTime, THREE.Texture>
+        | undefined;
+      if (maps) material.map = maps[time];
+    }
+  });
+}
 export interface VegetationPlacements {
   matrices: THREE.Matrix4[];
   shades: number[];
 }
 
 export const vegetationDetails = {
-  low: { near: 0, trees: 500, bush: 85, rocks: 65, density: 0.35 },
-  medium: { near: 65, trees: 650, bush: 105, rocks: 105, density: 0.65 },
-  high: { near: 95, trees: 800, bush: 125, rocks: 160, density: 1 },
+  low: { near: 0, trees: 500, ultraTrees: 180, bush: 85, rocks: 65, density: 0.35 },
+  medium: { near: 65, trees: 650, ultraTrees: 300, bush: 105, rocks: 105, density: 0.65 },
+  high: { near: 95, trees: 800, ultraTrees: 450, bush: 125, rocks: 160, density: 1 },
 } as const;
 
 const transitionWidth = 20;
@@ -67,6 +87,8 @@ class PlantLOD extends THREE.LOD {
 
 function transitionMaterial(source: THREE.Material, distant: boolean) {
   const material = source.clone();
+  if (source.userData.vegetationAtlases)
+    material.userData.vegetationAtlases = source.userData.vegetationAtlases;
   const range = { value: 0 };
   material.userData.vegetationRange = range;
   material.onBeforeCompile = (shader) => {
@@ -123,7 +145,11 @@ function applyDetail(lod: THREE.LOD, detail: VegetationDetail) {
         ? Math.min(settings.near, performance ? 65 : 95)
         : Math.min(settings.near, performance ? 30 : 55);
     lod.levels[2].distance =
-      kind === 'trees' ? Math.min(settings.trees, performance ? 300 : 600) : settings.bush;
+      kind === 'trees'
+        ? ultra
+          ? settings.ultraTrees
+          : Math.min(settings.trees, performance ? 300 : 600)
+        : settings.bush;
     if (ultra) lod.levels[1].distance = lod.levels[2].distance;
   } else lod.levels[1].distance = settings.rocks;
   lod.traverse((object) => {
@@ -173,14 +199,27 @@ function cutout(species: PlantSpecies, parts: Part[], url: string): Part {
   });
   const geometry = mergeGeometries(cards);
   cards.forEach((card) => card.dispose());
+  function lightingTexture(time: 'sunset' | 'night') {
+    const url = lightingAtlases[`./vegetation-assets/${species}-atlas-${time}.webp`];
+    if (!url) throw new Error(`Missing ${time} vegetation atlas for ${species}`);
+    return vegetationTexture(url);
+  }
+  const maps = {
+    noon: vegetationTexture(url),
+    sunset: lightingTexture('sunset'),
+    night: lightingTexture('night'),
+  };
+  const material = new THREE.MeshBasicMaterial({
+    map: maps.noon,
+    alphaTest: 0.35,
+    side: THREE.DoubleSide,
+    forceSinglePass: true,
+    toneMapped: false,
+  });
+  material.userData.vegetationAtlases = maps;
   return {
     geometry,
-    material: new THREE.MeshBasicMaterial({
-      map: vegetationTexture(url),
-      alphaTest: 0.35,
-      side: THREE.DoubleSide,
-      forceSinglePass: true,
-    }),
+    material,
     name: species.startsWith('bush') ? 'shrubs' : 'tree-crowns',
   };
 }
@@ -220,6 +259,13 @@ export function addVegetation(plants: THREE.Group, placements: Record<Kind, Vege
         ...part,
         material: transitionMaterial(part.material, true),
       }));
+      // Resource meshes keep every time-of-day texture visible to course disposal.
+      for (const part of distant) {
+        const maps = part.material.userData.vegetationAtlases;
+        for (const map of Object.values<THREE.Texture>(maps)) {
+          resources.add(new THREE.Mesh(part.geometry, new THREE.MeshBasicMaterial({ map })));
+        }
+      }
     }
     // Keep ownership even when a course has no placements for a particular model.
     for (const part of [...parts, ...(distant ?? [])]) {
@@ -246,10 +292,8 @@ export function addVegetation(plants: THREE.Group, placements: Record<Kind, Vege
         entries.matrices[indices[0]].elements[13],
         (z + 0.5) * chunkSize,
       );
-      if (kind !== 'trees') {
-        // Prefix counts then remain spatially uniform at every detail setting.
-        indices.sort((a, b) => entries.shades[a] - entries.shades[b]);
-      }
+      // Prefix counts then remain spatially uniform at every detail setting.
+      indices.sort((a, b) => entries.shades[a] - entries.shades[b]);
       for (const [level, meshes] of [parts, ...(distant ? [distant] : [])].entries()) {
         const group = new THREE.Group();
         for (const part of meshes) {
@@ -260,7 +304,7 @@ export function addVegetation(plants: THREE.Group, placements: Record<Kind, Vege
             mesh.setMatrixAt(i, entries.matrices[index]);
             mesh.setColorAt(i, tint.setScalar(0.78 + entries.shades[index] * 0.22));
           });
-          if (kind !== 'trees') mesh.userData.groundCoverCount = indices.length;
+          mesh.userData.groundCoverCount = indices.length;
           mesh.castShadow = level === 0;
           mesh.receiveShadow = level === 0;
           mesh.computeBoundingSphere();
