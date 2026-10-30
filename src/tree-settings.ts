@@ -7,6 +7,8 @@ export interface TreeSettings {
   treeNearTrackOnly: boolean;
 }
 
+export const treeSettingsStorageKey = 'dorifto:tree-settings.v1';
+
 export const treeSliders = [
   {
     key: 'treeDrawDistance',
@@ -16,7 +18,7 @@ export const treeSliders = [
     min: 0,
     max: 5000,
     step: 50,
-    defaultValue: 600,
+    defaultValue: 500,
   },
   {
     key: 'treeDensity',
@@ -36,7 +38,7 @@ export const treeSliders = [
     min: 1,
     max: 3,
     step: 1,
-    defaultValue: 3,
+    defaultValue: 2,
   },
   {
     key: 'treeBakeDistance',
@@ -47,7 +49,7 @@ export const treeSliders = [
     min: 0,
     max: 5000,
     step: 50,
-    defaultValue: 150,
+    defaultValue: 250,
   },
 ] as const;
 
@@ -60,6 +62,28 @@ export const defaultTreeSettings: Readonly<TreeSettings> = {
   treeNearTrackOnly: true,
 };
 
+export function readStoredTreeSettings(storage: Storage): TreeSettings {
+  const value = storage.getItem(treeSettingsStorageKey);
+  if (value === null) return { ...defaultTreeSettings };
+  const parsed: unknown = JSON.parse(value);
+  if (typeof parsed !== 'object' || parsed === null)
+    throw new Error('Invalid stored tree settings');
+  const stored = parsed as Record<string, unknown>;
+  const settings = { ...defaultTreeSettings };
+  for (const control of treeSliders) {
+    const value = stored[control.key];
+    if (typeof value !== 'number' || !validTreeSlider(control, value))
+      throw new Error(`Invalid stored ${control.key}: ${String(value)}`);
+    settings[control.key] = value;
+  }
+  for (const key of ['treeSmoothTransitions', 'treeNearTrackOnly'] as const) {
+    const value = stored[key];
+    if (typeof value !== 'boolean') throw new Error(`Invalid stored ${key}: ${String(value)}`);
+    settings[key] = value;
+  }
+  return settings;
+}
+
 export function validTreeSlider(control: (typeof treeSliders)[number], value: number): boolean {
   return (
     Number.isFinite(value) &&
@@ -69,8 +93,11 @@ export function validTreeSlider(control: (typeof treeSliders)[number], value: nu
   );
 }
 
-export function readTreeSettings(params: URLSearchParams): TreeSettings {
-  const settings = { ...defaultTreeSettings };
+export function readTreeSettings(
+  params: URLSearchParams,
+  base: Readonly<TreeSettings> = defaultTreeSettings,
+): TreeSettings {
+  const settings = { ...base };
   // Keep shared links using the former vegetation controls useful.
   const detail = params.get('vegetation-detail');
   if (detail !== null && detail !== 'low' && detail !== 'medium' && detail !== 'high')
@@ -96,11 +123,11 @@ export function readTreeSettings(params: URLSearchParams): TreeSettings {
   const transition = params.get('tree-transition');
   if (transition !== null && transition !== 'on' && transition !== 'off')
     throw new Error(`Invalid tree-transition: ${transition}`);
-  settings.treeSmoothTransitions = transition !== 'off';
+  if (transition !== null) settings.treeSmoothTransitions = transition !== 'off';
   const nearTrack = params.get('tree-near-track-only');
   if (nearTrack !== null && nearTrack !== 'on' && nearTrack !== 'off')
     throw new Error(`Invalid tree-near-track-only: ${nearTrack}`);
-  settings.treeNearTrackOnly = nearTrack !== 'off';
+  if (nearTrack !== null) settings.treeNearTrackOnly = nearTrack !== 'off';
   for (const control of treeSliders) {
     const raw = params.get(control.parameter);
     if (raw === null) continue;

@@ -124,7 +124,6 @@ const formatValue = (key: keyof DrivingTuning, value: number, tuning: DrivingTun
 export function createDrivingTuning(
   fieldset: HTMLFieldSetElement,
   store: Store<ConfigurationState>,
-  onPresetChange: (mode: DriveMode, presetId: string | null) => void,
   reportError: (error: unknown) => void,
 ) {
   let mode: DriveMode = store.getState().driveMode;
@@ -171,7 +170,6 @@ export function createDrivingTuning(
         [state.driveMode]: selectedPreset.id,
       },
     });
-    onPresetChange(state.driveMode, selectedPreset.id);
   };
 
   const refresh: (() => void)[] = [];

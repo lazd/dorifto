@@ -38,11 +38,6 @@ export function bindTreeSettings(
       }
       configuration.update({ [control.key]: value });
     });
-    input.addEventListener('change', () => {
-      const url = new URL(location.href);
-      url.searchParams.set(control.parameter, String(configuration.getState()[control.key]));
-      history.replaceState(null, '', url);
-    });
     root.append(section);
     return { control, input, output };
   });
@@ -60,9 +55,6 @@ export function bindTreeSettings(
   const nearTrack = nearTrackSection.querySelector<HTMLInputElement>('input')!;
   nearTrack.addEventListener('change', () => {
     configuration.update({ treeNearTrackOnly: nearTrack.checked });
-    const url = new URL(location.href);
-    url.searchParams.set('tree-near-track-only', nearTrack.checked ? 'on' : 'off');
-    history.replaceState(null, '', url);
   });
   root.append(nearTrackSection);
   const section = document.createElement('section');
@@ -77,9 +69,6 @@ export function bindTreeSettings(
   const smooth = section.querySelector<HTMLInputElement>('input')!;
   smooth.addEventListener('change', () => {
     configuration.update({ treeSmoothTransitions: smooth.checked });
-    const url = new URL(location.href);
-    url.searchParams.set('tree-transition', smooth.checked ? 'on' : 'off');
-    history.replaceState(null, '', url);
   });
   root.append(section);
   configuration.subscribe(

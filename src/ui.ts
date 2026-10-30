@@ -30,9 +30,14 @@ import {
 import './course-picker.css';
 import { bindSettingsLayout, bindTreeSettings } from './settings';
 import { bindControlsSettings } from './controls-settings';
+import { treeSettingsStorageKey } from './tree-settings';
 import {
   isCameraStyle,
   courseGhostMode,
+  createConfigurationState,
+  getConfigurationSettings,
+  hudVisibilityStorageKey,
+  configurationSettingsStorageKey,
   isGhostMode,
   isLapGateMode,
   isMinimapOrientation,
@@ -76,6 +81,13 @@ function bindText(selector: string) {
   const node = element(selector);
   return (text: string) => {
     if (node.textContent !== text) node.textContent = text;
+  };
+}
+
+function bindTextBlind(selector: string) {
+  const node = element(selector);
+  return (text: string) => {
+    node.textContent = text;
   };
 }
 
@@ -316,10 +328,6 @@ export function bindGameActions(actions: {
   sound.addEventListener('change', () => {
     const muted = !sound.checked;
     actions.sound(muted);
-    const url = new URL(location.href);
-    if (muted) url.searchParams.set('sound', 'off');
-    else url.searchParams.delete('sound');
-    history.replaceState(null, '', url);
   });
   element('#drift-tuning').addEventListener('focusin', actions.clearInput);
 }
@@ -377,13 +385,6 @@ export function bindLapRecorder(
   );
 }
 
-function writeTuningPresetQuery(mode: DriveMode, presetId: string | null) {
-  const url = new URL(location.href);
-  url.searchParams.set('mode', mode);
-  url.searchParams.set('preset', presetId ?? 'custom');
-  history.replaceState(null, '', url);
-}
-
 function bindTuningPresets(
   store: Store<ConfigurationState>,
   reportError: (error: unknown) => void,
@@ -437,7 +438,6 @@ function bindTuningPresets(
           tuningPresets,
           selectedTuningPresets: { ...state.selectedTuningPresets, [state.driveMode]: preset.id },
         });
-        writeTuningPresetQuery(state.driveMode, preset.id);
         showNameEditor(preset);
       } catch (error) {
         showPresetError('Unable to create tuning profile.', error);
@@ -457,7 +457,6 @@ function bindTuningPresets(
       },
       selectedTuningPresets: { ...state.selectedTuningPresets, [state.driveMode]: preset.id },
     });
-    writeTuningPresetQuery(state.driveMode, preset.id);
   });
 
   editInput.addEventListener('input', () => {
@@ -563,7 +562,6 @@ function bindTuningPresets(
           [state.driveMode]: defaultPreset.id,
         },
       });
-      writeTuningPresetQuery(state.driveMode, defaultPreset.id);
       clearPresetError();
     } catch (error) {
       showPresetError('Unable to delete tuning profile.', error);
@@ -2035,24 +2033,32 @@ export function bindGameUI(
     ['speedUnit'],
   );
   const lap = bindText('#lap-number');
-  const current = bindText('#lap-current');
+  const current = bindTextBlind('#lap-current');
   const currentLap = element('#lap-current');
   const best = bindText('#lap-best');
   const record = element('.minimap-best');
   let previousBest = game.getState().telemetry.best;
   let recordAnimation: Animation | undefined;
   const controller = bindText('#controller-status');
-  createDrivingTuning(
-    element('#drift-tuning-sliders'),
-    configuration,
-    writeTuningPresetQuery,
-    reportError,
-  );
+  createDrivingTuning(element('#drift-tuning-sliders'), configuration, reportError);
   bindDialog('#tuning', '#drift-tuning');
   bindDialog('#settings', '#settings-dialog');
   bindSettingsLayout();
   bindTreeSettings(configuration, reportError);
-  bindControlsSettings(reportError);
+  const resetControls = bindControlsSettings(reportError);
+  element<HTMLButtonElement>('#settings-reset').addEventListener('click', () => {
+    const defaults = createConfigurationState().getState();
+    const defaultSettings = getConfigurationSettings(defaults);
+    browserStorage.setItem(configurationSettingsStorageKey, JSON.stringify(defaultSettings));
+    browserStorage.removeItem(treeSettingsStorageKey);
+    configuration.update({
+      ...defaultSettings,
+      profiles: defaults.profiles,
+    });
+    resetControls();
+    hudVisibility.set(0);
+    browserStorage.setItem(hudVisibilityStorageKey, '0');
+  });
   bindDialog(
     '#bots',
     '#bots-dialog',
@@ -2092,16 +2098,6 @@ export function bindGameUI(
         return;
       }
       configuration.update(write(value));
-      const url = new URL(location.href);
-      url.searchParams.set(parameter, value);
-      if (parameter === 'mirror-resolution') url.searchParams.delete('low-res-mirrors');
-      if (parameter === 'mode' && isDriveMode(value)) {
-        url.searchParams.set(
-          'preset',
-          configuration.getState().selectedTuningPresets[value] ?? 'custom',
-        );
-      }
-      history.replaceState(null, '', url);
     });
     configuration.subscribe(
       (state) => {

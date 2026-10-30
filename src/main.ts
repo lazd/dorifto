@@ -44,8 +44,12 @@ import { VehicleAudio } from './audio';
 import { CarStereo, isStereoStationSelection } from './stereo';
 import {
   createConfigurationState,
+  configurationSettingKeys,
+  configurationSettingsStorageKey,
   courseGhostMode,
   defaultTuningPresets,
+  getConfigurationSettings,
+  hudVisibilityStorageKey,
   isCameraStyle,
   isGhostMode,
   isLapGateMode,
@@ -56,9 +60,16 @@ import {
   isTerrainShadows,
   isTimeOfDay,
   readMirrorResolution,
+  readStoredConfigurationSettings,
   type ConfigurationState,
 } from './configuration-state';
-import { defaultTreeSettings, readTreeSettings, treeSliders } from './tree-settings';
+import {
+  defaultTreeSettings,
+  readStoredTreeSettings,
+  readTreeSettings,
+  treeSettingsStorageKey,
+  treeSliders,
+} from './tree-settings';
 import { createGameState, type SavedRunOption } from './game-state';
 import { loadTuningPresets } from './tuning-presets';
 import {
@@ -145,8 +156,44 @@ async function start() {
   configurationState.update({
     tuningPresets: loadTuningPresets(browserStorage, defaultTuningPresets()),
   });
+  let storedTreeSettings = { ...defaultTreeSettings };
+  try {
+    storedTreeSettings = readStoredTreeSettings(browserStorage);
+  } catch (error) {
+    showError(error, false);
+  }
+  let storedSettings = {};
+  try {
+    storedSettings = readStoredConfigurationSettings(browserStorage);
+  } catch (error) {
+    showError(error, false);
+  }
+  configurationState.update({ ...storedTreeSettings, ...storedSettings });
+  const storedState = configurationState.getState();
+  const profilesBySavedPreset = { ...storedState.profiles };
+  const selectedPresets = { ...storedState.selectedTuningPresets };
+  for (const mode of ['drift', 'grip'] as const) {
+    const preset =
+      storedState.tuningPresets.find(({ id }) => id === selectedPresets[mode]) ??
+      storedState.tuningPresets.find(({ id }) => id === `${mode}-default`);
+    if (preset) {
+      selectedPresets[mode] = preset.id;
+      profilesBySavedPreset[mode] = { ...preset.tuning };
+    }
+  }
+  configurationState.update({
+    profiles: profilesBySavedPreset,
+    selectedTuningPresets: selectedPresets,
+  });
+  const defaultSettings = getConfigurationSettings(createConfigurationState().getState());
+  const storedHudVisibility = browserStorage.getItem(hudVisibilityStorageKey);
+  let defaultHudVisibility = 0;
+  if (storedHudVisibility !== null) {
+    if (/^[0-3]$/.test(storedHudVisibility)) defaultHudVisibility = Number(storedHudVisibility);
+    else showError(new Error(`Invalid stored HUD visibility: ${storedHudVisibility}`), false);
+  }
   ui = bindGameUI(configurationState, gameState, (error) => showError(error, false));
-  // Invalid URL parameters are not fatal: drop them and use the default.
+  // Invalid URL parameters are not fatal; use the saved setting instead.
   const readParams = <Value>(
     names: string[],
     read: (params: URLSearchParams) => Value,
@@ -156,9 +203,6 @@ async function start() {
       return read(new URL(location.href).searchParams);
     } catch (error) {
       console.warn(`Ignoring invalid URL option ${names.join(', ')}:`, error);
-      const url = new URL(location.href);
-      for (const name of names) url.searchParams.delete(name);
-      history.replaceState(null, '', url);
       return fallback;
     }
   };
@@ -181,11 +225,11 @@ async function start() {
     ['hide-ui'],
     (params) => {
       const value = params.get('hide-ui');
-      if (value === null) return 0;
+      if (value === null) return defaultHudVisibility;
       if (!/^[0-3]$/.test(value)) throw new Error(`Invalid hide-ui option: ${value}`);
       return Number(value);
     },
-    0,
+    defaultHudVisibility,
   );
   ui.setHudVisibility(requestedHudLevel);
   const requestedCamera = readOption(
@@ -194,10 +238,16 @@ async function start() {
     isCameraStyle,
   );
   const requestedMode = readOption('mode', configurationState.getState().driveMode, isDriveMode);
-  const requestedStation = readOption('station', 'off', isStereoStationSelection);
+  const requestedStation = readOption(
+    'station',
+    configurationState.getState().stereoStation,
+    isStereoStationSelection,
+  );
   configurationState.update({ stereoStation: requestedStation });
   const requestedPresetId =
-    new URL(location.href).searchParams.get('preset') ?? `${requestedMode}-default`;
+    new URL(location.href).searchParams.get('preset') ??
+    configurationState.getState().selectedTuningPresets[requestedMode] ??
+    `${requestedMode}-default`;
   const matchedPreset =
     requestedPresetId === 'custom'
       ? null
@@ -222,9 +272,12 @@ async function start() {
     configurationState.getState().minimapOrientation,
     isMinimapOrientation,
   );
-  const readToggle = (name: string) =>
-    readOption(name, 'on', (value): value is 'on' | 'off' => value === 'on' || value === 'off') ===
-    'on';
+  const readToggle = (name: string, fallback = true) =>
+    readOption(
+      name,
+      fallback ? 'on' : 'off',
+      (value): value is 'on' | 'off' => value === 'on' || value === 'off',
+    ) === 'on';
   const coneMode = readOption(
     'cones',
     configurationState.getState().coneMode,
@@ -235,28 +288,37 @@ async function start() {
   const courseUrl = new URL(location.href);
   let botsOnly = readBotsOnly(courseUrl.searchParams);
   let botOptions = readRaceBots(courseUrl.searchParams);
-  const requestedGhost = readOption('ghost', botOptions.length ? 'off' : 'fastest', isGhostMode);
+  const requestedGhost = readOption(
+    'ghost',
+    botOptions.length ? 'off' : configurationState.getState().ghostMode,
+    isGhostMode,
+  );
   configurationState.update({
     driveMode: requestedMode,
     profiles,
     selectedTuningPresets,
+    timeOfDay: readOption('time', configurationState.getState().timeOfDay, isTimeOfDay),
     cameraStyle: requestedCamera,
     minimapOrientation: requestedMinimap,
     speedUnit: readOption('speed-unit', configurationState.getState().speedUnit, isSpeedUnit),
-    cabinHeadMotion: readToggle('head-motion'),
+    cabinHeadMotion: readToggle('head-motion', configurationState.getState().cabinHeadMotion),
     mirrorResolution: readParams(
       ['mirror-resolution', 'low-res-mirrors'],
-      readMirrorResolution,
-      'low',
+      (params) => readMirrorResolution(params, configurationState.getState().mirrorResolution),
+      configurationState.getState().mirrorResolution,
     ),
     passengerMirror:
       readOption(
         'passenger-mirror',
-        'off',
+        configurationState.getState().passengerMirror ? 'on' : 'off',
         (value): value is 'on' | 'off' => value === 'on' || value === 'off',
       ) === 'on',
-    pixelRatio: readOption('pixel-ratio', 'auto', isPixelRatio),
-    terrainShadows: readOption('terrain-shadows', 'auto', isTerrainShadows),
+    pixelRatio: readOption('pixel-ratio', configurationState.getState().pixelRatio, isPixelRatio),
+    terrainShadows: readOption(
+      'terrain-shadows',
+      configurationState.getState().terrainShadows,
+      isTerrainShadows,
+    ),
     ...readParams(
       [
         ...treeSliders.map(({ parameter }) => parameter),
@@ -266,37 +328,36 @@ async function start() {
         'vegetation-detail',
         'vegetation',
       ],
-      readTreeSettings,
-      defaultTreeSettings,
+      (params) => readTreeSettings(params, storedTreeSettings),
+      storedTreeSettings,
     ),
-    showFps:
-      readOption(
-        'fps',
-        'off',
-        (value): value is 'on' | 'off' => value === 'on' || value === 'off',
-      ) === 'on',
+    showFps: readToggle('fps', configurationState.getState().showFps),
     coneMode: requestedConeMode,
-    showGrass: readToggle('grass'),
-    showKerbs: readToggle('kerbs'),
-    showRoadEdgeDirt: readToggle('road-edge-dirt'),
-    showBuildings: readToggle('buildings'),
-    showWater: readToggle('water'),
-    showNearbyRoads: readToggle('nearby-roads'),
-    lapGateMode: readOption('lap-gates', 'off', isLapGateMode),
-    racingLineMode: readOption('race-line', 'off', isRacingLineMode),
+    showGrass: readToggle('grass', configurationState.getState().showGrass),
+    showKerbs: readToggle('kerbs', configurationState.getState().showKerbs),
+    showRoadEdgeDirt: readToggle('road-edge-dirt', configurationState.getState().showRoadEdgeDirt),
+    showBuildings: readToggle('buildings', configurationState.getState().showBuildings),
+    showWater: readToggle('water', configurationState.getState().showWater),
+    showNearbyRoads: readToggle('nearby-roads', configurationState.getState().showNearbyRoads),
+    lapGateMode: readOption('lap-gates', configurationState.getState().lapGateMode, isLapGateMode),
+    racingLineMode: readOption(
+      'race-line',
+      configurationState.getState().racingLineMode,
+      isRacingLineMode,
+    ),
     ghostMode: requestedGhost,
     turnSignMode: readParams(
       ['signs'],
-      (params) => readTurnSignMode(params.get('signs')),
-      'several',
+      (params) => {
+        const value = params.get('signs');
+        return value === null
+          ? configurationState.getState().turnSignMode
+          : readTurnSignMode(value);
+      },
+      configurationState.getState().turnSignMode,
     ),
-    muted: !readToggle('sound'),
+    muted: !readToggle('sound', !configurationState.getState().muted),
   });
-  const settingsUrl = new URL(location.href);
-  if (settingsUrl.searchParams.has('transmission')) {
-    settingsUrl.searchParams.delete('transmission');
-    history.replaceState(null, '', settingsUrl);
-  }
   // Recordings follow the primary car: the player, or the first bot in bots-only mode.
   const recordedDriverFor = (bots: RaceBotOptions[], only: boolean) => {
     const recordedBot = only ? bots[0] : null;
@@ -315,6 +376,34 @@ async function start() {
       driveMode: botDriveMode(botOptions[0]?.preset),
       ...(!courseUrl.searchParams.has('camera') ? { cameraStyle: 'fpv' as const } : {}),
     });
+  let previousSettings = getConfigurationSettings(configurationState.getState());
+  configurationState.subscribe((settings) => {
+    let changed = false;
+    const currentSettings = getConfigurationSettings(settings);
+    let savedSettings = storedSettings;
+    try {
+      savedSettings = readStoredConfigurationSettings(browserStorage);
+    } catch (error) {
+      showError(error, false);
+    }
+    const nextPersistedSettings = {
+      ...defaultSettings,
+      ...storedTreeSettings,
+      ...savedSettings,
+    };
+    for (const key of configurationSettingKeys) {
+      if (currentSettings[key] === previousSettings[key]) continue;
+      Object.assign(nextPersistedSettings, { [key]: currentSettings[key] });
+      changed = true;
+    }
+    previousSettings = currentSettings;
+    if (changed)
+      browserStorage.setItem(
+        configurationSettingsStorageKey,
+        JSON.stringify(nextPersistedSettings),
+      );
+    if (changed) browserStorage.removeItem(treeSettingsStorageKey);
+  }, configurationSettingKeys);
   const trackDirectory = await openRoadMaps();
   await migrateSavedCourses(trackDirectory, localStorage);
   let storedCourses = await loadSavedCourses(trackDirectory);
@@ -453,8 +542,7 @@ async function start() {
   const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 3000);
   camera.layers.enable(1);
   const lighting = createLighting(scene, renderer, camera);
-  const requestedTime = readOption('time', configurationState.getState().timeOfDay, isTimeOfDay);
-  configurationState.update({ timeOfDay: requestedTime });
+  const requestedTime = configurationState.getState().timeOfDay;
   lighting.apply(requestedTime);
   const [car, loadedDefinition] = await Promise.all([
     carLoad,
@@ -1081,10 +1169,7 @@ async function start() {
       recordedDriver = recordedDriverFor(botOptions, botsOnly);
       const botsUrl = new URL(location.href);
       writeRaceBots(botsUrl.searchParams, botOptions, botsOnly);
-      if (enablingBots) {
-        configurationState.update({ ghostMode: 'off' });
-        botsUrl.searchParams.set('ghost', 'off');
-      }
+      if (enablingBots) configurationState.update({ ghostMode: 'off' });
       history.replaceState(null, '', botsUrl);
       cameraNeedsReset = true;
       gameState.update({ status: { visible: false, error: false, message: '' } });
@@ -1591,17 +1676,11 @@ async function start() {
     const cameraStyle =
       styles[(styles.indexOf(configurationState.getState().cameraStyle) + 1) % styles.length];
     configurationState.update({ cameraStyle });
-    const url = new URL(location.href);
-    url.searchParams.set('camera', cameraStyle);
-    history.replaceState(null, '', url);
   }
 
   function toggleDriveMode() {
     const driveMode = configurationState.getState().driveMode === 'drift' ? 'grip' : 'drift';
     configurationState.update({ driveMode });
-    const url = new URL(location.href);
-    url.searchParams.set('mode', driveMode);
-    history.replaceState(null, '', url);
   }
 
   function cycleTimeOfDay() {
@@ -1609,19 +1688,12 @@ async function start() {
     const timeOfDay =
       times[(times.indexOf(configurationState.getState().timeOfDay) + 1) % times.length];
     configurationState.update({ timeOfDay });
-    const url = new URL(location.href);
-    url.searchParams.set('time', timeOfDay);
-    history.replaceState(null, '', url);
   }
 
   function pressStereo(direction: 'previous' | 'next' = 'next') {
     const station = stereo.press(direction);
     const stereoStation = stereo.isPowered ? station : 'off';
     configurationState.update({ stereoStation });
-    const url = new URL(location.href);
-    if (stereo.isPowered) url.searchParams.set('station', station);
-    else url.searchParams.delete('station');
-    history.replaceState(null, '', url);
   }
 
   function syncObservedBot() {
@@ -1679,9 +1751,7 @@ async function start() {
     } else if (action === 'hud') {
       if (!event.repeat) {
         const level = ui.cycleHudVisibility();
-        const url = new URL(location.href);
-        url.searchParams.set('hide-ui', String(level));
-        history.replaceState(null, '', url);
+        browserStorage.setItem(hudVisibilityStorageKey, String(level));
       }
     } else keys.add(event.code);
   });

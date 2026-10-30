@@ -33,9 +33,9 @@ const controllerDiagramLabels: Partial<Record<ControllerAction, string>> = {
   lookBehind: 'Look behind',
 };
 
-export function bindControlsSettings(reportError: (error: Error) => void): void {
+export function bindControlsSettings(reportError: (error: Error) => void): () => void {
   const host = document.getElementById('controls-settings');
-  if (!host) return;
+  if (!host) return () => {};
 
   const storage = browserStorage(reportError);
   const controlsStatus = host.querySelector<HTMLElement>('.controls-settings__status');
@@ -393,7 +393,7 @@ export function bindControlsSettings(reportError: (error: Error) => void): void 
     commit(next, action === 'cameraY' ? 'Driving controls saved.' : 'Map controls saved.');
   });
 
-  container.querySelector<HTMLButtonElement>('[data-reset]')!.addEventListener('click', () => {
+  const reset = () => {
     stopCapture('Capture cancelled.');
     if (commit(defaultInputBindings(), 'Default controls restored.')) {
       keyboardTabs.select('controls-driving-panel');
@@ -401,7 +401,8 @@ export function bindControlsSettings(reportError: (error: Error) => void): void 
       renderGamepadLabel();
       deviceTabs.select('controls-keyboard-panel');
     }
-  });
+  };
+  container.querySelector<HTMLButtonElement>('[data-reset]')!.addEventListener('click', reset);
 
   window.addEventListener('gamepadconnected', () => {
     deviceStatus.textContent = '✅ Controller connected';
@@ -464,6 +465,7 @@ export function bindControlsSettings(reportError: (error: Error) => void): void 
   render();
   updateControllerStatus(deviceStatus);
   updateLivePreview();
+  return reset;
 }
 
 const stickDeadzone = 0.5;

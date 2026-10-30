@@ -1,8 +1,13 @@
-import type { DriveMode } from './drive-modes';
+import { isDriveMode, type DriveMode } from './drive-modes';
 import { createStore } from './store';
-import type { TurnSignMode } from './turn-sign';
-import { type StereoStationSelection } from './stereo';
-import { defaultTreeSettings, type TreeSettings } from './tree-settings';
+import { isTurnSignMode, type TurnSignMode } from './turn-sign';
+import { isStereoStationSelection, type StereoStationSelection } from './stereo';
+import {
+  defaultTreeSettings,
+  treeSliders,
+  type TreeSettings,
+  validTreeSlider,
+} from './tree-settings';
 import {
   defaultTuning,
   defaultTuningPresets,
@@ -45,6 +50,7 @@ export function isTerrainShadows(value: string): value is ConfigurationState['te
 
 export function readMirrorResolution(
   params: URLSearchParams,
+  fallback: ConfigurationState['mirrorResolution'] = 'low',
 ): ConfigurationState['mirrorResolution'] {
   const value = params.get('mirror-resolution');
   if (value !== null) {
@@ -52,7 +58,8 @@ export function readMirrorResolution(
     return value;
   }
   const legacy = params.get('low-res-mirrors');
-  if (legacy === null || legacy === 'on') return 'low';
+  if (legacy === null) return fallback;
+  if (legacy === 'on') return 'low';
   if (legacy === 'off') return 'high';
   throw new Error(`Invalid low-res-mirrors option: ${legacy}`);
 }
@@ -117,6 +124,120 @@ export interface ConfigurationState extends TreeSettings {
   ghostMode: 'fastest' | 'previous' | 'record' | 'real' | 'off';
   muted: boolean;
   stereoStation: StereoStationSelection;
+}
+
+export const configurationSettingsStorageKey = 'dorifto:settings.v1';
+export const hudVisibilityStorageKey = 'dorifto:settings.hud-visibility';
+
+export const configurationSettingKeys = [
+  'driveMode',
+  'selectedTuningPresets',
+  'cameraStyle',
+  'cabinHeadMotion',
+  'mirrorResolution',
+  'passengerMirror',
+  'pixelRatio',
+  'terrainShadows',
+  'treeDrawDistance',
+  'treeDensity',
+  'treeQuality',
+  'treeBakeDistance',
+  'treeSmoothTransitions',
+  'treeNearTrackOnly',
+  'showFps',
+  'minimapOrientation',
+  'speedUnit',
+  'timeOfDay',
+  'coneMode',
+  'showGrass',
+  'showKerbs',
+  'showRoadEdgeDirt',
+  'showBuildings',
+  'showWater',
+  'showNearbyRoads',
+  'lapGateMode',
+  'racingLineMode',
+  'turnSignMode',
+  'ghostMode',
+  'muted',
+  'stereoStation',
+] as const satisfies readonly (keyof ConfigurationState)[];
+
+export type ConfigurationSettings = Pick<
+  ConfigurationState,
+  (typeof configurationSettingKeys)[number]
+>;
+
+const isStoredSetting: Record<keyof ConfigurationSettings, (value: unknown) => boolean> = {
+  driveMode: (value) => typeof value === 'string' && isDriveMode(value),
+  selectedTuningPresets: (value) =>
+    typeof value === 'object' &&
+    value !== null &&
+    ['drift', 'grip'].every(
+      (mode) =>
+        (value as Record<string, unknown>)[mode] === null ||
+        typeof (value as Record<string, unknown>)[mode] === 'string',
+    ),
+  cameraStyle: (value) => typeof value === 'string' && isCameraStyle(value),
+  cabinHeadMotion: (value) => typeof value === 'boolean',
+  mirrorResolution: (value) => typeof value === 'string' && isMirrorResolution(value),
+  passengerMirror: (value) => typeof value === 'boolean',
+  pixelRatio: (value) => typeof value === 'string' && isPixelRatio(value),
+  terrainShadows: (value) => typeof value === 'string' && isTerrainShadows(value),
+  treeDrawDistance: (value) => isStoredTreeSlider('treeDrawDistance', value),
+  treeDensity: (value) => isStoredTreeSlider('treeDensity', value),
+  treeQuality: (value) => isStoredTreeSlider('treeQuality', value),
+  treeBakeDistance: (value) => isStoredTreeSlider('treeBakeDistance', value),
+  treeSmoothTransitions: (value) => typeof value === 'boolean',
+  treeNearTrackOnly: (value) => typeof value === 'boolean',
+  showFps: (value) => typeof value === 'boolean',
+  minimapOrientation: (value) => typeof value === 'string' && isMinimapOrientation(value),
+  speedUnit: (value) => typeof value === 'string' && isSpeedUnit(value),
+  timeOfDay: (value) => typeof value === 'string' && isTimeOfDay(value),
+  coneMode: (value) => value === 'all' || value === 'corners' || value === 'off',
+  showGrass: (value) => typeof value === 'boolean',
+  showKerbs: (value) => typeof value === 'boolean',
+  showRoadEdgeDirt: (value) => typeof value === 'boolean',
+  showBuildings: (value) => typeof value === 'boolean',
+  showWater: (value) => typeof value === 'boolean',
+  showNearbyRoads: (value) => typeof value === 'boolean',
+  lapGateMode: (value) => typeof value === 'string' && isLapGateMode(value),
+  racingLineMode: (value) => typeof value === 'string' && isRacingLineMode(value),
+  turnSignMode: (value) => typeof value === 'string' && isTurnSignMode(value),
+  ghostMode: (value) => typeof value === 'string' && isGhostMode(value),
+  muted: (value) => typeof value === 'boolean',
+  stereoStation: (value) => typeof value === 'string' && isStereoStationSelection(value),
+};
+
+function isStoredTreeSlider(key: keyof TreeSettings, value: unknown): boolean {
+  const control = treeSliders.find((entry) => entry.key === key);
+  return typeof value === 'number' && control !== undefined && validTreeSlider(control, value);
+}
+
+export function readStoredConfigurationSettings(
+  storage: Pick<Storage, 'getItem'>,
+): Partial<ConfigurationSettings> {
+  const text = storage.getItem(configurationSettingsStorageKey);
+  if (text === null) return {};
+  const parsed: unknown = JSON.parse(text);
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed))
+    throw new Error('Invalid stored settings');
+  const stored = parsed as Record<string, unknown>;
+  const settings: Partial<ConfigurationSettings> = {};
+  for (const key of configurationSettingKeys) {
+    if (!(key in stored)) continue;
+    if (!isStoredSetting[key](stored[key])) throw new Error(`Invalid stored setting: ${key}`);
+    Object.assign(settings, { [key]: stored[key] });
+  }
+  return settings;
+}
+
+export function getConfigurationSettings(
+  state: Readonly<ConfigurationState>,
+): ConfigurationSettings {
+  return Object.fromEntries(
+    configurationSettingKeys.map((key) => [key, state[key]]),
+  ) as ConfigurationSettings;
 }
 
 export function createConfigurationState(storage?: Storage) {

@@ -18,7 +18,7 @@ import { createStopSignFactory } from './turn-sign';
 import * as polygonClipping from './polygon-boolean';
 import { runSync, type LoadStep, type LoadTask } from './load-task';
 import { addVegetation, setVegetationSettings } from './vegetation';
-import type { TreeSettings } from './tree-settings';
+import { defaultTreeSettings, type TreeSettings } from './tree-settings';
 import {
   buildingAppearance,
   buildingFlatRoofColumn,
@@ -69,7 +69,6 @@ const maxPlants = 4000;
 const maxPlantAttempts = 24000;
 const maxCanopyPlants = 100_000;
 const vegetationChunkSize = 128;
-const vegetationDrawDistance = 650;
 // Terrain projection runs in slices of this many triangles so a caller can paint between them.
 const projectionSlice = 20_000;
 // Pavement edges are indexed far enough out to cover the terrain's roadside dirt verge.
@@ -3096,6 +3095,7 @@ export function* createSceneryTask(
       batches.set(key, batch);
       if (!chunks.has(key)) {
         const lod = new THREE.LOD();
+        lod.userData.vegetationChunk = true;
         lod.position.set(
           (x + 0.5) * vegetationChunkSize,
           matrix.elements[13],
@@ -3103,7 +3103,7 @@ export function* createSceneryTask(
         );
         const plants = new THREE.Group();
         lod.addLevel(plants, 0);
-        lod.addLevel(new THREE.Group(), vegetationDrawDistance, 0.1);
+        lod.addLevel(new THREE.Group(), defaultTreeSettings.treeDrawDistance, 0.1);
         layers.vegetation.add(lod);
         chunks.set(key, { lod, plants });
       }

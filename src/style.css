@@ -367,11 +367,13 @@ h1 span {
   visibility: hidden;
 }
 .minimap-timing {
+  contain: strict;
+  width: 110px;
+  height: 40px;
   text-align: right;
 }
 .minimap-timing > .is-invalid {
   color: #ff625c;
-  animation: lap-recording-pulse 1.2s ease-in-out infinite;
 }
 .minimap-lap > strong,
 .minimap-timing > strong {

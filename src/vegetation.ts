@@ -116,7 +116,13 @@ export function setVegetationSettings(
   settings: Readonly<TreeSettings & { showGrass: boolean }>,
 ) {
   parent.traverse((object) => {
-    if (!(object instanceof THREE.LOD) || !object.userData.vegetationKind) return;
+    if (!(object instanceof THREE.LOD)) return;
+    if (object.userData.vegetationChunk) {
+      object.visible = settings.treeDrawDistance > 0;
+      object.levels[1].distance = settings.treeDrawDistance;
+      return;
+    }
+    if (!object.userData.vegetationKind) return;
     const rocks = object.userData.vegetationKind === 'rocks';
     object.visible = rocks ? settings.showGrass : settings.treeDrawDistance > 0;
     const density = rocks ? 0.65 : treeDensities[settings.treeDensity - 1];
