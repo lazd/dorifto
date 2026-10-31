@@ -16,13 +16,14 @@ let carLightLayers;
 let inputBindings;
 let hideMirrorScenery;
 let mirrorEnabled;
+let defaultCabinEye;
 
 before(async () => {
   server = await createServer({
     server: { middlewareMode: true, hmr: false, ws: false, watch: null },
     appType: 'custom',
   });
-  ({ createDrivingCamera, cabinCameraMotion, fpvCameraMotion } =
+  ({ createDrivingCamera, cabinCameraMotion, fpvCameraMotion, defaultCabinEye } =
     await server.ssrLoadModule('/src/camera.ts'));
   ({ carLightLayers } = await server.ssrLoadModule('/src/car.ts'));
   ({ hideMirrorScenery, mirrorEnabled } = await server.ssrLoadModule('/src/mirror-rendering.ts'));
@@ -260,7 +261,7 @@ function cabinRig(rotation = new THREE.Quaternion()) {
   };
   const camera = new THREE.PerspectiveCamera(55, 16 / 9, 0.1, 1500);
   const driving = createDrivingCamera(camera, car, controls, courses[0], { heightAt: () => 0 });
-  const eye = new THREE.Vector3(-0.38, 0.43, -0.25);
+  const eye = defaultCabinEye.clone();
   const velocity = new THREE.Vector3();
   driving.reset(0);
   const update = (dt, acceleration = new THREE.Vector3(), style = 'cabin') => {

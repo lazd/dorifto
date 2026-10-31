@@ -55,6 +55,9 @@ function dampSpring(
   velocity.addScaledVector(springStep, -response).multiplyScalar(decay);
 }
 
+/** The driver's eye in chassis space, before the head-height setting is applied. */
+export const defaultCabinEye: Readonly<THREE.Vector3> = new THREE.Vector3(-0.38, 0.46, -0.3);
+
 export function createDrivingCamera(
   camera: THREE.PerspectiveCamera,
   car: Awaited<ReturnType<typeof loadCar>>,
@@ -76,7 +79,6 @@ export function createDrivingCamera(
   let cameraPitch = 0;
   const cameraOrbit = new THREE.Vector3();
   const cabinEye = new THREE.Vector3();
-  const defaultCabinEye = new THREE.Vector3(-0.38, 0.46, -0.3);
   const cabinEyeTarget = new THREE.Vector3();
   function setCabinEye(eye: THREE.Vector3) {
     cabinEye.copy(eye);

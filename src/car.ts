@@ -864,8 +864,25 @@ export async function loadCar(onProgress?: (fraction: number) => void) {
     }
   }
 
-  for (const mesh of named(/^(visors_|Frontplate_ext_plate_rear_0$|165_T_Plastico_0$)|_Defrost_0$/))
+  for (const mesh of named(
+    /^(visors_|Frontplate_ext_plate_rear_0$|165_T_Plastico_0$)|_Defrost_0$|wiper|Clocktime_0|Mirrorglass/i,
+  ))
     mesh.removeFromParent();
+  // The headliner clips and hinge mounts that held the removed sunvisors.
+  splitSurface(
+    /^Plastic_PlasticInterior_0$/,
+    'sunvisor-mounts',
+    (x, y, z) => {
+      const side = Math.abs(x);
+      return (
+        y > 0.99 &&
+        y < 1.02 &&
+        ((side > 0.126 && side < 0.178 && z > 0.002 && z < 0.038) ||
+          (side > 0.456 && side < 0.507 && z > -0.032 && z < -0.019))
+      );
+    },
+    true,
+  ).removeFromParent();
 
   // Re-parent interior parts under pivots so they can rotate about their real hubs.
   function pivot(pattern: RegExp, origin: THREE.Vector3, axis: THREE.Vector3, mount = chassis) {

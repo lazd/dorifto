@@ -213,7 +213,7 @@ const isStoredSetting: Record<keyof ConfigurationSettings, (value: unknown) => b
 };
 
 export function isStoredCabinHeadOffset(value: unknown): value is number {
-  return typeof value === 'number' && Number.isFinite(value) && value >= -0.15 && value <= 0.15;
+  return typeof value === 'number' && Number.isFinite(value) && value >= -0.03 && value <= 0.03;
 }
 
 function isStoredTreeSlider(key: keyof TreeSettings, value: unknown): boolean {

@@ -1,0 +1,73 @@
+:root {
+  --panel-width: 22rem;
+  --panel-gap: 0.5rem;
+  font:
+    13px system-ui,
+    sans-serif;
+  color: #e9f0f1;
+  background: #101b20;
+}
+
+body {
+  margin: 0;
+}
+
+main {
+  height: 100dvh;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--panel-width);
+}
+
+#car-view {
+  min-height: 0;
+}
+
+#car-view canvas {
+  display: block;
+  touch-action: none;
+}
+
+.mesh-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--panel-gap);
+  min-height: 0;
+  padding: var(--panel-gap);
+  background: #17252b;
+}
+
+.mesh-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--panel-gap);
+}
+
+.mesh-tools input {
+  flex: 1 1 100%;
+}
+
+#mesh-list {
+  flex: 1;
+  overflow: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+#mesh-list label,
+.mesh-panel > label {
+  display: flex;
+  gap: var(--panel-gap);
+}
+
+.mesh-panel > label {
+  flex-direction: column;
+}
+
+#mesh-list li:hover {
+  background: #2a3f43;
+}
+
+#mesh-list li.selected {
+  background: #6b5a00;
+}

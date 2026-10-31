@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Dorifto — Car meshes</title>
+  </head>
+  <body>
+    <main>
+      <div id="car-view" aria-label="Car mesh viewer"></div>
+      <aside class="mesh-panel">
+        <div class="mesh-tools">
+          <input id="mesh-filter" type="search" placeholder="Filter meshes" />
+          <button id="mesh-all" type="button">All</button>
+          <button id="mesh-none" type="button">None</button>
+          <button id="view-cabin" type="button">Cabin</button>
+          <button id="view-outside" type="button">Outside</button>
+          <label><input id="camera-light" type="checkbox" checked /> Camera light</label>
+        </div>
+        <output id="triangle-count"></output>
+        <ul id="mesh-list"></ul>
+        <label>Clicked point <textarea id="mesh-picked" readonly rows="2"></textarea></label>
+        <label>Hidden meshes <textarea id="mesh-hidden" readonly rows="4"></textarea></label>
+      </aside>
+    </main>
+    <script type="module" src="/src/car-meshes-demo.ts"></script>
+  </body>
+</html>
