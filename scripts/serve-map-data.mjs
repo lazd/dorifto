@@ -1,8 +1,17 @@
 #!/usr/bin/env node
 import { spawn } from 'node:child_process';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { createServer } from 'node:http';
-import { appendFile, mkdir, rename, rm, stat } from 'node:fs/promises';
+import {
+  appendFile,
+  mkdir,
+  readFile,
+  readdir,
+  rename,
+  rm,
+  stat,
+  writeFile,
+} from 'node:fs/promises';
 import path from 'node:path';
 import { createInterface } from 'node:readline';
 import { DatabaseSync } from 'node:sqlite';
@@ -10,14 +19,21 @@ import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('../data-imports/geofabrik/', import.meta.url));
 const indexVersion = 1;
-const usage = `Usage: npm run serve-map-data -- REGION [REGION ...] [--port 8787]
+const usage = `Usage: npm run serve-map-data -- REGION [REGION ...] [--all] [--port 8787] [--index-only]
+       [--max-coverage-misses N]
 Example: npm run serve-map-data -- north-america/us/california/norcal
+--all serves every region already imported under data-imports/geofabrik.
+--index-only builds/refreshes the indexes and exits without serving.
+--max-coverage-misses stops logging new coverage misses after N unique tiles.
+Tile responses are cached under data-imports/geofabrik/tile-cache until regions change.
 Requires Node >=22.13 and osmium-tool; run import-osm-region for each region first.
 Builds/reuses a disk-backed SQLite spatial index beside each network.osm.pbf.
 Serves GET /osm?bbox=west,south,east,north on loopback only.
-Coverage misses are appended to data-imports/geofabrik/coverage-misses.jsonl.
+Unique coverage misses are appended to data-imports/geofabrik/coverage-misses.jsonl.
 Enable the client with VITE_LOCAL_MAP_DATA=true (optional VITE_LOCAL_MAP_DATA_URL).
 The index is derived data and can be deleted/rebuilt; no Brotli file is needed.`;
+
+const tileCacheControl = 'public, max-age=604800';
 
 const decodeOpl = (value) =>
   value.replace(/%([0-9a-f]+)%/gi, (_, code) => String.fromCodePoint(parseInt(code, 16)));
@@ -315,6 +331,7 @@ export async function openRegion(region) {
   const queries = storeQueries(db);
   return {
     region,
+    fingerprint,
     polygon: metadata.polygon,
     close: () => db.close(),
     query([west, south, east, north]) {
@@ -348,14 +365,52 @@ export async function openRegion(region) {
   };
 }
 
-export function mapDataServer(regions, missLog = path.join(root, 'coverage-misses.jsonl')) {
+async function readMisses(missLog) {
+  try {
+    return new Set(
+      (await readFile(missLog, 'utf8'))
+        .split('\n')
+        .filter(Boolean)
+        .map((line) => JSON.parse(line).bbox.join(',')),
+    );
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+    return new Set();
+  }
+}
+
+// Tiles only change when regions are re-imported, so each region set gets its own cache directory.
+async function tileCacheDirectory(regions, cacheRoot) {
+  const version = createHash('sha256')
+    .update(JSON.stringify(regions.map(({ region, fingerprint }) => [region, fingerprint])))
+    .digest('hex')
+    .slice(0, 16);
+  await mkdir(path.join(cacheRoot, version), { recursive: true });
+  for (const entry of await readdir(cacheRoot))
+    if (entry !== version) await rm(path.join(cacheRoot, entry), { recursive: true, force: true });
+  return path.join(cacheRoot, version);
+}
+
+export async function mapDataServer(
+  regions,
+  {
+    missLog = path.join(root, 'coverage-misses.jsonl'),
+    maxMisses = Infinity,
+    cacheRoot = path.join(root, 'tile-cache'),
+  } = {},
+) {
+  const misses = await readMisses(missLog);
+  const cache = await tileCacheDirectory(regions, cacheRoot);
   return createServer(async (request, response) => {
     response.setHeader('Access-Control-Allow-Origin', '*');
-    response.setHeader('Cache-Control', 'no-store');
-    const send = (status, data) => {
-      response.writeHead(status, { 'Content-Type': 'application/json' });
-      response.end(JSON.stringify(data));
+    const sendBody = (status, body, cacheControl = 'no-store') => {
+      response.writeHead(status, {
+        'Content-Type': 'application/json',
+        'Cache-Control': cacheControl,
+      });
+      response.end(body);
     };
+    const send = (status, data) => sendBody(status, JSON.stringify(data));
     try {
       const url = new URL(request.url, 'http://localhost');
       if (request.method !== 'GET') return send(405, { error: 'Use GET' });
@@ -379,11 +434,21 @@ export function mapDataServer(regions, missLog = path.join(root, 'coverage-misse
         return send(400, {
           error: 'bbox must be a tile: west,south,east,north (max 0.05 degrees)',
         });
+      const key = box.join(',');
+      const file = path.join(cache, `${key}.json`);
+      try {
+        return sendBody(200, await readFile(file), tileCacheControl);
+      } catch (error) {
+        if (error.code !== 'ENOENT') throw error;
+      }
       const available = regions.filter(({ polygon }) => coversBox(polygon, box));
       if (!available.length) {
         const miss = { time: new Date().toISOString(), bbox: box, reason: 'outside-coverage' };
-        await appendFile(missLog, `${JSON.stringify(miss)}\n`);
-        console.log('OSM coverage miss:', JSON.stringify(miss));
+        if (!misses.has(key) && misses.size < maxMisses) {
+          misses.add(key);
+          await appendFile(missLog, `${JSON.stringify(miss)}\n`);
+          console.log('OSM coverage miss:', JSON.stringify(miss));
+        }
         return send(404, { error: 'No complete regional coverage for this tile', ...miss });
       }
       const elements = new Map();
@@ -391,9 +456,20 @@ export function mapDataServer(regions, missLog = path.join(root, 'coverage-misse
         for (const element of region.query(box))
           elements.set(`${element.type}/${element.id}`, element);
       console.log(
-        `OSM tile ${box.join(',')}: ${elements.size} elements (${available.map((r) => r.region).join(', ')})`,
+        `OSM tile ${key}: ${elements.size} elements (${available.map((r) => r.region).join(', ')})`,
       );
-      send(200, { elements: [...elements.values()], regions: available.map((r) => r.region) });
+      const body = JSON.stringify({
+        elements: [...elements.values()],
+        regions: available.map((r) => r.region),
+      });
+      sendBody(200, body, tileCacheControl);
+      const temporary = `${file}.${randomUUID()}.tmp`;
+      await writeFile(temporary, body)
+        .then(() => rename(temporary, file))
+        .catch(async (error) => {
+          console.error('Could not cache map data tile:', error);
+          await rm(temporary, { force: true });
+        });
     } catch (error) {
       console.error('Map data request failed:', error);
       if (!response.headersSent)
@@ -403,28 +479,49 @@ export function mapDataServer(regions, missLog = path.join(root, 'coverage-misse
   });
 }
 
+async function importedRegions() {
+  const suffix = `${path.sep}network.osm.pbf`;
+  return (await readdir(root, { recursive: true }))
+    .filter((file) => file.endsWith(suffix))
+    .map((file) => path.dirname(file).split(path.sep).join('/'))
+    .sort();
+}
+
 async function main(args) {
   if (args.includes('--help') || args.includes('-h')) return console.log(usage);
   const names = [];
   let port = 8787;
+  let indexOnly = false;
+  let maxMisses = Infinity;
+  await mkdir(root, { recursive: true });
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--port') port = Number(args[++i]);
+    else if (args[i] === '--all') names.push(...(await importedRegions()));
+    else if (args[i] === '--index-only') indexOnly = true;
+    else if (args[i] === '--max-coverage-misses') maxMisses = Number(args[++i]);
     else if (/^[a-z0-9]+(?:[/-][a-z0-9]+)*$/.test(args[i])) names.push(args[i]);
     else throw new Error(`Invalid region or option: ${args[i]}\n${usage}`);
   }
-  if (!names.length || !Number.isInteger(port) || port < 1 || port > 65535) throw new Error(usage);
-  await mkdir(root, { recursive: true });
+  if (!names.length) throw new Error(`No regions to serve; run import-osm-region first.\n${usage}`);
+  if (!Number.isInteger(port) || port < 1 || port > 65535 || !(maxMisses >= 0))
+    throw new Error(usage);
   const regions = [];
   try {
     for (const name of new Set(names)) regions.push(await openRegion(name));
-    const server = mapDataServer(regions);
+    if (indexOnly) {
+      for (const region of regions) region.close();
+      return console.log(`Indexes ready: ${[...new Set(names)].join(', ')}`);
+    }
+    const server = await mapDataServer(regions, { maxMisses });
     server.on('error', (error) => {
       console.error('Map data server failed:', error);
       process.exitCode = 1;
       for (const region of regions) region.close();
     });
     server.listen(port, '127.0.0.1', () =>
-      console.log(`Local map data ready: http://127.0.0.1:${port} (${names.join(', ')})`),
+      console.log(
+        `Local map data ready: http://127.0.0.1:${port} (${[...new Set(names)].join(', ')})`,
+      ),
     );
     for (const signal of ['SIGINT', 'SIGTERM'])
       process.once(signal, () =>
