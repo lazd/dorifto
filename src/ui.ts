@@ -28,7 +28,7 @@ import {
   type RunSummary,
 } from './lap-recording';
 import './course-picker.css';
-import { bindSettingsLayout, bindTreeSettings } from './settings';
+import { bindCabinHeadPosition, bindSettingsLayout, bindTreeSettings } from './settings';
 import { bindControlsSettings } from './controls-settings';
 import { treeSettingsStorageKey } from './tree-settings';
 import {
@@ -2032,6 +2032,7 @@ export function bindGameUI(
   bindDialog('#settings', '#settings-dialog');
   bindSettingsLayout();
   bindTreeSettings(configuration, reportError);
+  bindCabinHeadPosition(configuration, reportError);
   const resetControls = bindControlsSettings(reportError);
   element<HTMLButtonElement>('#settings-reset').addEventListener('click', () => {
     const defaults = createConfigurationState().getState();

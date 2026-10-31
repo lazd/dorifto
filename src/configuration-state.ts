@@ -102,6 +102,7 @@ export interface ConfigurationState extends TreeSettings {
   tuningPresets: readonly TuningPreset[];
   cameraStyle: 'classic' | 'fpv' | 'cabin';
   cabinHeadMotion: boolean;
+  cabinHeadOffsetY: number;
   mirrorResolution: 'off' | 'low' | 'medium' | 'high';
   passengerMirror: boolean;
   pixelRatio: 'auto' | '0.5' | '0.75' | '1' | '2';
@@ -134,6 +135,7 @@ export const configurationSettingKeys = [
   'selectedTuningPresets',
   'cameraStyle',
   'cabinHeadMotion',
+  'cabinHeadOffsetY',
   'mirrorResolution',
   'passengerMirror',
   'pixelRatio',
@@ -180,6 +182,7 @@ const isStoredSetting: Record<keyof ConfigurationSettings, (value: unknown) => b
     ),
   cameraStyle: (value) => typeof value === 'string' && isCameraStyle(value),
   cabinHeadMotion: (value) => typeof value === 'boolean',
+  cabinHeadOffsetY: isStoredCabinHeadOffset,
   mirrorResolution: (value) => typeof value === 'string' && isMirrorResolution(value),
   passengerMirror: (value) => typeof value === 'boolean',
   pixelRatio: (value) => typeof value === 'string' && isPixelRatio(value),
@@ -208,6 +211,10 @@ const isStoredSetting: Record<keyof ConfigurationSettings, (value: unknown) => b
   muted: (value) => typeof value === 'boolean',
   stereoStation: (value) => typeof value === 'string' && isStereoStationSelection(value),
 };
+
+export function isStoredCabinHeadOffset(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= -0.15 && value <= 0.15;
+}
 
 function isStoredTreeSlider(key: keyof TreeSettings, value: unknown): boolean {
   const control = treeSliders.find((entry) => entry.key === key);
@@ -254,6 +261,7 @@ export function createConfigurationState(storage?: Storage) {
     minimapOrientation: 'heading-up',
     speedUnit: 'mph',
     cabinHeadMotion: true,
+    cabinHeadOffsetY: 0,
     mirrorResolution: 'low',
     passengerMirror: false,
     pixelRatio: 'auto',

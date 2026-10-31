@@ -46,7 +46,8 @@ const DRIVER_MIRROR_OUTBOARD_DEG = 2;
 const PASSENGER_MIRROR_OUTBOARD_DEG = -2;
 // Positive tilts the rear-view mirror's view upward.
 const REAR_VIEW_MIRROR_TILT_DEG = -1;
-const STEERING_COLUMN_TILT_DEG = 2.5;
+const STEERING_COLUMN_TILT_DEG = 5;
+const STEERING_COLUMN_HEAD_TILT_DEG_PER_METER = 30;
 const TEMP_NORMAL_DEG = 30;
 const FUEL_FULL_DEG = 57;
 const BOOST_PIVOT = new THREE.Vector3(-0.3258, 0.2205, 0.4106);
@@ -905,7 +906,12 @@ export async function loadCar(onProgress?: (fraction: number) => void) {
     new THREE.Vector3(0, 0.3095, -0.9509).normalize(),
     steeringColumn,
   );
-  steeringColumn.rotation.x = THREE.MathUtils.degToRad(STEERING_COLUMN_TILT_DEG);
+  function setCabinHeadOffsetY(offset: number) {
+    const tilt = STEERING_COLUMN_TILT_DEG + offset * STEERING_COLUMN_HEAD_TILT_DEG_PER_METER;
+    steeringColumn.rotation.x = THREE.MathUtils.degToRad(tilt);
+    console.log('Cabin head offset Y %s, steering column rotation X %s', offset, tilt);
+  }
+  setCabinHeadOffsetY(0);
   chassis.updateMatrixWorld(true);
   // The gauge face points at the driver; positive rotation is counter-clockwise from the seat.
   // The boost needle hangs below its hub, so sweeping toward +7 is counter-clockwise.
@@ -1132,5 +1138,6 @@ export async function loadCar(onProgress?: (fraction: number) => void) {
     setSpeedUnit,
     setDashLight,
     aimMirrors,
+    setCabinHeadOffsetY,
   };
 }

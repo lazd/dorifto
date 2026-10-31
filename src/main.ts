@@ -1953,6 +1953,7 @@ async function start() {
       reversing,
       cameraState.cabinHeadMotion,
       cameraState.treeDrawDistance,
+      cameraState.cabinHeadOffsetY,
     );
     lighting.update(controls.mapView ? camera.far : undefined, cameraState.treeDrawDistance);
     forward.set(0, 0, 1).applyQuaternion(car.chassis.quaternion);

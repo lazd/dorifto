@@ -1,5 +1,5 @@
 import { Tabs } from './tabs';
-import type { ConfigurationState } from './configuration-state';
+import { isStoredCabinHeadOffset, type ConfigurationState } from './configuration-state';
 import type { Store } from './store';
 import { treeSliders, validTreeSlider } from './tree-settings';
 import './settings.css';
@@ -101,5 +101,33 @@ export function bindTreeSettings(
       nearTrack.disabled = disabled || state.treeQuality === 1;
     },
     [...treeSliders.map(({ key }) => key), 'treeSmoothTransitions', 'treeNearTrackOnly'],
+  );
+}
+
+export function bindCabinHeadPosition(
+  configuration: Store<ConfigurationState>,
+  reportError: (error: unknown) => void,
+) {
+  const root = document.getElementById('cabin-head-position');
+  if (!root) throw new Error('Missing cabin head position settings');
+  const input = root.querySelector<HTMLInputElement>('#cabin-head-y');
+  const output = root.querySelector<HTMLOutputElement>('#cabin-head-y-value');
+  if (!input || !output) throw new Error('Missing cabin head height control');
+  input.addEventListener('input', () => {
+    const value = input.valueAsNumber;
+    if (!isStoredCabinHeadOffset(value)) {
+      reportError(new Error(`Invalid cabin head offset: ${input.value}`));
+      return;
+    }
+    configuration.update({ cabinHeadOffsetY: value });
+  });
+  configuration.subscribe(
+    (state) => {
+      const value = state.cabinHeadOffsetY;
+      input.value = String(value);
+      output.value = `${value > 0 ? '+' : ''}${Math.round(value * 100)} cm`;
+      input.setAttribute('aria-valuetext', output.value);
+    },
+    ['cabinHeadOffsetY'],
   );
 }

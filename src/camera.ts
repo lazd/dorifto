@@ -76,11 +76,14 @@ export function createDrivingCamera(
   let cameraPitch = 0;
   const cameraOrbit = new THREE.Vector3();
   const cabinEye = new THREE.Vector3();
+  const defaultCabinEye = new THREE.Vector3(-0.38, 0.46, -0.3);
+  const cabinEyeTarget = new THREE.Vector3();
   function setCabinEye(eye: THREE.Vector3) {
     cabinEye.copy(eye);
     car.aimMirrors(cabinEye);
   }
-  setCabinEye(new THREE.Vector3(-0.38, 0.43, -0.25));
+  setCabinEye(defaultCabinEye);
+  let previousCabinHeadOffsetY = 0;
   const cabinDirection = new THREE.Vector3();
   const cabinUp = new THREE.Vector3();
   const previousCabinVelocity = new THREE.Vector3();
@@ -275,7 +278,15 @@ export function createDrivingCamera(
     reversing: boolean,
     cabinHeadMotion = true,
     treeDrawDistance = 0,
+    cabinHeadOffsetY = 0,
   ) {
+    if (cabinHeadOffsetY !== previousCabinHeadOffsetY) {
+      cabinEyeTarget.copy(defaultCabinEye);
+      cabinEyeTarget.y += cabinHeadOffsetY;
+      setCabinEye(cabinEyeTarget);
+      car.setCabinHeadOffsetY(cabinHeadOffsetY);
+      previousCabinHeadOffsetY = cabinHeadOffsetY;
+    }
     if (mapShown) {
       // Resume the driving camera from its saved pose, not from the map.
       camera.position.copy(chasePosition);
